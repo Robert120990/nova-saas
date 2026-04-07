@@ -1,0 +1,41 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Client (Vite/React)
+client/node_modules/
+client/dist/
+client/build/
+client/.env*
+
+# Server (Node/Express)
+server/node_modules/
+server/.env*
+server/npm-debug.log*
+server/logs/
+server/.env.tmp
+
+# DTE API
+dte-api/.env*
+
+# Global env protection
+**/.env*
+
+# Database & Temps
+database/data/
+*.db
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.bak
+.claude/
+.gemini/
+antigravity/
+brain/
+implementation_plan.md
+task.md
+walkthrough.md
