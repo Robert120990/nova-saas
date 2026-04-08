@@ -58,6 +58,7 @@ export const menuConfig = [
                     { id: 'ventas-report-ventas', label: 'Reporte de Ventas', path: '/ventas/reportes/ventas', icon: FileText, permission: 'manage_sales' },
                     { id: 'ventas-report-diarias', label: 'Reporte de Ventas Diarias', path: '/ventas/reportes/diarias', icon: FileText, permission: 'manage_sales' },
                     { id: 'ventas-report-categoria', label: 'Ventas por Categoría', path: '/ventas/reportes/categoria', icon: FileText, permission: 'manage_sales' },
+                    { id: 'ventas-report-pos', label: 'Ventas por POS', path: '/ventas/reportes/pos', icon: FileText, permission: 'manage_sales' },
                 ]
             },
         ]
@@ -147,6 +148,16 @@ export const menuConfig = [
                     { id: 'inventory-report-movements', label: 'Reporte de Movimientos', path: '/inventario/reportes/movimientos', icon: History, permission: 'manage_kardex' },
                 ]
             },
+        ]
+    },
+    {
+        id: 'iva',
+        label: 'Libros de IVA',
+        icon: Calculator,
+        children: [
+            { id: 'iva-compras', label: 'Libro de Compras', path: '/iva/compras', icon: FileText, permission: 'manage_purchases' },
+            { id: 'iva-ventas-ccf', label: 'Ventas a Contribuyentes', path: '/iva/ventas-ccf', icon: FileText, permission: 'manage_sales' },
+            { id: 'iva-ventas-fac', label: 'Ventas a Consumidor', path: '/iva/ventas-fac', icon: FileText, permission: 'manage_sales' },
         ]
     },
     {

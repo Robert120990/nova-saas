@@ -42,10 +42,15 @@ import CustomerBalancesReport from './pages/CustomerBalancesReport';
 import ProviderBalancesReport from './pages/ProviderBalancesReport';
 import FuelPrices from './pages/FuelPrices';
 import SalesByCategoryReport from './pages/SalesByCategoryReport';
+import SalesByPOSReport from './pages/SalesByPOSReport';
 import SalesReport from './pages/SalesReport';
 import Expenses from './pages/Expenses';
 import ExpenseReport from './pages/ExpenseReport';
 import PurchaseReport from './pages/PurchaseReport';
+
+import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
+import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
+import VatBookSalesConsumers from './pages/VatBooks/VatBookSalesConsumers';
 
 import Layout from './components/layout/Layout';
 
@@ -97,6 +102,12 @@ function App() {
                         <Route path="/inventario/kardex" element={<Kardex />} />
                         <Route path="/inventario/reportes/stock" element={<InventoryStockReport />} />
                         <Route path="/inventario/reportes/movimientos" element={<InventoryMovementsReport />} />
+
+                        {/* Libros de IVA */}
+                        <Route path="/iva/compras" element={<VatBookPurchases />} />
+                        <Route path="/iva/ventas-ccf" element={<VatBookSalesTaxpayers />} />
+                        <Route path="/iva/ventas-fac" element={<VatBookSalesConsumers />} />
+                        
                         <Route path="/compras" element={<Purchases />} />
                         <Route path="/compras/gastos" element={<Expenses />} />
                         <Route path="/compras/reportes/compras" element={<PurchaseReport />} />
@@ -107,6 +118,7 @@ function App() {
                         <Route path="/ventas/reportes/ventas" element={<SalesReport />} />
                         <Route path="/ventas/reportes/diarias" element={<DailySalesReport />} />
                         <Route path="/ventas/reportes/categoria" element={<SalesByCategoryReport />} />
+                        <Route path="/ventas/reportes/pos" element={<SalesByPOSReport />} />
                         <Route path="/ventas/combos" element={<Combos />} />
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />

@@ -27,6 +27,7 @@ const periodController = require('../controllers/period.controller');
 const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
 const comboController = require('../controllers/combo.controller');
+const vatBooksController = require('../controllers/vatBooks.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
@@ -193,6 +194,8 @@ router.get('/sales/reports/by-category', salesController.getSalesByCategory);
 router.get('/sales/reports/category/pdf', salesController.exportSalesByCategoryPDF);
 router.get('/sales/reports/daily', salesController.getDailySales);
 router.get('/sales/reports/daily/pdf', salesController.exportDailySalesPDF);
+router.get('/sales/reports/pos', salesController.getSalesByPOS);
+router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
 router.post('/sales', salesController.createSale);
 router.get('/sales/:id', salesController.getSaleById);
 
@@ -252,6 +255,11 @@ router.delete('/cxp/payments/:id', cxpController.deletePayment);
 router.post('/cxp/payments/:id/send-email', cxpController.sendReceiptEmail);
 router.get('/cxp/balances-report', cxpController.getProviderBalancesReport);
 router.get('/cxp/payments/:id/pdf', cxpController.exportPaymentPDF);
+
+// Libros de IVA
+router.get('/vat-books/purchases-pdf', vatBooksController.getVatBookPurchasesPDF);
+router.get('/vat-books/sales-taxpayers-pdf', vatBooksController.getVatBookSalesTaxpayersPDF);
+router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesConsumersPDF);
 
 // AI Assistant
 router.use('/ai', aiRoutes);

@@ -856,6 +856,153 @@ const generateSalesByCategoryPDF = (data) => {
     });
 };
 
+/**
+ * Generates a detailed itemized PDF for Sales by POS Report
+ */
+const generateSalesByPOSPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '---';
+                const d = new Date(dateStr);
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const year = d.getUTCFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+
+            // Header
+            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
+            if (data.company_nit) doc.fontSize(10).font('Helvetica').text(`NIT: ${data.company_nit}`, { align: 'center' });
+            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`, { align: 'center' });
+            doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DETALLADO DE VENTAS POR POS', { align: 'center' });
+            doc.fontSize(9).font('Helvetica').text(`Periodo: ${formatDate(data.startDate)} al ${formatDate(data.endDate)}`, { align: 'center' });
+            doc.moveDown(1.5);
+
+            const startX = 30;
+            const colWidths = {
+                fecha: 55,
+                tipo: 80,
+                numero: 90,
+                cond: 70,
+                cliente: 180,
+                fiscal: 150,
+                total: 80
+            };
+
+            const drawTableHeader = (y) => {
+                doc.fontSize(8).font('Helvetica-Bold');
+                let x = startX;
+                doc.text('FECHA', x, y); x += colWidths.fecha;
+                doc.text('TIPO DOC', x, y); x += colWidths.tipo;
+                doc.text('NUMERO', x, y); x += colWidths.numero;
+                doc.text('CONDICION', x, y); x += colWidths.cond;
+                doc.text('CLIENTE', x, y); x += colWidths.cliente;
+                doc.text('FISCAL/VENDEDOR', x, y); x += colWidths.fiscal;
+                doc.text('TOTAL', x, y, { align: 'right', width: colWidths.total });
+                
+                doc.moveDown(0.5);
+                doc.moveTo(startX, doc.y).lineTo(startX + 730, doc.y).stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(7);
+                return doc.y;
+            };
+
+            let currentY = drawTableHeader(doc.y);
+            let currentPOS = null;
+            let posTotal = 0;
+            let grandTotal = 0;
+
+            data.data.forEach((row, index) => {
+                // POS Grouping Header
+                if (row.pos_name !== currentPOS) {
+                    if (currentPOS !== null) {
+                        // Print POS Subtotal
+                        doc.font('Helvetica-Bold').fontSize(8);
+                        doc.text(`SUBTOTAL ${currentPOS}:`, startX + 500, doc.y, { width: 150, align: 'right' });
+                        doc.text(formatVal(posTotal), startX + 650, doc.y - 8, { width: colWidths.total, align: 'right' });
+                        doc.moveDown(1);
+                        posTotal = 0;
+                    }
+
+                    if (doc.y > 500) {
+                        doc.addPage();
+                        currentY = drawTableHeader(30);
+                    }
+
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor('#4f46e5');
+                    doc.text(`TERMINAL POS: ${row.pos_name || 'SIN POS'}`, startX, doc.y);
+                    doc.fillColor('black').moveDown(0.5);
+                    currentPOS = row.pos_name;
+                }
+
+                if (doc.y > 540) {
+                    doc.addPage();
+                    currentY = drawTableHeader(30);
+                    doc.font('Helvetica-Bold').fontSize(8).text(`TERMINAL POS: ${currentPOS} (cont.)`, startX, doc.y);
+                    doc.moveDown(0.5);
+                }
+
+                const y = doc.y;
+                let x = startX;
+                doc.font('Helvetica').fontSize(7);
+
+                // Row Data
+                doc.text(formatDate(row.fecha_emision), x, y); x += colWidths.fecha;
+                
+                let tipoLabel = row.tipo_documento;
+                if (tipoLabel === '01') tipoLabel = 'Factura';
+                else if (tipoLabel === '03') tipoLabel = 'Crédito Fiscal';
+                else if (tipoLabel === '04') tipoLabel = 'Nota de Remisión';
+                else if (tipoLabel === '05') tipoLabel = 'Nota de Crédito';
+                else if (tipoLabel === '11') tipoLabel = 'F. Exportación';
+                
+                doc.text(tipoLabel, x, y, { width: colWidths.tipo }); x += colWidths.tipo;
+                doc.text(row.numero_control || 'N/A', x, y, { width: colWidths.numero }); x += colWidths.numero;
+                
+                let condLabel = row.condicion_operacion === 1 ? 'Contado' : 'Crédito';
+                doc.text(condLabel, x, y); x += colWidths.cond;
+                
+                doc.text(row.cliente_nombre || 'Consumidor Final', x, y, { width: colWidths.cliente, truncate: true }); x += colWidths.cliente;
+                
+                const fiscalInfo = `${row.cliente_nit || row.cliente_nrc || ''} / ${row.vendedor_nombre || ''}`.trim();
+                doc.text(fiscalInfo || '---', x, y, { width: colWidths.fiscal, truncate: true }); x += colWidths.fiscal;
+                
+                doc.text(formatVal(row.total_pagar), x, y, { align: 'right', width: colWidths.total });
+
+                posTotal += parseFloat(row.total_pagar || 0);
+                grandTotal += parseFloat(row.total_pagar || 0);
+                doc.moveDown(0.8);
+
+                // Last row subtotal
+                if (index === data.data.length - 1) {
+                    doc.moveDown(0.5);
+                    doc.font('Helvetica-Bold').fontSize(8);
+                    doc.text(`SUBTOTAL ${currentPOS}:`, startX + 500, doc.y, { width: 150, align: 'right' });
+                    doc.text(formatVal(posTotal), startX + 650, doc.y - 8, { width: colWidths.total, align: 'right' });
+                }
+            });
+
+            // Grand Total Footer
+            doc.moveDown(1.5);
+            doc.moveTo(startX, doc.y).lineTo(startX + 730, doc.y).stroke();
+            doc.moveDown(0.5);
+            doc.fontSize(10).font('Helvetica-Bold');
+            doc.text('TOTAL GENERAL:', startX + 500, doc.y, { width: 150, align: 'right' });
+            doc.text(formatVal(grandTotal), startX + 650, doc.y - 10, { width: colWidths.total, align: 'right' });
+
+            doc.end();
+        } catch (err) { reject(err); }
+    });
+};
+
 module.exports = { 
     generateTransferPDF, 
     generateStatementPDF, 
@@ -868,5 +1015,6 @@ module.exports = {
     generateProviderBalancesPDF,
     generatePaymentReceiptPDF,
     generateDailySalesReportPDF,
-    generateSalesByCategoryPDF
+    generateSalesByCategoryPDF,
+    generateSalesByPOSPDF
 };

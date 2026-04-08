@@ -891,7 +891,6 @@ const getSalesReportPDF = async (req, res) => {
         doc.text(`$${gTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
         doc.text(`$${gTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
         doc.text(`$${gTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
-
         doc.end();
 
     } catch (error) {
@@ -902,13 +901,132 @@ const getSalesReportPDF = async (req, res) => {
     }
 };
 
-module.exports = { 
-    createSale, 
-    getSales, 
-    getSaleById, 
-    getSalesByCategory, 
+/**
+ * Obtiene el detalle de ventas por POS (listado detallado).
+ */
+const getSalesByPOS = async (req, res) => {
+    const { start_date, end_date, branch_id } = req.query;
+    const companyId = req.company_id || req.user?.company_id;
+
+    try {
+        let sql = `
+            SELECT 
+                h.id,
+                h.fecha_emision,
+                h.tipo_documento,
+                h.condicion_operacion,
+                COALESCE(c.nombre, h.cliente_nombre) as cliente_nombre,
+                COALESCE(c.nit, '') as cliente_nit,
+                COALESCE(c.nrc, '') as cliente_nrc,
+                COALESCE(s.nombre, 'Vendedor Genérico') as vendedor_nombre,
+                h.total_pagar,
+                COALESCE(p.nombre, 'Sin POS') as pos_name,
+                d.numero_control,
+                d.codigo_generacion
+            FROM sales_headers h
+            LEFT JOIN points_of_sale p ON h.pos_id = p.id
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN sellers s ON h.seller_id = s.id
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+        `;
+        const params = [companyId];
+
+        if (start_date && end_date) {
+            sql += ' AND h.fecha_emision BETWEEN ? AND ?';
+            params.push(start_date, end_date);
+        }
+        if (branch_id && branch_id !== 'all') {
+            sql += ' AND h.branch_id = ?';
+            params.push(branch_id);
+        }
+
+        sql += ' ORDER BY p.nombre, h.fecha_emision, h.id';
+
+        const [rows] = await pool.query(sql, params);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error in getSalesByPOS:', error);
+        res.status(500).json({ message: 'Error al obtener detalle de ventas por POS' });
+    }
+};
+
+/**
+ * Exporta el reporte detallado de ventas por POS a PDF.
+ */
+const exportSalesByPOSPDF = async (req, res) => {
+    try {
+        const { start_date, end_date, branch_id } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+
+        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
+        const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '' };
+
+        let branchName = 'Todas las sucursales';
+        if (branch_id && branch_id !== 'all') {
+            const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (branchRows.length > 0) branchName = branchRows[0].nombre;
+        }
+
+        let sql = `
+            SELECT 
+                h.fecha_emision,
+                h.tipo_documento,
+                h.condicion_operacion,
+                COALESCE(c.nombre, h.cliente_nombre) as cliente_nombre,
+                COALESCE(c.nit, '') as cliente_nit,
+                COALESCE(c.nrc, '') as cliente_nrc,
+                COALESCE(s.nombre, 'Vendedor') as vendedor_nombre,
+                h.total_gravado,
+                h.total_iva,
+                h.total_pagar,
+                COALESCE(p.nombre, 'Sin POS') as pos_name,
+                d.numero_control,
+                d.codigo_generacion
+            FROM sales_headers h
+            LEFT JOIN points_of_sale p ON h.pos_id = p.id
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN sellers s ON h.seller_id = s.id
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+        `;
+        const params = [companyId];
+        if (start_date && end_date) { sql += ' AND h.fecha_emision BETWEEN ? AND ?'; params.push(start_date, end_date); }
+        if (branch_id && branch_id !== 'all') { sql += ' AND h.branch_id = ?'; params.push(branch_id); }
+        sql += ' ORDER BY p.nombre, h.fecha_emision, h.id';
+
+        const [rows] = await pool.query(sql, params);
+
+        const reportData = {
+            company_name: company.razon_social,
+            company_nit: company.nit,
+            branch_name: branchName,
+            startDate: start_date,
+            endDate: end_date,
+            data: rows
+        };
+
+        const pdfBuffer = await pdfService.generateSalesByPOSPDF(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Detalle_Ventas_POS_${start_date}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error in exportSalesByPOSPDF:', error);
+        res.status(500).json({ message: 'Error al generar PDF detallado de ventas por POS' });
+    }
+};
+
+module.exports = {
+    createSale,
+    getSales,
+    getSaleById,
+    getSalesByCategory,
     exportSalesByCategoryPDF,
-    getDailySales, 
+    getDailySales,
     exportDailySalesPDF,
-    getSalesReportPDF
+    getSalesReportPDF,
+    getSalesByPOS,
+    exportSalesByPOSPDF
 };
