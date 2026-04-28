@@ -35,10 +35,12 @@ async function invalidateDTE(payload, companyId, user) {
     const [companyRows] = await pool.query('SELECT * FROM companies WHERE id = ?', [companyId]);
     const company = companyRows[0];
 
-    // 2. Generate Invalidation JSON
-    const now = new Date();
-    const fecAnula = now.toISOString().split('T')[0];
-    const horAnula = now.toTimeString().split(' ')[0];
+    // 2. Generate Invalidation JSON (using local time for El Salvador UTC-6)
+    // We use a manual offset or just rely on the server timezone if it's set correctly.
+    // Given the previous logs, we'll use a more robust local date/time generation.
+    const localNow = new Date(new Date().toLocaleString("en-US", {timeZone: "America/El_Salvador"}));
+    const fecAnula = localNow.toISOString().split('T')[0];
+    const horAnula = localNow.toTimeString().split(' ')[0];
 
     const invalidacionJson = {
         identificacion: {
@@ -107,8 +109,9 @@ async function invalidateDTE(payload, companyId, user) {
     try {
         const response = await axios.post(invalidationUrl, {
             ambiente: dte.ambiente,
-            idEnvio: 1,
+            idEnvio: Math.floor(Date.now() / 1000), // Unique ID for transmission
             version: 2,
+            tipoDte: dte.tipo_dte,
             documento: signResult.jws
         }, {
             headers: {
@@ -131,7 +134,7 @@ async function invalidateDTE(payload, companyId, user) {
                 JSON.stringify(invalidacionJson),
                 signResult.jws,
                 JSON.stringify(response.data),
-                now
+                localNow
             ]
         );
 
@@ -147,23 +150,30 @@ async function invalidateDTE(payload, companyId, user) {
         };
 
     } catch (error) {
-        console.error('Invalidation MH Error:', error.response ? error.response.data : error.message);
+        const mhErrorData = error.response ? error.response.data : { message: error.message };
+        console.error('Invalidation MH Error:', mhErrorData);
         
-        await pool.query(
-            'INSERT INTO dte_invalidations (codigo_generacion_dte, tipo_documento, motivo, descripcion, estado, json_enviado, json_firmado, last_error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-                dte.codigo_generacion,
-                dte.tipo_dte,
-                motivo,
-                descripcion,
-                'ERROR',
-                JSON.stringify(invalidacionJson),
-                signResult.jws,
-                error.message
-            ]
-        );
+        try {
+            await pool.query(
+                'INSERT INTO dte_invalidations (codigo_generacion_dte, tipo_documento, motivo, descripcion, estado, json_enviado, json_firmado, respuesta_hacienda, fecha_envio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    dte.codigo_generacion,
+                    dte.tipo_dte,
+                    motivo,
+                    descripcion,
+                    'ERROR',
+                    JSON.stringify(invalidacionJson),
+                    signResult.jws,
+                    JSON.stringify(mhErrorData),
+                    localNow
+                ]
+            );
+        } catch (dbErr) {
+            console.error('Error saving invalidation error record:', dbErr.message);
+        }
 
-        throw new Error(`Error de transmisión con Hacienda: ${error.message}`);
+        const detail = mhErrorData.descripcionMsg || mhErrorData.error || mhErrorData.message || error.message;
+        throw new Error(`Error de transmisión con Hacienda: ${detail}`);
     }
 }
 

@@ -23,8 +23,14 @@ async function signDTE(dteJson, options = {}) {
             return await signWithInternalSigner(dteJson, certificatePath, certificatePassword);
         } else if (mode === 'external') {
             return await signWithExternalSigner(dteJson, nit, certificatePassword);
+        } else if (mode === 'mock') {
+            console.log('[Signature] Using MOCK mode... returning dummy JWS');
+            return {
+                success: true,
+                jws: 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXUyIsIng1YyI6WyJNSUlCcFRDQ0FSMmdBd0lCQWdJ...MOCK_SIGNATURE'
+            };
         } else {
-            throw new Error(`SIGNATURE_MODE no válido: ${mode}. Use 'internal' o 'external'.`);
+            throw new Error(`SIGNATURE_MODE no válido: ${mode}. Use 'internal', 'external' o 'mock'.`);
         }
     } catch (error) {
         console.error(`[Signature] Error in ${mode} mode:`, error.message);

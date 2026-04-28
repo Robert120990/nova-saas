@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const QRCode = require('qrcode');
 
 /**
  * Generates a PDF buffer for an inventory transfer
@@ -583,39 +584,76 @@ const generatePaymentReceiptPDF = (data) => {
             doc.fontSize(14).font('Helvetica-Bold').text('RECIBO DE INGRESO', 400, 40, { align: 'right' });
             doc.fontSize(12).font('Helvetica-Bold').fillColor('#4f46e5').text(`No. ${String(data.id).padStart(6, '0')}`, 400, 55, { align: 'right' });
             doc.fillColor('black');
-
-            doc.moveDown(4);
+            doc.moveDown(5);
 
             // --- Receipt Body ---
             const bodyTop = doc.y;
-            doc.rect(40, bodyTop, 532, 200).stroke('#e5e7eb');
+            doc.rect(40, bodyTop, 532, 100).stroke('#e5e7eb');
             
             doc.fontSize(10).font('Helvetica-Bold').text('RECIBIMOS DE:', 55, bodyTop + 15);
             doc.font('Helvetica').text(data.customer_name.toUpperCase(), 150, bodyTop + 15);
             
-            doc.font('Helvetica-Bold').text('LA CANTIDAD DE:', 55, bodyTop + 40);
-            doc.font('Helvetica').text(`$${parseFloat(data.monto).toFixed(2)}`, 150, bodyTop + 40);
+            doc.font('Helvetica-Bold').text('LA CANTIDAD DE:', 55, bodyTop + 35);
+            doc.font('Helvetica').text(`$${parseFloat(data.monto).toFixed(2)}`, 150, bodyTop + 35);
             
-            doc.font('Helvetica-Bold').text('FECHA DE PAGO:', 55, bodyTop + 65);
-            doc.font('Helvetica').text(new Date(data.fecha_pago).toLocaleDateString('es-SV'), 150, bodyTop + 65);
+            doc.font('Helvetica-Bold').text('FECHA DE PAGO:', 55, bodyTop + 55);
+            doc.font('Helvetica').text(new Date(data.fecha_pago).toLocaleDateString('es-SV'), 150, bodyTop + 55);
+ 
+            const payInfo = `METODO: ${data.metodo_pago?.toUpperCase() || ''} ${data.referencia ? ` - REF: ${data.referencia.toUpperCase()}` : ''}`;
+            doc.font('Helvetica-Bold').text('INFORMACIÓN:', 55, bodyTop + 75);
+            doc.font('Helvetica').text(payInfo, 150, bodyTop + 75);
 
-            doc.font('Helvetica-Bold').text('MÉTODO DE PAGO:', 55, bodyTop + 90);
-            doc.font('Helvetica').text(data.metodo_pago.toUpperCase(), 150, bodyTop + 90);
+            doc.moveDown(3);
+            
+            // --- Documents Table ---
+            doc.fontSize(10).font('Helvetica-Bold').text('DETALLE DE DOCUMENTOS ABONADOS:', 40, doc.y);
+            doc.moveDown(0.5);
+            
+            const tableTop = doc.y;
+            const colWidths = { fecha: 80, doc: 180, total: 130, abono: 130 };
+            
+            // Table Header
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#4f46e5');
+            let trx = 40;
+            doc.text('FECHA DOC.', trx, tableTop); trx += colWidths.fecha;
+            doc.text('DOCUMENTO', trx, tableTop); trx += colWidths.doc;
+            doc.text('MONTO DOC.', trx, tableTop, { align: 'right', width: colWidths.total }); trx += colWidths.total;
+            doc.text('MONTO ABONO', trx, tableTop, { align: 'right', width: colWidths.abono });
+            
+            doc.moveDown(0.3);
+            doc.moveTo(40, doc.y).lineTo(572, doc.y).strokeColor('#e5e7eb').stroke();
+            doc.moveDown(0.5);
+            doc.fillColor('black').font('Helvetica').fontSize(9);
 
-            if (data.referencia) {
-                doc.font('Helvetica-Bold').text('REFERENCIA:', 55, bodyTop + 115);
-                doc.font('Helvetica').text(data.referencia.toUpperCase(), 150, bodyTop + 115);
+            if (data.documentos && data.documentos.length > 0) {
+                data.documentos.forEach(docItem => {
+                    const y = doc.y;
+                    let x = 40;
+                    
+                    const fDate = docItem.fecha ? new Date(docItem.fecha).toLocaleDateString('es-SV') : '---';
+                    doc.text(fDate, x, y); x += colWidths.fecha;
+                    
+                    const docLabel = `${docItem.tipo || ''} ${docItem.numero || ''}`.trim();
+                    doc.text(docLabel, x, y, { width: colWidths.doc, truncate: true }); x += colWidths.doc;
+                    
+                    doc.text(`$${parseFloat(docItem.total || 0).toFixed(2)}`, x, y, { align: 'right', width: colWidths.total }); x += colWidths.total;
+                    doc.text(`$${parseFloat(docItem.abono || 0).toFixed(2)}`, x, y, { align: 'right', width: colWidths.abono });
+                    
+                    doc.moveDown(0.8);
+                });
+            } else {
+                // Fallback for single document backward compatibility
+                const concepto = data.documento_aplicado 
+                    ? `ABONO A DOCUMENTO ${data.documento_tipo || ''} ${data.documento_aplicado}` 
+                    : 'ABONO A CUENTA';
+                doc.text(concepto, 40, doc.y);
+                doc.moveDown();
             }
 
-            doc.font('Helvetica-Bold').text('CONCEPTO:', 55, bodyTop + 140);
-            const concepto = data.documento_aplicado 
-                ? `ABONO A DOCUMENTO ${data.documento_tipo || ''} ${data.documento_aplicado}` 
-                : 'ABONO A CUENTA';
-            doc.font('Helvetica').text(concepto, 150, bodyTop + 140, { width: 380 });
-
             if (data.notas) {
-                doc.font('Helvetica-Bold').text('NOTAS:', 55, bodyTop + 165);
-                doc.font('Helvetica').text(data.notas, 150, bodyTop + 165, { width: 380 });
+                doc.moveDown();
+                doc.fontSize(9).font('Helvetica-Bold').text('NOTAS:', 40, doc.y);
+                doc.font('Helvetica').text(data.notas, 80, doc.y - 10, { width: 490 });
             }
 
             // --- Footer / Signatures ---
@@ -1003,6 +1041,470 @@ const generateSalesByPOSPDF = (data) => {
     });
 };
 
+/**
+ * Generates a detailed PDF of pending documents grouped by customer
+ */
+const generatePendingDocumentsDetailedPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER', layout: 'portrait' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '---';
+                const d = new Date(dateStr);
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const year = d.getUTCFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+
+            // Header (Standard format)
+            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
+            if (data.company_nit) doc.fontSize(10).font('Helvetica').text(`NIT: ${data.company_nit}`, { align: 'center' });
+            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`, { align: 'center' });
+            doc.moveDown(0.5);
+            doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DETALLADO DE DOCUMENTOS PENDIENTES', { align: 'center', underline: true });
+            doc.fontSize(9).font('Helvetica').text(`Fecha de Corte: ${formatDate(data.cutoffDate)}`, { align: 'center' });
+            doc.moveDown(1.5);
+
+            const startX = 40;
+            const colWidths = {
+                fecha: 70,
+                dias: 40,
+                tipo: 100,
+                doc: 120,
+                monto: 90,
+                saldo: 90
+            };
+
+            const drawTableHeader = (y) => {
+                doc.fontSize(9).font('Helvetica-Bold');
+                let x = startX;
+                doc.text('FECHA', x, y); x += colWidths.fecha;
+                doc.text('DÍAS', x, y); x += colWidths.dias;
+                doc.text('TIPO', x, y); x += colWidths.tipo;
+                doc.text('DOCUMENTO', x, y); x += colWidths.doc;
+                doc.text('MONTO ORIG.', x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
+                doc.text('SALDO PEND.', x, y, { align: 'right', width: colWidths.saldo });
+                
+                doc.moveDown(0.4);
+                doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).strokeColor('#333').stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(8);
+                return doc.y;
+            };
+
+            drawTableHeader(doc.y);
+
+            data.customers.forEach((customer, cIndex) => {
+                // Check page break for customer header
+                if (doc.y > 650) {
+                    doc.addPage();
+                    drawTableHeader(40);
+                }
+
+                doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e40af');
+                doc.text(`CLIENTE: ${customer.customer_name}`, startX, doc.y);
+                doc.fillColor('black').moveDown(0.5);
+
+                customer.documents.forEach(row => {
+                    // Check page break for row
+                    if (doc.y > 700) {
+                        doc.addPage();
+                        drawTableHeader(40);
+                        doc.fontSize(9).font('Helvetica-Bold').text(`CLIENTE: ${customer.customer_name} (cont.)`, startX, doc.y);
+                        doc.moveDown(0.5);
+                    }
+
+                    const y = doc.y;
+                    let x = startX;
+                    doc.font('Helvetica').fontSize(8);
+                    
+                    doc.text(formatDate(row.fecha), x, y); x += colWidths.fecha;
+                    doc.text(row.dias.toString(), x, y); x += colWidths.dias;
+                    doc.text(row.tipo, x, y, { width: colWidths.tipo, truncate: true }); x += colWidths.tipo;
+                    doc.text(row.documento, x, y, { width: colWidths.doc, truncate: true }); x += colWidths.doc;
+                    doc.text(formatVal(row.monto), x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
+                    doc.text(formatVal(row.saldo), x, y, { align: 'right', width: colWidths.saldo });
+                    doc.moveDown(0.8);
+                });
+
+                // Customer Subtotal
+                doc.moveDown(0.2);
+                doc.fontSize(9).font('Helvetica-Bold');
+                doc.text(`Subtotal ${customer.customer_name}:`, startX + 250, doc.y, { width: 170, align: 'right' });
+                doc.text(formatVal(customer.subtotal), startX + 430, doc.y - 10, { width: colWidths.saldo, align: 'right' });
+                doc.moveDown(1.5);
+            });
+
+            // Grand Total
+            if (doc.y > 650) doc.addPage();
+            doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).stroke();
+            doc.moveDown(0.5);
+            doc.fontSize(11).font('Helvetica-Bold');
+            doc.text('TOTAL GENERAL PENDIENTE:', startX + 200, doc.y, { width: 220, align: 'right' });
+            doc.text(formatVal(data.grandTotal), startX + 430, doc.y - 12, { width: colWidths.saldo, align: 'right' });
+
+            // Footer
+            const pageCount = doc.bufferedPageRange().count;
+            for (let i = 0; i < pageCount; i++) {
+                doc.switchToPage(i);
+                doc.fontSize(8).fillColor('grey').text(
+                    `Página ${i + 1} de ${pageCount} - Generado el ${new Date().toLocaleString()}`,
+                    startX,
+                    doc.page.height - 30,
+                    { align: 'center' }
+                );
+            }
+
+            doc.end();
+        } catch (err) { reject(err); }
+    });
+};
+
+/**
+ * Generates a detailed PDF of pending documents for providers grouped by provider
+ */
+const generateProviderPendingDocumentsDetailedPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER', layout: 'portrait' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '---';
+                const d = new Date(dateStr);
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const year = d.getUTCFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+
+            // Header (Standard format)
+            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
+            if (data.company_nit) doc.fontSize(10).font('Helvetica').text(`NIT: ${data.company_nit}`, { align: 'center' });
+            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`, { align: 'center' });
+            doc.moveDown(0.5);
+            doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DETALLADO DE DOCUMENTOS POR PAGAR', { align: 'center', underline: true });
+            doc.fontSize(9).font('Helvetica').text(`Fecha de Corte: ${formatDate(data.cutoffDate)}`, { align: 'center' });
+            doc.moveDown(1.5);
+
+            const startX = 40;
+            const colWidths = {
+                fecha: 65,
+                origen: 55,
+                dias: 35,
+                tipo: 85,
+                doc: 110,
+                monto: 85,
+                saldo: 85
+            };
+
+            const drawTableHeader = (y) => {
+                doc.fontSize(8).font('Helvetica-Bold');
+                let x = startX;
+                doc.text('FECHA', x, y); x += colWidths.fecha;
+                doc.text('ORIGEN', x, y); x += colWidths.origen;
+                doc.text('DÍAS', x, y); x += colWidths.dias;
+                doc.text('TIPO', x, y); x += colWidths.tipo;
+                doc.text('DOCUMENTO', x, y); x += colWidths.doc;
+                doc.text('MONTO ORIG.', x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
+                doc.text('SALDO PEND.', x, y, { align: 'right', width: colWidths.saldo });
+                
+                doc.moveDown(0.4);
+                doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).strokeColor('#333').stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(7);
+                return doc.y;
+            };
+
+            drawTableHeader(doc.y);
+
+            data.providers.forEach((provider, pIndex) => {
+                // Check page break for provider header
+                if (doc.y > 650) {
+                    doc.addPage();
+                    drawTableHeader(40);
+                }
+
+                doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e40af');
+                doc.text(`PROVEEDOR: ${provider.provider_name}`, startX, doc.y);
+                doc.fillColor('black').moveDown(0.5);
+
+                provider.documents.forEach(row => {
+                    // Check page break for row
+                    if (doc.y > 700) {
+                        doc.addPage();
+                        drawTableHeader(40);
+                        doc.fontSize(8).font('Helvetica-Bold').text(`PROVEEDOR: ${provider.provider_name} (cont.)`, startX, doc.y);
+                        doc.moveDown(0.5);
+                    }
+
+                    const y = doc.y;
+                    let x = startX;
+                    doc.font('Helvetica').fontSize(7);
+                    
+                    doc.text(formatDate(row.fecha), x, y); x += colWidths.fecha;
+                    doc.text(row.origen || '---', x, y); x += colWidths.origen;
+                    doc.text(row.dias.toString(), x, y); x += colWidths.dias;
+                    doc.text(row.tipo, x, y, { width: colWidths.tipo, truncate: true }); x += colWidths.tipo;
+                    doc.text(row.documento, x, y, { width: colWidths.doc, truncate: true }); x += colWidths.doc;
+                    doc.text(formatVal(row.monto), x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
+                    doc.text(formatVal(row.saldo), x, y, { align: 'right', width: colWidths.saldo });
+                    doc.moveDown(0.8);
+                });
+
+                // Provider Subtotal
+                doc.moveDown(0.2);
+                doc.fontSize(9).font('Helvetica-Bold');
+                doc.text(`Subtotal ${provider.provider_name}:`, startX + 250, doc.y, { width: 170, align: 'right' });
+                doc.text(formatVal(provider.subtotal), startX + 430, doc.y - 10, { width: colWidths.saldo, align: 'right' });
+                doc.moveDown(1.5);
+            });
+
+            // Grand Total
+            if (doc.y > 650) doc.addPage();
+            doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).stroke();
+            doc.moveDown(0.5);
+            doc.fontSize(11).font('Helvetica-Bold');
+            doc.text('TOTAL GENERAL PENDIENTE:', startX + 200, doc.y, { width: 220, align: 'right' });
+            doc.text(formatVal(data.grandTotal), startX + 430, doc.y - 12, { width: colWidths.saldo, align: 'right' });
+
+            // Footer
+            const pageCount = doc.bufferedPageRange().count;
+            for (let i = 0; i < pageCount; i++) {
+                doc.switchToPage(i);
+                doc.fontSize(8).fillColor('grey').text(
+                    `Página ${i + 1} de ${pageCount} - Generado el ${new Date().toLocaleString()}`,
+                    startX,
+                    doc.page.height - 30,
+                    { align: 'center' }
+                );
+            }
+
+            doc.end();
+        } catch (err) { reject(err); }
+    });
+};
+
+/**
+ * Generates a PDF buffer for the DTE Representation (RTEE)
+ */
+const generateRTEE = (data) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, size: 'LETTER', bufferPages: true });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const { emisor, receptor, dte, venta, items } = data;
+            const startX = 30;
+            const pageWidth = doc.page.width - 60;
+
+            // --- Header: Logo & Emisor & DTE Info ---
+            let headerY = 30;
+            
+            // 1. Logo (si existe)
+            if (emisor.logoPath) {
+                doc.image(emisor.logoPath, startX, headerY, { width: 100 });
+                headerY = 30; // Mantener alineación
+            }
+
+            // 2. Emisor Info (Desplazado si hay logo)
+            const emisorX = emisor.logoPath ? 140 : startX;
+            doc.fontSize(14).font('Helvetica-Bold').text(emisor.nombre.toUpperCase(), emisorX, headerY, { width: 200 });
+            doc.fontSize(8).font('Helvetica').text(emisor.descActividad, emisorX, doc.y + 2, { width: 200 });
+            
+            const emisorDireccionComp = emisor.direccion?.complemento || emisor.direccion || '';
+            const emisorMun = emisor.municipio_nombre || emisor.direccion?.municipio_nombre || 'San Salvador';
+            const emisorDep = emisor.departamento_nombre || emisor.direccion?.departamento_nombre || 'San Salvador';
+            
+            doc.text(`${emisorDireccionComp}, ${emisorMun}, ${emisorDep}`, emisorX, doc.y + 2, { width: 220 });
+            doc.text(`NIT: ${emisor.nit} | NRC: ${emisor.nrc}`, emisorX, doc.y + 2);
+            doc.text(`Tel: ${emisor.telefono || 'N/A'} | Email: ${emisor.correo || 'N/A'}`, emisorX, doc.y + 2);
+
+            // 3. DTE Box (Right) - Diseño más robusto
+            const dteBoxX = 350;
+            const dteBoxY = 25;
+            doc.rect(dteBoxX, dteBoxY, 230, 115).stroke();
+            
+            // Etiqueta de Ambiente (PRUEBAS / PRODUCCIÓN)
+            const isProd = dte.ambiente === '01';
+            doc.rect(dteBoxX, dteBoxY, 230, 20).fill(isProd ? '#1e40af' : '#991b1b');
+            doc.fillColor('white').fontSize(10).font('Helvetica-Bold').text(isProd ? 'MODO: PRODUCCIÓN' : 'MODO: PRUEBAS', dteBoxX, dteBoxY + 5, { align: 'center', width: 230 });
+            doc.fillColor('black');
+
+            doc.fontSize(9).font('Helvetica-Bold').text('DOCUMENTO TRIBUTARIO ELECTRÓNICO', dteBoxX, dteBoxY + 25, { align: 'center', width: 230 });
+            doc.fontSize(11).text(dte.tipoDteNombre.toUpperCase(), dteBoxX, dteBoxY + 38, { align: 'center', width: 230 });
+            
+            doc.fontSize(7).font('Helvetica-Bold').text('Código Generación:', dteBoxX + 10, dteBoxY + 55);
+            doc.font('Helvetica').text(dte.codigoGeneracion, dteBoxX + 10, dteBoxY + 63);
+            
+            doc.font('Helvetica-Bold').text('Número de Control:', dteBoxX + 10, dteBoxY + 75);
+            doc.font('Helvetica').text(dte.numeroControl, dteBoxX + 10, dteBoxY + 83);
+
+            doc.font('Helvetica-Bold').text('Sello de Recepción:', dteBoxX + 10, dteBoxY + 95);
+            doc.font('Helvetica').text(dte.selloRecepcion || 'PENDIENTE DE AUTORIZACIÓN', dteBoxX + 10, dteBoxY + 103, { width: 210 });
+
+            doc.moveDown(3);
+
+            // --- Información Técnica Adicional ---
+            const techY = Math.max(doc.y, 145);
+            doc.fontSize(7).font('Helvetica-Bold');
+            doc.text(`Modelo de Emisión: ${dte.tipoModelo === 1 ? 'Previo' : 'Diferido'}`, startX, techY);
+            doc.text(`Tipo de Transmisión: ${dte.tipoOperacion === 1 ? 'Normal' : 'Contingencia'}`, startX + 150, techY);
+            doc.text(`Moneda: USD`, startX + 300, techY);
+
+            // --- Receptor Section ---
+            const receptorY = techY + 15;
+            const receptorBoxHeight = dte.tipoDte === '03' ? 65 : 55;
+            doc.rect(startX, receptorY, pageWidth, receptorBoxHeight).stroke();
+            doc.fontSize(9).font('Helvetica-Bold').text('DATOS DEL RECEPTOR', startX + 10, receptorY + 5);
+            doc.fontSize(9).font('Helvetica');
+            doc.text(`Nombre: ${receptor.nombre}`, startX + 10, receptorY + 18);
+            
+            let docIdentLabel = 'Documento:';
+            if (dte.tipoDte === '03' && receptor.nit) docIdentLabel = 'NIT:';
+            doc.text(`${docIdentLabel} ${receptor.nit || receptor.numDocumento || 'Consumidor Final'}`, startX + 10, receptorY + 30);
+            
+            if (dte.tipoDte === '03') {
+                doc.text(`NRC: ${receptor.nrc || 'N/A'}`, startX + 10, receptorY + 42);
+                doc.text(`Actividad: ${receptor.codActividad || 'N/A'}`, startX + 10, receptorY + 54);
+            } else {
+                doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, receptorY + 42);
+            }
+
+            doc.text(`Condición: ${venta.condicion_operacion === 1 ? 'Contado' : 'Crédito'}`, startX + 350, receptorY + 18);
+            doc.text(`Fecha Emisión: ${venta.fecha_emision} ${venta.hora_emision}`, startX + 350, receptorY + 30);
+
+            doc.moveDown(2);
+
+            // --- Items Table ---
+            const tableTop = receptorY + receptorBoxHeight + 10;
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.rect(startX, tableTop, pageWidth, 20).fill('#f3f4f6').stroke('#000');
+            doc.fillColor('black');
+            doc.text('CANT', startX + 5, tableTop + 6);
+            doc.text('DESCRIPCIÓN', startX + 45, tableTop + 6);
+            doc.text('PRECIO U.', startX + 350, tableTop + 6, { align: 'right', width: 60 });
+            doc.text('DESC.', startX + 420, tableTop + 6, { align: 'right', width: 60 });
+            doc.text('SUBTOTAL', startX + 500, tableTop + 6, { align: 'right', width: 70 });
+
+            doc.font('Helvetica').fontSize(8);
+            let currentY = tableTop + 25;
+            items.forEach(item => {
+                const itemHeight = doc.heightOfString(item.descripcion, { width: 300 }) + 5;
+                if (currentY + itemHeight > 680) {
+                    doc.addPage();
+                    currentY = 50;
+                }
+                
+                // Formatear cantidad con hasta 4 decimales para combustibles
+                const formattedQty = Number(item.cantidad) % 1 === 0 ? 
+                    item.cantidad.toString() : 
+                    Number(item.cantidad).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+                
+                doc.text(formattedQty, startX + 5, currentY);
+                doc.text(item.descripcion, startX + 45, currentY, { width: 300 });
+                doc.text(`$${parseFloat(item.precioUnitario).toFixed(2)}`, startX + 350, currentY, { align: 'right', width: 60 });
+                doc.text(`$${parseFloat(item.montoDescuento || 0).toFixed(2)}`, startX + 420, currentY, { align: 'right', width: 60 });
+                doc.text(`$${parseFloat(item.totalItem).toFixed(2)}`, startX + 500, currentY, { align: 'right', width: 70 });
+                currentY += Math.max(itemHeight, 15);
+            });
+
+            // --- Resumen y QR ---
+            const footerY = Math.max(currentY + 20, 580);
+            
+            // QR Code
+            const qrUrl = `https://admin.factura.gob.sv/consulta-publica?p=${dte.codigoGeneracion}&f=${venta.fecha_emision}&s=${dte.selloRecepcion}&m=${venta.total_pagar}`;
+            const qrImage = await QRCode.toDataURL(qrUrl);
+            doc.image(qrImage, startX, footerY, { width: 90 });
+            doc.fontSize(6).text('Representación Gráfica de DTE. Valide escaneando el código QR o en el sitio oficial de Hacienda.', startX, footerY + 95, { width: 90, align: 'center' });
+
+            // Totales
+            const totalsX = 350;
+            let currentTotalY = footerY;
+            doc.fontSize(8).font('Helvetica-Bold');
+            
+            const addTotalLine = (label, value, isBold = false) => {
+                doc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(label, totalsX, currentTotalY);
+                doc.text(`$${parseFloat(value).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });
+                currentTotalY += 12;
+            };
+
+            addTotalLine('SUMA DE OPERACIONES:', venta.total_gravado, true);
+            addTotalLine('(-) DESCUENTOS:', venta.total_descuento);
+            addTotalLine('VENTAS GRAVADAS:', venta.total_gravado, true);
+            addTotalLine('TOTAL IVA (13%):', venta.total_iva, true);
+
+            // Tributos adicionales (Retención 1%, FOVIAL, COTRAN, etc.)
+            const processedCodes = new Set();
+            if (venta.tributos && venta.tributos.length > 0) {
+                venta.tributos.forEach(tri => {
+                    // Filtrar el IVA ya mostrado (código 20)
+                    if (tri.codigo !== '20') {
+                        addTotalLine(`${tri.descripcion.toUpperCase()}:`, tri.valor);
+                        processedCodes.add(tri.codigo);
+                    }
+                });
+            }
+            
+            // Fallback para FOVIAL y COTRAN si no fueron procesados arriba pero tienen valor
+            // Códigos sugeridos por MH para estos tributos en algunos contextos: D1 (FOVIAL), C1 (COTRANS)
+            if (!processedCodes.has('D1') && !processedCodes.has('01') && venta.fovial > 0) {
+                addTotalLine('TOTAL FOVIAL ($0.20):', venta.fovial);
+            }
+            if (!processedCodes.has('C1') && !processedCodes.has('02') && venta.cotrans > 0) {
+                addTotalLine('TOTAL COTRAN ($0.10):', venta.cotrans);
+            }
+
+            currentTotalY += 5;
+            doc.fontSize(11).font('Helvetica-Bold').text('TOTAL A PAGAR:', totalsX, currentTotalY);
+            doc.text(`$${parseFloat(venta.total_pagar).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });
+
+            // Monto en Letras
+            doc.fontSize(8).font('Helvetica-Bold').text('SON:', startX + 110, footerY);
+            doc.font('Helvetica').text(venta.total_letras || 'S/N', startX + 110, footerY + 12, { width: 230 });
+
+            // --- Marca de Agua "ANULADO" ---
+            if (data.isVoided) {
+                const totalPages = doc.bufferedPageRange().count;
+                for (let i = 0; i < totalPages; i++) {
+                    doc.switchToPage(i);
+                    doc.save();
+                    doc.fillOpacity(0.15);
+                    doc.fontSize(80);
+                    doc.fillColor('red');
+                    
+                    // Rotar y dibujar en el centro
+                    doc.rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] });
+                    doc.text('ANULADO', 0, doc.page.height / 2 - 40, { 
+                        align: 'center', 
+                        width: doc.page.width 
+                    });
+                    
+                    doc.restore();
+                }
+            }
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 module.exports = { 
     generateTransferPDF, 
     generateStatementPDF, 
@@ -1016,5 +1518,8 @@ module.exports = {
     generatePaymentReceiptPDF,
     generateDailySalesReportPDF,
     generateSalesByCategoryPDF,
-    generateSalesByPOSPDF
+    generateSalesByPOSPDF,
+    generatePendingDocumentsDetailedPDF,
+    generateProviderPendingDocumentsDetailedPDF,
+    generateRTEE
 };

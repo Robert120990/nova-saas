@@ -76,6 +76,7 @@ export const menuConfig = [
                 icon: BarChart3,
                 children: [
                     { id: 'cxc-report-balances', label: 'Saldos de Clientes', path: '/cxc/reportes/saldos', icon: FileText, permission: 'view_sales' },
+                    { id: 'cxc-report-pending-detailed', label: 'Documentos Pendientes', path: '/cxc/reportes/documentos-pendientes', icon: FileText, permission: 'view_sales' },
                 ]
             },
 
@@ -94,6 +95,7 @@ export const menuConfig = [
                 icon: BarChart3,
                 children: [
                     { id: 'cxp-report-balances', label: 'Saldos de Proveedores', path: '/cxp/reportes/saldos', icon: FileText, permission: 'manage_purchases' },
+                    { id: 'cxp-report-pending-detailed', label: 'Documentos por Pagar', path: '/cxp/reportes/documentos-pendientes', icon: FileText, permission: 'manage_purchases' },
                 ]
             },
 

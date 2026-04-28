@@ -3,8 +3,13 @@ const addFormats = require('ajv-formats');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+// Esquemas actualizados (Fix whitespace) - 2026-04-10 01:08
 
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ 
+    allErrors: true, 
+    strict: false,
+    multipleOfPrecision: 2 
+});
 addFormats(ajv);
 
 const schemasDir = path.resolve(__dirname, process.env.SCHEMAS_PATH || '../../../cumplientoDTE/svfe-json-schemas');
@@ -13,14 +18,15 @@ const schemasDir = path.resolve(__dirname, process.env.SCHEMAS_PATH || '../../..
 const schemaMap = {
     '01': 'fe-fc-v1.json',   // Factura
     '03': 'fe-ccf-v3.json',  // Comprobante de Crédito Fiscal
+    '04': 'fe-nr-v3.json',   // Nota de Remisión
     '05': 'fe-nc-v3.json',   // Nota de Crédito
     '06': 'fe-nd-v3.json',   // Nota de Débito
     '07': 'fe-cr-v1.json',   // Comprobante de Retención
     '08': 'fe-cl-v1.json',   // Comprobante de Liquidación
     '09': 'fe-dcl-v1.json',  // Documento Contable de Liquidación
-    '11': 'fe-nr-v3.json',   // Comprobante de Donación (Note: check mapping)
+    '11': 'fe-fex-v1.json',  // Factura de Exportación
     '14': 'fe-fse-v1.json',  // Sujeto Excluido
-    '15': 'fe-fex-v1.json'   // Factura de exportación
+    '15': 'fe-cd-v1.json'    // Comprobante de Donación
 };
 
 const validators = {};

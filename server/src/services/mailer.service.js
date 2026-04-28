@@ -1,11 +1,8 @@
 const nodemailer = require('nodemailer');
 const pool = require('../config/db');
 const { 
-    generateProviderStatementPDF, 
-    generateProviderAgingPDF,
-    generatePaymentReceiptPDF,
-    generateStatementPDF,
-    generateAgingPDF
+    generateAgingPDF,
+    generateRTEE
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
@@ -369,5 +366,282 @@ module.exports = {
             html: `<p>Hola, se adjunta el reporte de antigüedad de saldos detallando nuestros compromisos.</p>`,
             attachments: [{ filename: `Antigüedad_Saldos_CXP.pdf`, content: pdfBuffer }]
         });
+    },
+    sendDTEEmail: async (saleId, companyId = null) => {
+        console.log(`[Mailer] Preparando envío de DTE para Venta ID: ${saleId}`);
+        try {
+            // 1. Obtener datos completos de la venta y DTE
+            let query = `
+                SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
+                       c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                       b.nombre as branch_name, cat.description as tipo_documento_name
+                FROM sales_headers h
+                JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
+                JOIN companies c ON h.company_id = c.id
+                JOIN branches b ON h.branch_id = b.id
+                LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+                WHERE h.id = ?
+            `;
+            const params = [saleId];
+            if (companyId) {
+                query += ' AND h.company_id = ?';
+                params.push(companyId);
+            }
+            const [rows] = await pool.query(query, params);
+
+            if (!rows.length) throw new Error('Venta o DTE no encontrado');
+            const venta = rows[0];
+            const dteJson = venta.json_original;
+
+            // Mapeo robusto de nombres de documentos
+            const dteNames = {
+                '01': 'Factura',
+                '03': 'Crédito Fiscal',
+                '04': 'Nota de Remisión',
+                '05': 'Nota de Crédito',
+                '06': 'Nota de Débito',
+                '07': 'Comprobante de Retención',
+                '08': 'Comprobante de Liquidación',
+                '09': 'Documento Contable de Liquidación',
+                '11': 'Factura de Exportación',
+                '14': 'Factura de Sujeto Excluido',
+                '15': 'Comprobante de Donación'
+            };
+
+            const tipoNombre = dteNames[venta.tipo_documento] || venta.tipo_documento_name || 'Documento Tributario';
+
+            if (!dteJson) throw new Error('El DTE no tiene JSON original para envío');
+            if (!dteJson.receptor.correo) {
+                console.log(`[Mailer] Venta ID ${saleId}: El cliente no tiene correo configurado. Se omite envío.`);
+                await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = "Cliente sin correo" WHERE id = ?', [saleId]);
+                return { success: false, skip: true };
+            }
+
+
+            // 2. Preparar datos para RTEE
+            const reportData = {
+                emisor: {
+                    nombre: venta.company_name,
+                    nit: venta.company_nit,
+                    nrc: venta.company_nrc,
+                    descActividad: dteJson.emisor.descActividad,
+                    direccion: dteJson.emisor.direccion,
+                    telefono: dteJson.emisor.telefono,
+                    correo: dteJson.emisor.correo,
+                    departamento_nombre: 'SS', 
+                    municipio_nombre: 'SS'
+                },
+                receptor: {
+                    nombre: dteJson.receptor.nombre,
+                    nit: dteJson.receptor.nit,
+                    numDocumento: dteJson.receptor.numDocumento,
+                    direccion: dteJson.receptor.direccion
+                },
+                dte: {
+                    tipoDte: dteJson.identificacion.tipoDte,
+                    tipoDteNombre: tipoNombre,
+                    codigoGeneracion: dteJson.identificacion.codigoGeneracion,
+                    numeroControl: dteJson.identificacion.numeroControl,
+                    selloRecepcion: venta.sello_recepcion
+                },
+                venta: {
+                    fecha_emision: dteJson.identificacion.fecEmi,
+                    hora_emision: dteJson.identificacion.horEmi,
+                    condicion_operacion: dteJson.resumen.condicionOperacion,
+                    total_gravado: dteJson.resumen.totalGravada,
+                    total_iva: dteJson.resumen.totalIva || (dteJson.resumen.tributos?.find(t => t.codigo === '20')?.valor || 0),
+                    total_descuento: dteJson.resumen.descuNoExenta || 0,
+                    total_pagar: dteJson.resumen.totalPagar,
+                    total_letras: dteJson.resumen.totalLetras,
+                    fovial: parseFloat(venta.fovial) || 0,
+                    cotrans: parseFloat(venta.cotrans) || 0,
+                    tributos: dteJson.resumen.tributos || []
+                },
+                items: dteJson.cuerpoDocumento.map(item => ({
+                    cantidad: item.cantidad,
+                    descripcion: item.descripcion,
+                    precioUnitario: item.precioUni,
+                    montoDescuento: item.montoDescu,
+                    totalItem: item.ventaGravada
+                }))
+            };
+
+            // 3. Generar PDF y configurar SMTP
+            const pdfBuffer = await generateRTEE(reportData);
+            const smtp = await getSMTPSettings(venta.branch_id, venta.company_id);
+            const transporter = createTransporter(smtp);
+
+            // 4. Enviar correo
+            await transporter.sendMail({
+                from: `"${smtp.from_name}" <${smtp.from_email}>`,
+                to: dteJson.receptor.correo,
+                subject: `${reportData.dte.tipoDteNombre} Electrónica - ${venta.company_name}`,
+                html: `
+                    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
+                        <h2 style="color: #4f46e5; text-align: center;">Su documento electrónico está listo</h2>
+                        <p>Estimado(a) <b>${dteJson.receptor.nombre}</b>,</p>
+                        <p>Adjunto encontrará su <b>${reportData.dte.tipoDteNombre}</b> electrónica con número de control <b>${venta.numero_control}</b>.</p>
+                        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+                            <span style="font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total a Pagar</span>
+                            <div style="font-size: 24px; font-weight: 800; color: #1e293b;">$${parseFloat(venta.total_pagar).toFixed(2)}</div>
+                        </div>
+                        <p style="font-size: 13px; color: #666;">Se incluyen dos archivos: la representación gráfica (PDF) y el archivo de datos (JSON) para su registro legal.</p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                        <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
+                    </div>
+                `,
+                attachments: [
+                    { filename: `DTE-${venta.numero_control}.pdf`, content: pdfBuffer },
+                    { filename: `DTE-${venta.numero_control}.json`, content: JSON.stringify(dteJson, null, 2) }
+                ]
+            });
+
+            // 5. Actualizar estado en DB
+            await pool.query('UPDATE sales_headers SET dte_email_sent = 1, dte_email_error = NULL WHERE id = ?', [saleId]);
+            console.log(`[Mailer] DTE enviado con éxito para Venta ID: ${saleId}`);
+            
+            return { success: true };
+
+        } catch (error) {
+            console.error(`[Mailer] Error enviando DTE ID ${saleId}:`, error.message);
+            await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = ? WHERE id = ?', [error.message, saleId]);
+            
+            return { success: false, error: error.message };
+        }
+    },
+
+    sendInvalidatedDTEEmail: async (saleId, companyId = null) => {
+        console.log(`[Mailer] Preparando envío de DTE INVALIDADO para Venta ID: ${saleId}`);
+        try {
+            // 1. Obtener datos completos de la venta y DTE
+            let query = `
+                SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
+                       c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                       b.id as branch_id, b.nombre as branch_name, cat.description as tipo_documento_name
+                FROM sales_headers h
+                JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
+                JOIN companies c ON h.company_id = c.id
+                JOIN branches b ON h.branch_id = b.id
+                LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+                WHERE h.id = ?
+            `;
+            const params = [saleId];
+            if (companyId) {
+                query += ' AND h.company_id = ?';
+                params.push(companyId);
+            }
+            const [rows] = await pool.query(query, params);
+
+            if (rows.length === 0) throw new Error('Venta o DTE no encontrado');
+            const venta = rows[0];
+            const dteJson = venta.json_original;
+
+            const dteNames = {
+                '01': 'Factura',
+                '03': 'Crédito Fiscal',
+                '04': 'Nota de Remisión',
+                '05': 'Nota de Crédito',
+                '06': 'Nota de Débito',
+                '07': 'Comprobante de Retención',
+                '08': 'Comprobante de Liquidación',
+                '09': 'Documento Contable de Liquidación',
+                '11': 'Factura de Exportación',
+                '14': 'Factura de Sujeto Excluido',
+                '15': 'Comprobante de Donación'
+            };
+
+            const tipoNombre = dteNames[venta.tipo_documento] || venta.tipo_documento_name || 'Documento Tributario';
+
+            if (!dteJson) throw new Error('El DTE no tiene JSON original para envío');
+            if (!dteJson.receptor.correo) {
+                console.log(`[Mailer] El cliente no tiene correo. Se omite notificación de invalidación.`);
+                return;
+            }
+
+            // 2. Preparar datos para RTEE con Marca de Agua
+            const reportData = {
+                emisor: {
+                    nombre: venta.company_name,
+                    nit: venta.company_nit,
+                    nrc: venta.company_nrc,
+                    descActividad: dteJson.emisor.descActividad,
+                    direccion: dteJson.emisor.direccion,
+                    telefono: dteJson.emisor.telefono,
+                    correo: dteJson.emisor.correo,
+                    departamento_nombre: 'San Salvador', 
+                    municipio_nombre: 'San Salvador'
+                },
+                receptor: {
+                    nombre: dteJson.receptor.nombre,
+                    nit: dteJson.receptor.nit,
+                    numDocumento: dteJson.receptor.numDocumento,
+                    direccion: dteJson.receptor.direccion
+                },
+                dte: {
+                    tipoDte: dteJson.identificacion.tipoDte,
+                    tipoDteNombre: tipoNombre,
+                    codigoGeneracion: dteJson.identificacion.codigoGeneracion,
+                    numeroControl: dteJson.identificacion.numeroControl,
+                    selloRecepcion: venta.sello_recepcion,
+                    ambiente: dteJson.identificacion.ambiente
+                },
+                venta: {
+                    fecha_emision: dteJson.identificacion.fecEmi,
+                    hora_emision: dteJson.identificacion.horEmi,
+                    condicion_operacion: dteJson.resumen.condicionOperacion,
+                    total_gravado: dteJson.resumen.totalGravada,
+                    total_iva: dteJson.resumen.totalIva || (dteJson.resumen.tributos?.find(t => t.codigo === '20')?.valor || 0),
+                    total_descuento: dteJson.resumen.descuNoExenta || 0,
+                    total_pagar: dteJson.resumen.totalPagar,
+                    total_letras: dteJson.resumen.totalLetras,
+                    fovial: parseFloat(venta.fovial) || 0,
+                    cotrans: parseFloat(venta.cotrans) || 0,
+                    tributos: dteJson.resumen.tributos || []
+                },
+                items: dteJson.cuerpoDocumento.map(item => ({
+                    cantidad: item.cantidad,
+                    descripcion: item.descripcion,
+                    precioUnitario: item.precioUni,
+                    montoDescuento: item.montoDescu,
+                    totalItem: item.ventaGravada,
+                    uniMedida: item.uniMedida || 59
+                })),
+                isVoided: true
+            };
+
+            const pdfBuffer = await generateRTEE(reportData);
+            const smtp = await getSMTPSettings(venta.branch_id, venta.company_id);
+            const transporter = createTransporter(smtp);
+
+            // 4. Enviar Email
+            await transporter.sendMail({
+                from: `"${venta.company_name}" <${smtp.user}>`,
+                to: dteJson.receptor.correo,
+                subject: `DOCUMENTO ANULADO: ${reportData.dte.tipoDteNombre} - ${venta.company_name}`,
+                html: `
+                    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fee2e2; border-radius: 12px; max-width: 600px; margin: auto; background-color: #fef2f2;">
+                        <h2 style="color: #dc2626; text-align: center;">Notificación de Invalidación de Documento</h2>
+                        <p>Estimado(a) <b>${dteJson.receptor.nombre}</b>,</p>
+                        <p>Le informamos que el documento <b>${reportData.dte.tipoDteNombre}</b> con número de control <b>${venta.numero_control}</b> ha sido <b>INVALIDADO (ANULADO)</b> ante el Ministerio de Hacienda.</p>
+                        <p>Adjunto encontrará la representación gráfica actualizada del documento con el sello de anulación correspondiente.</p>
+                        <div style="background: #ffffff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #fee2e2; text-align: center;">
+                            <span style="font-size: 10px; color: #991b1b; font-weight: bold; text-transform: uppercase;">Estado del Documento</span>
+                            <div style="font-size: 20px; font-weight: 800; color: #dc2626;">ANULADO / INVALIDADO</div>
+                        </div>
+                        <p style="font-size: 13px; color: #666;">Este proceso es definitivo y el documento anterior carece de validez tributaria.</p>
+                        <hr style="border: 0; border-top: 1px solid #fee2e2; margin: 20px 0;">
+                        <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
+                    </div>
+                `,
+                attachments: [
+                    { filename: `ANULADO-DTE-${venta.numero_control}.pdf`, content: pdfBuffer }
+                ]
+            });
+
+            console.log(`[Mailer] Notificación de invalidación enviada con éxito para Venta ID: ${saleId}`);
+
+        } catch (error) {
+            console.error(`[Mailer] Error enviando notificación de invalidación ID ${saleId}:`, error.message);
+        }
     }
 };

@@ -1,0 +1,126 @@
+{
+  "emisor": {
+    "nit": "06142701141033",
+    "nrc": "2303606",
+    "correo": "central@empresa.com",
+    "nombre": "Inversiones Lil, S,A, de C,V.",
+    "telefono": "22222222",
+    "direccion": {
+      "municipio": "12",
+      "complemento": "San Martin, San Salvador",
+      "departamento": "01"
+    },
+    "codEstable": "0001",
+    "codActividad": "47300",
+    "codEstableMH": "S001",
+    "codPuntoVenta": "0001",
+    "descActividad": "Actividad no definida",
+    "codPuntoVentaMH": null,
+    "nombreComercial": "Puma San Martin II",
+    "tipoEstablecimiento": "02"
+  },
+  "resumen": {
+    "pagos": [
+      {
+        "plazo": null,
+        "codigo": "01",
+        "periodo": null,
+        "montoPago": 5.38,
+        "referencia": null
+      }
+    ],
+    "ivaRete1": 0,
+    "subTotal": 4.42,
+    "tributos": [
+      {
+        "valor": 0.26,
+        "codigo": "D1",
+        "descripcion": "FEFE (FOVIAL)"
+      },
+      {
+        "valor": 0.13,
+        "codigo": "C8",
+        "descripcion": "COTRANS"
+      },
+      {
+        "valor": 0.57,
+        "codigo": "20",
+        "descripcion": "IVA 13%"
+      }
+    ],
+    "ivaPerci1": 0,
+    "reteRenta": 0,
+    "descuNoSuj": 0,
+    "saldoFavor": 0,
+    "totalDescu": 0,
+    "totalNoSuj": 0,
+    "totalPagar": 5.38,
+    "descuExenta": 0,
+    "totalExenta": 0,
+    "totalLetras": "CINCO 38/100 DOLARES",
+    "descuGravada": 0,
+    "totalGravada": 4.42,
+    "subTotalVentas": 4.42,
+    "totalNoGravado": 0,
+    "condicionOperacion": 1,
+    "numPagoElectronico": null,
+    "montoTotalOperacion": 5.38,
+    "porcentajeDescuento": 0
+  },
+  "apendice": null,
+  "receptor": {
+    "nit": "04122704931010",
+    "nrc": "3128476",
+    "correo": "jr_1209@outlook.com",
+    "nombre": "AGUILAR CESEÑA GABRIEL ANTONIO",
+    "telefono": "89567412",
+    "direccion": {
+      "municipio": "17",
+      "complemento": "colonia miramonte",
+      "departamento": "07"
+    },
+    "codActividad": "10001",
+    "descActividad": "Otros",
+    "nombreComercial": null
+  },
+  "extension": null,
+  "ventaTercero": null,
+  "identificacion": {
+    "fecEmi": "2026-04-10",
+    "horEmi": "09:49:50",
+    "tipoDte": "03",
+    "version": 3,
+    "ambiente": "00",
+    "tipoModelo": 1,
+    "tipoMoneda": "USD",
+    "motivoContin": null,
+    "numeroControl": "DTE-03-S001P001-000000000000013",
+    "tipoOperacion": 1,
+    "codigoGeneracion": "E822E32B-689C-4F36-B710-D3941FCA894D",
+    "tipoContingencia": null
+  },
+  "cuerpoDocumento": [
+    {
+      "psv": 0,
+      "codigo": "P-1",
+      "numItem": 1,
+      "cantidad": 1.2987,
+      "tipoItem": 1,
+      "tributos": [
+        "20"
+      ],
+      "noGravado": 0,
+      "precioUni": 3.40708,
+      "uniMedida": 55,
+      "codTributo": null,
+      "montoDescu": 0,
+      "ventaNoSuj": 0,
+      "descripcion": "DIESEL COMPLETO ",
+      "ventaExenta": 0,
+      "ventaGravada": 4.42,
+      "numeroDocumento": null
+    }
+  ],
+  "otrosDocumentos": null,
+  "documentoRelacionado": null
+}

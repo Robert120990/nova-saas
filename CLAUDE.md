@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a multi-tenant SaaS system for Salvadoran businesses with DTE (Documentos Tributarios Electrónicos / Electronic Tax Document) integration. It consists of three main components:
 
-- **Main Server** (`server/`) - Express.js backend on port 4002
-- **Client** (`client/`) - React frontend with Vite on port 5173
-- **DTE API** (`dte-api/`) - Separate Express.js API for DTE on port 4005
+- **Main Server** (`server/`) - Express.js backend on port 4000
+- **Client** (`client/`) - React frontend with Vite on port 3000
+- **DTE API** (`dte-api/`) - Separate Express.js API for DTE on port 5000
 
 ## Commands
 
@@ -98,7 +98,7 @@ MySQL migrations. Key tables: `companies`, `branches`, `products`, `customers`, 
 
 ### DTE Integration (per DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
-- DTE API URL: `http://localhost:4005/api`
+- DTE API URL: `http://localhost:5000/api`
 - Full emit flow: `POST /dte/emit` (single endpoint handles generate + sign + transmit)
 
 ### Header-Detail Layout Pages (per UI_DESIGN_RULES.md)
@@ -111,11 +111,11 @@ MySQL migrations. Key tables: `companies`, `branches`, `products`, `customers`, 
 ## Environment Configuration
 
 ### Main Server (`.env`)
-- `PORT=4002`
+- `PORT=4000`
 - Uses `db_sistema_saas` database
 
 ### DTE API (`.env`)
-- `PORT=4005`
+- `PORT=5000`
 - Same database: `db_sistema_saas`
 - `HACIENDA_ENV=test|production` - Switches Hacienda endpoints
 - `SIGNATURE_MODE=internal|external` - Internal uses stored certificate, external calls external signer

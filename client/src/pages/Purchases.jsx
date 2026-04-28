@@ -134,7 +134,7 @@ const Purchases = () => {
 
     const { data: providers = [] } = useQuery({
         queryKey: ['providers-all', user?.company_id],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000 } })).data?.data || []
     });
 
     const selectedProvider = useMemo(() => {
@@ -148,7 +148,7 @@ const Purchases = () => {
 
     const { data: products = [] } = useQuery({
         queryKey: ['products-all', user?.company_id],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: tipoDocs = [] } = useQuery({

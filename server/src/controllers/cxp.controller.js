@@ -769,13 +769,19 @@ const exportPaymentPDF = async (req, res) => {
     const company_id = req.company_id;
 
     try {
+        const [targetPaymentRows] = await pool.query('SELECT * FROM provider_payments WHERE id = ? AND company_id = ?', [id, company_id]);
+        if (targetPaymentRows.length === 0) return res.status(404).json({ message: 'Pago no encontrado' });
+        const p = targetPaymentRows[0];
+
         const [paymentRows] = await pool.query(`
             SELECT p.*, 
-                   prov.nombre AS customer_name, -- Reuso el campo customer_name para el service de PDF
+                   prov.nombre AS customer_name,
                    b.nombre AS branch_name, b.logo_url AS branch_logo_url,
                    comp.razon_social AS company_name, comp.logo_url AS company_logo_url, comp.nit AS company_nit,
                    COALESCE(cat_p.description, cat_e.description) as documento_tipo,
-                   COALESCE(h.numero_documento, e.numero_documento) as documento_aplicado
+                   COALESCE(h.numero_documento, e.numero_documento) as documento_aplicado,
+                   COALESCE(h.fecha, e.fecha) as documento_fecha,
+                   COALESCE(h.monto_total, e.monto_total) as documento_total
             FROM provider_payments p
             JOIN providers prov ON p.provider_id = prov.id
             JOIN branches b ON p.branch_id = b.id
@@ -784,14 +790,37 @@ const exportPaymentPDF = async (req, res) => {
             LEFT JOIN expense_headers e ON p.expense_id = e.id
             LEFT JOIN cat_002_tipo_dte cat_p ON h.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat_p.code COLLATE utf8mb4_unicode_ci
             LEFT JOIN cat_002_tipo_dte cat_e ON e.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat_e.code COLLATE utf8mb4_unicode_ci
-            WHERE p.id = ? AND p.company_id = ?
-        `, [id, company_id]);
+            WHERE p.provider_id = ? AND p.branch_id = ? AND p.fecha_pago = ? 
+            AND p.metodo_pago = ? AND (p.referencia = ? OR (p.referencia IS NULL AND ? IS NULL))
+            AND ABS(TIMESTAMPDIFF(SECOND, p.created_at, ?)) < 10
+            AND p.company_id = ?
+        `, [p.provider_id, p.branch_id, p.fecha_pago, p.metodo_pago, p.referencia, p.referencia, p.created_at, company_id]);
 
-        if (paymentRows.length === 0) return res.status(404).json({ message: 'Pago no encontrado' });
-        const payment = paymentRows[0];
+        const first = paymentRows[0];
+        const receiptData = {
+            id: first.id,
+            company_name: first.company_name,
+            company_nit: first.company_nit,
+            branch_name: first.branch_name,
+            company_logo_url: first.company_logo_url,
+            branch_logo_url: first.branch_logo_url,
+            customer_name: first.customer_name,
+            monto: paymentRows.reduce((sum, row) => sum + parseFloat(row.monto), 0),
+            fecha_pago: first.fecha_pago,
+            metodo_pago: first.metodo_pago,
+            referencia: first.referencia,
+            notas: first.notas,
+            documentos: paymentRows.map(row => ({
+                tipo: row.documento_tipo,
+                numero: row.documento_aplicado,
+                fecha: row.documento_fecha,
+                total: row.documento_total,
+                abono: row.monto
+            }))
+        };
 
         const { generatePaymentReceiptPDF } = require('../services/pdf.service');
-        const pdfBuffer = await generatePaymentReceiptPDF(payment);
+        const pdfBuffer = await generatePaymentReceiptPDF(receiptData);
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=Comprobante_Pago_${id}.pdf`);
@@ -879,6 +908,123 @@ const getProviderBalancesReport = async (req, res) => {
     }
 };
 
+/**
+ * Exporta el reporte detallado de documentos pendientes a PDF (CXP).
+ */
+const exportProviderPendingDocumentsDetailedPDF = async (req, res) => {
+    const { branch_id, cutoffDate, provider_id } = req.query;
+    const company_id = req.company_id;
+
+    if (!branch_id || !cutoffDate) {
+        return res.status(400).json({ message: 'Sucursal y fecha de corte son obligatorios' });
+    }
+
+    try {
+        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [company_id]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+
+        if (!companyRows.length || !branchRows.length) {
+            return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
+        }
+
+        let sql = `
+            SELECT * FROM (
+                SELECT 
+                    'COMPRA' as origen,
+                    h.fecha as fecha,
+                    DATEDIFF(?, h.fecha) as dias,
+                    CAST(COALESCE(cat.description, h.tipo_documento_id) AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
+                    CAST(h.numero_documento AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
+                    h.monto_total as monto,
+                    (h.monto_total - COALESCE((
+                        SELECT SUM(monto) FROM provider_payments 
+                        WHERE purchase_id = h.id AND fecha_pago <= ?
+                    ), 0)) as saldo,
+                    p.id as provider_id,
+                    CAST(p.nombre AS CHAR) COLLATE utf8mb4_unicode_ci as provider_name
+                FROM purchase_headers h
+                JOIN providers p ON h.provider_id = p.id
+                LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+                WHERE h.company_id = ? AND h.branch_id = ? AND h.condicion_operacion_id = '2' AND h.status != 'ANULADO' AND h.fecha <= ?
+
+                UNION ALL
+
+                SELECT 
+                    'GASTO' as origen,
+                    e.fecha as fecha,
+                    DATEDIFF(?, e.fecha) as dias,
+                    CAST(COALESCE(cat.description, e.tipo_documento_id) AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
+                    CAST(e.numero_documento AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
+                    e.monto_total as monto,
+                    (e.monto_total - COALESCE((
+                        SELECT SUM(monto) FROM provider_payments 
+                        WHERE expense_id = e.id AND fecha_pago <= ?
+                    ), 0)) as saldo,
+                    p.id as provider_id,
+                    CAST(p.nombre AS CHAR) COLLATE utf8mb4_unicode_ci as provider_name
+                FROM expense_headers e
+                JOIN providers p ON e.provider_id = p.id
+                LEFT JOIN cat_002_tipo_dte cat ON e.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+                WHERE e.company_id = ? AND e.branch_id = ? AND e.condicion_operacion_id = '2' AND e.status != 'ANULADO' AND e.fecha <= ?
+            ) as combined
+            WHERE 1=1
+        `;
+        const params = [
+            cutoffDate, cutoffDate, company_id, branch_id, cutoffDate,
+            cutoffDate, cutoffDate, company_id, branch_id, cutoffDate
+        ];
+
+        if (provider_id && provider_id !== 'all' && provider_id !== 'undefined') {
+            sql += ' AND provider_id = ?';
+            params.push(provider_id);
+        }
+
+        sql += ' HAVING saldo > 0.001 ORDER BY provider_name, fecha';
+
+        const [rows] = await pool.query(sql, params);
+
+        // Group by provider
+        const grouped = [];
+        let grandTotal = 0;
+
+        rows.forEach(row => {
+            let provider = grouped.find(p => p.provider_id === row.provider_id);
+            if (!provider) {
+                provider = {
+                    provider_id: row.provider_id,
+                    provider_name: row.provider_name,
+                    documents: [],
+                    subtotal: 0
+                };
+                grouped.push(provider);
+            }
+            provider.documents.push(row);
+            provider.subtotal += parseFloat(row.saldo);
+            grandTotal += parseFloat(row.saldo);
+        });
+
+        const pdfData = {
+            company_name: companyRows[0].razon_social,
+            company_nit: companyRows[0].nit,
+            branch_name: branchRows[0].nombre,
+            cutoffDate,
+            providers: grouped,
+            grandTotal
+        };
+
+        const { generateProviderPendingDocumentsDetailedPDF } = require('../services/pdf.service');
+        const pdfBuffer = await generateProviderPendingDocumentsDetailedPDF(pdfData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Documentos_Pendientes_Pagar_${cutoffDate}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error in exportProviderPendingDocumentsDetailedPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de documentos pendientes' });
+    }
+};
+
 module.exports = {
     getProviderStatement,
     getPendingDocuments,
@@ -894,5 +1040,6 @@ module.exports = {
     exportProviderAgingPDF,
     sendProviderAgingEmail,
     getProviderBalancesReport,
-    exportPaymentPDF
+    exportPaymentPDF,
+    exportProviderPendingDocumentsDetailedPDF
 };

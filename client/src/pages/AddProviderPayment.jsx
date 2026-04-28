@@ -155,7 +155,7 @@ const AddProviderPayment = () => {
 
     const { data: providersRaw = [] } = useQuery({
         queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000 } })).data?.data || [],
+        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000 } })).data?.data || [],
     });
 
     const providers = useMemo(() => providersRaw.map(p => ({

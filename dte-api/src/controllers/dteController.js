@@ -36,9 +36,10 @@ async function emit(req, res) {
         // 2. Get Company/Branch credentials for signing and transmission
         const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password FROM companies WHERE id = ?', [req.company_id]);
         const certPass = bodyPassword || company[0].certificate_password;
+        const signatureMode = process.env.SIGNATURE_MODE || 'internal';
 
-        if (!company[0].certificate_path) {
-            throw new Error('Certificado no configurado para la empresa');
+        if (signatureMode === 'internal' && !company[0].certificate_path) {
+            throw new Error('Certificado no configurado para la empresa (Modo Interno)');
         }
 
         // 3. Sign Document
@@ -53,21 +54,40 @@ async function emit(req, res) {
         }
 
         // 4. Authenticate with Hacienda
+        console.log(`[HaciendaAuth] Authenticaton request for company ${company[0].nit}...`);
         const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password);
         if (!auth.success) {
             throw new Error(`Error MH Auth: ${auth.message}`);
         }
 
         // 5. Transmit to Hacienda
-        const txResult = await transmissionService.transmitDTE(auth.token, signResult.jws, {
+        let jwsString = typeof signResult.jws === 'string' ? signResult.jws : signResult.jws?.body || JSON.stringify(signResult.jws);
+        
+        // Final cleaning: Ensure it's a pure string without extra quotes or spaces if returned as JSON string
+        jwsString = jwsString.replace(/^"|"$/g, '').trim();
+        
+        console.log(`[Transmission] JWS identified (starting with): ${jwsString.substring(0, 50)}...`);
+
+        const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
             ambiente: company[0].ambiente === 'produccion' ? '01' : '00',
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
-            version: 3
+            version: tipoDte === '01' ? 1 : 3
         });
 
         // 6. Store in Database
-        const [insertResult] = await pool.query(
+        const dbStatus = txResult.success && txResult.status === 'PROCESADO' ? 'ACCEPTED' : 'REJECTED';
+        const haciendaError = txResult.error || txResult.data;
+
+        // Format fhProcesamiento from Hacienda (DD/MM/YYYY HH:MM:SS) to DB format (YYYY-MM-DD HH:MM:SS)
+        let formattedDate = txResult.fhProcesamiento || null;
+        if (formattedDate && formattedDate.includes('/')) {
+            const [datePart, timePart] = formattedDate.split(' ');
+            const [day, month, year] = datePart.split('/');
+            formattedDate = `${year}-${month}-${day} ${timePart}`;
+        }
+
+        await pool.query(
             'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
@@ -78,21 +98,21 @@ async function emit(req, res) {
                 req.company_id,
                 req.branch_id,
                 req.user ? req.user.id : 0,
-                txResult.success && txResult.status === 'PROCESADO' ? 'ACCEPTED' : 'REJECTED',
+                dbStatus,
                 JSON.stringify(dte),
-                signResult.jws,
+                jwsString,
                 txResult.selloRecepcion || null,
-                txResult.fhProcesamiento || null,
-                JSON.stringify(txResult.data || txResult.error)
+                formattedDate,
+                haciendaError ? JSON.stringify(haciendaError) : null
             ]
         );
 
-        res.json({
-            success: true,
+        res.status(200).json({
+            success: dbStatus === 'ACCEPTED',
             venta_id: venta_id || null,
             codigoGeneracion,
             numeroControl,
-            estadoHacienda: txResult.status || 'ERROR',
+            estadoHacienda: txResult.status || 'REJECTED',
             data: txResult.data || txResult.error
         });
 

@@ -56,12 +56,10 @@ const Products = () => {
         queryFn: async () => (await axios.get('/api/catalogs/cat_014_unidad_medida')).data
     });
 
-    const { data: catResponse = { data: [] } } = useQuery({
+    const { data: categories = [] } = useQuery({
         queryKey: ['categories'],
-        queryFn: async () => (await axios.get('/api/categories', { params: { limit: 1000 } })).data
+        queryFn: async () => (await axios.get('/api/categories', { params: { limit: 5000 } })).data?.data || []
     });
-
-    const categories = catResponse.data || [];
 
 
     useEffect(() => {

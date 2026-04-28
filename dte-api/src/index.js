@@ -47,6 +47,7 @@ router.get('/dte/pdf/:codigoGeneracion', authMiddleware, tenantMiddleware, dteCo
 router.use('/signature', require('./routes/signature.routes'));
 router.use('/invalidation', require('./routes/invalidation.routes'));
 router.use('/contingency', require('./routes/contingency.routes'));
+router.use('/retransmission', require('./routes/retransmission.routes'));
 
 app.use('/api', router);
 

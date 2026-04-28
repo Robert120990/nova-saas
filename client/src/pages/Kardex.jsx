@@ -60,7 +60,7 @@ const Kardex = () => {
 
     const { data: products = [] } = useQuery({
         queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: movements = [], isLoading } = useQuery({

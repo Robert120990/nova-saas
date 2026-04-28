@@ -197,7 +197,12 @@ router.get('/sales/reports/daily/pdf', salesController.exportDailySalesPDF);
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
 router.post('/sales', salesController.createSale);
+router.get('/sales/rtee/:id', salesController.exportRTEE);
+router.post('/sales/resend-email/:id', salesController.resendDTEEmail);
+router.get('/sales/dte-json/:id', salesController.getDTEJson);
 router.get('/sales/:id', salesController.getSaleById);
+router.post('/sales/:id/void', salesController.voidSale);
+router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
 
 // POS Shifts (Corte de Caja)
 router.get('/shifts', shiftController.getShiftsHistory);
@@ -219,13 +224,13 @@ router.delete('/combos/:id', comboController.deleteCombo);
 router.get('/customer-discounts', customerDiscountController.getDiscounts);
 router.post('/customer-discounts', customerDiscountController.createDiscount);
 router.delete('/customer-discounts/:id', customerDiscountController.deleteDiscount);
-
 // Accounts Receivable (CXC)
 router.get('/cxc/statement', cxcController.getCustomerStatement);
 router.get('/cxc/statement/pdf', cxcController.exportStatementPDF);
 router.post('/cxc/statement/send-email', cxcController.sendStatementEmail);
 router.get('/cxc/aging-report', cxcController.getAgingReport);
 router.get('/cxc/aging-report/pdf', cxcController.exportAgingPDF);
+router.get('/cxc/reports/pending-detailed/pdf', cxcController.exportPendingDocumentsDetailedPDF);
 router.post('/cxc/aging-report/send-email', cxcController.sendAgingEmail);
 router.get('/cxc/pending-documents', cxcController.getPendingDocuments);
 router.get('/cxc/payments', cxcController.getPaymentHistory);
@@ -247,6 +252,7 @@ router.get('/cxp/aging-report', cxpController.getProviderAgingReport);
 router.get('/cxp/aging-report/pdf', cxpController.exportProviderAgingPDF);
 router.post('/cxp/aging-report/send-email', cxpController.sendProviderAgingEmail);
 router.get('/cxp/pending-documents', cxpController.getPendingDocuments);
+router.get('/cxp/reports/pending-detailed/pdf', cxpController.exportProviderPendingDocumentsDetailedPDF);
 router.get('/cxp/payments', cxpController.getPaymentHistory);
 router.get('/cxp/payments/:id', cxpController.getPaymentById);
 router.post('/cxp/payments', cxpController.registerPayment);

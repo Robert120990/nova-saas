@@ -91,7 +91,7 @@ const InventoryAdjustments = () => {
 
     const { data: products = [] } = useQuery({
         queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({

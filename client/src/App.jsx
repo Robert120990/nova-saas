@@ -44,6 +44,8 @@ import FuelPrices from './pages/FuelPrices';
 import SalesByCategoryReport from './pages/SalesByCategoryReport';
 import SalesByPOSReport from './pages/SalesByPOSReport';
 import SalesReport from './pages/SalesReport';
+import PendingDocumentsDetailedReport from './pages/PendingDocumentsDetailedReport';
+import ProviderPendingDocumentsDetailedReport from './pages/ProviderPendingDocumentsDetailedReport';
 import Expenses from './pages/Expenses';
 import ExpenseReport from './pages/ExpenseReport';
 import PurchaseReport from './pages/PurchaseReport';
@@ -128,11 +130,13 @@ function App() {
                         <Route path="/cxc/estado-cuenta" element={<CustomerStatement />} />
                         <Route path="/cxc/abonos" element={<AddPayment />} />
                         <Route path="/cxc/reportes/saldos" element={<CustomerBalancesReport />} />
+                        <Route path="/cxc/reportes/documentos-pendientes" element={<PendingDocumentsDetailedReport />} />
 
                         {/* Accounts Payable (CXP) */}
                         <Route path="/cxp/estado-cuenta" element={<ProviderStatement />} />
                         <Route path="/cxp/abonos" element={<AddProviderPayment />} />
                         <Route path="/cxp/reportes/saldos" element={<ProviderBalancesReport />} />
+                        <Route path="/cxp/reportes/documentos-pendientes" element={<ProviderPendingDocumentsDetailedReport />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

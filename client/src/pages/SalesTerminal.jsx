@@ -108,6 +108,9 @@ const SalesTerminal = () => {
     const [fuelAmount, setFuelAmount] = useState('');
     const [fuelQty, setFuelQty] = useState('');
 
+    // Reference Management State
+    const [referencingSale, setReferencingSale] = useState(null);
+
     // Refs for Keyboard Navigation
     const barcodeInputRef = useRef(null);
     const qtyInputRef = useRef(null);
@@ -134,7 +137,7 @@ const SalesTerminal = () => {
 
     const { data: products = [] } = useQuery({
         queryKey: ['products-all', sellerSession?.branch_id],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 1000, branch_id: sellerSession?.branch_id } })).data?.data || [],
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000, branch_id: sellerSession?.branch_id } })).data?.data || [],
         enabled: !!sellerSession?.branch_id
     });
 
@@ -147,6 +150,12 @@ const SalesTerminal = () => {
     const { data: sellers = [] } = useQuery({
         queryKey: ['sellers'],
         queryFn: async () => (await axios.get('/api/sellers', { params: { limit: 1000 } })).data?.data || []
+    });
+
+    const { data: customerSales = [], isLoading: isLoadingCustomerSales } = useQuery({
+        queryKey: ['customer-sales', customerId],
+        queryFn: async () => (await axios.get(`/api/sales?customer_id=${customerId}&status=emitido&only_processed=true&exclude_has_nc=true&limit=100`)).data?.data || [],
+        enabled: !!customerId && tipoDte === '05'
     });
 
     const { data: customerDiscounts = [] } = useQuery({
@@ -221,6 +230,35 @@ const SalesTerminal = () => {
     const selectedCustomerData = useMemo(() => {
         return customers.find(c => c.id === parseInt(customerId));
     }, [customerId, customers]);
+    
+    // Búsqueda optimizada (F3) para evitar lentitud con miles de ítems
+    const { filteredProducts, filteredCombos } = useMemo(() => {
+        if (!isProductModalOpen) return { filteredProducts: [], filteredCombos: [] };
+        
+        const search = productSearch.toLowerCase().trim();
+        if (!search) {
+            return {
+                filteredCombos: combos.slice(0, 10),
+                filteredProducts: products.slice(0, 50)
+            };
+        }
+
+        const fCombos = combos.filter(c => 
+            (c.name || '').toLowerCase().includes(search) || 
+            (c.barcode || '').toLowerCase().includes(search)
+        );
+
+        const fProducts = products.filter(p => 
+            (p.nombre || '').toLowerCase().includes(search) || 
+            (p.codigo || '').toLowerCase().includes(search) ||
+            (p.codigo_barra || '').toLowerCase().includes(search)
+        );
+
+        return {
+            filteredCombos: fCombos.slice(0, 20),
+            filteredProducts: fProducts.slice(0, 100)
+        };
+    }, [products, combos, productSearch, isProductModalOpen]);
 
     const handleEditCustomer = () => {
         if (!selectedCustomerData) return;
@@ -280,12 +318,13 @@ const SalesTerminal = () => {
 
             // Document Type Switching (Up/Down Arrows) - ONLY in Auth Modal
             if (isAuthModalOpen) {
-                const allowedTypes = ['01', '03', '04', '05', '11'];
+                const allowedTypes = ['01', '03', '04', '05', '07', '11'];
                 const typeNames = {
                     '01': 'Factura (01)',
                     '03': 'Crédito Fiscal (03)',
                     '04': 'Nota Remisión (04)',
                     '05': 'Nota Crédito (05)',
+                    '07': 'Comprobante Retención (07)',
                     '11': 'Factura de Exportación (11)'
                 };
                 const currentIndex = allowedTypes.indexOf(tipoDte);
@@ -306,7 +345,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen]);
+    }, [cart.length, isAuthModalOpen, tipoDte, navigate]);
 
     // Auto-focus barcode input when starting POS
     useEffect(() => {
@@ -458,6 +497,7 @@ const SalesTerminal = () => {
             // Reset Session for Next Sale
             setSellerSession(null);
             setSellerId('');
+            setReferencingSale(null);
             setIsAuthModalOpen(true);
             queryClient.invalidateQueries(['sales']);
         },
@@ -467,6 +507,12 @@ const SalesTerminal = () => {
     });
 
     const handleProcessSale = () => {
+        if (tipoDte === '05' && referencingSale) {
+            if (totals.total > (parseFloat(referencingSale.total_pagar) + 0.01)) {
+                return toast.error(`El monto de la Nota de Crédito ($${totals.total.toFixed(2)}) no puede ser mayor al documento original ($${parseFloat(referencingSale.total_pagar).toFixed(2)})`);
+            }
+        }
+
         // Validar que el total pagado cubra la venta (excepto crédito)
         const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
         if (condicionPago === '1' && totalPaid < (totals.total - 0.01)) {
@@ -516,10 +562,11 @@ const SalesTerminal = () => {
                     monto_descuento: item.descuento,
                     venta_gravada: !item.exento && !item.no_sujeto ? (subtotal - itemFovial - itemCotrans) : 0,
                     venta_exenta: item.exento ? subtotal : 0,
-                    tributos: item.tipo_combustible > 0 ? [
+                    tributos: (item.tipo_combustible > 0 && tipoDte !== '04') ? [
                         { codigo: "D1", descripcion: "FOVIAL", valor: itemFovial },
                         { codigo: "C8", descripcion: "COTRANS", valor: itemCotrans }
-                    ] : []
+                    ] : [],
+                    referencedDoc: item.referencedDoc || null
                 };
             }),
             payments: payments.map(p => ({
@@ -549,14 +596,12 @@ const SalesTerminal = () => {
             if (item.exento) exento += subtotal;
             else if (item.no_sujeto) noSujeto += subtotal;
             else {
-                // Fuel taxes are already included in the price per user feedback.
-                // We desegregate them from the gravadoBruto base for IVA calculation.
-                if (item.tipo_combustible > 0) {
+                // FOVIAL/COTRANS only for non-Remission notes
+                if (item.tipo_combustible > 0 && tipoDte !== '04') {
                     const itemFovial = qty * parseFloat(taxSettings?.fovial_rate || 0.20);
                     const itemCotrans = qty * parseFloat(taxSettings?.cotrans_rate || 0.10);
                     fovial += itemFovial;
                     cotrans += itemCotrans;
-                    // The base for IVA excludes fuel taxes
                     gravadoBruto += (subtotal - itemFovial - itemCotrans);
                 } else {
                     gravadoBruto += subtotal;
@@ -620,7 +665,17 @@ const SalesTerminal = () => {
     const addToCart = (itemData, isCombo = false) => {
         const itemId = isCombo ? `combo-${itemData.id}` : itemData.id;
         const itemName = itemData.nombre || itemData.name;
-        
+        let itemPrice = itemData.precio_unitario || itemData.price || 0;
+
+        // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
+        if (tipoDte === '04') {
+            itemPrice = 0.00001;
+        }
+
+        // Validación de precio 0 cuando no se permite editar
+        if (!sellerSession?.allow_price_edit && itemPrice <= 0) {
+            return toast.error('No se permite agregar productos con precio 0 sin autorización de edición.');
+        }
         const existing = cart.find(item => 
             isCombo ? (item.combo_id === itemData.id) : (item.id === itemData.id && !item.isManual && !item.combo_id)
         );
@@ -652,7 +707,8 @@ const SalesTerminal = () => {
                 cantidad: 1,
                 descuento: 0,
                 exento: false,
-                isManual: false
+                isManual: false,
+                referencedDoc: itemData.referencedDoc || null
             }]);
         }
         setIsProductModalOpen(false);
@@ -660,6 +716,41 @@ const SalesTerminal = () => {
         toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido: ${itemName}`);
         // Devolver foco al buscador de código
         setTimeout(() => barcodeInputRef.current?.focus(), 100);
+    };
+
+    const handleAddFuelToCart = () => {
+        const qty = parseFloat(fuelQty);
+        const discountRule = getCustomerDiscount(fuelProd?.id);
+        const price = calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), discountRule);
+        
+        // Validación de precio 0 cuando no se permite editar
+        if (!sellerSession?.allow_price_edit && price <= 0) {
+            return toast.error('No se permite agregar combustible con precio 0 sin autorización de edición.');
+        }
+
+        if (qty > 0) {
+            let finalPrice = price;
+            if (tipoDte === '04') finalPrice = 0.00001;
+
+            setCart([...cart, {
+                id: fuelProd.id,
+                nombre: fuelProd.nombre,
+                codigo: fuelProd.codigo,
+                tipo_combustible: fuelProd.tipo_combustible,
+                precio: finalPrice,
+                cantidad: qty,
+                descuento: 0,
+                exento: false,
+                isManual: false
+            }]);
+            setIsFuelModalOpen(false);
+            setFuelAmount('');
+            setFuelQty('');
+            toast.success('Combustible añadido');
+            setTimeout(() => barcodeInputRef.current?.focus(), 100);
+        } else {
+            toast.error('Ingrese un monto o cantidad válida');
+        }
     };
 
     const handleBarcodeSubmit = (e) => {
@@ -726,7 +817,17 @@ const SalesTerminal = () => {
 
     const handleAddQuick = () => {
         const qty = parseFloat(quickCant);
-        const price = parseFloat(quickPrecio);
+        let price = parseFloat(quickPrecio);
+
+        // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
+        if (tipoDte === '04') {
+            price = 0.00001;
+        }
+
+        // Validación de precio 0 cuando no se permite editar
+        if (!sellerSession?.allow_price_edit && price <= 0 && quickProd) {
+            return toast.error('No se permite agregar productos con precio 0 sin autorización de edición.');
+        }
 
         if (quickProd) {
             if (qty <= 0) return toast.error('Cantidad inválida');
@@ -783,6 +884,9 @@ const SalesTerminal = () => {
     };
 
     const addManualItem = () => {
+        if (!sellerSession?.allow_price_edit) {
+            return toast.error('No tiene permisos para agregar conceptos manuales (requiere edición de precio).');
+        }
         const id = Date.now();
         setCart([...cart, {
             id,
@@ -800,9 +904,28 @@ const SalesTerminal = () => {
     };
 
     const updateItem = (id, field, value) => {
-        setCart(cart.map(item => 
-            item.id === id ? { ...item, [field]: value } : item
-        ));
+        setCart(cart.map(item => {
+            if (item.id === id) {
+                // Validación para Nota de Crédito (05)
+                if (tipoDte === '05') {
+                    if (field === 'cantidad' && item.originalQty !== undefined && value > item.originalQty) {
+                        toast.error(`La cantidad no puede superar el original (${item.originalQty})`);
+                        return item;
+                    }
+                    if (field === 'precio' && item.originalPrice !== undefined && value > item.originalPrice) {
+                        toast.error(`El precio no puede superar el original ($${item.originalPrice})`);
+                        return item;
+                    }
+                }
+
+                // Validación para Nota de Remisión (04) - Precio bloqueado
+                if (tipoDte === '04' && field === 'precio') {
+                    return item;
+                }
+                return { ...item, [field]: value };
+            }
+            return item;
+        }));
     };
 
     const handleSellerAuth = async (e) => {
@@ -1162,7 +1285,23 @@ const SalesTerminal = () => {
                                                         onChange={(e) => updateItem(item.id, 'cantidad', parseFloat(e.target.value) || 0)}
                                                     />
                                                 </td>
-                                                <td className="px-4 py-4 text-right font-bold text-xs">${parseFloat(item.precio || 0).toFixed(2)}</td>
+                                                <td className="px-4 py-4 text-right">
+                                                    {tipoDte === '05' ? (
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span className="text-slate-400 text-[10px]">$</span>
+                                                            <input 
+                                                                type="number"
+                                                                step="0.01"
+                                                                className="w-20 text-right bg-indigo-50 border border-indigo-100 rounded-lg font-black text-xs py-1 px-2 focus:ring-2 focus:ring-indigo-500/20"
+                                                                value={item.precio}
+                                                                onChange={(e) => updateItem(item.id, 'precio', parseFloat(e.target.value) || 0)}
+                                                                onFocus={(e) => e.target.select()}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="font-bold text-xs text-slate-700">${parseFloat(item.precio || 0).toFixed(2)}</div>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs">-${parseFloat(item.descuento || 0).toFixed(2)}</td>
                                                 <td className="px-4 py-4 text-right font-black text-slate-900 text-xs">
                                                     ${((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))).toFixed(2)}
@@ -1449,43 +1588,36 @@ const SalesTerminal = () => {
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-8 pt-4 custom-scrollbar">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                 {/* Combos */}
-                                {combos
-                                    .filter(c => (c.name || '').toLowerCase().includes(productSearch.toLowerCase()) || (c.barcode || '').toLowerCase().includes(productSearch.toLowerCase()))
-                                    .map(c => (
-                                    <button key={`combo-${c.id}`} onClick={() => addToCart(c, true)} className="flex items-center gap-4 p-5 rounded-3xl border border-amber-100 bg-amber-50/20 hover:border-amber-400 hover:bg-amber-100/30 transition-all text-left group">
-                                        <div className="p-3.5 bg-white rounded-2xl shadow-sm text-amber-500 group-hover:scale-110 transition-transform"><Zap size={24} /></div>
-                                        <div className="flex-1 truncate">
-                                            <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Combo Promocional</div>
-                                            <div className="font-black text-slate-900 truncate">{c.name}</div>
+                                {filteredCombos.map(c => (
+                                    <button key={`combo-${c.id}`} onClick={() => addToCart(c, true)} className="flex items-center gap-3 p-3 rounded-2xl border border-amber-100 bg-amber-50/20 hover:border-amber-400 hover:bg-amber-100/30 transition-all text-left group">
+                                        <div className="p-2 bg-white rounded-xl shadow-sm text-amber-500 group-hover:scale-110 transition-transform"><Zap size={20} /></div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-slate-900 text-sm truncate leading-tight">{c.name}</div>
                                             <div className="text-[10px] font-mono text-slate-400 font-bold uppercase">{c.barcode}</div>
-                                            <div className="font-black text-lg mt-1 text-amber-700">${parseFloat(c.price || 0).toFixed(2)}</div>
+                                            <div className="font-black text-amber-700 mt-0.5">${parseFloat(c.price || 0).toFixed(2)}</div>
                                         </div>
-                                        <Plus size={24} className="text-amber-300" />
                                     </button>
                                 ))}
 
                                 {/* Productos */}
-                                {products
-                                    .filter(p => (p.nombre || '').toLowerCase().includes(productSearch.toLowerCase()) || (p.codigo || '').toLowerCase().includes(productSearch.toLowerCase()))
-                                    .map(p => (
-                                    <button key={p.id} onClick={() => addToCart(p)} className="flex items-center gap-4 p-5 rounded-3xl border border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all text-left group">
-                                        <div className="p-3.5 bg-white rounded-2xl shadow-sm group-hover:text-indigo-500 group-hover:scale-110 transition-transform"><Package size={24} /></div>
-                                        <div className="flex-1 truncate">
-                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Producto Individual</div>
-                                            <div className="font-black text-slate-900 truncate">{p.nombre}</div>
+                                {filteredProducts.map(p => (
+                                    <button key={p.id} onClick={() => addToCart(p)} className="flex items-center gap-3 p-3 rounded-2xl border border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all text-left group">
+                                        <div className="p-2 bg-white rounded-xl shadow-sm group-hover:text-indigo-500 group-hover:scale-110 transition-transform text-slate-400"><Package size={20} /></div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-slate-900 text-sm truncate leading-tight">{p.nombre}</div>
                                             <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">{p.codigo}</div>
-                                            <div className="font-black text-lg mt-1">${parseFloat(p.precio_unitario || 0).toFixed(2)}</div>
+                                            <div className="font-black mt-0.5 text-slate-700">${parseFloat(p.precio_unitario || 0).toFixed(2)}</div>
                                         </div>
-                                        <Plus size={24} className="text-indigo-300" />
                                     </button>
                                 ))}
                             </div>
-                            {products.length === 0 && combos.length === 0 && (
+                            {filteredProducts.length === 0 && filteredCombos.length === 0 && (
                                 <div className="text-center py-20 opacity-30">
                                     <Search size={64} className="mx-auto mb-4" />
-                                    <p className="font-black uppercase tracking-widest">No se encontraron resultados</p>
+                                    <p className="font-black uppercase tracking-widest text-sm">No se encontraron resultados</p>
+                                    <p className="text-[10px] font-bold mt-2 italic">Intenta escribir una palabra clave diferente</p>
                                 </div>
                             )}
                         </div>
@@ -1500,28 +1632,101 @@ const SalesTerminal = () => {
                             <h3 className="text-2xl font-black text-slate-900">Referencias Documentales</h3>
                             <button onClick={() => setIsLinkedDocModalOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm"><X size={20} /></button>
                         </div>
-                        <div className="p-8 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <select id="link-type" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold">
-                                    <option value="01">Factura</option>
-                                    <option value="03">C. Fiscal</option>
-                                </select>
-                                <input id="link-date" type="date" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" defaultValue={new Date().toISOString().split('T')[0]} />
+                            <div className="space-y-4">
+                                {tipoDte === '05' && customerId ? (
+                                    <div className="flex flex-col gap-4">
+                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Seleccionar Documento del Cliente</label>
+                                        <div className="max-h-60 overflow-y-auto custom-scrollbar border border-slate-100 rounded-2xl divide-y">
+                                            {isLoadingCustomerSales ? (
+                                                <div className="p-8 text-center text-slate-400 text-xs font-bold animate-pulse">Cargando documentos...</div>
+                                            ) : customerSales.length === 0 ? (
+                                                <div className="p-8 text-center text-slate-400 text-xs font-bold">No se encontraron documentos previos para este cliente.</div>
+                                            ) : (
+                                                customerSales.filter(s => ['01', '03', '07'].includes(s.dte_type)).map(sale => (
+                                                    <button 
+                                                        key={sale.id}
+                                                        onClick={async () => {
+                                                            try {
+                                                                const { data: fullSale } = await axios.get(`/api/sales/${sale.id}`);
+                                                                setReferencingSale(fullSale);
+                                                                const refDoc = fullSale.codigo_generacion || fullSale.numero_control || fullSale.dte_control;
+                                                                
+                                                                // Cargar items al carrito
+                                                                const newItems = fullSale.items.map(item => ({
+                                                                    id: item.product_id,
+                                                                    nombre: item.descripcion,
+                                                                    codigo: item.codigo,
+                                                                    precio: item.precio_unitario,
+                                                                    originalPrice: item.precio_unitario,
+                                                                    cantidad: item.cantidad,
+                                                                    originalQty: item.cantidad,
+                                                                    descuento: item.monto_descuento,
+                                                                    exento: item.venta_exenta > 0,
+                                                                    isManual: !item.product_id,
+                                                                    referencedDoc: refDoc
+                                                                }));
+                                                                setCart(newItems);
+
+                                                                // Vincular documento
+                                                                setLinkedDocs([{
+                                                                    doc_type: sale.dte_type,
+                                                                    doc_number: sale.numero_control || sale.dte_control || sale.codigo_generacion || sale.id.toString(),
+                                                                    emission_date: sale.fecha_emision.split('T')[0],
+                                                                    generation_type: 1 // Electrónico
+                                                                }]);
+                                                                
+                                                                setIsLinkedDocModalOpen(false);
+                                                                toast.success('Documento referenciado y productos cargados');
+                                                            } catch (error) {
+                                                                toast.error('Error al cargar detalle del documento');
+                                                            }
+                                                        }}
+                                                        className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 transition-colors text-left group"
+                                                    >
+                                                        <div>
+                                                            <div className="font-black text-slate-900 text-xs tracking-tight group-hover:text-indigo-600 transition-colors">
+                                                                {sale.tipo_documento_name} - {sale.numero_control || sale.dte_control || sale.codigo_generacion || `ID: ${sale.id}`}
+                                                            </div>
+                                                            <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
+                                                                {new Date(sale.fecha_emision).toLocaleDateString()} • TOTAL: ${parseFloat(sale.total_pagar).toFixed(2)}
+                                                            </div>
+                                                        </div>
+                                                        <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                        <div className="relative flex items-center gap-2">
+                                            <div className="flex-1 h-[1px] bg-slate-100"></div>
+                                            <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">O entrada manual</span>
+                                            <div className="flex-1 h-[1px] bg-slate-100"></div>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <select id="link-type" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={tipoDte === '05' ? '01' : '01'}>
+                                        <option value="01">Factura</option>
+                                        <option value="03">C. Fiscal</option>
+                                        <option value="07">C. Retención</option>
+                                    </select>
+                                    <input id="link-date" type="date" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={new Date().toISOString().split('T')[0]} />
+                                </div>
+                                <input id="link-number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="UUID o Número de Documento" />
+                                <button 
+                                    onClick={() => {
+                                        const type = document.getElementById('link-type').value;
+                                        const num = document.getElementById('link-number').value;
+                                        const date = document.getElementById('link-date').value;
+                                        if(!num) return toast.error('El número es obligatorio');
+                                        setLinkedDocs([...linkedDocs, { doc_type: type, doc_number: num, emission_date: date, generation_type: 2 }]);
+                                        document.getElementById('link-number').value = '';
+                                    }}
+                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-black transition-all active:scale-95"
+                                >
+                                    Vincular Manualmente
+                                </button>
                             </div>
-                            <input id="link-number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold" placeholder="UUID o Número de Documento" />
-                            <button 
-                                onClick={() => {
-                                    const type = document.getElementById('link-type').value;
-                                    const num = document.getElementById('link-number').value;
-                                    const date = document.getElementById('link-date').value;
-                                    if(!num) return toast.error('El número es obligatorio');
-                                    setLinkedDocs([...linkedDocs, { doc_type: type, doc_number: num, emission_date: date, generation_type: 2 }]);
-                                    document.getElementById('link-number').value = '';
-                                }}
-                                className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black transition-all"
-                            >
-                                Vincular Documento
-                            </button>
 
                             <div className="mt-8 border-t pt-6 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                                 {linkedDocs.map((doc, idx) => (
@@ -1537,7 +1742,6 @@ const SalesTerminal = () => {
                             </div>
                         </div>
                     </div>
-                </div>
             )}
 
             {/* Modal de Autenticación Logística */}
@@ -1564,6 +1768,7 @@ const SalesTerminal = () => {
                                     <option value="03">Crédito Fiscal (03)</option>
                                     <option value="04">Nota Remisión (04)</option>
                                     <option value="05">Nota Crédito (05)</option>
+                                    <option value="07">Comprobante Retención (07)</option>
                                     <option value="11">FEX (11)</option>
                                 </select>
                             </div>
@@ -1673,6 +1878,16 @@ const SalesTerminal = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1">Teléfono</label>
+                            <input name="telefono" defaultValue={editingCustomer?.telefono} placeholder="2200-0000" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1">Correo Electrónico</label>
+                            <input name="correo" type="email" defaultValue={editingCustomer?.correo} placeholder="cliente@ejemplo.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Departamento</label>
                             <select name="departamento" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)} required>
                                 <option value="">Seleccionar</option>
@@ -1750,6 +1965,9 @@ const SalesTerminal = () => {
                                             type="number"
                                             value={fuelAmount}
                                             onFocus={(e) => e.target.select()}
+                                            onKeyDown={(e) => {
+                                                if(e.key === 'Enter') handleAddFuelToCart();
+                                            }}
                                             onChange={(e) => {
                                                 const val = e.target.value;
                                                 setFuelAmount(val);
@@ -1773,6 +1991,9 @@ const SalesTerminal = () => {
                                         type="number"
                                         value={fuelQty}
                                         onFocus={(e) => e.target.select()}
+                                        onKeyDown={(e) => {
+                                            if(e.key === 'Enter') handleAddFuelToCart();
+                                        }}
                                         onChange={(e) => {
                                             const val = e.target.value;
                                             setFuelQty(val);
@@ -1818,32 +2039,10 @@ const SalesTerminal = () => {
                                 </button>
                                 <button 
                                     type="button"
-                                    onClick={() => {
-                                        const qty = parseFloat(fuelQty);
-                                        const discountRule = getCustomerDiscount(fuelProd?.id);
-                                        const price = calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), discountRule);
-                                        if (qty > 0) {
-                                            setCart([...cart, {
-                                                id: fuelProd.id,
-                                                nombre: fuelProd.nombre,
-                                                codigo: fuelProd.codigo,
-                                                tipo_combustible: fuelProd.tipo_combustible,
-                                                precio: price,
-                                                cantidad: qty,
-                                                descuento: 0,
-                                                exento: false,
-                                                isManual: false
-                                            }]);
-                                            setIsFuelModalOpen(false);
-                                            toast.success('Combustible añadido');
-                                            setTimeout(() => barcodeInputRef.current?.focus(), 100);
-                                        } else {
-                                            toast.error('Ingrese un monto o cantidad válida');
-                                        }
-                                    }}
+                                    onClick={handleAddFuelToCart}
                                     className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-200 transition-all active:scale-95"
                                 >
-                                    Añadir al Carrito
+                                    Añadir al Carrito (Enter)
                                 </button>
                             </div>
                         </div>

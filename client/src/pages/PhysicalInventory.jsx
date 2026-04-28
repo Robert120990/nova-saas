@@ -84,12 +84,12 @@ const PhysicalInventory = () => {
 
     const { data: allCategories = [] } = useQuery({
         queryKey: ['categories-all'],
-        queryFn: async () => (await axios.get('/api/categories', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/categories', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: allProducts = [] } = useQuery({
         queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: historyData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({

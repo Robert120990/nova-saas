@@ -1,13 +1,20 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
+# Definir directorio de trabajo
 WORKDIR /app
 
+# Instalar dependencias
 COPY package*.json ./
+RUN npm install
 
-RUN npm install --production
+# Instalar nodemon globalmente para desarrollo
+RUN npm install -g nodemon
 
+# Copiar el resto del código
 COPY . .
 
-EXPOSE 4005
+# Exponer el puerto del microservicio
+EXPOSE 5000
 
-CMD ["npm", "start"]
+# Comando para desarrollo
+CMD ["npm", "run", "dev"]

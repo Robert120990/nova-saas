@@ -44,7 +44,7 @@ const CustomerDiscounts = () => {
 
     const { data: customers = [] } = useQuery({
         queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 5000 } })).data?.data || []
     });
 
     // We fetch products based on the branch selected in the FORM
@@ -54,7 +54,7 @@ const CustomerDiscounts = () => {
             if (!formData.branch_id) return [];
             const res = await axios.get('/api/products', { 
                 params: { 
-                    limit: 2000, 
+                    limit: 5000, 
                     branch_id: formData.branch_id 
                 } 
             });

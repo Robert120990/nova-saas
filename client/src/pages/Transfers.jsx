@@ -75,7 +75,7 @@ const Transfers = () => {
 
     const { data: products = [] } = useQuery({
         queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
     });
 
     // Transform products to include category for display (Only active products and authorized for origin branch)

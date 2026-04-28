@@ -397,13 +397,19 @@ const exportPaymentPDF = async (req, res) => {
     const company_id = req.company_id;
 
     try {
+        const [targetPaymentRows] = await pool.query('SELECT * FROM customer_payments WHERE id = ? AND company_id = ?', [id, company_id]);
+        if (targetPaymentRows.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
+        const p = targetPaymentRows[0];
+
         const [paymentRows] = await pool.query(`
             SELECT p.*, 
                    c.nombre AS customer_name,
                    b.nombre AS branch_name, b.logo_url AS branch_logo_url,
                    comp.razon_social AS company_name, comp.logo_url AS company_logo_url, comp.nit AS company_nit,
                    COALESCE(cat.description, h.tipo_documento) as documento_tipo,
-                   COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento_aplicado
+                   COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento_aplicado,
+                   h.fecha_emision as documento_fecha,
+                   h.total_pagar as documento_total
             FROM customer_payments p
             JOIN customers c ON p.customer_id = c.id
             JOIN branches b ON p.branch_id = b.id
@@ -411,13 +417,36 @@ const exportPaymentPDF = async (req, res) => {
             LEFT JOIN sales_headers h ON p.sale_id = h.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
-            WHERE p.id = ? AND p.company_id = ?
-        `, [id, company_id]);
+            WHERE p.customer_id = ? AND p.branch_id = ? AND p.fecha_pago = ? 
+            AND p.metodo_pago = ? AND (p.referencia = ? OR (p.referencia IS NULL AND ? IS NULL))
+            AND ABS(TIMESTAMPDIFF(SECOND, p.created_at, ?)) < 10
+            AND p.company_id = ?
+        `, [p.customer_id, p.branch_id, p.fecha_pago, p.metodo_pago, p.referencia, p.referencia, p.created_at, company_id]);
 
-        if (paymentRows.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
-        const payment = paymentRows[0];
+        const first = paymentRows[0];
+        const receiptData = {
+            id: first.id, // We use the first ID as reference
+            company_name: first.company_name,
+            company_nit: first.company_nit,
+            branch_name: first.branch_name,
+            company_logo_url: first.company_logo_url,
+            branch_logo_url: first.branch_logo_url,
+            customer_name: first.customer_name,
+            monto: paymentRows.reduce((sum, row) => sum + parseFloat(row.monto), 0),
+            fecha_pago: first.fecha_pago,
+            metodo_pago: first.metodo_pago,
+            referencia: first.referencia,
+            notas: first.notas,
+            documentos: paymentRows.map(row => ({
+                tipo: row.documento_tipo,
+                numero: row.documento_aplicado,
+                fecha: row.documento_fecha,
+                total: row.documento_total,
+                abono: row.monto
+            }))
+        };
 
-        const pdfBuffer = await generatePaymentReceiptPDF(payment);
+        const pdfBuffer = await generatePaymentReceiptPDF(receiptData);
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=Recibo_Abono_${id}.pdf`);
@@ -777,6 +806,106 @@ const getCustomerBalancesReport = async (req, res) => {
     }
 };
 
+/**
+ * Exporta el reporte detallado de documentos pendientes a PDF.
+ */
+const exportPendingDocumentsDetailedPDF = async (req, res) => {
+    const { branch_id, cutoffDate, customer_id } = req.query;
+    const company_id = req.company_id;
+
+    if (!branch_id || !cutoffDate) {
+        return res.status(400).json({ message: 'Sucursal y fecha de corte son obligatorios' });
+    }
+
+    try {
+        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [company_id]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+
+        if (!companyRows.length || !branchRows.length) {
+            return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
+        }
+
+        let sql = `
+            SELECT 
+                h.fecha_emision as fecha,
+                DATEDIFF(?, h.fecha_emision) as dias,
+                CAST(CASE h.tipo_documento 
+                    WHEN '01' THEN 'Factura'
+                    WHEN '03' THEN 'Crédito Fiscal'
+                    WHEN '04' THEN 'Nota de Remisión'
+                    WHEN '05' THEN 'Nota de Crédito'
+                    WHEN '11' THEN 'Factura de Exportación'
+                    ELSE h.tipo_documento 
+                END AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
+                CAST(COALESCE(d.numero_control, CONCAT('VTA-', h.id)) AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
+                h.total_pagar as monto,
+                (h.total_pagar - COALESCE((
+                    SELECT SUM(monto) FROM customer_payments 
+                    WHERE sale_id = h.id AND fecha_pago <= ?
+                ), 0)) as saldo,
+                c.id as customer_id,
+                CAST(c.nombre AS CHAR) COLLATE utf8mb4_unicode_ci as customer_name
+            FROM sales_headers h
+            JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            WHERE h.company_id = ? AND h.branch_id = ?
+            AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
+            AND h.estado != 'ANULADO'
+            AND h.fecha_emision <= ?
+        `;
+        const params = [cutoffDate, cutoffDate, company_id, branch_id, cutoffDate];
+
+        if (customer_id && customer_id !== 'all' && customer_id !== 'undefined') {
+            sql += ' AND h.customer_id = ?';
+            params.push(customer_id);
+        }
+
+        sql += ' HAVING saldo > 0.001 ORDER BY c.nombre, h.fecha_emision';
+
+        const [rows] = await pool.query(sql, params);
+
+        // Group by customer
+        const grouped = [];
+        let grandTotal = 0;
+
+        rows.forEach(row => {
+            let customer = grouped.find(c => c.customer_id === row.customer_id);
+            if (!customer) {
+                customer = {
+                    customer_id: row.customer_id,
+                    customer_name: row.customer_name,
+                    documents: [],
+                    subtotal: 0
+                };
+                grouped.push(customer);
+            }
+            customer.documents.push(row);
+            customer.subtotal += parseFloat(row.saldo);
+            grandTotal += parseFloat(row.saldo);
+        });
+
+        const pdfData = {
+            company_name: companyRows[0].razon_social,
+            company_nit: companyRows[0].nit,
+            branch_name: branchRows[0].nombre,
+            cutoffDate,
+            customers: grouped,
+            grandTotal
+        };
+
+        const { generatePendingDocumentsDetailedPDF } = require('../services/pdf.service');
+        const pdfBuffer = await generatePendingDocumentsDetailedPDF(pdfData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Documentos_Pendientes_${cutoffDate}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error in exportPendingDocumentsDetailedPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de documentos pendientes' });
+    }
+};
+
 module.exports = {
     getCustomerStatement,
     getPendingDocuments,
@@ -792,5 +921,6 @@ module.exports = {
     getAgingReport,
     exportAgingPDF,
     sendAgingEmail,
-    getCustomerBalancesReport
+    getCustomerBalancesReport,
+    exportPendingDocumentsDetailedPDF
 };

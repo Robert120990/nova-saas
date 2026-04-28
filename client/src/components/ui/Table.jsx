@@ -8,7 +8,7 @@ const Table = ({ headers, data, renderRow, isLoading }) => {
                     <thead className="bg-slate-50 border-b border-slate-100">
                         <tr>
                             {headers.map((h, i) => (
-                                <th key={i} className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                <th key={i} className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                     {h}
                                 </th>
                             ))}
