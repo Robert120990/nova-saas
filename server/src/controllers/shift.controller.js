@@ -150,6 +150,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         const summary = {
             id: Number(shift.id),
             status: shift.status,
+            pos_id: shift.pos_id,
             seller_name: shift.seller_name || 'Sin vendedor',
             pos_name: shift.pos_name || 'Sin terminal',
             branch_name: shift.branch_name || 'Sin sucursal',

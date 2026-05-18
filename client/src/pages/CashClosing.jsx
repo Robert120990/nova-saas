@@ -807,7 +807,20 @@ const CashClosing = () => {
                                     pw.document.write(html);
                                     pw.document.close();
                                     pw.focus();
-                                    setTimeout(() => { pw.print(); pw.close(); }, 400);
+
+                                    // Verificar si el POS tiene impresión directa configurada
+                                    let autoPrint = false;
+                                    if (s.pos_id) {
+                                        try {
+                                            const { data: posList } = await axios.get('/api/pos');
+                                            const pos = Array.isArray(posList) ? posList.find(p => p.id == s.pos_id) : null;
+                                            autoPrint = pos?.auto_print || false;
+                                        } catch(e) {}
+                                    }
+
+                                    if (autoPrint) {
+                                        setTimeout(() => { pw.print(); pw.close(); }, 400);
+                                    }
                                 }}
                                 className="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest flex items-center justify-center gap-2 shadow-xl"
                             >
