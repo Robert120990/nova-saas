@@ -75,6 +75,7 @@ export const menuConfig = [
             { id: 'contabilidad-partidas', label: 'Partidas Contables', path: '/contabilidad/partidas', icon: FileText, permission: 'manage_sales' },
             { id: 'contabilidad-cierre', label: 'Cierre Anual', path: '/contabilidad/cierre', icon: Lock, permission: 'manage_sales' },
             { id: 'contabilidad-apertura', label: 'Apertura de Ejercicio', path: '/contabilidad/apertura', icon: Unlock, permission: 'manage_sales' },
+            { id: 'contabilidad-ajustes', label: 'Ajustes', path: '/contabilidad/ajustes', icon: Settings, permission: 'manage_sales' },
         ]
     },
     {

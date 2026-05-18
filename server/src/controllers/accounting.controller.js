@@ -252,17 +252,30 @@ const performClosing = async (req, res) => {
             [companyId]
         );
 
-        // Buscar cuenta de "Resultado del Ejercicio" (tipo 3 - Patrimonio)
-        const [resultAccounts] = await conn.query(
-            `SELECT id FROM chart_of_accounts WHERE company_id = ? AND account_type_id = 3 
-             AND name LIKE '%resultado%' AND active = 1 LIMIT 1`,
-            [companyId]
+        // Buscar cuenta de "Resultado del Ejercicio" desde configuración
+        const [settings] = await conn.query(
+            'SELECT setting_value FROM accounting_settings WHERE company_id = ? AND setting_key = ?',
+            [companyId, 'resultado_ejercicio_id']
         );
 
-        if (resultAccounts.length === 0) {
-            throw new Error('No se encontró la cuenta "Resultado del Ejercicio" (tipo Patrimonio). Créela primero.');
+        let resultAccountId = settings.length > 0 ? parseInt(settings[0].setting_value) : null;
+
+        // Si no está configurado, buscar por nombre
+        if (!resultAccountId) {
+            const [resultAccounts] = await conn.query(
+                `SELECT id FROM chart_of_accounts WHERE company_id = ? AND account_type_id = 3 
+                 AND name LIKE '%resultado%' AND active = 1 LIMIT 1`,
+                [companyId]
+            );
+            if (resultAccounts.length === 0) {
+                throw new Error('Configure la cuenta "Resultado del Ejercicio" en Ajustes Contables (tipo Patrimonio).');
+            }
+            resultAccountId = resultAccounts[0].id;
+        } else {
+            // Verificar que la cuenta exista
+            const [check] = await conn.query('SELECT id FROM chart_of_accounts WHERE id = ? AND company_id = ?', [resultAccountId, companyId]);
+            if (check.length === 0) throw new Error('La cuenta configurada para "Resultado del Ejercicio" ya no existe.');
         }
-        const resultAccountId = resultAccounts[0].id;
 
         // Construir líneas de cierre
         const lines = [];
@@ -405,10 +418,36 @@ const performOpening = async (req, res) => {
     } finally { conn.release(); }
 };
 
+// === Settings ===
+const getSettings = async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT setting_key, setting_value FROM accounting_settings WHERE company_id = ?', [req.company_id]);
+        const settings = {};
+        rows.forEach(r => { settings[r.setting_key] = r.setting_value; });
+        res.json(settings);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
+const saveSettings = async (req, res) => {
+    try {
+        const { settings } = req.body;
+        for (const [key, value] of Object.entries(settings || {})) {
+            if (value !== null && value !== undefined && value !== '') {
+                await pool.query(
+                    'INSERT INTO accounting_settings (company_id, setting_key, setting_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = ?',
+                    [req.company_id, key, String(value), String(value)]
+                );
+            }
+        }
+        res.json({ message: 'Configuración guardada' });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
 module.exports = {
     getAccountTypes, createAccountType, updateAccountType, deleteAccountType,
     getEntryTypes, createEntryType, updateEntryType, deleteEntryType,
     getAccounts, createAccount, updateAccount, deleteAccount,
     getEntries, getEntry, createEntry, voidEntry,
-    getTrialBalance, performClosing, performOpening
+    getTrialBalance, performClosing, performOpening,
+    getSettings, saveSettings
 };

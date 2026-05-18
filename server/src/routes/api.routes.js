@@ -313,6 +313,8 @@ router.put('/accounting/entries/:id/void', accountingController.voidEntry);
 router.get('/accounting/trial-balance', accountingController.getTrialBalance);
 router.post('/accounting/closing', accountingController.performClosing);
 router.post('/accounting/opening', accountingController.performOpening);
+router.get('/accounting/settings', accountingController.getSettings);
+router.post('/accounting/settings', accountingController.saveSettings);
 
 // AI Assistant
 router.use('/ai', aiRoutes);

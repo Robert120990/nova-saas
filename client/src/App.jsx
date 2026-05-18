@@ -35,6 +35,7 @@ import ChartOfAccounts from './pages/ChartOfAccounts';
 import AccountingEntries from './pages/AccountingEntries';
 import YearClosing from './pages/YearClosing';
 import YearOpening from './pages/YearOpening';
+import AccountingSettings from './pages/AccountingSettings';
 import DailySalesReport from './pages/DailySalesReport';
 import Contingency from './pages/Contingency';
 import CashClosing from './pages/CashClosing';
@@ -138,6 +139,7 @@ function App() {
                         <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
                         <Route path="/contabilidad/cierre" element={<YearClosing />} />
                         <Route path="/contabilidad/apertura" element={<YearOpening />} />
+                        <Route path="/contabilidad/ajustes" element={<AccountingSettings />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         
                         {/* Accounts Receivable (CXC) */}
