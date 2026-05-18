@@ -803,11 +803,6 @@ const CashClosing = () => {
                                     <div class="center" style="font-size:8px; margin-top:6px;">Impreso ${new Date().toLocaleString('es-SV')}</div>
                                     </body></html>`;
 
-                                    const pw = window.open('', '_blank', 'width=400,height=600');
-                                    pw.document.write(html);
-                                    pw.document.close();
-                                    pw.focus();
-
                                     // Verificar si el POS tiene impresión directa configurada
                                     let autoPrint = false;
                                     if (s.pos_id) {
@@ -819,7 +814,22 @@ const CashClosing = () => {
                                     }
 
                                     if (autoPrint) {
-                                        setTimeout(() => { pw.print(); pw.close(); }, 400);
+                                        // Impresión directa sin preview: usar iframe oculto
+                                        const iframe = document.createElement('iframe');
+                                        iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;';
+                                        document.body.appendChild(iframe);
+                                        const idoc = iframe.contentDocument || iframe.contentWindow.document;
+                                        idoc.write(html);
+                                        idoc.close();
+                                        iframe.contentWindow.focus();
+                                        iframe.contentWindow.print();
+                                        setTimeout(() => document.body.removeChild(iframe), 1000);
+                                    } else {
+                                        // Vista previa normal
+                                        const pw = window.open('', '_blank', 'width=400,height=600');
+                                        pw.document.write(html);
+                                        pw.document.close();
+                                        pw.focus();
                                     }
                                 }}
                                 className="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest flex items-center justify-center gap-2 shadow-xl"
