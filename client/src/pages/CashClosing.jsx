@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
+import { printTicket } from '../utils/qzPrint';
 import { 
     Calculator, 
     History, 
@@ -803,29 +804,21 @@ const CashClosing = () => {
                                     <div class="center" style="font-size:8px; margin-top:6px;">Impreso ${new Date().toLocaleString('es-SV')}</div>
                                     </body></html>`;
 
-                                    // Verificar si el POS tiene impresión directa configurada
-                                    let autoPrint = false;
+                                    // Verificar si el POS tiene QZ Tray con impresora configurada
+                                    let qzSuccess = false;
                                     if (s.pos_id) {
                                         try {
                                             const { data: posList } = await axios.get('/api/pos');
                                             const pos = Array.isArray(posList) ? posList.find(p => p.id == s.pos_id) : null;
-                                            autoPrint = pos?.auto_print || false;
+                                            if (pos?.auto_print && pos?.printer_name) {
+                                                const qzResult = await printTicket(html, pos.printer_name);
+                                                qzSuccess = qzResult?.success;
+                                            }
                                         } catch(e) {}
                                     }
 
-                                    if (autoPrint) {
-                                        // Impresión directa sin preview: usar iframe oculto
-                                        const iframe = document.createElement('iframe');
-                                        iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;';
-                                        document.body.appendChild(iframe);
-                                        const idoc = iframe.contentDocument || iframe.contentWindow.document;
-                                        idoc.write(html);
-                                        idoc.close();
-                                        iframe.contentWindow.focus();
-                                        iframe.contentWindow.print();
-                                        setTimeout(() => document.body.removeChild(iframe), 1000);
-                                    } else {
-                                        // Vista previa normal
+                                    if (!qzSuccess) {
+                                        // Fallback: vista previa normal
                                         const pw = window.open('', '_blank', 'width=400,height=600');
                                         pw.document.write(html);
                                         pw.document.close();

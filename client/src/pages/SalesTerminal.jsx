@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
 
 const SalesTerminal = () => {
@@ -598,16 +599,6 @@ const SalesTerminal = () => {
     };
 
     const handlePrintTicket = async (sale) => {
-        // Verificar si el POS tiene impresión directa configurada
-        let autoPrint = false;
-        try {
-            if (sellerSession?.pos_id) {
-                const { data } = await axios.get(`/api/pos?branch_id=${sellerSession.branch_id}`);
-                const pos = Array.isArray(data) ? data.find(p => p.id == sellerSession.pos_id) : null;
-                autoPrint = pos?.auto_print || false;
-            }
-        } catch (e) { /* ignorar */ }
-
         const printContainer = window.open('', '_blank', 'width=400,height=600');
         
         const itemsHtml = sale.items.map(item => `
@@ -675,13 +666,30 @@ const SalesTerminal = () => {
                 </body>
             </html>
         `);
-        
-        printContainer.document.close();
-        if (autoPrint) {
-            printContainer.focus();
-            printContainer.print();
+
+        // Obtener ticket HTML completo antes de cerrar
+        const fullHtml = printContainer.document.documentElement.outerHTML;
+
+        // Verificar si el POS tiene QZ Tray con impresora configurada
+        let qzSuccess = false;
+        try {
+            if (sellerSession?.pos_id) {
+                const { data } = await axios.get('/api/pos');
+                const pos = Array.isArray(data) ? data.find(p => p.id == sellerSession.pos_id) : null;
+                if (pos?.auto_print && pos?.printer_name) {
+                    const qzResult = await printTicket(fullHtml, pos.printer_name);
+                    qzSuccess = qzResult?.success;
+                }
+            }
+        } catch (e) { /* fallback */ }
+
+        if (qzSuccess) {
             printContainer.close();
+            return;
         }
+
+        // Fallback: mostrar ventana de impresión normal
+        printContainer.document.close();
     };
 
     const handleProcessSale = () => {
