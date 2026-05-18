@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Plus, Eye, Ban, Edit, FileText, Trash2, Search } from 'lucide-react';
@@ -16,6 +16,8 @@ const AccountingEntries = () => {
     const [viewEntry, setViewEntry] = useState(null);
     const [editingEntry, setEditingEntry] = useState(null);
     const [search, setSearch] = useState('');
+    const [accountSearch, setAccountSearch] = useState('');
+    const [selectedAccountId, setSelectedAccountId] = useState('');
     const [lines, setLines] = useState([{ account_id: '', description: '', debit: '', credit: '' }]);
 
     const { data: entriesData, isLoading } = useQuery({
@@ -115,6 +117,24 @@ const AccountingEntries = () => {
         accountsByType[typeName].push(a);
     });
 
+    const accountResults = useMemo(() => {
+        if (!accountSearch) return [];
+        const q = accountSearch.toLowerCase();
+        return accounts.filter(a => a.allows_entries && (a.code?.toLowerCase().includes(q) || a.name?.toLowerCase().includes(q))).slice(0, 10);
+    }, [accounts, accountSearch]);
+
+    // F3: enfocar búsqueda de cuenta
+    useEffect(() => {
+        const handleKey = (e) => {
+            if (e.key === 'F3' && isModalOpen) {
+                e.preventDefault();
+                document.getElementById('quick-account')?.focus();
+            }
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [isModalOpen]);
+
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 animate-in fade-in pb-20">
             <div className="flex items-center justify-between">
@@ -184,16 +204,48 @@ const AccountingEntries = () => {
                         
                         {/* Quick-add bar */}
                         <div className="flex gap-2 items-end mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
-                            <div className="flex-1">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta</label>
-                                <select id="quick-account" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <option value="">Seleccionar...</option>
-                                    {Object.entries(accountsByType).map(([type, accs]) => (
-                                        <optgroup key={type} label={type}>
-                                            {accs.filter(a => a.allows_entries).map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
-                                        </optgroup>
-                                    ))}
-                                </select>
+                            <div className="flex-1 relative">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta (F3 buscar)</label>
+                                <div className="relative">
+                                    <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                                    <input
+                                        id="quick-account"
+                                        autoComplete="off"
+                                        placeholder="Código o nombre de cuenta..."
+                                        className="w-full pl-8 pr-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        onFocus={(e) => { setAccountSearch(e.target.value); }}
+                                        onChange={(e) => setAccountSearch(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); }
+                                            if (e.key === 'Enter') {
+                                                const first = accountResults[0];
+                                                if (first) { setSelectedAccountId(first.id); document.getElementById('quick-account').value = first.code + ' - ' + first.name; setAccountSearch(''); }
+                                            }
+                                        }}
+                                    />
+                                    {accountSearch && (
+                                        <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto mt-1">
+                                            {accountResults.length === 0 ? (
+                                                <div className="px-3 py-2 text-[10px] text-slate-400">Sin resultados</div>
+                                            ) : (
+                                                accountResults.map(a => (
+                                                    <div key={a.id}
+                                                        className="px-3 py-2 text-[10px] font-bold hover:bg-indigo-50 cursor-pointer border-b border-slate-50 flex justify-between"
+                                                        onClick={() => {
+                                                            setSelectedAccountId(a.id);
+                                                            document.getElementById('quick-account').value = a.code + ' - ' + a.name;
+                                                            setAccountSearch('');
+                                                        }}
+                                                    >
+                                                        <span className="font-mono text-indigo-500">{a.code}</span>
+                                                        <span className="flex-1 ml-2 truncate">{a.name}</span>
+                                                        <span className="text-slate-400 text-[9px]">{a.type_name}</span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div className="w-32">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Detalle</label>
@@ -211,16 +263,18 @@ const AccountingEntries = () => {
                                 </select>
                             </div>
                             <button type="button" onClick={() => {
-                                const acct = document.getElementById('quick-account').value;
+                                const acct = selectedAccountId;
                                 const desc = document.getElementById('quick-desc').value;
                                 const amt = document.getElementById('quick-amount').value;
                                 const type = document.getElementById('quick-type').value;
                                 if (!acct) return toast.error('Seleccione una cuenta');
                                 if (!amt || parseFloat(amt) <= 0) return toast.error('Ingrese un monto');
                                 setLines([...lines, { account_id: acct, description: desc, debit: type === 'debit' ? amt : '', credit: type === 'credit' ? amt : '' }]);
+                                setSelectedAccountId('');
                                 document.getElementById('quick-account').value = '';
                                 document.getElementById('quick-desc').value = '';
                                 document.getElementById('quick-amount').value = '';
+                                document.getElementById('quick-account').focus();
                             }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-xs transition-all shrink-0">
                                 + Agregar
                             </button>
