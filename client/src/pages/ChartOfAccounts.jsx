@@ -10,11 +10,10 @@ const ChartOfAccounts = () => {
     const queryClient = useQueryClient();
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState(null);
-    const [selectedType, setSelectedType] = useState('');
 
     const { data: accounts = [], isLoading } = useQuery({
-        queryKey: ['accounts', selectedType],
-        queryFn: async () => (await axios.get(`/api/accounting/accounts?type_id=${selectedType}`)).data,
+        queryKey: ['accounts'],
+        queryFn: async () => (await axios.get('/api/accounting/accounts')).data,
     });
 
     const { data: accountTypes = [] } = useQuery({
@@ -61,10 +60,6 @@ const ChartOfAccounts = () => {
                     <p className="text-slate-500 font-medium">Gestión del plan contable</p>
                 </div>
                 <div className="flex gap-3">
-                    <select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold">
-                        <option value="">Todos los tipos</option>
-                        {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
                     <button onClick={() => { setEditingAccount(null); setIsAccountModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
                         <Plus size={16} /> Nueva Cuenta
                     </button>

@@ -153,16 +153,22 @@ const createEntry = async (req, res) => {
         const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
         if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error('El débito y crédito no cuadran');
 
-        // Generar número correlativo
+        // Generar número correlativo: AAMM-NNN por tipo de partida
+        const entryDate = new Date(date);
+        const yy = String(entryDate.getFullYear()).slice(-2);
+        const mm = String(entryDate.getMonth() + 1).padStart(2, '0');
         const [[{ num }]] = await conn.query(
-            'SELECT COUNT(*) + 1 as num FROM accounting_entries WHERE company_id = ?', [req.company_id]
+            `SELECT COUNT(*) + 1 as num FROM accounting_entries 
+             WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
+            [req.company_id, entry_type_id, entryDate.getFullYear(), entryDate.getMonth() + 1]
         );
+        const entryNumber = `${yy}${mm}${String(num).padStart(3, '0')}`;
 
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: req.company_id,
             branch_id: branch_id || req.branch_id,
             entry_type_id,
-            number: `PART-${String(num).padStart(6, '0')}`,
+            number: entryNumber,
             date,
             description,
             total_debit: totalDebit,
@@ -317,12 +323,21 @@ const performClosing = async (req, res) => {
             throw new Error(`El cierre no cuadra: Débito $${totalD.toFixed(2)}, Crédito $${totalC.toFixed(2)}`);
         }
 
-        // Crear partida de cierre
-        const [[{ num }]] = await conn.query('SELECT COUNT(*) + 1 as num FROM accounting_entries WHERE company_id = ?', [companyId]);
+        // Generar número: mismo formato AAMM-NNN
+        const entryDate2 = new Date(date);
+        const yy2 = String(entryDate2.getFullYear()).slice(-2);
+        const mm2 = String(entryDate2.getMonth() + 1).padStart(2, '0');
+        const [[{ num: num2 }]] = await conn.query(
+            `SELECT COUNT(*) + 1 as num FROM accounting_entries 
+             WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
+            [companyId, 5, entryDate2.getFullYear(), entryDate2.getMonth() + 1]
+        );
+        const closingNumber = `${yy2}${mm2}${String(num2).padStart(3, '0')}`;
+
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: companyId,
-            entry_type_id: 5, // CIERRE
-            number: `CIERRE-${String(num).padStart(6, '0')}`,
+            entry_type_id: 5,
+            number: closingNumber,
             date,
             description: description || 'Cierre del Ejercicio Contable',
             total_debit: totalD,
@@ -390,11 +405,20 @@ const performOpening = async (req, res) => {
         const totalC = lines.reduce((s, l) => s + l.credit, 0);
         if (Math.abs(totalD - totalC) > 0.01) throw new Error(`La apertura no cuadra: D $${totalD.toFixed(2)}, C $${totalC.toFixed(2)}`);
 
-        const [[{ num }]] = await conn.query('SELECT COUNT(*) + 1 as num FROM accounting_entries WHERE company_id = ?', [companyId]);
+        const entryDate3 = new Date(date);
+        const yy3 = String(entryDate3.getFullYear()).slice(-2);
+        const mm3 = String(entryDate3.getMonth() + 1).padStart(2, '0');
+        const [[{ num: num3 }]] = await conn.query(
+            `SELECT COUNT(*) + 1 as num FROM accounting_entries 
+             WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
+            [companyId, 4, entryDate3.getFullYear(), entryDate3.getMonth() + 1]
+        );
+        const openingNumber = `${yy3}${mm3}${String(num3).padStart(3, '0')}`;
+
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: companyId,
-            entry_type_id: 4, // APERTURA
-            number: `APERT-${String(num).padStart(6, '0')}`,
+            entry_type_id: 4,
+            number: openingNumber,
             date,
             description: description || 'Apertura del Ejercicio Contable',
             total_debit: totalD,
