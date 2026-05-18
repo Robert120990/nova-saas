@@ -10,6 +10,7 @@ const ChartOfAccounts = () => {
     const queryClient = useQueryClient();
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState(null);
+    const [selectedFormType, setSelectedFormType] = useState('');
 
     const { data: accounts = [], isLoading } = useQuery({
         queryKey: ['accounts'],
@@ -60,7 +61,7 @@ const ChartOfAccounts = () => {
                     <p className="text-slate-500 font-medium">Gestión del plan contable</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => { setEditingAccount(null); setIsAccountModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
+                    <button                     onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
                         <Plus size={16} /> Nueva Cuenta
                     </button>
                 </div>
@@ -77,7 +78,7 @@ const ChartOfAccounts = () => {
                         <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{a.active ? 'Activo' : 'Inactivo'}</span></td>
                         <td className="px-6 py-3">
                             <div className="flex gap-2">
-                                <button onClick={() => { setEditingAccount(a); setIsAccountModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit size={14} /></button>
+                                <button onClick={() => { setEditingAccount(a); setSelectedFormType(a.account_type_id); setIsAccountModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit size={14} /></button>
                                 <button onClick={() => { if (confirm('¿Eliminar?')) deleteMutation.mutate(a.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
                             </div>
                         </td>
@@ -85,11 +86,11 @@ const ChartOfAccounts = () => {
                 )}
             />
 
-            <Modal isOpen={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); }} title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'} maxWidth="max-w-md">
+            <Modal isOpen={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); setSelectedFormType(''); }} title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'} maxWidth="max-w-md">
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
                     <div>
                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Tipo de Cuenta</label>
-                        <select name="account_type_id" defaultValue={editingAccount?.account_type_id || ''} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
+                        <select name="account_type_id" defaultValue={editingAccount?.account_type_id || ''} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" onChange={e => setSelectedFormType(e.target.value)}>
                             <option value="">Seleccionar</option>
                             {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
@@ -103,7 +104,7 @@ const ChartOfAccounts = () => {
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Cuenta Padre</label>
                             <select name="parent_id" defaultValue={editingAccount?.parent_id || ''} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
                                 <option value="">Ninguna (raíz)</option>
-                                {accounts.filter(a => !a.allows_entries || a.id === editingAccount?.parent_id).map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                                {accounts.filter(a => a.id !== editingAccount?.id && (!selectedFormType || a.account_type_id == selectedFormType)).map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
                             </select>
                         </div>
                     </div>

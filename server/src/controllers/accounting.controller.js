@@ -206,6 +206,54 @@ const voidEntry = async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
+const updateEntry = async (req, res) => {
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+    try {
+        const { lines, description } = req.body;
+        const entryId = req.params.id;
+
+        // Verificar que existe y no está anulada
+        const [[entry]] = await conn.query(
+            'SELECT * FROM accounting_entries WHERE id = ? AND company_id = ?',
+            [entryId, req.company_id]
+        );
+        if (!entry) throw new Error('Partida no encontrada');
+        if (entry.status === 'voided') throw new Error('No se puede editar una partida anulada');
+
+        if (!lines || lines.length === 0) throw new Error('Debe tener al menos una línea');
+
+        const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
+        const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
+        if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error('El débito y crédito no cuadran');
+
+        // Actualizar encabezado
+        await conn.query('UPDATE accounting_entries SET description = ?, total_debit = ?, total_credit = ?, updated_at = NOW() WHERE id = ?', [
+            description || entry.description, totalDebit, totalCredit, entryId
+        ]);
+
+        // Eliminar líneas anteriores
+        await conn.query('DELETE FROM accounting_entry_lines WHERE entry_id = ?', [entryId]);
+
+        // Insertar nuevas líneas
+        for (const line of lines) {
+            await conn.query('INSERT INTO accounting_entry_lines SET ?', [{
+                entry_id: entryId,
+                account_id: line.account_id,
+                description: line.description || '',
+                debit: line.debit || 0,
+                credit: line.credit || 0
+            }]);
+        }
+
+        await conn.commit();
+        res.json({ message: 'Partida actualizada' });
+    } catch (e) {
+        await conn.rollback();
+        res.status(400).json({ message: e.message });
+    } finally { conn.release(); }
+};
+
 // === Cierre Contable ===
 const getTrialBalance = async (req, res) => {
     try {
@@ -471,7 +519,7 @@ module.exports = {
     getAccountTypes, createAccountType, updateAccountType, deleteAccountType,
     getEntryTypes, createEntryType, updateEntryType, deleteEntryType,
     getAccounts, createAccount, updateAccount, deleteAccount,
-    getEntries, getEntry, createEntry, voidEntry,
+    getEntries, getEntry, createEntry, updateEntry, voidEntry,
     getTrialBalance, performClosing, performOpening,
     getSettings, saveSettings
 };

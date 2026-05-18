@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Eye, Ban, FileText, Trash2 } from 'lucide-react';
+import { Plus, Eye, Ban, Edit, FileText, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
@@ -12,6 +12,7 @@ const AccountingEntries = () => {
     const [page, setPage] = useState(1);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [viewEntry, setViewEntry] = useState(null);
+    const [editingEntry, setEditingEntry] = useState(null);
     const [lines, setLines] = useState([{ account_id: '', description: '', debit: '', credit: '' }]);
 
     const { data: entriesData, isLoading } = useQuery({
@@ -40,6 +41,30 @@ const AccountingEntries = () => {
         onSuccess: () => { queryClient.invalidateQueries(['entries']); toast.success('Partida anulada'); },
     });
 
+    const updateMutation = useMutation({
+        mutationFn: ({ id, ...data }) => axios.put(`/api/accounting/entries/${id}`, data),
+        onSuccess: () => { queryClient.invalidateQueries(['entries']); setIsModalOpen(false); setEditingEntry(null); resetForm(); toast.success('Partida actualizada'); },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+    });
+
+    const resetForm = () => setLines([{ account_id: '', description: '', debit: '', credit: '' }]);
+
+    const handleEdit = async (entry) => {
+        try {
+            const { data } = await axios.get(`/api/accounting/entries/${entry.id}`);
+            setEditingEntry(entry);
+            setLines(data.lines.map(l => ({
+                account_id: l.account_id,
+                description: l.description || '',
+                debit: l.debit ? parseFloat(l.debit).toFixed(2) : '',
+                credit: l.credit ? parseFloat(l.credit).toFixed(2) : '',
+            })));
+            setIsModalOpen(true);
+        } catch (e) {
+            toast.error('Error al cargar partida');
+        }
+    };
+
     const resetForm = () => setLines([{ account_id: '', description: '', debit: '', credit: '' }]);
 
     const addLine = () => setLines([...lines, { account_id: '', description: '', debit: '', credit: '' }]);
@@ -58,17 +83,23 @@ const AccountingEntries = () => {
         e.preventDefault();
         const fd = new FormData(e.target);
         if (!balanced) return toast.error('El débito y crédito no cuadran');
-        createMutation.mutate({
-            entry_type_id: fd.get('entry_type_id'),
-            date: fd.get('date'),
-            description: fd.get('description'),
+        const entryData = {
             lines: lines.map(l => ({
                 account_id: l.account_id,
                 description: l.description,
                 debit: parseFloat(l.debit || 0),
                 credit: parseFloat(l.credit || 0),
             })),
-        });
+        };
+        if (editingEntry) {
+            entryData.description = fd.get('description') || editingEntry.description;
+            updateMutation.mutate({ id: editingEntry.id, ...entryData });
+        } else {
+            entryData.entry_type_id = fd.get('entry_type_id');
+            entryData.date = fd.get('date');
+            entryData.description = fd.get('description');
+            createMutation.mutate(entryData);
+        }
     };
 
     const accountsByType = {};
@@ -85,7 +116,7 @@ const AccountingEntries = () => {
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><FileText size={28} className="text-indigo-600" />Partidas Contables</h1>
                     <p className="text-slate-500 font-medium">Registro de asientos contables</p>
                 </div>
-                <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
+                <button onClick={() => { setEditingEntry(null); resetForm(); setIsModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
                     <Plus size={16} /> Nueva Partida
                 </button>
             </div>
@@ -103,6 +134,7 @@ const AccountingEntries = () => {
                         <td className="px-6 py-3">
                             <div className="flex gap-2">
                                 <button onClick={async () => { const { data } = await axios.get(`/api/accounting/entries/${e.id}`); setViewEntry(data); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Eye size={14} /></button>
+                                <button onClick={() => handleEdit(e)} className="p-1.5 text-slate-400 hover:text-amber-600"><Edit size={14} /></button>
                                 {e.status === 'posted' && <button onClick={() => { if (confirm('¿Anular esta partida?')) voidMutation.mutate(e.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Ban size={14} /></button>}
                             </div>
                         </td>
@@ -113,9 +145,11 @@ const AccountingEntries = () => {
             {entriesData && <Pagination page={page} totalPages={entriesData.totalPages || 1} onPageChange={setPage} />}
 
             {/* New Entry Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Nueva Partida Contable" maxWidth="max-w-3xl">
+            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingEntry(null); }} title={editingEntry ? 'Editar Partida' : 'Nueva Partida Contable'} maxWidth="max-w-3xl">
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
                     <div className="grid grid-cols-3 gap-4">
+                        {!editingEntry && (
+                        <>
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Tipo de Partida</label>
                             <select name="entry_type_id" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
@@ -126,7 +160,9 @@ const AccountingEntries = () => {
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Fecha</label>
                             <input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                         </div>
-                        <div>
+                        </>
+                        )}
+                        <div className={editingEntry ? 'col-span-3' : ''}>
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Descripción</label>
                             <input name="description" placeholder="Concepto de la partida" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                         </div>
@@ -170,9 +206,9 @@ const AccountingEntries = () => {
                     </div>
 
                     <div className="flex gap-3 pt-4">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs font-black uppercase text-slate-400">Cancelar</button>
-                        <button type="submit" disabled={!balanced || createMutation.isPending} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black uppercase text-xs disabled:opacity-50">
-                            {createMutation.isPending ? 'Guardando...' : 'Registrar Partida'}
+                        <button type="button" onClick={() => { setIsModalOpen(false); setEditingEntry(null); }} className="flex-1 py-3 text-xs font-black uppercase text-slate-400">Cancelar</button>
+                        <button type="submit" disabled={!balanced || createMutation.isPending || updateMutation.isPending} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black uppercase text-xs disabled:opacity-50">
+                            {createMutation.isPending || updateMutation.isPending ? 'Guardando...' : editingEntry ? 'Actualizar Partida' : 'Registrar Partida'}
                         </button>
                     </div>
                 </form>
