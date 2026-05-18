@@ -622,7 +622,7 @@ const CashClosing = () => {
                                 </div>
 
                                 <button 
-                                    onClick={() => {
+                                onClick={async () => {
                                         const totalCashIncomings = (parseFloat(shiftSummary.opening_balance) || 0) + (parseFloat(shiftSummary.cash) || 0) + incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
                                         const totalExp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
                                         if (totalExp > totalCashIncomings) {
