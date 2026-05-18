@@ -23,7 +23,6 @@ import {
     AlertTriangle,
     CreditCard,
     BookOpen,
-    FileText,
     Sparkles
 } from 'lucide-react';
 
