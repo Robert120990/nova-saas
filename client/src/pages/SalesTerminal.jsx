@@ -597,71 +597,23 @@ const SalesTerminal = () => {
         setIsAuthModalOpen(true);
     };
 
-    const handlePrintTicket = (sale) => {
-        const printWindow = window.open('', '_blank', 'width=400,height=600');
+    const handlePrintTicket = async (sale) => {
+        // Verificar si el POS tiene impresión directa configurada
+        let autoPrint = false;
+        try {
+            if (sellerSession?.pos_id) {
+                const { data } = await axios.get(`/api/pos?branch_id=${sellerSession.branch_id}`);
+                const pos = Array.isArray(data) ? data.find(p => p.id == sellerSession.pos_id) : null;
+                autoPrint = pos?.auto_print || false;
+            }
+        } catch (e) { /* ignorar */ }
+
+        const printContainer = window.open('', '_blank', 'width=400,height=600');
         
         const itemsHtml = sale.items.map(item => `
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                 <div style="flex: 1;">${item.nombre}</div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9em;">
-                <div>${parseFloat(item.cantidad).toFixed(4)} x $${parseFloat(item.precio).toFixed(2)}</div>
-                <div>$${(item.cantidad * item.precio).toFixed(2)} G</div>
-            </div>
-        `).join('');
-
-        const dteData = sale.dte || {};
-        const baseUrl = axios.defaults.baseURL || window.location.origin;
-        const pdfDownloadUrl = `${baseUrl}/api/public/dte/${dteData.codigo_generacion || sale.id}/pdf`;
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pdfDownloadUrl)}`;
-
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <style>
-                        @page { margin: 0; }
-                        body { 
-                            font-family: 'Courier New', Courier, monospace; 
-                            width: 80mm; 
-                            margin: 0; 
-                            padding: 5mm;
-                            font-size: 12px;
-                            line-height: 1.2;
-                        }
-                        .text-center { text-center: center; text-align: center; }
-                        .bold { font-weight: bold; }
-                        .dashed { border-top: 1px dashed #000; margin: 10px 0; }
-                        .flex-between { display: flex; justify-content: space-between; }
-                    </style>
-                </head>
-                <body>
-                    <div class="text-center bold">COMPROBANTE DE ${sale.tipoDteName.toUpperCase()} ELECTRONICA</div>
-                    <div class="text-center">${dteData.numero_control || '---'}</div>
-                    <div class="text-center" style="font-size: 0.8em; margin-top: 5px;">CODIGO GENERACION:</div>
-                    <div class="text-center" style="font-size: 0.8em; word-break: break-all;">${dteData.codigo_generacion || '---'}</div>
-                    ${dteData.sello_recepcion ? `<div class="text-center" style="font-size: 0.8em; margin-top: 2px;">SELLO DE RECEPCION:</div><div class="text-center" style="font-size: 0.8em; word-break: break-all;">${dteData.sello_recepcion}</div>` : ''}
-                    
-                    <div class="dashed"></div>
-                    
-                    <div class="text-center bold">${currentCompany?.razon_social || currentCompany?.nombre_comercial || 'EMPRESA'}</div>
-                    <div class="text-center">${currentCompany?.direccion || ''}</div>
-                    <div class="text-center">NRC : ${currentCompany?.nrc || 'N/A'}</div>
-                    <div class="text-center">NIT : ${currentCompany?.nit || ''}</div>
-                    <div class="text-center bold">PRECIOS EN DOLARES (US)</div>
-
-                    <div class="dashed"></div>
-
-                    <div>CLIENTE: ${sale.customer?.id || 'X'}</div>
-                    <div>NOMBRE: ${sale.customer?.nombre || 'CONSUMIDOR FINAL'}</div>
-                    <div>NIT: ${sale.customer?.nit || ''}</div>
-                    <div>NRC: ${sale.customer?.nrc || ''}</div>
-
-                    <div class="dashed"></div>
-
-                    <div class="flex-between">
-                        <div>FECHA: ${new Date().toLocaleDateString()}</div>
-                        <div>HORA: ${new Date().toLocaleTimeString()}</div>
-                    </div>
 
                     <div class="dashed"></div>
 
@@ -724,7 +676,12 @@ const SalesTerminal = () => {
             </html>
         `);
         
-        printWindow.document.close();
+        printContainer.document.close();
+        if (autoPrint) {
+            printContainer.focus();
+            printContainer.print();
+            printContainer.close();
+        }
     };
 
     const handleProcessSale = () => {

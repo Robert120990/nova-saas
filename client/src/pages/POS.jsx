@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Monitor, Edit, Trash2, Power } from 'lucide-react';
+import { Plus, Monitor, Edit, Trash2, Power, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -100,7 +100,7 @@ const POS = () => {
             </div>
 
             <Table 
-                headers={['Sucursal', 'Código POS', 'Nombre terminal', 'Estado', 'Acciones']}
+                headers={['Sucursal', 'Código', 'Terminal', 'Impresora', 'Estado', 'Acciones']}
                 data={posList}
                 isLoading={isLoading}
                 renderRow={(pos) => (
@@ -117,6 +117,15 @@ const POS = () => {
                             </span>
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-slate-700">{pos.nombre}</td>
+                        <td className="px-6 py-4">
+                            {pos.auto_print ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full" title={pos.printer_name}>
+                                    <Printer size={10} /> {pos.printer_name || 'Auto'}
+                                </span>
+                            ) : (
+                                <span className="text-[10px] text-slate-400">—</span>
+                            )}
+                        </td>
                         <td className="px-6 py-4">
                             <button
                                 onClick={() => toggleStatusMutation.mutate({ id: pos.id, status: pos.status })}
@@ -194,6 +203,32 @@ const POS = () => {
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all" 
                             required 
                         />
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-4">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-3">Configuración de Impresión</label>
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox"
+                                    name="auto_print"
+                                    value="1"
+                                    defaultChecked={selectedPos?.auto_print}
+                                    id="auto_print"
+                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600"
+                                />
+                                <label htmlFor="auto_print" className="text-xs font-bold text-slate-600">Impresión directa (sin vista previa)</label>
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nombre de Impresora</label>
+                                <input 
+                                    name="printer_name" 
+                                    defaultValue={selectedPos?.printer_name || ''}
+                                    placeholder="Ej: EPSON TM-T20II" 
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all" 
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="pt-4 flex gap-3">
