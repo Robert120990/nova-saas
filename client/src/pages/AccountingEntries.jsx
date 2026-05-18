@@ -203,8 +203,9 @@ const AccountingEntries = () => {
                         <span className="text-[10px] font-black uppercase text-slate-400 mb-3 block">Líneas de la Partida</span>
                         
                         {/* Quick-add bar */}
-                        <div className="flex gap-2 items-end mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
-                            <div className="w-28 relative">
+                        <div className="mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100 space-y-2">
+                            <div className="flex gap-2 items-end">
+                            <div className="w-[110px] relative">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta (F3)</label>
                                 <input
                                     id="quick-account"
@@ -216,14 +217,13 @@ const AccountingEntries = () => {
                                         if (!e.target.value) setSelectedAccountId('');
                                     }}
                                     onKeyDown={(e) => {
-                                        if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); document.getElementById('quick-account-name').value = ''; }
+                                        if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); }
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
                                             const first = accountResults[0];
                                             if (first) {
                                                 setSelectedAccountId(first.id);
                                                 document.getElementById('quick-account').value = first.code;
-                                                document.getElementById('quick-account-name').value = first.name;
                                                 setAccountSearch('');
                                             }
                                         }
@@ -240,7 +240,6 @@ const AccountingEntries = () => {
                                                     onClick={() => {
                                                         setSelectedAccountId(a.id);
                                                         document.getElementById('quick-account').value = a.code;
-                                                        document.getElementById('quick-account-name').value = a.name;
                                                         setAccountSearch('');
                                                     }}
                                                 >
@@ -252,20 +251,16 @@ const AccountingEntries = () => {
                                     </div>
                                 )}
                             </div>
-                            <div className="flex-[2] min-w-0">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Nombre</label>
-                                <input id="quick-account-name" readOnly placeholder="Seleccione una cuenta" className="w-full px-2 py-2 bg-slate-100 border border-indigo-100 rounded-xl text-[11px] font-bold text-slate-600 outline-none cursor-default" />
-                            </div>
-                            <div className="w-40">
+                            <div className="flex-1">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Detalle</label>
                                 <input id="quick-desc" placeholder="Descripción" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] outline-none" />
                             </div>
-                            <div className="w-28">
+                            <div className="w-[110px]">
                                 <label className="text-[8px] font-black text-emerald-500 uppercase ml-1 block mb-1">Débito</label>
                                 <input id="quick-debit" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-700 outline-none"
                                     onChange={(e) => { if (e.target.value) document.getElementById('quick-credit').value = ''; }} />
                             </div>
-                            <div className="w-28">
+                            <div className="w-[110px]">
                                 <label className="text-[8px] font-black text-rose-500 uppercase ml-1 block mb-1">Crédito</label>
                                 <input id="quick-credit" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-bold text-rose-700 outline-none"
                                     onChange={(e) => { if (e.target.value) document.getElementById('quick-debit').value = ''; }} />
@@ -287,6 +282,12 @@ const AccountingEntries = () => {
                             }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-xs transition-all shrink-0">
                                 + Agregar
                             </button>
+                            </div>
+                            {selectedAccountId && (
+                                <div className="text-[10px] font-bold text-indigo-600 bg-white/80 px-3 py-1 rounded-lg">
+                                    {accounts.find(a => a.id == selectedAccountId)?.code} — {accounts.find(a => a.id == selectedAccountId)?.name}
+                                </div>
+                            )}
                         </div>
 
                         {/* Lines list */}
