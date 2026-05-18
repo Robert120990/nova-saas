@@ -1,61 +1,108 @@
 /**
  * QZ Tray Print Utility
- * Imprime tickets directo a impresora térmica sin diálogo del navegador.
- * Requiere QZ Tray instalado y corriendo en la PC local.
+ * Requiere QZ Tray instalado + llaves de firma configuradas.
+ *
+ * PASOS PARA CONFIGURAR (una sola vez por PC):
+ * 1. QZ Tray > clic derecho > Advanced > Site Manager
+ * 2. Botón "+" > Create New > Yes a todo
+ * 3. Carpeta "QZ Tray Demo Cert" aparece en el Escritorio
+ * 4. Copiar los archivos a client/public/signing/
+ *    - digital-certificate.txt
+ *    - private-key.pem
+ * 5. Reiniciar QZ Tray y el navegador
  */
 
 let qz;
+let qzReady = false;
 
 async function getQZ() {
     if (!qz) {
         qz = await import('qz-tray');
-        // Configurar para entorno local: aceptar certificado auto-firmado
-        if (qz.api) {
-            qz.api.setPromiseType(resolver => new Promise(resolver));
-        }
     }
     return qz;
 }
 
-/**
- * Imprime contenido HTML/texto a una impresora específica vía QZ Tray.
- * @param {string} html - Contenido HTML a imprimir
- * @param {string} printerName - Nombre exacto de la impresora configurada en QZ Tray
- * @returns {object} { success: boolean, error?: string }
- */
-export async function qzPrint(html, printerName) {
+async function initQZ() {
+    if (qzReady) return true;
     try {
         const qzModule = await getQZ();
 
-        // Conectar al servicio QZ Tray local (ws:// sin SSL para evitar error de certificado)
+        // Promesa del certificado (carga digital-certificate.txt)
+        qzModule.security.setCertificatePromise((resolve) => {
+            fetch('/signing/digital-certificate.txt', { cache: 'no-store' })
+                .then(r => r.text())
+                .then(resolve)
+                .catch(() => resolve(null));
+        });
+
+        // Promesa de firma (usa private-key.pem via backend)
+        qzModule.security.setSignatureAlgorithm('SHA512');
+        qzModule.security.setSignaturePromise((toSign) => {
+            return function (resolve) {
+                fetch('/signing/private-key.pem', { cache: 'no-store' })
+                    .then(r => r.text())
+                    .then(async (pemKey) => {
+                        // Firmar usando Web Crypto API (RSA-SHA512)
+                        const pemData = pemKey
+                            .replace('-----BEGIN PRIVATE KEY-----', '')
+                            .replace('-----END PRIVATE KEY-----', '')
+                            .replace(/\s/g, '');
+                        const keyData = Uint8Array.from(atob(pemData), c => c.charCodeAt(0));
+                        const key = await crypto.subtle.importKey(
+                            'pkcs8', keyData,
+                            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-512' },
+                            false, ['sign']
+                        );
+                        const encoder = new TextEncoder();
+                        const sig = await crypto.subtle.sign(
+                            'RSASSA-PKCS1-v1_5', key,
+                            encoder.encode(toSign)
+                        );
+                        resolve(btoa(String.fromCharCode(...new Uint8Array(sig))));
+                    })
+                    .catch(() => resolve(null));
+            };
+        });
+
+        // Conectar (ws:// localhost)
         if (!qzModule.websocket.isActive()) {
             await qzModule.websocket.connect({
                 host: 'localhost',
                 port: 8182,
-                usingSecure: false,    // ws:// en vez de wss://
+                usingSecure: false,
                 retries: 2,
                 delay: 1
             });
         }
+        qzReady = true;
+        return true;
+    } catch (e) {
+        console.warn('[QZ] Init failed:', e.message);
+        return false;
+    }
+}
 
-        // Buscar la impresora por nombre
+export async function qzPrint(html, printerName) {
+    try {
+        const ready = await initQZ();
+        if (!ready) return { success: false, error: 'QZ Tray no disponible' };
+
+        const qzModule = await getQZ();
         const printers = await qzModule.printers.find();
         const printer = printers.find(p =>
             p.name && p.name.toLowerCase().includes(printerName.toLowerCase())
         );
 
         if (!printer) {
-            return { success: false, error: `Impresora "${printerName}" no encontrada en QZ Tray` };
+            return { success: false, error: `Impresora "${printerName}" no encontrada` };
         }
 
-        // Configurar la impresión
         const config = qzModule.configs.create(printer.name, {
-            size: { width: 80, height: 200 }, // 80mm ancho ticket térmico
+            size: { width: 80, height: 200 },
             units: 'mm',
             orientation: 'portrait'
         });
 
-        // Enviar HTML como datos de impresión
         const data = [{
             type: 'html',
             format: 'plain',
@@ -63,33 +110,21 @@ export async function qzPrint(html, printerName) {
         }];
 
         await qzModule.print(config, data);
-
         return { success: true };
-
     } catch (error) {
         console.error('[QZPrint] Error:', error.message);
         return { success: false, error: error.message };
     }
 }
 
-/**
- * Imprime usando QZ Tray si está disponible; si no, fallback a window.print()
- * @param {string} html - Contenido HTML
- * @param {string} printerName - Nombre de impresora configurada
- * @param {object} options - { fallbackFn } función a llamar si QZ falla
- */
 export async function printTicket(html, printerName, { fallbackFn } = {}) {
     if (!printerName) {
-        // Sin impresora configurada → fallback
         return fallbackFn ? fallbackFn() : null;
     }
-
     const result = await qzPrint(html, printerName);
-
     if (!result.success && fallbackFn) {
         console.warn('[QZPrint] Fallback a window.print():', result.error);
         return fallbackFn();
     }
-
     return result;
 }
