@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Edit, Trash2, BookOpen, Search, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, BookOpen, Search, Upload, HelpCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
@@ -17,6 +17,7 @@ const ChartOfAccounts = () => {
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
     const [isImporting, setIsImporting] = useState(false);
+    const [showHelp, setShowHelp] = useState(false);
     const PAGE_SIZE = 30;
 
     const { data: accounts = [], isLoading } = useQuery({
@@ -116,8 +117,39 @@ const ChartOfAccounts = () => {
                             }
                         }} />
                     </label>
+                    <button onClick={() => setShowHelp(!showHelp)} className="p-3 rounded-2xl transition-colors" title="Ayuda">
+                        <HelpCircle size={18} className="text-slate-400 hover:text-indigo-500" />
+                    </button>
                 </div>
             </div>
+
+            {showHelp && (
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-xs space-y-3 relative">
+                    <button onClick={() => setShowHelp(false)} className="absolute top-3 right-3 text-blue-400 hover:text-blue-600"><X size={14} /></button>
+                    <h3 className="font-black text-blue-700 text-sm">Formato del archivo CSV para importar</h3>
+                    <p className="text-blue-600">El archivo debe ser <b>CSV</b> (valores separados por coma) con las siguientes columnas en orden:</p>
+                    <table className="w-full text-left border-collapse mt-2">
+                        <thead><tr className="bg-blue-100/50"><th className="p-2 border border-blue-200 font-bold">Columna</th><th className="p-2 border border-blue-200 font-bold">Descripción</th><th className="p-2 border border-blue-200 font-bold">Ejemplo</th></tr></thead>
+                        <tbody>
+                            <tr><td className="p-2 border border-blue-200 font-mono">code</td><td className="p-2 border border-blue-200">Código de la cuenta</td><td className="p-2 border border-blue-200 font-mono">110101</td></tr>
+                            <tr><td className="p-2 border border-blue-200 font-mono">name</td><td className="p-2 border border-blue-200">Nombre de la cuenta</td><td className="p-2 border border-blue-200">CAJA GENERAL</td></tr>
+                            <tr><td className="p-2 border border-blue-200 font-mono">account_type_id</td><td className="p-2 border border-blue-200">ID del tipo: 1=Activo, 2=Pasivo, 3=Patrimonio, 4=Ingreso, 5=Costo, 6=Gasto</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
+                            <tr><td className="p-2 border border-blue-200 font-mono">parent_code</td><td className="p-2 border border-blue-200">Código de la cuenta padre (vacío si es raíz)</td><td className="p-2 border border-blue-200 font-mono">1101</td></tr>
+                            <tr><td className="p-2 border border-blue-200 font-mono">allows_entries</td><td className="p-2 border border-blue-200">1 = permite asientos, 0 = solo agrupación</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
+                        </tbody>
+                    </table>
+                    <div className="bg-blue-100 rounded-xl p-3 font-mono text-[10px] text-blue-800 mt-3">
+                        <b>Ejemplo de archivo CSV:</b><br/>
+                        code,name,account_type_id,parent_code,allows_entries<br/>
+                        1,ACTIVO,1,,0<br/>
+                        11,ACTIVO CORRIENTE,1,1,0<br/>
+                        1101,EFECTIVO Y EQUIVALENTES,1,11,0<br/>
+                        110101,CAJA GENERAL,1,1101,1<br/>
+                        110102,CAJA CHICA,1,1101,1
+                    </div>
+                    <p className="text-blue-500 text-[10px]">Las cuentas padre deben existir o estar antes en el archivo. Si una cuenta ya existe, se actualiza.</p>
+                </div>
+            )}
 
             <Table headers={['Código', 'Nombre', 'Tipo', 'Padre', 'Detalle', 'Estado']} data={paginatedAccounts} isLoading={isLoading}
                 renderRow={(a) => (
