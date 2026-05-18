@@ -79,13 +79,7 @@ const AccountingEntries = () => {
         }
     };
 
-    const addLine = () => setLines([...lines, { account_id: '', description: '', debit: '', credit: '' }]);
     const removeLine = (idx) => { if (lines.length > 1) setLines(lines.filter((_, i) => i !== idx)); };
-    const updateLine = (idx, field, value) => {
-        const updated = [...lines];
-        updated[idx][field] = value;
-        setLines(updated);
-    };
 
     const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
@@ -186,36 +180,71 @@ const AccountingEntries = () => {
                     </div>
 
                     <div className="border-t pt-4">
-                        <div className="flex justify-between items-center mb-3">
-                            <span className="text-[10px] font-black uppercase text-slate-400">Líneas de la Partida</span>
-                            <button type="button" onClick={addLine} className="text-xs font-bold text-indigo-600 hover:text-indigo-800">+ Agregar línea</button>
-                        </div>
-                        {lines.map((line, idx) => (
-                            <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-start">
-                                <div className="col-span-4">
-                                    <select value={line.account_id} onChange={e => updateLine(idx, 'account_id', e.target.value)} required className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold">
-                                        <option value="">Cuenta...</option>
-                                        {Object.entries(accountsByType).map(([type, accs]) => (
-                                            <optgroup key={type} label={type}>
-                                                {accs.filter(a => a.allows_entries).map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
-                                            </optgroup>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="col-span-3">
-                                    <input value={line.description} onChange={e => updateLine(idx, 'description', e.target.value)} placeholder="Detalle" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px]" />
-                                </div>
-                                <div className="col-span-2">
-                                    <input type="number" step="0.01" value={line.debit} onChange={e => updateLine(idx, 'debit', e.target.value)} placeholder="Débito" className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] font-bold text-emerald-700" />
-                                </div>
-                                <div className="col-span-2">
-                                    <input type="number" step="0.01" value={line.credit} onChange={e => updateLine(idx, 'credit', e.target.value)} placeholder="Crédito" className="w-full px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg text-[11px] font-bold text-rose-700" />
-                                </div>
-                                <div className="col-span-1">
-                                    {lines.length > 1 && <button type="button" onClick={() => removeLine(idx)} className="p-2 text-rose-400 hover:text-rose-600"><Trash2 size={14} /></button>}
-                                </div>
+                        <span className="text-[10px] font-black uppercase text-slate-400 mb-3 block">Líneas de la Partida</span>
+                        
+                        {/* Quick-add bar */}
+                        <div className="flex gap-2 items-end mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
+                            <div className="flex-1">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta</label>
+                                <select id="quick-account" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    <option value="">Seleccionar...</option>
+                                    {Object.entries(accountsByType).map(([type, accs]) => (
+                                        <optgroup key={type} label={type}>
+                                            {accs.filter(a => a.allows_entries).map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                                        </optgroup>
+                                    ))}
+                                </select>
                             </div>
-                        ))}
+                            <div className="w-32">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Detalle</label>
+                                <input id="quick-desc" placeholder="Descripción" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] outline-none" />
+                            </div>
+                            <div className="w-28">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Monto</label>
+                                <input id="quick-amount" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold outline-none" />
+                            </div>
+                            <div className="w-20">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Tipo</label>
+                                <select id="quick-type" className="w-full px-2 py-2 bg-white border border-indigo-200 rounded-xl text-[10px] font-bold">
+                                    <option value="debit">Débito</option>
+                                    <option value="credit">Crédito</option>
+                                </select>
+                            </div>
+                            <button type="button" onClick={() => {
+                                const acct = document.getElementById('quick-account').value;
+                                const desc = document.getElementById('quick-desc').value;
+                                const amt = document.getElementById('quick-amount').value;
+                                const type = document.getElementById('quick-type').value;
+                                if (!acct) return toast.error('Seleccione una cuenta');
+                                if (!amt || parseFloat(amt) <= 0) return toast.error('Ingrese un monto');
+                                setLines([...lines, { account_id: acct, description: desc, debit: type === 'debit' ? amt : '', credit: type === 'credit' ? amt : '' }]);
+                                document.getElementById('quick-account').value = '';
+                                document.getElementById('quick-desc').value = '';
+                                document.getElementById('quick-amount').value = '';
+                            }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-xs transition-all shrink-0">
+                                + Agregar
+                            </button>
+                        </div>
+
+                        {/* Lines list */}
+                        {lines.length === 0 ? (
+                            <p className="text-center py-4 text-slate-300 text-xs">Sin líneas. Use la barra superior para agregar.</p>
+                        ) : (
+                            <div className="space-y-1 max-h-64 overflow-y-auto">
+                                {lines.map((line, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100 group hover:bg-white transition-colors">
+                                        <span className="font-mono text-[10px] font-bold text-slate-400 w-6 text-right">{idx + 1}</span>
+                                        <span className="flex-1 text-xs font-bold truncate">
+                                            {accounts.find(a => a.id == line.account_id)?.code || '?'} - {accounts.find(a => a.id == line.account_id)?.name?.substring(0, 30) || '?'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 w-24 truncate">{line.description}</span>
+                                        {parseFloat(line.debit) > 0 && <span className="text-xs font-bold text-emerald-600 w-24 text-right">${parseFloat(line.debit).toFixed(2)} D</span>}
+                                        {parseFloat(line.credit) > 0 && <span className="text-xs font-bold text-rose-600 w-24 text-right">${parseFloat(line.credit).toFixed(2)} C</span>}
+                                        <button type="button" onClick={() => removeLine(idx)} className="p-1 text-rose-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         <div className="flex justify-between text-xs font-bold mt-3 pt-3 border-t">
                             <span className={balanced ? 'text-emerald-600' : 'text-rose-600'}>{balanced ? '✓ Cuadra' : '✗ No cuadra'}</span>
                             <span>Débito: <b className="text-emerald-600">${totalDebit.toFixed(2)}</b> | Crédito: <b className="text-rose-600">${totalCredit.toFixed(2)}</b></span>
