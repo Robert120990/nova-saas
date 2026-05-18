@@ -23,6 +23,10 @@ const AccountingSettings = () => {
         if (settings && Object.keys(settings).length > 0) {
             setForm({
                 resultado_ejercicio_id: settings.resultado_ejercicio_id || '',
+                contador_nombre: settings.contador_nombre || '',
+                contador_dui: settings.contador_dui || '',
+                auditor_nombre: settings.auditor_nombre || '',
+                auditor_dui: settings.auditor_dui || '',
             });
         }
     }, [settings]);
@@ -68,6 +72,22 @@ const AccountingSettings = () => {
                                 ✓ {patrimAccounts.find(a => a.id == form.resultado_ejercicio_id)?.name || 'Cuenta seleccionada'}
                             </p>
                         )}
+                    </div>
+
+                    <div className="border-t pt-4">
+                        <span className="text-[10px] font-black uppercase text-slate-400 mb-3 block">Firmantes de Reportes</span>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-3">
+                                <label className="text-[9px] font-bold text-slate-500 uppercase">Contador</label>
+                                <input value={form.contador_nombre} onChange={e => setForm({...form, contador_nombre: e.target.value})} placeholder="Nombre del contador" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                <input value={form.contador_dui} onChange={e => setForm({...form, contador_dui: e.target.value})} placeholder="DUI 00000000-0" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono" />
+                            </div>
+                            <div className="space-y-3">
+                                <label className="text-[9px] font-bold text-slate-500 uppercase">Auditor</label>
+                                <input value={form.auditor_nombre} onChange={e => setForm({...form, auditor_nombre: e.target.value})} placeholder="Nombre del auditor" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                <input value={form.auditor_dui} onChange={e => setForm({...form, auditor_dui: e.target.value})} placeholder="DUI 00000000-0" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono" />
+                            </div>
+                        </div>
                     </div>
 
                     <button

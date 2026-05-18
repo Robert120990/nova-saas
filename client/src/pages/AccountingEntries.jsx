@@ -18,7 +18,7 @@ const AccountingEntries = () => {
     const [search, setSearch] = useState('');
     const [accountSearch, setAccountSearch] = useState('');
     const [selectedAccountId, setSelectedAccountId] = useState('');
-    const [lines, setLines] = useState([{ account_id: '', description: '', debit: '', credit: '' }]);
+    const [lines, setLines] = useState([]);
 
     const { data: entriesData, isLoading } = useQuery({
         queryKey: ['entries', page],
@@ -63,7 +63,7 @@ const AccountingEntries = () => {
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
-    const resetForm = () => setLines([{ account_id: '', description: '', debit: '', credit: '' }]);
+    const resetForm = () => setLines([]);
 
     const handleEdit = async (entry) => {
         try {
@@ -81,7 +81,7 @@ const AccountingEntries = () => {
         }
     };
 
-    const removeLine = (idx) => { if (lines.length > 1) setLines(lines.filter((_, i) => i !== idx)); };
+    const removeLine = (idx) => setLines(lines.filter((_, i) => i !== idx));
 
     const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
@@ -252,28 +252,28 @@ const AccountingEntries = () => {
                                 <input id="quick-desc" placeholder="Descripción" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] outline-none" />
                             </div>
                             <div className="w-28">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Monto</label>
-                                <input id="quick-amount" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold outline-none" />
+                                <label className="text-[8px] font-black text-emerald-500 uppercase ml-1 block mb-1">Débito</label>
+                                <input id="quick-debit" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-700 outline-none"
+                                    onChange={(e) => { if (e.target.value) document.getElementById('quick-credit').value = ''; }} />
                             </div>
-                            <div className="w-20">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Tipo</label>
-                                <select id="quick-type" className="w-full px-2 py-2 bg-white border border-indigo-200 rounded-xl text-[10px] font-bold">
-                                    <option value="debit">Débito</option>
-                                    <option value="credit">Crédito</option>
-                                </select>
+                            <div className="w-28">
+                                <label className="text-[8px] font-black text-rose-500 uppercase ml-1 block mb-1">Crédito</label>
+                                <input id="quick-credit" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-bold text-rose-700 outline-none"
+                                    onChange={(e) => { if (e.target.value) document.getElementById('quick-debit').value = ''; }} />
                             </div>
                             <button type="button" onClick={() => {
                                 const acct = selectedAccountId;
                                 const desc = document.getElementById('quick-desc').value;
-                                const amt = document.getElementById('quick-amount').value;
-                                const type = document.getElementById('quick-type').value;
+                                const debit = document.getElementById('quick-debit').value;
+                                const credit = document.getElementById('quick-credit').value;
                                 if (!acct) return toast.error('Seleccione una cuenta');
-                                if (!amt || parseFloat(amt) <= 0) return toast.error('Ingrese un monto');
-                                setLines([...lines, { account_id: acct, description: desc, debit: type === 'debit' ? amt : '', credit: type === 'credit' ? amt : '' }]);
+                                if ((!debit || parseFloat(debit) <= 0) && (!credit || parseFloat(credit) <= 0)) return toast.error('Ingrese débito o crédito');
+                                setLines([...lines, { account_id: acct, description: desc, debit: debit || '', credit: credit || '' }]);
                                 setSelectedAccountId('');
                                 document.getElementById('quick-account').value = '';
                                 document.getElementById('quick-desc').value = '';
-                                document.getElementById('quick-amount').value = '';
+                                document.getElementById('quick-debit').value = '';
+                                document.getElementById('quick-credit').value = '';
                                 document.getElementById('quick-account').focus();
                             }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-xs transition-all shrink-0">
                                 + Agregar
