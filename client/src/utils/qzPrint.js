@@ -27,12 +27,12 @@ export async function qzPrint(html, printerName) {
     try {
         const qzModule = await getQZ();
 
-        // Conectar al servicio QZ Tray local (ws:// para localhost)
+        // Conectar al servicio QZ Tray local (ws:// sin SSL para evitar error de certificado)
         if (!qzModule.websocket.isActive()) {
             await qzModule.websocket.connect({
                 host: 'localhost',
                 port: 8182,
-                signing: false,       // Deshabilitar verificación de firma para entorno local
+                usingSecure: false,    // ws:// en vez de wss://
                 retries: 2,
                 delay: 1
             });
