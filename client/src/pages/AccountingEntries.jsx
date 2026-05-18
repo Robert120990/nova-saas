@@ -204,7 +204,7 @@ const AccountingEntries = () => {
                         
                         {/* Quick-add bar */}
                         <div className="flex gap-2 items-end mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
-                            <div className="w-24 relative">
+                            <div className="w-28 relative">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta (F3)</label>
                                 <input
                                     id="quick-account"
@@ -252,11 +252,11 @@ const AccountingEntries = () => {
                                     </div>
                                 )}
                             </div>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-[2] min-w-0">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Nombre</label>
                                 <input id="quick-account-name" readOnly placeholder="Seleccione una cuenta" className="w-full px-2 py-2 bg-slate-100 border border-indigo-100 rounded-xl text-[11px] font-bold text-slate-600 outline-none cursor-default" />
                             </div>
-                            <div className="w-32">
+                            <div className="w-40">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Detalle</label>
                                 <input id="quick-desc" placeholder="Descripción" className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] outline-none" />
                             </div>
