@@ -9,6 +9,10 @@ let qz;
 async function getQZ() {
     if (!qz) {
         qz = await import('qz-tray');
+        // Configurar para entorno local: aceptar certificado auto-firmado
+        if (qz.api) {
+            qz.api.setPromiseType(resolver => new Promise(resolver));
+        }
     }
     return qz;
 }
@@ -23,9 +27,15 @@ export async function qzPrint(html, printerName) {
     try {
         const qzModule = await getQZ();
 
-        // Conectar al servicio QZ Tray local
+        // Conectar al servicio QZ Tray local (ws:// para localhost)
         if (!qzModule.websocket.isActive()) {
-            await qzModule.websocket.connect();
+            await qzModule.websocket.connect({
+                host: 'localhost',
+                port: 8182,
+                signing: false,       // Deshabilitar verificación de firma para entorno local
+                retries: 2,
+                delay: 1
+            });
         }
 
         // Buscar la impresora por nombre
