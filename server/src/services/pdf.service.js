@@ -1368,7 +1368,7 @@ const generateRTEE = (data) => {
 
             // --- Receptor Section ---
             const receptorY = techY + 15;
-            const receptorBoxHeight = dte.tipoDte === '03' ? 65 : 55;
+            const receptorBoxHeight = (dte.tipoDte === '03' || dte.tipoDte === '11') ? 65 : 55;
             doc.rect(startX, receptorY, pageWidth, receptorBoxHeight).stroke();
             doc.fontSize(9).font('Helvetica-Bold').text('DATOS DEL RECEPTOR', startX + 10, receptorY + 5);
             doc.fontSize(9).font('Helvetica');
@@ -1380,7 +1380,10 @@ const generateRTEE = (data) => {
             
             if (dte.tipoDte === '03') {
                 doc.text(`NRC: ${receptor.nrc || 'N/A'}`, startX + 10, receptorY + 42);
-                doc.text(`Actividad: ${receptor.codActividad || 'N/A'}`, startX + 10, receptorY + 54);
+                doc.text(`Actividad: ${receptor.descActividad || receptor.codActividad || 'N/A'}`, startX + 10, receptorY + 54);
+            } else if (dte.tipoDte === '11') {
+                doc.text(`País: ${receptor.nombrePais || receptor.codPais || 'N/A'}`, startX + 10, receptorY + 42);
+                doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, receptorY + 54);
             } else {
                 doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, receptorY + 42);
             }
@@ -1390,7 +1393,48 @@ const generateRTEE = (data) => {
 
             doc.moveDown(2);
 
-            // --- Items Table ---
+            if (dte.tipoDte === '07') {
+                // --- CR: tabla de documentos referenciados ---
+                const tableTop = receptorY + receptorBoxHeight + 10;
+                doc.fontSize(8).font('Helvetica-Bold');
+                doc.rect(startX, tableTop, pageWidth, 20).fill('#f3f4f6').stroke('#000');
+                doc.fillColor('black');
+                doc.text('#', startX + 5, tableTop + 6);
+                doc.text('DOCUMENTO REFERENCIADO', startX + 25, tableTop + 6);
+                doc.text('GRAVADO', startX + 380, tableTop + 6, { align: 'right', width: 70 });
+                doc.text('RETENCIÓN', startX + 470, tableTop + 6, { align: 'right', width: 70 });
+                doc.font('Helvetica').fontSize(8);
+                let crY = tableTop + 25;
+                items.forEach((item, idx) => {
+                    const docRef = `DTE ${item.tipoDte || ''} - ${item.numDocumento || ''}`;
+                    const ih = doc.heightOfString(item.descripcion, { width: 320 }) + 10;
+                    if (crY + ih > 680) { doc.addPage(); crY = 50; }
+                    doc.text(String(idx + 1), startX + 5, crY);
+                    doc.text(docRef, startX + 25, crY, { width: 150 });
+                    doc.text(item.descripcion, startX + 180, crY, { width: 190 });
+                    doc.text(`$${parseFloat(item.totalItem || 0).toFixed(2)}`, startX + 380, crY, { align: 'right', width: 70 });
+                    doc.text(`$${parseFloat(item.ivaRetenido || 0).toFixed(2)}`, startX + 470, crY, { align: 'right', width: 70 });
+                    crY += Math.max(ih, 15);
+                });
+                const footerY = Math.max(crY + 20, 580);
+                const qrUrl = `https://admin.factura.gob.sv/consulta-publica?p=${dte.codigoGeneracion}&f=${venta.fecha_emision}&s=${dte.selloRecepcion}&m=${venta.total_pagar}`;
+                const qrImage = await QRCode.toDataURL(qrUrl);
+                doc.image(qrImage, startX, footerY - 10, { width: 80 });
+                let cy = footerY;
+                doc.fontSize(8).font('Helvetica-Bold');
+                doc.text('TOTAL SUJETO A RETENCIÓN:', 350, cy);
+                doc.text(`$${parseFloat(venta.totalSujetoRetencion || venta.total_gravado || 0).toFixed(2)}`, 530, cy, { align: 'right', width: 70 });
+                cy += 14;
+                doc.text('TOTAL IVA RETENIDO (1%):', 350, cy);
+                doc.text(`$${parseFloat(venta.totalIVAretenido || venta.total_iva || 0).toFixed(2)}`, 530, cy, { align: 'right', width: 70 });
+                cy += 14;
+                doc.font('Helvetica-Bold').text('TOTAL A PAGAR:', 350, cy);
+                doc.text(`$${parseFloat(venta.total_pagar).toFixed(2)}`, 530, cy, { align: 'right', width: 70 });
+                doc.fontSize(8).font('Helvetica-Bold').text('SON:', startX + 110, footerY + 70);
+                doc.font('Helvetica').text(venta.total_letras || 'S/N', startX + 110, footerY + 82, { width: 230 });
+            }
+
+            if (dte.tipoDte !== '07') {
             const tableTop = receptorY + receptorBoxHeight + 10;
             doc.fontSize(8).font('Helvetica-Bold');
             doc.rect(startX, tableTop, pageWidth, 20).fill('#f3f4f6').stroke('#000');
@@ -1476,6 +1520,7 @@ const generateRTEE = (data) => {
             // Monto en Letras
             doc.fontSize(8).font('Helvetica-Bold').text('SON:', startX + 110, footerY);
             doc.font('Helvetica').text(venta.total_letras || 'S/N', startX + 110, footerY + 12, { width: 230 });
+            } // Fin standard (tipoDte !== '07')
 
             // --- Marca de Agua "ANULADO" ---
             if (data.isVoided) {

@@ -20,7 +20,9 @@ import {
     Zap,
     Barcode,
     Edit,
-    UserPlus
+    UserPlus,
+    Printer,
+    CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -40,6 +42,7 @@ const SalesTerminal = () => {
     
     // Header State
     const [customerId, setCustomerId] = useState('');
+    const [customerBranchId, setCustomerBranchId] = useState('');
     const [sellerId, setSellerId] = useState('');
     const [tipoDte, setTipoDte] = useState('01'); // 01, 03, 04, 05, 07, 11
     const [condicionPago, setCondicionPago] = useState('1'); // 1=Contado, 2=Crédito
@@ -47,6 +50,8 @@ const SalesTerminal = () => {
     // Linked Documents (NC, NR)
     const [linkedDocs, setLinkedDocs] = useState([]);
     const [isLinkedDocModalOpen, setIsLinkedDocModalOpen] = useState(false);
+    const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+    const [saleResult, setSaleResult] = useState(null);
 
     // Export Data (FEX)
     const [fexData, setFexData] = useState({
@@ -93,6 +98,7 @@ const SalesTerminal = () => {
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [nitValue, setNitValue] = useState('');
+    const [docType, setDocType] = useState('DUI');
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
@@ -121,7 +127,7 @@ const SalesTerminal = () => {
     // Queries
     const { data: currentCompany } = useQuery({
         queryKey: ['company', user?.company_id],
-        queryFn: async () => (await axios.get(`/api/companies`)).data.find(c => c.id === user.company_id),
+        queryFn: async () => (await axios.get(`/api/companies`)).data.find(c => c.id == user?.company_id),
         enabled: !!user?.company_id
     });
 
@@ -170,6 +176,38 @@ const SalesTerminal = () => {
         return customerDiscounts.find(d => d.product_id === productId && d.customer_id === selectedCustomerData.id);
     };
 
+    // Product discount rules (independientes del cliente)
+    const { data: productDiscountRules = [] } = useQuery({
+        queryKey: ['discount-rules', 'active'],
+        queryFn: async () => (await axios.get('/api/discount-rules?active=1')).data,
+        staleTime: 60000,
+    });
+
+    const getProductDiscountRule = (productId) => {
+        if (!productId) return null;
+        return productDiscountRules.find(r => r.product_id == productId && r.active);
+    };
+
+    const applyDiscountRule = (itemId) => {
+        const item = cart.find(i => i.id === itemId || i.combo_id === itemId);
+        if (!item || !item.discountRule) return;
+        const rule = item.discountRule;
+        const price = parseFloat(item.precio) || 0;
+        let discountAmount = 0;
+        if (rule.discount_type === 'percentage') {
+            discountAmount = price * (parseFloat(rule.discount_value) / 100);
+        } else {
+            discountAmount = parseFloat(rule.discount_value);
+        }
+        discountAmount = Math.min(discountAmount, price); // No descontar más del precio
+        setCart(cart.map(i =>
+            (i.id === itemId || i.combo_id === itemId)
+                ? { ...i, descuento: discountAmount, discountApplied: true }
+                : i
+        ));
+        toast.success(`${item.nombre}: descuento de $${discountAmount.toFixed(2)} aplicado`);
+    };
+
     const calculateDiscountedPrice = (originalPrice, discount) => {
         if (!discount) return originalPrice;
         if (discount.discount_type === 'PORCENTAJE') {
@@ -216,13 +254,21 @@ const SalesTerminal = () => {
     });
 
     // Helper: Format NIT
-    const formatNIT = (value) => {
+    const formatNIT = (value, type = 'DUI') => {
         const digits = value.replace(/\D/g, '');
         let formatted = '';
-        if (digits.length > 0) formatted += digits.substring(0, 4);
-        if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
-        if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
-        if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
+        
+        if (type === 'DUI') {
+            // Formato DUI: 00000000-0
+            if (digits.length > 0) formatted += digits.substring(0, 8);
+            if (digits.length > 8) formatted += '-' + digits.substring(8, 9);
+        } else {
+            // Formato NIT: 0000-000000-000-0
+            if (digits.length > 0) formatted += digits.substring(0, 4);
+            if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
+            if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
+            if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
+        }
         return formatted;
     };
 
@@ -230,6 +276,16 @@ const SalesTerminal = () => {
     const selectedCustomerData = useMemo(() => {
         return customers.find(c => c.id === parseInt(customerId));
     }, [customerId, customers]);
+
+    const { data: customerBranches = [] } = useQuery({
+        queryKey: ['customer-branches', customerId],
+        queryFn: async () => (await axios.get('/api/customer-branches', { params: { customer_id: customerId } })).data,
+        enabled: !!customerId
+    });
+
+    useEffect(() => {
+        setCustomerBranchId('');
+    }, [customerId]);
     
     // Búsqueda optimizada (F3) para evitar lentitud con miles de ítems
     const { filteredProducts, filteredCombos } = useMemo(() => {
@@ -266,6 +322,7 @@ const SalesTerminal = () => {
         setSelectedDept(selectedCustomerData.departamento || '');
         setSelectedMun(selectedCustomerData.municipio || '');
         setSelectedActivity(selectedCustomerData.codigo_actividad || '');
+        setDocType(selectedCustomerData.tipo_documento || 'DUI');
         setNitValue(selectedCustomerData.nit || '');
         setIsCustomerModalOpen(true);
     };
@@ -274,7 +331,6 @@ const SalesTerminal = () => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
-        data.aplica_iva = formData.get('aplica_iva') === 'on';
         data.exento_iva = formData.get('exento_iva') === 'on';
         data.aplica_fovial = formData.get('aplica_fovial') === 'on';
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
@@ -310,9 +366,13 @@ const SalesTerminal = () => {
             }
             if (e.key === 'F10') {
                 e.preventDefault();
-                if (cart.length > 0) goToPayment();
+                if (tipoDte === '07' ? linkedDocs.length > 0 : cart.length > 0) goToPayment();
             }
             if (e.key === 'Escape' && isAuthModalOpen) {
+                navigate('/dashboard');
+            }
+            if (e.key === 'Escape' && isSuccessModalOpen) {
+                e.preventDefault();
                 navigate('/dashboard');
             }
 
@@ -345,7 +405,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, tipoDte, navigate]);
+    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate]);
 
     // Auto-focus barcode input when starting POS
     useEffect(() => {
@@ -411,7 +471,7 @@ const SalesTerminal = () => {
         const missing = [];
 
         if (tipoDte === '03') { // Crédito Fiscal
-            if (!customer.nit) missing.push('NIT');
+            if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
             if (!customer.nrc) missing.push('NRC');
             if (!customer.codigo_actividad) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
@@ -432,6 +492,9 @@ const SalesTerminal = () => {
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '07') { // Comprobante de Retención
+            if (!customer.tipo_documento || (customer.tipo_documento !== 'NIT' && customer.tipo_documento !== '36')) {
+                missing.push('Tipo Documento debe ser NIT');
+            }
             if (!customer.nit) missing.push('NIT');
             if (!customer.nrc) missing.push('NRC');
             if (!customer.codigo_actividad) missing.push('Giro/Actividad');
@@ -461,6 +524,11 @@ const SalesTerminal = () => {
     };
 
     const goToPayment = () => {
+        if (tipoDte === '07') {
+            if (!validateCustomerData()) return;
+            handleProcessSale();
+            return;
+        }
         if (cart.length === 0) return;
         if (validateCustomerData()) {
             setActiveView('pago');
@@ -488,40 +556,217 @@ const SalesTerminal = () => {
         mutationFn: async (saleData) => {
             return (await axios.post('/api/sales', saleData)).data;
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
             toast.success('Venta procesada correctamente');
-            setCart([]);
-            setCustomerId('');
-            setLinkedDocs([]);
-            setActiveView('pos');
-            // Reset Session for Next Sale
-            setSellerSession(null);
-            setSellerId('');
-            setReferencingSale(null);
-            setIsAuthModalOpen(true);
+            setSaleResult({
+                ...data,
+                items: [...cart],
+                totals: { ...totals },
+                customer: selectedCustomerData || { nombre: manualCustomerName || 'Consumidor Final' },
+                tipoDteName: tipoDte === '01' ? 'Factura' : tipoDte === '03' ? 'Crédito Fiscal' : tipoDte === '04' ? 'Nota Remisión' : tipoDte === '05' ? 'Nota Crédito' : tipoDte === '07' ? 'Comprobante Retención' : tipoDte === '11' ? 'Factura Exportación' : 'Documento',
+                seller: sellerSession?.seller_name
+            });
+            setIsSuccessModalOpen(true);
+            
+            // Note: We don't reset cart/customer here, we'll do it when closing success modal
             queryClient.invalidateQueries(['sales']);
         },
         onError: (error) => {
-            toast.error('Error al procesar venta: ' + (error.response?.data?.message || error.message));
+            const baseMsg = error.response?.data?.message || error.message;
+            const details = error.response?.data?.details;
+            let fullMsg = baseMsg;
+            if (details && Array.isArray(details) && details.length > 0) {
+                fullMsg = details.map(d => d.message || d).join('; ');
+            }
+            toast.error(fullMsg, { duration: 8000 });
         }
     });
 
+    const handleCloseSuccess = () => {
+        setIsSuccessModalOpen(false);
+        setSaleResult(null);
+        setCart([]);
+        setCustomerId('');
+        setCustomerBranchId('');
+        setManualCustomerName('');
+        setLinkedDocs([]);
+        setActiveView('pos');
+        setSellerSession(null);
+        setSellerId('');
+        setReferencingSale(null);
+        setIsAuthModalOpen(true);
+    };
+
+    const handlePrintTicket = (sale) => {
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+        
+        const itemsHtml = sale.items.map(item => `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <div style="flex: 1;">${item.nombre}</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9em;">
+                <div>${parseFloat(item.cantidad).toFixed(4)} x $${parseFloat(item.precio).toFixed(2)}</div>
+                <div>$${(item.cantidad * item.precio).toFixed(2)} G</div>
+            </div>
+        `).join('');
+
+        const dteData = sale.dte || {};
+        const baseUrl = axios.defaults.baseURL || window.location.origin;
+        const pdfDownloadUrl = `${baseUrl}/api/public/dte/${dteData.codigo_generacion || sale.id}/pdf`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pdfDownloadUrl)}`;
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <style>
+                        @page { margin: 0; }
+                        body { 
+                            font-family: 'Courier New', Courier, monospace; 
+                            width: 80mm; 
+                            margin: 0; 
+                            padding: 5mm;
+                            font-size: 12px;
+                            line-height: 1.2;
+                        }
+                        .text-center { text-center: center; text-align: center; }
+                        .bold { font-weight: bold; }
+                        .dashed { border-top: 1px dashed #000; margin: 10px 0; }
+                        .flex-between { display: flex; justify-content: space-between; }
+                    </style>
+                </head>
+                <body>
+                    <div class="text-center bold">COMPROBANTE DE ${sale.tipoDteName.toUpperCase()} ELECTRONICA</div>
+                    <div class="text-center">${dteData.numero_control || '---'}</div>
+                    <div class="text-center" style="font-size: 0.8em; margin-top: 5px;">CODIGO GENERACION:</div>
+                    <div class="text-center" style="font-size: 0.8em; word-break: break-all;">${dteData.codigo_generacion || '---'}</div>
+                    ${dteData.sello_recepcion ? `<div class="text-center" style="font-size: 0.8em; margin-top: 2px;">SELLO DE RECEPCION:</div><div class="text-center" style="font-size: 0.8em; word-break: break-all;">${dteData.sello_recepcion}</div>` : ''}
+                    
+                    <div class="dashed"></div>
+                    
+                    <div class="text-center bold">${currentCompany?.razon_social || currentCompany?.nombre_comercial || 'EMPRESA'}</div>
+                    <div class="text-center">${currentCompany?.direccion || ''}</div>
+                    <div class="text-center">NRC : ${currentCompany?.nrc || 'N/A'}</div>
+                    <div class="text-center">NIT : ${currentCompany?.nit || ''}</div>
+                    <div class="text-center bold">PRECIOS EN DOLARES (US)</div>
+
+                    <div class="dashed"></div>
+
+                    <div>CLIENTE: ${sale.customer?.id || 'X'}</div>
+                    <div>NOMBRE: ${sale.customer?.nombre || 'CONSUMIDOR FINAL'}</div>
+                    <div>NIT: ${sale.customer?.nit || ''}</div>
+                    <div>NRC: ${sale.customer?.nrc || ''}</div>
+
+                    <div class="dashed"></div>
+
+                    <div class="flex-between">
+                        <div>FECHA: ${new Date().toLocaleDateString()}</div>
+                        <div>HORA: ${new Date().toLocaleTimeString()}</div>
+                    </div>
+
+                    <div class="dashed"></div>
+
+                    <div class="flex-between bold">
+                        <div style="width: 50%;">DESCRIPCION</div>
+                        <div>CANT.</div>
+                        <div>PRECIO</div>
+                        <div>SUBTOTAL</div>
+                    </div>
+                    
+                    <div class="dashed"></div>
+
+                    ${itemsHtml}
+
+                    <div class="dashed"></div>
+
+                    <div class="flex-between">
+                        <div>TOTAL GRAVADAS</div>
+                        <div>$${sale.totals.viewGravadas.toFixed(2)}</div>
+                    </div>
+                    <div class="flex-between">
+                        <div>TOTAL IVA</div>
+                        <div>$${sale.totals.viewIva.toFixed(2)}</div>
+                    </div>
+                    <div class="flex-between">
+                        <div>TOTAL EXENTAS</div>
+                        <div>$${sale.totals.exento.toFixed(2)}</div>
+                    </div>
+                    <div class="flex-between">
+                        <div>VENTAS NO SUJETAS</div>
+                        <div>$${sale.totals.noSujeto.toFixed(2)}</div>
+                    </div>
+                    <div class="flex-between">
+                        <div>COTRANS</div>
+                        <div>$${sale.totals.cotrans.toFixed(2)}</div>
+                    </div>
+                    <div class="flex-between">
+                        <div>FOVIAL</div>
+                        <div>$${sale.totals.fovial.toFixed(2)}</div>
+                    </div>
+                    <div class="flex-between bold" style="font-size: 1.2em; margin-top: 5px;">
+                        <div>TOTAL A PAGAR</div>
+                        <div>$${sale.totals.total.toFixed(2)}</div>
+                    </div>
+
+                    <div class="dashed"></div>
+
+                    <div class="text-center">ATENDIDO POR : ${sale.seller || 'SISTEMA'}</div>
+                    <div class="text-center">GRACIAS POR SU COMPRA</div>
+
+                    <div class="dashed"></div>
+                    
+                    <div class="text-center" style="margin-top: 10px;">
+                        <div style="margin-bottom: 5px;">DESCARGUE SU DTE</div>
+                        <img src="${qrUrl}" style="width: 120px; height: 120px;" onload="setTimeout(() => { window.print(); window.close(); }, 200);" onerror="setTimeout(() => { window.print(); window.close(); }, 200);" />
+                    </div>
+
+                    <div style="height: 30px;"></div>
+                </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+    };
+
     const handleProcessSale = () => {
+        // 1. Validaciones Básicas
+        if (tipoDte !== '07' && cart.length === 0) {
+            return toast.error('El carrito está vacío');
+        }
+        if (tipoDte === '07' && linkedDocs.length === 0) {
+            return toast.error('Debe agregar al menos un documento relacionado');
+        }
+
+        if (!validateCustomerData()) {
+            return; // Detener si faltan datos requeridos por el DTE
+        }
+
+        // 2. Validaciones adicionales de negocio
+        if (tipoDte === '01') { // Factura
+            if (totals.total >= 200 && !customerId && !manualCustomerName) {
+                return toast.error('Facturas mayores o iguales a $200.00 requieren identificación del cliente');
+            }
+        }
+
         if (tipoDte === '05' && referencingSale) {
             if (totals.total > (parseFloat(referencingSale.total_pagar) + 0.01)) {
                 return toast.error(`El monto de la Nota de Crédito ($${totals.total.toFixed(2)}) no puede ser mayor al documento original ($${parseFloat(referencingSale.total_pagar).toFixed(2)})`);
             }
         }
 
-        // Validar que el total pagado cubra la venta (excepto crédito)
+        // 3. Validar que el total pagado cubra la venta (excepto crédito y CR)
+        if (tipoDte !== '07') {
         const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
         if (condicionPago === '1' && totalPaid < (totals.total - 0.01)) {
             return toast.error('El monto pagado es insuficiente para una venta al contado');
         }
+        }
+
+
 
         const saleData = {
             header: {
                 customer_id: customerId || null,
+                customer_branch_id: customerBranchId || null,
                 seller_id: sellerId || null,
                 pos_id: sellerSession?.pos_id || null,
                 shift_id: currentShift?.id || null,
@@ -538,7 +783,7 @@ const SalesTerminal = () => {
                 descuento_general: generalDiscount,
                 fovial: totals.fovial,
                 cotrans: totals.cotrans,
-                total_pagar: totals.total,
+                total_pagar: tipoDte === '07' ? totals.totalIVAretenido : totals.total,
                 export_item_type: tipoDte === '11' ? fexData.itemType : null,
                 fiscal_enclosure: tipoDte === '11' ? fexData.enclosure : null,
                 export_regime: tipoDte === '11' ? fexData.regime : null,
@@ -548,7 +793,17 @@ const SalesTerminal = () => {
                 vehicle_plate: tipoDte === '04' ? nrData.vehiclePlate : null,
                 cliente_nombre: !customerId ? manualCustomerName : null,
             },
-            items: cart.map((item, idx) => {
+            items: tipoDte === '07' ? linkedDocs.map((doc, idx) => ({
+                num_item: idx + 1,
+                product_id: null,
+                descripcion: doc.descripcion || `RETENCION DOC ${doc.doc_number}`,
+                cantidad: 1,
+                precio_unitario: parseFloat(doc.montoSujeto) || 0,
+                monto_descuento: 0,
+                venta_gravada: parseFloat(doc.montoSujeto) || 0,
+                venta_exenta: 0,
+                tributos: []
+            })) : cart.map((item, idx) => {
                 const itemFovial = item.tipo_combustible > 0 ? (item.cantidad * parseFloat(taxSettings?.fovial_rate || 0.20)) : 0;
                 const itemCotrans = item.tipo_combustible > 0 ? (item.cantidad * parseFloat(taxSettings?.cotrans_rate || 0.10)) : 0;
                 const subtotal = (item.precio * item.cantidad) - item.descuento;
@@ -560,8 +815,8 @@ const SalesTerminal = () => {
                     cantidad: item.cantidad,
                     precio_unitario: item.precio,
                     monto_descuento: item.descuento,
-                    venta_gravada: !item.exento && !item.no_sujeto ? (subtotal - itemFovial - itemCotrans) : 0,
-                    venta_exenta: item.exento ? subtotal : 0,
+                    venta_gravada: (tipoDte === '11') ? (subtotal / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : (!item.exento && !item.no_sujeto ? (subtotal - itemFovial - itemCotrans) : 0),
+                    venta_exenta: (tipoDte === '11') ? 0 : (item.exento ? subtotal : 0),
                     tributos: (item.tipo_combustible > 0 && tipoDte !== '04') ? [
                         { codigo: "D1", descripcion: "FOVIAL", valor: itemFovial },
                         { codigo: "C8", descripcion: "COTRANS", valor: itemCotrans }
@@ -574,7 +829,7 @@ const SalesTerminal = () => {
                 monto: parseFloat(p.monto),
                 referencia: p.referencia || p.num_cheque || p.last_digits || null
             })),
-            linkedDocuments: (tipoDte === '04' || tipoDte === '05') ? linkedDocs : []
+            linkedDocuments: (tipoDte === '04' || tipoDte === '05' || tipoDte === '07') ? linkedDocs : []
         };
         processSale.mutate(saleData);
     };
@@ -595,6 +850,10 @@ const SalesTerminal = () => {
 
             if (item.exento) exento += subtotal;
             else if (item.no_sujeto) noSujeto += subtotal;
+            else if (tipoDte === '11') {
+                const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
+                gravadoBruto += subtotal / (1 + ivaRate);
+            }
             else {
                 // FOVIAL/COTRANS only for non-Remission notes
                 if (item.tipo_combustible > 0 && tipoDte !== '04') {
@@ -612,8 +871,9 @@ const SalesTerminal = () => {
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
         // En SV el precio de venta al consumidor ya suele llevar IVA.
         // Si es Factura (01) o Crédito Fiscal (03), hay que desglosarlo internamente.
+        // FEX (11): el gravadoBruto ya viene neto, no se extrae IVA.
         // Asumiendo que `gravadoBruto` ya incluye IVA:
-        const iva = gravadoBruto - (gravadoBruto / (1 + ivaRate));
+        const iva = (tipoDte === '11') ? 0 : (gravadoBruto - (gravadoBruto / (1 + ivaRate)));
         const gravadoNeto = gravadoBruto - iva;
         const subtotalGeneral = gravadoBruto + exento + noSujeto + fovial + cotrans;
         
@@ -641,8 +901,13 @@ const SalesTerminal = () => {
         // Visualización dinámica según tipo de DTE
         // En Factura (01), el IVA se muestra como 0.0 (porque ya está en Gravadas)
         // En Crédito Fiscal (03), se desglosa el Neto y el IVA
-        const viewIva = tipoDte === '01' ? 0 : iva;
+        // En FEX (11), no se cobra IVA (exportación)
+        const viewIva = (tipoDte === '01' || tipoDte === '11') ? 0 : iva;
         const viewGravadas = tipoDte === '01' ? gravadoBruto : gravadoNeto;
+
+        // CR: totales de retención desde documentos vinculados
+        const totalSujetoRetencion = linkedDocs.reduce((s, d) => s + parseFloat(d.montoSujeto || 0), 0);
+        const totalIVAretenido = linkedDocs.reduce((s, d) => s + parseFloat(d.ivaRetenido || 0), 0);
 
         return {
             gravadoBruto,
@@ -658,9 +923,11 @@ const SalesTerminal = () => {
             percepcion,
             subtotal: subtotalGeneral,
             montoOperacion: subtotalGeneral,
-            total: Math.max(0, totalFinal)
+            total: Math.max(0, totalFinal),
+            totalSujetoRetencion,
+            totalIVAretenido
         };
-    }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings]);
+    }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings, linkedDocs]);
 
     const addToCart = (itemData, isCombo = false) => {
         const itemId = isCombo ? `combo-${itemData.id}` : itemData.id;
@@ -697,6 +964,8 @@ const SalesTerminal = () => {
                 : item
             ));
         } else {
+            // Verificar regla de descuento de producto (solo marcar, no aplicar)
+            const productRule = getProductDiscountRule(itemData.id);
             setCart([...cart, {
                 id: isCombo ? null : itemData.id,
                 combo_id: isCombo ? itemData.id : null,
@@ -708,7 +977,8 @@ const SalesTerminal = () => {
                 descuento: 0,
                 exento: false,
                 isManual: false,
-                referencedDoc: itemData.referencedDoc || null
+                referencedDoc: itemData.referencedDoc || null,
+                discountRule: productRule || null
             }]);
         }
         setIsProductModalOpen(false);
@@ -1010,6 +1280,7 @@ const SalesTerminal = () => {
                                         onClick={() => {
                                             setEditingCustomer(null);
                                             setNitValue('');
+                                            setDocType('DUI');
                                             setSelectedDept('');
                                             setSelectedMun('');
                                             setSelectedActivity('');
@@ -1095,33 +1366,48 @@ const SalesTerminal = () => {
                                     </div>
                                 </div>
                             )}
+                            {selectedCustomerData && customerBranches.length > 0 && (
+                                <div className="flex items-center gap-2 p-2 bg-amber-50/50 rounded-xl border border-amber-100/50">
+                                    <label className="text-[10px] font-black text-amber-600 uppercase whitespace-nowrap">Sucursal</label>
+                                    <select 
+                                        value={customerBranchId} 
+                                        onChange={(e) => setCustomerBranchId(e.target.value)}
+                                        className="flex-1 px-2 py-1.5 bg-white border border-amber-200 rounded-lg text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all"
+                                    >
+                                        <option value="">Principal</option>
+                                        {customerBranches.map(b => (
+                                            <option key={b.id} value={b.id}>
+                                                {b.nombre} — {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Tipo DTE Section (Col 6-7) */}
-                        <div className="md:col-span-2 flex flex-col gap-1.5 pt-1">
-                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Tipo Documento</label>
-                            <select 
-                                value={tipoDte}
-                                onChange={(e) => setTipoDte(e.target.value)}
-                                disabled={!!sellerSession}
-                                className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all ${sellerSession ? 'opacity-70 cursor-not-allowed bg-slate-100' : ''}`}
-                            >
-                                <option value="01">Factura (01)</option>
-                                <option value="03">Crédito Fiscal (03)</option>
-                                <option value="04">Nota Remisión (04)</option>
-                                <option value="05">Nota Crédito (05)</option>
-                                <option value="07">Comprobante Retención (07)</option>
-                                <option value="11">FEX (11)</option>
-                            </select>
-                        </div>
-
-                        {/* Seller / POS Section (Col 9-11) */}
-                        <div className="md:col-span-3 flex flex-col gap-1.5 pt-1">
-                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Vendedor / POS</label>
-                            <div className="flex gap-2">
-                                <div className="flex-1 px-4 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-sm font-bold text-indigo-600 truncate flex items-center gap-2">
+                        {/* Tipo DTE + Vendedor Section (Col 7-11) */}
+                        <div className="md:col-span-5 flex flex-col gap-3 pt-1">
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Tipo Documento</label>
+                                <select 
+                                    value={tipoDte}
+                                    onChange={(e) => setTipoDte(e.target.value)}
+                                    disabled={!!sellerSession}
+                                    className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all ${sellerSession ? 'opacity-70 cursor-not-allowed bg-slate-100' : ''}`}
+                                >
+                                    <option value="01">Factura (01)</option>
+                                    <option value="03">Crédito Fiscal (03)</option>
+                                    <option value="04">Nota Remisión (04)</option>
+                                    <option value="05">Nota Crédito (05)</option>
+                                    <option value="07">Comprobante Retención (07)</option>
+                                    <option value="11">FEX (11)</option>
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Vendedor</label>
+                                <div className="px-4 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-sm font-bold text-indigo-600 flex items-center gap-2">
                                     <div className={`w-2 h-2 rounded-full ${currentShift ? 'bg-green-500 animate-pulse' : 'bg-rose-500'}`}></div>
-                                    {sellerSession ? `${sellerSession.seller_name} - ${sellerSession.pos_name || 'Sin POS'}` : 'Acceso Limitado'}
+                                    {sellerSession ? `${sellerSession.seller_name} — ${sellerSession.pos_name || 'Sin POS'}` : 'Acceso Limitado'}
                                 </div>
                             </div>
                         </div>
@@ -1147,7 +1433,7 @@ const SalesTerminal = () => {
                                     <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="Recinto" value={fexData.enclosure} onChange={e => setFexData({...fexData, enclosure: e.target.value})} />
                                     <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="País ISO" value={fexData.country} onChange={e => setFexData({...fexData, country: e.target.value})} />
                                 </>
-                            ) : (
+                            ) : tipoDte === '04' ? (
                                 <>
                                     <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="Transportista" value={nrData.transporterName} onChange={e => setNrData({...nrData, transporterName: e.target.value})} />
                                     <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="Placa" value={nrData.vehiclePlate} onChange={e => setNrData({...nrData, vehiclePlate: e.target.value})} />
@@ -1156,7 +1442,7 @@ const SalesTerminal = () => {
                                         <option value="01">Venta</option>
                                     </select>
                                 </>
-                            )}
+                            ) : null}
                         </div>
                     )}
 
@@ -1276,6 +1562,23 @@ const SalesTerminal = () => {
                                                 <td className="pl-6 py-4">
                                                     <div className="font-bold text-slate-800 text-xs">{item.nombre}</div>
                                                     <div className="text-[9px] font-mono text-indigo-400">{item.codigo}</div>
+                                                    {item.discountRule && !item.discountApplied && (
+                                                        <button
+                                                            onClick={() => applyDiscountRule(item.id)}
+                                                            className="mt-1 flex items-center gap-1 text-[8px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full transition-all"
+                                                        >
+                                                            <Tag size={10} />
+                                                            {item.discountRule.discount_type === 'percentage'
+                                                                ? `-${parseFloat(item.discountRule.discount_value)}%`
+                                                                : `-$${parseFloat(item.discountRule.discount_value).toFixed(2)}`
+                                                            }
+                                                        </button>
+                                                    )}
+                                                    {item.discountApplied && (
+                                                        <span className="mt-1 inline-flex items-center gap-1 text-[8px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                                            <Tag size={10} /> Descuento aplicado
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-4 text-center">
                                                     <input 
@@ -1299,12 +1602,12 @@ const SalesTerminal = () => {
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <div className="font-bold text-xs text-slate-700">${parseFloat(item.precio || 0).toFixed(2)}</div>
+                                                        <div className="font-bold text-xs text-slate-700">${(tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : parseFloat(item.precio || 0)).toFixed(2)}</div>
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs">-${parseFloat(item.descuento || 0).toFixed(2)}</td>
                                                 <td className="px-4 py-4 text-right font-black text-slate-900 text-xs">
-                                                    ${((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))).toFixed(2)}
+                                                    ${(tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))).toFixed(2)}
                                                 </td>
                                                 <td className="pr-6 py-4 text-right">
                                                     <button onClick={() => removeFromCart(item.id)} className="text-rose-300 hover:text-rose-600"><Trash2 size={16} /></button>
@@ -1319,6 +1622,14 @@ const SalesTerminal = () => {
                         <div className="flex-[3] flex flex-col gap-4">
                             <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl">
                                 <div className="space-y-1.5 mb-6 opacity-80 text-[10px] font-bold uppercase tracking-wider">
+                                    {tipoDte === '07' ? (
+                                        <>
+                                            <div className="flex justify-between border-b border-white/10 pb-1"><span>Docs. Vinculados</span><span>{linkedDocs.length}</span></div>
+                                            <div className="flex justify-between border-b border-white/10 pb-1 text-blue-300"><span>Sujeto a Retención</span><span>${totals.totalSujetoRetencion.toFixed(2)}</span></div>
+                                            <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>IVA Retenido (1%)</span><span>${totals.totalIVAretenido.toFixed(2)}</span></div>
+                                        </>
+                                    ) : (
+                                        <>
                                     <div className="flex justify-between border-b border-white/10 pb-1"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
                                     <div className="flex justify-between border-b border-white/10 pb-1"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><span>${totals.viewIva.toFixed(2)}</span></div>
                                     <div className="flex justify-between border-b border-white/10 pb-1 text-orange-300"><span>FOVIAL (${(taxSettings?.fovial_rate || 0.20)}/gal)</span><span>${totals.fovial.toFixed(2)}</span></div>
@@ -1329,15 +1640,17 @@ const SalesTerminal = () => {
                                     <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>Retención ({(taxSettings?.retencion_rate || 1)}%)</span><span>-${totals.retencion.toFixed(2)}</span></div>
                                     <div className="flex justify-between border-b border-white/10 pb-1 text-emerald-300"><span>Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span><span>+${totals.percepcion.toFixed(2)}</span></div>
                                     <div className="flex justify-between border-b border-white/10 pb-1 text-indigo-400"><span>Monto Operación</span><span>${totals.montoOperacion.toFixed(2)}</span></div>
+                                        </>
+                                    )}
                                     {generalDiscount > 0 && <div className="flex justify-between text-rose-300"><span>Descuento Gral.</span><span>-${generalDiscount.toFixed(2)}</span></div>}
                                 </div>
-                                <div className="text-5xl font-black mb-6 tracking-tighter">${totals.total.toFixed(2)}</div>
+                                <div className="text-5xl font-black mb-6 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
                                 <button 
-                                    disabled={cart.length === 0}
+                                    disabled={tipoDte === '07' ? linkedDocs.length === 0 : cart.length === 0}
                                     onClick={goToPayment}
                                     className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200"
                                 >
-                                    Pagar (F10)
+                                    {tipoDte === '07' ? 'Emitir Retención (F10)' : 'Pagar (F10)'}
                                 </button>
                             </div>
                         </div>
@@ -1632,7 +1945,7 @@ const SalesTerminal = () => {
                             <h3 className="text-2xl font-black text-slate-900">Referencias Documentales</h3>
                             <button onClick={() => setIsLinkedDocModalOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm"><X size={20} /></button>
                         </div>
-                            <div className="space-y-4">
+                            <div className="p-8 space-y-4">
                                 {tipoDte === '05' && customerId ? (
                                     <div className="flex flex-col gap-4">
                                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Seleccionar Documento del Cliente</label>
@@ -1694,8 +2007,8 @@ const SalesTerminal = () => {
                                                         <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
                                                     </button>
                                                 ))
-                                            )}
-                                        </div>
+                            )}
+                        </div>
                                         <div className="relative flex items-center gap-2">
                                             <div className="flex-1 h-[1px] bg-slate-100"></div>
                                             <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">O entrada manual</span>
@@ -1704,6 +2017,85 @@ const SalesTerminal = () => {
                                     </div>
                                 ) : null}
 
+                                {tipoDte === '07' ? (
+                                    /* CR: formulario con campos de retención */
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <select id="link-type" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                                <option value="01">Factura (01)</option>
+                                                <option value="03">Créd. Fiscal (03)</option>
+                                            </select>
+                                            <select id="link-gen-type" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                                <option value="1">Físico</option>
+                                                <option value="2">Electrónico</option>
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <input id="link-number" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Número de Documento" />
+                                            <input id="link-date" type="date" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={new Date().toISOString().split('T')[0]} />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Monto Gravado ($)</label>
+                                                <input id="link-gravadas" type="number" step="0.01" className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="0.00" onChange={(e) => {
+                                                    const grav = parseFloat(e.target.value) || 0;
+                                                    document.getElementById('link-retencion').value = (grav * 0.01).toFixed(2);
+                                                }} />
+                                            </div>
+                                            <div>
+                                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Retención 1% ($)</label>
+                                                <input id="link-retencion" type="number" step="0.01" className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-rose-500/20 text-rose-600" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={async () => {
+                                                const type = document.getElementById('link-type').value;
+                                                const genType = parseInt(document.getElementById('link-gen-type').value) || 2;
+                                                const num = document.getElementById('link-number').value.trim();
+                                                const date = document.getElementById('link-date').value;
+                                                const gravadas = parseFloat(document.getElementById('link-gravadas').value) || 0;
+                                                const retencion = parseFloat(document.getElementById('link-retencion').value) || 0;
+                                                if(!num) return toast.error('El número de documento es obligatorio');
+                                                if(gravadas < 100) return toast.error('El monto gravado debe ser mayor o igual a $100.00');
+                                                if(retencion <= 0) return toast.error('La retención debe ser mayor a $0.00');
+                                                // Validar que no esté duplicado en el CR actual
+                                                if(linkedDocs.some(d => d.doc_number === num && d.doc_type === type)) {
+                                                    return toast.error('Este documento ya fue agregado al CR');
+                                                }
+                                                // Validar que no exista otro CR para este documento
+                                                try {
+                                                    const { data: checkData } = await axios.get(`/api/sales/check-cr?doc_number=${encodeURIComponent(num)}&doc_type=${type}`);
+                                                    if (checkData.exists) {
+                                                        return toast.error(`Ya existe un Comprobante de Retención para el documento ${num}`);
+                                                    }
+                                                } catch (err) {
+                                                    // Si falla la verificación, permitir continuar
+                                                    console.warn('No se pudo verificar CR existente:', err.message);
+                                                }
+                                                const dteName = type === '01' ? 'Factura' : type === '03' ? 'Créd. Fiscal' : 'DTE ' + type;
+                                                const descripcion = `RETENCION IVA 1% AL DOCUMENTO ${num} (${dteName})`;
+                                                setLinkedDocs([...linkedDocs, { 
+                                                    doc_type: type, 
+                                                    doc_number: num, 
+                                                    emission_date: date, 
+                                                    generation_type: genType,
+                                                    montoSujeto: gravadas,
+                                                    ivaRetenido: retencion,
+                                                    descripcion: descripcion
+                                                }]);
+                                                document.getElementById('link-number').value = '';
+                                                document.getElementById('link-gravadas').value = '';
+                                                document.getElementById('link-retencion').value = '';
+                                                toast.success('Documento agregado');
+                                            }}
+                                            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-black transition-all active:scale-95"
+                                        >
+                                            Agregar Documento
+                                        </button>
+                                    </div>
+                                ) : (
+                                    /* Formulario estándar para otros tipos de DTE */
+                                    <>  
                                 <div className="grid grid-cols-2 gap-4">
                                     <select id="link-type" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={tipoDte === '05' ? '01' : '01'}>
                                         <option value="01">Factura</option>
@@ -1726,6 +2118,8 @@ const SalesTerminal = () => {
                                 >
                                     Vincular Manualmente
                                 </button>
+                                    </>
+                                )}
                             </div>
 
                             <div className="mt-8 border-t pt-6 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
@@ -1733,7 +2127,11 @@ const SalesTerminal = () => {
                                     <div key={idx} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                         <div className="truncate pr-4">
                                             <div className="font-black text-sm truncate">{doc.doc_number}</div>
-                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{doc.doc_type} • {doc.emission_date}</div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                {doc.doc_type === '01' ? 'Factura' : doc.doc_type === '03' ? 'C. Fiscal' : 'DTE ' + doc.doc_type} • {doc.emission_date}
+                                                {tipoDte === '07' && doc.montoSujeto ? ` • Grav $${parseFloat(doc.montoSujeto).toFixed(2)}` : ''}
+                                                {tipoDte === '07' && doc.ivaRetenido ? ` • Ret $${parseFloat(doc.ivaRetenido).toFixed(2)}` : ''}
+                                            </div>
                                         </div>
                                         <button onClick={() => setLinkedDocs(linkedDocs.filter((_, i) => i !== idx))} className="text-rose-400 p-2"><Trash2 size={16} /></button>
                                     </div>
@@ -1829,7 +2227,12 @@ const SalesTerminal = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo Documento</label>
-                            <select name="tipo_documento" defaultValue={editingCustomer?.tipo_documento} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm">
+                            <select 
+                                name="tipo_documento" 
+                                value={docType} 
+                                onChange={(e) => setDocType(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm"
+                            >
                                 <option value="DUI">DUI</option>
                                 <option value="NIT">NIT</option>
                                 <option value="Pasaporte">Pasaporte</option>
@@ -1847,10 +2250,10 @@ const SalesTerminal = () => {
                             <input 
                                 name="nit" 
                                 value={nitValue} 
-                                onChange={(e) => setNitValue(formatNIT(e.target.value))}
-                                placeholder="0000-000000-000-0" 
+                                onChange={(e) => setNitValue(formatNIT(e.target.value, docType))}
+                                placeholder={docType === 'DUI' ? "00000000-0" : "0000-000000-000-0"} 
                                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" 
-                                maxLength={17}
+                                maxLength={docType === 'DUI' ? 10 : 17}
                             />
                         </div>
                         <div>
@@ -1908,7 +2311,6 @@ const SalesTerminal = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                         {[
-                            { id: 'aplica_iva', label: 'Aplica IVA', default: true },
                             { id: 'exento_iva', label: 'Exento de IVA', default: false },
                             { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
                             { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
@@ -2049,7 +2451,57 @@ const SalesTerminal = () => {
                     </div>
                 </div>
             )}
-        </div>
+            
+            {/* Modal de Éxito de Venta */}
+            {isSuccessModalOpen && saleResult && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[400] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
+                        <div className="flex flex-col items-center text-center mb-8">
+                            <div className="p-4 bg-emerald-100 rounded-3xl text-emerald-600 mb-4">
+                                <CheckCircle2 size={40} />
+                            </div>
+                            <h3 className="text-3xl font-black text-slate-900 tracking-tight">¡Venta Exitosa!</h3>
+                            <p className="text-slate-400 font-bold text-sm mt-2">El documento ha sido procesado correctamente</p>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-3xl p-6 space-y-4 mb-8">
+                            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Documento</span>
+                                <span className="font-bold text-slate-900">{saleResult.tipoDteName}</span>
+                            </div>
+                            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Número Control</span>
+                                <span className="font-mono font-bold text-indigo-600 tracking-tighter">{saleResult.dte?.numero_control || '---'}</span>
+                            </div>
+                            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total</span>
+                                <span className="text-xl font-black text-slate-900 tracking-tight">${saleResult.totals.total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Código Generación</span>
+                                <span className="font-mono text-[10px] text-slate-500 break-all bg-white p-2 rounded-xl border border-slate-100">{saleResult.dte?.codigo_generacion || '---'}</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4">
+                            <button 
+                                onClick={() => handlePrintTicket(saleResult)}
+                                className="flex items-center justify-center gap-3 bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl transition-all active:scale-95 w-full"
+                            >
+                                <Printer size={20} />
+                                Imprimir Ticket
+                            </button>
+                            <button 
+                                onClick={handleCloseSuccess}
+                                className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 hover:border-indigo-100 hover:text-indigo-600 text-slate-500 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all w-full"
+                            >
+                                Nueva Venta
+                            </button>
+                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
     );
 };
 

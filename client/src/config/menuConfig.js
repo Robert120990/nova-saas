@@ -20,6 +20,7 @@ import {
     ArrowUpDown,
     Calendar,
     Calculator,
+    AlertTriangle,
     CreditCard,
     Sparkles
 } from 'lucide-react';
@@ -49,6 +50,8 @@ export const menuConfig = [
             { id: 'ventas-combos', label: 'Combos de Productos', path: '/ventas/combos', icon: Package, permission: 'manage_combos' },
             { id: 'ventas-combustibles', label: 'Precios de Combustible', path: '/ventas/combustibles', icon: Banknote, permission: 'manage_sales' },
             { id: 'ventas-descuentos', label: 'Descuentos por Cliente', path: '/ventas/descuentos', icon: Tag, permission: 'manage_sales' },
+            { id: 'ventas-reglas-descuento', label: 'Reglas de Descuento', path: '/ventas/reglas-descuento', icon: Tag, permission: 'manage_sales' },
+            { id: 'ventas-contingencia', label: 'Contingencia DTE', path: '/ventas/contingencia', icon: AlertTriangle, permission: 'manage_sales' },
             { id: 'pos-cierre', label: 'Corte de Caja', path: '/ventas/cierre', icon: Calculator, permission: 'manage_sales' },
             { 
                 id: 'ventas-reportes-parent', 

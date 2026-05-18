@@ -97,19 +97,33 @@ CREATE TABLE IF NOT EXISTS customers (
     actividad_economica TEXT,
     codigo_actividad VARCHAR(10),
     direccion TEXT,
-    departamento VARCHAR(50),
-    municipio VARCHAR(50),
-    pais VARCHAR(50) DEFAULT 'El Salvador',
+    departamento VARCHAR(10),
+    municipio VARCHAR(10),
+    pais VARCHAR(10) DEFAULT '222',
     telefono VARCHAR(20),
     correo VARCHAR(100),
     tipo_contribuyente VARCHAR(50),
     condicion_fiscal ENUM('contribuyente', 'gran contribuyente', 'exento IVA', 'exento impuestos', 'sujeto excluido') DEFAULT 'contribuyente',
-    aplica_iva BOOLEAN DEFAULT TRUE,
     exento_iva BOOLEAN DEFAULT FALSE,
     aplica_fovial BOOLEAN DEFAULT FALSE,
     aplica_cotrans BOOLEAN DEFAULT FALSE,
     tipo_operacion ENUM('local', 'exportacion') DEFAULT 'local',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
+-- Customer Branches (Sucursales)
+CREATE TABLE IF NOT EXISTS customer_branches (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id INT NOT NULL,
+    company_id INT NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    departamento VARCHAR(10),
+    municipio VARCHAR(10),
+    direccion TEXT,
+    telefono VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
     FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 );
 

@@ -16,6 +16,7 @@ import {
     Activity,
     Wallet,
     Monitor,
+    AlertCircle,
     ChevronRight,
     Search
 } from 'lucide-react';
@@ -74,14 +75,14 @@ const Dashboard = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 {/* Métricas Principales (Izquierda) */}
-                <div className="lg:col-span-9 space-y-8">
+                <div className="lg:col-span-12 space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                         <StatCard 
                             label="Ventas del Día" 
                             value={formatCurrency(summary?.todaySales)} 
                             icon={TrendingUp}
                             color="text-emerald-600"
-                            bg="bg-emerald-50"
+                            bg="bg-emerald-40"
                             subtitle="Ingresos de hoy"
                         />
                         <StatCard 
@@ -89,7 +90,7 @@ const Dashboard = () => {
                             value={formatCurrency(summary?.totalCashInHand)} 
                             icon={Wallet}
                             color="text-indigo-600"
-                            bg="bg-indigo-50"
+                            bg="bg-indigo-40"
                             subtitle={`${summary?.activeShiftsCount || 0} turnos abiertos`}
                         />
                         <StatCard 
@@ -97,7 +98,7 @@ const Dashboard = () => {
                             value={formatCurrency(summary?.monthlySales)} 
                             icon={DollarSign}
                             color="text-slate-600"
-                            bg="bg-slate-50"
+                            bg="bg-slate-40"
                             subtitle="Suma del mes actual"
                         />
                         <StatCard 
@@ -105,7 +106,7 @@ const Dashboard = () => {
                             value={summary?.products || 0} 
                             icon={Package}
                             color="text-blue-600"
-                            bg="bg-blue-50"
+                            bg="bg-blue-40"
                             subtitle="Productos únicos"
                         />
                         <StatCard 
@@ -113,46 +114,51 @@ const Dashboard = () => {
                             value={summary?.customers || 0} 
                             icon={Users}
                             color="text-amber-600"
-                            bg="bg-amber-50"
+                            bg="bg-amber-40"
                             subtitle="Base de datos"
                         />
                     </div>
                 </div>
+            </div>
 
-                {/* Monitor Compacto (Derecha) */}
-                <div className="lg:col-span-3 bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full max-h-[350px]">
-                    <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
-                        <div className="flex items-center gap-2">
-                            <Activity size={14} className="text-emerald-500 animate-pulse" />
-                            <h3 className="text-[10px] font-black text-slate-900 tracking-widest uppercase">Cajas en Línea</h3>
-                        </div>
-                        <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">{activeShifts.length}</span>
+            {/* Cajas en Línea — Fila completa */}
+            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
+                    <div className="flex items-center gap-2">
+                        <Activity size={14} className="text-emerald-500 animate-pulse" />
+                        <h3 className="text-[10px] font-black text-slate-900 tracking-widest uppercase">Cajas en Línea</h3>
                     </div>
-                    
-                    <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-3">
-                        {activeShifts.length > 0 ? (
-                            activeShifts.map((shift) => (
-                                <div key={shift.id} className="bg-slate-50/50 border border-slate-100 p-3 rounded-2xl hover:bg-white hover:border-indigo-100 transition-all">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tight">{shift.seller_name}</p>
-                                            <p className="text-[8px] font-bold text-slate-400 truncate">{shift.pos_name} • {shift.branch_name}</p>
-                                        </div>
-                                        <ArrowUpRight size={12} className="text-emerald-500 shrink-0" />
+                    <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">{activeShifts.length}</span>
+                </div>
+                <div className="overflow-x-auto custom-scrollbar px-4 py-3 flex gap-3">
+                    {activeShifts.length > 0 ? (
+                        activeShifts.map((shift) => {
+                            const shiftDate = new Date(shift.start_time).toDateString();
+                            const isOld = shiftDate !== new Date().toDateString();
+                            return (
+                            <div key={shift.id} className={`p-3 rounded-2xl hover:bg-white transition-all shrink-0 w-56 ${isOld ? 'bg-amber-50/80 border-2 border-amber-400 animate-pulse' : 'bg-slate-50/50 border border-slate-100 hover:border-indigo-100'}`}>
+                                <div className="flex justify-between items-start mb-1">
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{shift.seller_name}</p>
+                                        <p className="text-[11px] font-bold text-slate-800 truncate">Caja: {shift.pos_name}</p>
                                     </div>
-                                    <div className="flex items-center justify-between pt-2 border-t border-slate-100/50">
-                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Efectivo</span>
-                                        <span className="text-xs font-black text-indigo-600 tracking-tight">{formatCurrency(shift.expected_cash)}</span>
-                                    </div>
+                                    {isOld ? <AlertCircle size={12} className="text-amber-500 shrink-0" /> : <ArrowUpRight size={12} className="text-emerald-500 shrink-0" />}
                                 </div>
-                            ))
-                        ) : (
-                            <div className="h-full flex flex-col items-center justify-center py-8 text-slate-300 gap-2 opacity-30">
-                                <Monitor size={24} />
-                                <p className="text-[8px] font-black uppercase tracking-widest">Sin Cajas Activas</p>
+                                {/* {isOld && <p className="text-[8px] font-bold text-amber-600 mt-1">Sin cerrar desde {new Date(shift.start_time).toLocaleDateString('es-SV')}</p>} */}
+                                <p className="text-[11px] text-slate-800 mt-1">Apertura: {new Date(shift.start_time).toLocaleString('es-SV', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-100/50">
+                                    <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">Efectivo</span>
+                                    <span className="text-sm font-black text-indigo-600 tracking-tight">{formatCurrency(shift.expected_cash)}</span>
+                                </div>
                             </div>
-                        )}
-                    </div>
+                            );
+                        })
+                    ) : (
+                        <div className="flex items-center justify-center py-6 text-slate-300 gap-2 opacity-30 w-full">
+                            <Monitor size={24} />
+                            <p className="text-[8px] font-black uppercase tracking-widest">Sin Cajas Activas</p>
+                        </div>
+                    )}
                 </div>
             </div>
 

@@ -9,6 +9,64 @@ const { sanitizeText, cleanNumbers } = require('../utils/text');
 const { validateDTE } = require('../validators/schemaValidator');
 const pool = require('../../config/db');
 
+/**
+ * Resuelve el código MH de país y su nombre consultando cat_020_pais.
+ * Busca coincidencia exacta por code, luego por descripción, y si no encuentra
+ * devuelve el primer código válido de la tabla.
+ * Retorna { code, name }.
+ */
+async function resolveCountryCode(rawInput) {
+    if (!rawInput) {
+        // Sin entrada: devolver el primer código disponible
+        const [rows] = await pool.query('SELECT code, description FROM cat_020_pais LIMIT 1');
+        if (rows.length > 0) return { code: rows[0].code, name: rows[0].description };
+        return { code: '9320', name: 'ESTADOS UNIDOS' };
+    }
+
+    const input = String(rawInput).trim();
+
+    // 1. Coincidencia exacta por code
+    const [byCode] = await pool.query('SELECT code, description FROM cat_020_pais WHERE code = ?', [input]);
+    if (byCode.length > 0) return { code: byCode[0].code, name: byCode[0].description };
+
+    // 2. Coincidencia por descripción (case-insensitive)
+    const [byDesc] = await pool.query(
+        'SELECT code, description FROM cat_020_pais WHERE LOWER(description) LIKE ?',
+        [`%${input.toLowerCase()}%`]
+    );
+    if (byDesc.length > 0) {
+        console.warn(`[DTE-API] País "${input}" resuelto como "${byDesc[0].code}" (${byDesc[0].description})`);
+        return { code: byDesc[0].code, name: byDesc[0].description };
+    }
+
+    // 3. Fallback: primer código MH (4 dígitos) de la tabla
+    const [first] = await pool.query(
+        "SELECT code, description FROM cat_020_pais WHERE code REGEXP '^[0-9]{4}$' LIMIT 1"
+    );
+    if (first.length > 0) {
+        console.warn(`[DTE-API] País "${input}" no encontrado en cat_020_pais, usando fallback "${first[0].code}"`);
+        return { code: first[0].code, name: first[0].description };
+    }
+
+    console.warn(`[DTE-API] Sin códigos MH de 4 dígitos en cat_020_pais, usando fallback absoluto "9320"`);
+    return { code: '9320', name: 'ESTADOS UNIDOS' };
+}
+
+// CR (07): totales específicos para comprobante de retención
+function calculateTotalsCR(items) {
+    let totalSujeto = 0;
+    let totalIva = 0;
+    items.forEach(item => {
+        totalSujeto += parseFloat(item.montoSujetoGrav) || 0;
+        totalIva += parseFloat(item.ivaRetenido) || 0;
+    });
+    return {
+        totalSujetoRetencion: round(totalSujeto),
+        totalIVAretenido: round(totalIva),
+        totalIVAretenidoLetras: getAmountInWords(round(totalIva))
+    };
+}
+
 async function generateDTE(payload) {
     const { tipoDte, companyId, branchId, userId, items, receptor, identificacionExtra = {} } = payload;
 
@@ -23,6 +81,17 @@ async function generateDTE(payload) {
     const company = companyRows[0];
     const branch = branchRows[0];
 
+    // Obtener configuración de impuestos
+    const [taxRows] = await pool.query('SELECT iva_rate FROM tax_configurations WHERE company_id = ?', [companyId]);
+    const ivaRate = taxRows.length > 0 ? parseFloat(taxRows[0].iva_rate) : 13;
+
+    // Verificar contingencia activa
+    const [contRows] = await pool.query(
+        'SELECT id, tipo_contingencia, motivo FROM dte_contingencies WHERE company_id = ? AND estado = ? LIMIT 1',
+        [companyId, 'OPEN']
+    );
+    const activeContingency = contRows.length > 0 ? contRows[0] : null;
+
     // 2. Generate Identificacion
     const codigoGeneracion = uuidv4().toUpperCase();
     const branchCode = String(branch.codigo || '1').padStart(3, '0');
@@ -33,8 +102,8 @@ async function generateDTE(payload) {
     const fecEmi = now.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
     const horEmi = now.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador' }).substring(0, 8);
 
-    // Versioning logic by type
-    const version = tipoDte === '01' ? 1 : 3;
+    // Versioning: Factura (01), FEX (11), y CR (07) usan version 1; CCF (03) y otros usan 3
+    const version = (tipoDte === '01' || tipoDte === '11' || tipoDte === '07') ? 1 : 3;
 
     const identificacion = {
         version: version,
@@ -42,15 +111,26 @@ async function generateDTE(payload) {
         tipoDte: tipoDte,
         numeroControl: numeroControl,
         codigoGeneracion: codigoGeneracion,
-        tipoModelo: 1,
-        tipoOperacion: 1,
-        tipoContingencia: null,
+        tipoModelo: activeContingency ? 2 : 1,
+        tipoOperacion: activeContingency ? 2 : 1,
+        tipoContingencia: activeContingency ? activeContingency.tipo_contingencia : null,
         motivoContin: null,
         fecEmi: fecEmi,
         horEmi: horEmi,
         tipoMoneda: 'USD',
         ...identificacionExtra
     };
+
+    // Si hay contingencia activa y tipo=5, poner motivo
+    if (activeContingency && activeContingency.tipo_contingencia === 5) {
+        identificacion.motivoContin = activeContingency.motivo || 'Contingencia';
+    }
+
+    // FEX usa "motivoContigencia", los demás usan "motivoContin"
+    if (tipoDte === '11') {
+        identificacion.motivoContigencia = identificacion.motivoContin;
+        delete identificacion.motivoContin;
+    }
 
     // 3. Emisor - Validating and padding address codes
     const deptCode = String(branch.departamento || '06').padStart(2, '0');
@@ -93,16 +173,53 @@ async function generateDTE(payload) {
         correo: branch.correo || 'emisor@example.com'
     };
 
-    // Estos campos NO van en Nota de Crédito (05)
-    if (tipoDte !== '05') {
+    // Estos campos NO van en Nota de Crédito (05) ni en CR (07)
+    if (tipoDte !== '05' && tipoDte !== '07') {
         emisor.codEstableMH = branch.codigo_mh || null;
         emisor.codEstable = String(branch.codigo || '1').padStart(4, '0');
         emisor.codPuntoVentaMH = emisorAdic.codPuntoVentaMH || null;
         emisor.codPuntoVenta = '0001';
     }
 
-    // 4. Items (Cuerpo Documento) - Mapping strings to codes
-    // Mapeo detallado de unidades de medida (Catálogo 014)
+    // CR (07): usa campos con nombres diferentes
+    if (tipoDte === '07') {
+        emisor.codigoMH = branch.codigo_mh || null;
+        emisor.codigo = String(branch.codigo || '1').padStart(4, '0');
+        emisor.puntoVentaMH = emisorAdic.codPuntoVentaMH || null;
+        emisor.puntoVenta = '0001';
+    }
+
+    // FEX: agregar campos requeridos por Hacienda en el emisor
+    if (tipoDte === '11') {
+        const expData = payload.exportacion || {};
+        emisor.tipoItemExpor = expData.tipoItemExpor || 3;
+        emisor.recintoFiscal = expData.recintoFiscal || null;
+        emisor.regimen = expData.regimen || null;
+    }
+
+    // 4. Items (Cuerpo Documento)
+    // --- CR (07) manejo especial: items son referencias a documentos con retención ---
+    let corpoItems;
+    let totals;
+    let pagos;
+
+    if (tipoDte === '07') {
+        corpoItems = (items || []).map((item, index) => ({
+            numItem: index + 1,
+            tipoDte: String(item.tipoDte || item.docType || item.doc_type || '03'),
+            tipoDoc: parseInt(item.tipoDoc) || 1,
+            numDocumento: String(item.numDocumento || item.docNumber || item.doc_number || item.numeroDocumento || ''),
+            fechaEmision: item.fechaEmision || item.emissionDate || item.emission_date || item.fecEmi || '',
+            montoSujetoGrav: round(parseFloat(item.montoSujetoGrav || item.montoSujeto || item.ventaGravada || 0)),
+            codigoRetencionMH: String(item.codigoRetencionMH || item.codigoRetencion || '22'),
+            ivaRetenido: round(parseFloat(item.ivaRetenido || 0)),
+            descripcion: sanitizeText(item.descripcion || `RETENCION AL DOCUMENTO ${item.numDocumento || item.docNumber || item.doc_number || ''}`)
+        }));
+        totals = calculateTotalsCR(corpoItems);
+        pagos = [];
+    } else {
+        // --- Standard items mapping para todos los demás DTEs ---
+        // Mapeo detallado de unidades de medida (Catálogo 014)
     const uniMedidaMap = {
         'unidad': 59,
         'unidades': 59,
@@ -127,8 +244,8 @@ async function generateDTE(payload) {
         'yardas': 18
     };
 
-    const corpoItems = items.map((item, index) => {
-        const calcItem = calculateItem(item, tipoDte);
+    corpoItems = items.map((item, index) => {
+        const calcItem = calculateItem(item, tipoDte, ivaRate);
         
         // Detectar galones para combustible automáticamente si la descripción lo sugiere
         const desc = (item.descripcion || '').toLowerCase();
@@ -179,35 +296,45 @@ async function generateDTE(payload) {
             ventaNoSuj: round(calcItem.ventaNoSuj),
             ventaExenta: round(calcItem.ventaExenta),
             ventaGravada: round(calcItem.ventaGravada),
-            tributos: (tipoDte === '04') ? null : ((tipoDte === '03' || tipoDte === '05') ? itemTributos : (item.tipoItem === 1 ? null : itemTributos))
+            tributos: (tipoDte === '04' || tipoDte === '11') ? null : ((tipoDte === '03' || tipoDte === '05') ? itemTributos : (item.tipoItem === 1 ? null : itemTributos))
         };
 
-        if (tipoDte !== '05' && tipoDte !== '04') {
+        if (tipoDte === '11') {
+            // FEX: solo estos campos van en el cuerpo (según JSON aceptado por Hacienda)
+            delete baseItem.tipoItem;
+            delete baseItem.numeroDocumento;
+            delete baseItem.codTributo;
+            delete baseItem.ventaNoSuj;
+            delete baseItem.ventaExenta;
+            baseItem.noGravado = 0;
+        } else if (tipoDte !== '05' && tipoDte !== '04') {
             baseItem.psv = 0;
             baseItem.noGravado = 0;
         }
 
-        if (tipoDte === '01' || tipoDte === '03') {
+        if (tipoDte === '01') {
             baseItem.ivaItem = round6(calcItem.ivaItem || 0);
         }
 
         return baseItem;
     });
+        } // Fin del else (tipoDte !== '07')
 
     // 5. Resumen
+    if (tipoDte !== '07') {
     // FILTRO CRÍTICO: Para El Salvador, FOVIAL (D1) y COTRANS (C8) usualmente NO se reportan 
     // como tributos separados en el resumen para evitar errores de cuadre (099) en Hacienda.
     // Se absorben en la base gravada o se omiten si el POS ya los descuenta.
     const filteredTaxes = (payload.taxes || []).filter(t => t && t.codigo !== 'D1' && t.codigo !== 'C8');
     const calculatedItems = items.map(item => calculateItem(item, tipoDte));
-    const totals = calculateTotals(calculatedItems, filteredTaxes, tipoDte);
+    totals = calculateTotals(calculatedItems, filteredTaxes, tipoDte);
     
     // No calculamos totales de fovial/cotran para el resumen oficial (se mantienen en el POS/DB interna)
     let totalFovial = 0;
     let totalCotran = 0;
     
     // Payments mapping
-    const pagos = (payload.pagos || [
+    pagos = (payload.pagos || [
         {
             codigo: '01', // Efectivo
             monto: totals.totalPagar,
@@ -222,6 +349,7 @@ async function generateDTE(payload) {
         plazo: p.plazo || null,
         periodo: p.periodo || null
     }));
+    } // Fin del if (tipoDte !== '07')
 
     const buildResumen = (type) => {
         const base = {
@@ -236,7 +364,8 @@ async function generateDTE(payload) {
             totalDescu: totals.totalDescu,
             tributos: (() => {
                 const isFactura = type === '01';
-                if (isFactura) return []; // Factura 01 NO lleva tributos en el array del resumen
+                const isFex = type === '11';
+                if (isFactura || isFex) return []; // Factura 01 y FEX no llevan tributos en el resumen
 
                 // Para Crédito Fiscal y otros (03, 05, etc.)
                 let taxes = [];
@@ -262,16 +391,17 @@ async function generateDTE(payload) {
 
                 return taxes;
             })(),
-            subTotal: totals.subTotal,
+            subTotal: round(totals.subtotal || totals.subTotal || 0),
             ivaRete1: 0,
             reteRenta: 0,
-            montoTotalOperacion: totals.totalPagar,
+            montoTotalOperacion: round(totals.totalPagar),
             totalNoGravado: 0,
-            totalPagar: totals.totalPagar,
+            totalPagar: round(totals.totalPagar),
             totalLetras: getAmountInWords(totals.totalPagar),
             saldoFavor: 0,
-            condicionOperacion: (type === '04') ? null : parseInt(payload.condicionOperacion || 1),
+            condicionOperacion: (type === '04' || type === '11') ? null : parseInt(payload.condicionOperacion || 1),
             pagos: (() => {
+                if (type === '11') return null;
                 // CORRECCIÓN: Asegurar que el el pago sume exactamente el totalPagar
                 if (pagos.length === 1) {
                     pagos[0].montoPago = totals.totalPagar;
@@ -317,6 +447,37 @@ async function generateDTE(payload) {
             delete base.reteRenta;
             delete base.condicionOperacion;
             base.totalLetras = getAmountInWords(totals.totalPagar);
+        } else if (type === '11') {
+            // FEX: estructura real de resumen aceptada por Hacienda
+            delete base.totalNoSuj;
+            delete base.totalExenta;
+            delete base.subTotalVentas;
+            delete base.descuNoSuj;
+            delete base.descuExenta;
+            delete base.descuGravada;
+            delete base.tributos;
+            delete base.subTotal;
+            delete base.ivaRete1;
+            delete base.reteRenta;
+            delete base.saldoFavor;
+            // Campos que sí van en FEX
+            base.descuento = round(base.totalDescu || 0);
+            base.totalNoGravado = 0;
+            base.condicionOperacion = parseInt(payload.condicionOperacion || 1);
+            base.pagos = pagos;
+            base.codIncoterms = (payload.exportacion && payload.exportacion.incoterms) || '01';
+            base.descIncoterms = (payload.exportacion && payload.exportacion.descIncoterms) || 'EXW- En fabrica';
+            base.flete = round((payload.exportacion && payload.exportacion.flete) || 0);
+            base.seguro = round((payload.exportacion && payload.exportacion.seguro) || 0);
+            base.observaciones = sanitizeText((payload.exportacion && payload.exportacion.observaciones) || '');
+            base.numPagoElectronico = null;
+        } else if (type === '07') {
+            // CR: estructura completamente diferente
+            return {
+                totalSujetoRetencion: totals.totalSujetoRetencion,
+                totalIVAretenido: totals.totalIVAretenido,
+                totalIVAretenidoLetras: totals.totalIVAretenidoLetras
+            };
         }
         return base;
     };
@@ -357,6 +518,44 @@ async function generateDTE(payload) {
         correo: receptor.correo || 'receptor@example.com'
     };
 
+    if (tipoDte === '07') {
+        // CR: estructura de receptor (tipoDocumento/numDocumento en raíz, sin nit)
+        finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '36';
+        finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
+        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null;
+        finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
+        finalReceptor.codActividad = receptor.codActividad || '10005';
+        finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
+    }
+
+    if (tipoDte === '07') {
+        finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '36';
+        finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
+        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null;
+        finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
+        finalReceptor.codActividad = receptor.codActividad || '10005';
+        finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
+    }
+
+    if (tipoDte === '11') {
+        // FEX: estructura real de receptor aceptada por Hacienda
+        const expData = payload.exportacion || {};
+        delete finalReceptor.codActividad;
+        delete finalReceptor.direccion;
+        finalReceptor.tipoPersona = parseInt(receptor.tipo_persona) || 1;
+        finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '37';
+        // numDocumento: formato NIT sin guiones (14 dígitos) u otro formato
+        finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
+        finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || sanitizeText(receptor.nombre) || null;
+        // Obtener código MH del país: primero el del cliente (más fiable), luego el del formulario FEX
+        const rawCountryCode = receptor.pais_code || expData.codPaisDestino || '';
+        const countryResolved = await resolveCountryCode(rawCountryCode);
+        finalReceptor.codPais = countryResolved.code;
+        finalReceptor.nombrePais = receptor.pais_name || (countryResolved.code + ' ' + countryResolved.name).trim();
+        finalReceptor.complemento = sanitizeText(receptor.direccion?.complemento || 'Direccion de entrega').padEnd(5, '.').substring(0, 300);
+        finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
+    }
+
     if (tipoDte === '04') {
         finalReceptor.bienTitulo = payload.bienTitulo || '01'; // 01: Venta/Traslado dominio
         finalReceptor.codActividad = receptor.codActividad || '10005';
@@ -364,17 +563,33 @@ async function generateDTE(payload) {
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || finalReceptor.nombre;
     }
 
-    if (tipoDte === '01' || tipoDte === '04' || (tipoDte === '05' && !receptor.nit)) {
+    if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || (tipoDte === '05' && !receptor.nit))) {
+        // Consumidor Final sin documento: dejar campos como null
+        const isConsumidorFinal = !receptor.nit && !receptor.numDocumento;
+        if (isConsumidorFinal && tipoDte === '01') {
+            finalReceptor.tipoDocumento = null;
+            finalReceptor.numDocumento = null;
+            finalReceptor.codActividad = null;
+            finalReceptor.descActividad = null;
+            finalReceptor.direccion = null;
+            finalReceptor.telefono = null;
+            finalReceptor.correo = null;
+            finalReceptor.nrc = null;
+        } else {
         const rawDocType = (receptor.tipoDocumento || (receptor.nit ? '36' : '36')).toUpperCase();
         finalReceptor.tipoDocumento = docTypeMap[rawDocType] || '36';
         let rawNumDoc = cleanNumbers(receptor.numDocumento || receptor.nit || '000000000');
         if (finalReceptor.tipoDocumento === '13' && rawNumDoc.length === 9) {
             rawNumDoc = `${rawNumDoc.slice(0, 8)}-${rawNumDoc.slice(8)}`;
         }
+        if (finalReceptor.tipoDocumento === '37' && (!receptor.numDocumento && !receptor.nit)) {
+            rawNumDoc = 'SN';
+        }
         finalReceptor.numDocumento = rawNumDoc;
-        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null; 
-    } else {
-        finalReceptor.nit = cleanNumbers(receptor.nit);
+        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null;
+        } 
+    } else if (tipoDte !== '11' && tipoDte !== '07') {
+        finalReceptor.nit = cleanNumbers(receptor.nit || receptor.numDocumento);
         finalReceptor.nrc = cleanNumbers(receptor.nrc);
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
     }
@@ -382,22 +597,33 @@ async function generateDTE(payload) {
     // 7. Final DTE Object
     const dte = {
         identificacion,
-        documentoRelacionado: (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) ? payload.documentoRelacionado : null,
         emisor,
         receptor: finalReceptor,
-        otrosDocumentos: null,
-        ventaTercero: null,
         cuerpoDocumento: corpoItems,
         resumen,
-        extension: tipoDte === '01' || tipoDte === '04' ? {
+        extension: tipoDte === '07' ? null : undefined,
+        apendice: null
+    };
+
+    if (tipoDte !== '07') {
+        dte.otrosDocumentos = null;
+        dte.ventaTercero = null;
+    }
+
+    if (tipoDte !== '11' && tipoDte !== '07') {
+        dte.documentoRelacionado = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) ? payload.documentoRelacionado : null;
+    }
+
+    if (tipoDte !== '11' && tipoDte !== '07') {
+        dte.extension = tipoDte === '04' ? {
             nombEntrega: 'EMISOR-01',
             docuEntrega: '00000000-0',
             nombRecibe: 'RECEPTOR-01',
             docuRecibe: '00000000-0',
             observaciones: sanitizeText(payload.transporter_name ? `Transporte: ${payload.transporter_name} / Placa: ${payload.vehicle_plate}` : '---'),
-        } : null,
-        apendice: null
-    };
+            placaVehiculo: payload.vehicle_plate || ""
+        } : null;
+    }
 
     // Sección de Transporte para Nota de Remisión (04)
     // REMOVIDO: El esquema local fe-nr-v3.json NO permite la propiedad 'transporte' a nivel raíz

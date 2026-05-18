@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import { 
     Plus, 
     Trash2, 
@@ -35,6 +36,7 @@ import Pagination from '../components/ui/Pagination';
 
 const InventoryAdjustments = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
     const barcodeInputRef = useRef(null);
     
@@ -296,6 +298,16 @@ const InventoryAdjustments = () => {
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
     });
+
+    const handleVoidAdjustment = async (id) => {
+        const ok = await confirm({
+            title: '¿Anular movimiento?',
+            message: 'El stock afectado será revertido automáticamente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, anular',
+            variant: 'warning',
+        });
+        if (ok) voidMutation.mutate(id);
+    };
     
     const exportToExcel = () => {
         if (!adjustmentsData?.data?.length) return;
@@ -736,11 +748,7 @@ const InventoryAdjustments = () => {
                                                         <Edit2 size={16} />
                                                     </button>
                                                     <button 
-                                                        onClick={() => {
-                                                            if (window.confirm('¿Está seguro de anular este movimiento? Esta acción reversará el stock automáticamente.')) {
-                                                                voidMutation.mutate(a.id);
-                                                            }
-                                                        }}
+                                                        onClick={() => handleVoidAdjustment(a.id)}
                                                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                     >
                                                         <XCircle size={16} />
@@ -862,11 +870,18 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
 const MotivosModal = ({ isOpen, onClose, tipo, motivos, handleCreateMotivo, labelCls, inputCls, queryClient }) => {
     const [editingId, setEditingId] = useState(null);
     const [editValue, setEditValue] = useState('');
+    const confirm = useConfirm();
 
     if (!isOpen) return null;
 
     const handleDelete = async (id) => {
-        if (!window.confirm('¿Desea eliminar este motivo?')) return;
+        const ok = await confirm({
+            title: '¿Eliminar motivo?',
+            message: 'Este motivo será eliminado permanentemente y no podrá ser recuperado.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (!ok) return;
         try {
             await axios.delete(`/api/inventory/motivos/${id}`);
             toast.success('Motivo eliminado');
@@ -875,6 +890,7 @@ const MotivosModal = ({ isOpen, onClose, tipo, motivos, handleCreateMotivo, labe
             toast.error(error.response?.data?.message || 'Error al eliminar');
         }
     };
+
 
     const handleUpdate = async (id) => {
         try {

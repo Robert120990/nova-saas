@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import { 
     ArrowRightLeft, 
     Plus, 
@@ -36,6 +37,7 @@ import Pagination from '../components/ui/Pagination';
 
 const Transfers = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
     
     // Form State
@@ -137,6 +139,16 @@ const Transfers = () => {
             toast.error(err.response?.data?.message || 'Error al anular el traslado');
         }
     });
+
+    const handleAnnulTransfer = async (id) => {
+        const ok = await confirm({
+            title: '¿Anular traslado?',
+            message: 'El stock será revertido en ambas sucursales. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, anular',
+            variant: 'warning',
+        });
+        if (ok) annulMutation.mutate(id);
+    };
 
     // Keyboard Shortcuts
     useEffect(() => {
@@ -619,11 +631,7 @@ const Transfers = () => {
                                                         <Edit2 size={16} />
                                                     </button>
                                                     <button 
-                                                        onClick={() => {
-                                                            if (window.confirm('¿Estás seguro de anular este traslado? Esto revertirá el stock en ambas sucursales.')) {
-                                                                annulMutation.mutate(t.id);
-                                                            }
-                                                        }}
+                                                        onClick={() => handleAnnulTransfer(t.id)}
                                                         className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                         title="Anular"
                                                     >

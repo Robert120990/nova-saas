@@ -106,11 +106,26 @@ const loginPos = async (req, res) => {
         for (const seller of sellers) {
             const match = await bcrypt.compare(password, seller.password);
             if (match) {
-                return res.json({
-                    seller_id: seller.id,
-                    seller_name: seller.nombre,
-                    pos_id: seller.pos_id,
-                    pos_name: seller.pos_name,
+                    // Obtener POS del turno activo del vendedor (ya no del campo pos_id del seller)
+                    let posId = seller.pos_id;
+                    let posName = seller.pos_name;
+                    const [activeShift] = await pool.query(
+                        `SELECT ps.pos_id, p.nombre as pos_name 
+                         FROM pos_shifts ps
+                         LEFT JOIN points_of_sale p ON ps.pos_id = p.id
+                         WHERE ps.seller_id = ? AND ps.company_id = ? AND ps.status = 'open'
+                         ORDER BY ps.start_time DESC LIMIT 1`,
+                        [seller.id, req.company_id]
+                    );
+                    if (activeShift.length > 0) {
+                        posId = activeShift[0].pos_id;
+                        posName = activeShift[0].pos_name || posName;
+                    }
+                    return res.json({
+                        seller_id: seller.id,
+                        seller_name: seller.nombre,
+                        pos_id: posId,
+                        pos_name: posName,
                     branch_id: seller.branch_id,
                     branch_name: seller.branch_name,
                     allow_price_edit: !!seller.allow_price_edit

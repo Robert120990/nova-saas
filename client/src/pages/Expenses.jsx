@@ -27,6 +27,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 // Helper for date formatting DD/MM/YYYY
 const formatDate = (dateStr) => {
@@ -43,6 +44,7 @@ const formatDate = (dateStr) => {
 const Expenses = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -199,6 +201,16 @@ const Expenses = () => {
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
     });
+
+    const handleVoidExpense = async (id) => {
+        const ok = await confirm({
+            title: '¿Anular gasto?',
+            message: 'El documento quedará marcado como anulado. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, anular',
+            variant: 'warning',
+        });
+        if (ok) voidMutation.mutate(id);
+    };
 
     // Tax Logic
     useEffect(() => {
@@ -745,7 +757,7 @@ const Expenses = () => {
                                                 <button onClick={() => handleEdit(e)} className="p-1.5 text-slate-400 hover:text-amber-600 transition-colors">
                                                     <Edit size={16} />
                                                 </button>
-                                                <button onClick={() => { if(window.confirm('¿Desea anular este gasto?')) voidMutation.mutate(e.id); }} className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors">
+                                                <button onClick={() => handleVoidExpense(e.id)} className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors">
                                                     <XCircle size={16} />
                                                 </button>
                                             </>

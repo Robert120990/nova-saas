@@ -38,6 +38,7 @@ const CashClosing = () => {
     const [showHistorySearch, setShowHistorySearch] = useState(false);
     const [showHistoryDates, setShowHistoryDates] = useState(false);
     const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
+    const [selectedShiftId, setSelectedShiftId] = useState(null);
     const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
     const [actualCash, setActualCash] = useState('');
     const [shiftSummary, setShiftSummary] = useState(null);
@@ -53,8 +54,12 @@ const CashClosing = () => {
 
     // Summary query for the current active shift
     const { data: activeSummary, isLoading: isLoadingSummary } = useQuery({
-        queryKey: ['shifts', 'summary', currentShiftStatus?.shift?.id],
-        queryFn: async () => (await axios.get(`/api/shifts/${currentShiftStatus.shift.id}/summary`)).data,
+        queryKey: ['shifts', 'summary', selectedShiftId || currentShiftStatus?.shift?.id],
+        queryFn: async () => {
+            const shiftId = selectedShiftId || currentShiftStatus?.shift?.id;
+            if (!shiftId) return null;
+            return (await axios.get(`/api/shifts/${shiftId}/summary`)).data;
+        },
         enabled: !!currentShiftStatus?.shift?.id,
     });
 
@@ -75,9 +80,13 @@ const CashClosing = () => {
     });
 
     const { data: posList = [] } = useQuery({
-        queryKey: ['pos'],
-        queryFn: async () => (await axios.get('/api/pos')).data,
+        queryKey: ['pos', user.branch_id],
+        queryFn: async () => (await axios.get(`/api/pos?branch_id=${user.branch_id}`)).data,
     });
+
+    // Filtrar por sucursal actual y solo vendedores activos
+    const branchSellers = sellers.filter(s => s.branch_id == user.branch_id && s.status === 'activo');
+    const branchPOS = posList.filter(p => p.branch_id == user.branch_id);
 
     const { data: paymentMethods = [] } = useQuery({
         queryKey: ['catalogs', 'cat_017_forma_pago'],
@@ -109,9 +118,15 @@ const CashClosing = () => {
         onError: (err) => toast.error(err.response?.data?.message || 'Error al cerrar turno')
     });
 
-    const loadSummary = async () => {
-        if (!currentShiftStatus?.shift?.id) return;
-        setShiftSummary(activeSummary); // Use already fetched data
+    const loadSummary = async (shiftId) => {
+        if (!shiftId) return;
+        try {
+            const { data } = await axios.get(`/api/shifts/${shiftId}/summary`);
+            setShiftSummary(data);
+        } catch (err) {
+            toast.error('Error al cargar el resumen del turno');
+            return;
+        }
         setActualCash('');
         setExpenses([{ description: '', amount: '' }]);
         setIncomes([{ description: '', amount: '', payment_method: '01' }]);
@@ -142,6 +157,7 @@ const CashClosing = () => {
     if (isLoadingStatus) return <div className="p-8 text-center text-slate-500 font-bold">Cargando gestión de caja...</div>;
 
     const currentShift = currentShiftStatus?.shift;
+    const activeShifts = currentShiftStatus?.shifts || (currentShift ? [currentShift] : []);
 
     return (
         <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-700">
@@ -154,81 +170,54 @@ const CashClosing = () => {
                     </h1>
                     <p className="text-slate-500 font-medium mt-1">Gestión de turnos, arqueos y trazabilidad financiera.</p>
                 </div>
-                {!currentShift && (
-                    <button 
-                        onClick={() => setIsOpeningModalOpen(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-3"
-                    >
-                        <Calculator size={18} />
-                        Nueva Apertura
-                    </button>
-                )}
+                <button 
+                    onClick={() => setIsOpeningModalOpen(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-3"
+                >
+                    <Calculator size={18} />
+                    Nueva Apertura
+                </button>
             </div>
 
-            {/* Current Shift Card */}
-            {currentShift ? (
-                <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
-                    <div className="p-8 md:p-12">
-                        <div className="flex flex-col md:flex-row gap-12">
-                            <div className="flex-1 space-y-8">
-                                <div className="flex items-center gap-6">
-                                    <div className="w-16 h-16 bg-emerald-50 rounded-[1.5rem] flex items-center justify-center text-emerald-600 animate-pulse">
-                                        <Clock size={32} />
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-3 mb-1">
-                                            <span className="text-xs font-black uppercase tracking-widest text-emerald-500">Turno en Curso</span>
-                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                        </div>
-                                        <h2 className="text-2xl font-black text-slate-900">Activo desde {new Date(currentShift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}</h2>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Vendedor</label>
-                                        <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                            <User size={14} className="text-indigo-500" />
-                                            {currentShift.seller_name || 'Vendedor'}
-                                        </span>
-                                    </div>
-                                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Punto de Venta</label>
-                                        <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                            <Monitor size={14} className="text-indigo-500" />
-                                            {currentShift.pos_name || 'Caja Principal'}
-                                        </span>
-                                    </div>
-                                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Inicial</label>
-                                        <span className="text-lg font-black text-slate-900">${parseFloat(currentShift.opening_balance).toFixed(2)}</span>
-                                    </div>
-                                    <div className="p-6 bg-indigo-600 rounded-3xl shadow-lg shadow-indigo-200">
-                                        <label className="text-[10px] font-black uppercase text-indigo-100 tracking-widest block mb-1">Ventas Hoy</label>
-                                        <span className="text-lg font-black text-white flex items-center gap-1">
-                                            <TrendingUp size={16} />
-                                            {isLoadingSummary ? 'Calculando...' : `$${parseFloat(activeSummary?.total_sales || 0).toFixed(2)}`}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="w-full md:w-80 flex flex-col justify-center gap-4">
-                                <button 
-                                    onClick={loadSummary}
-                                    className="w-full bg-slate-900 hover:bg-black text-white py-6 rounded-3xl font-black uppercase text-xs tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"
-                                >
-                                    Realizar Arqueo
-                                    <Calculator size={18} />
-                                </button>
-                                <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
-                                    Al realizar el arqueo se cerrará el turno actual y se generará el reporte de caja.
-                                </p>
-                            </div>
+            {/* Active Shifts */}
+            {activeShifts.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {activeShifts.map(shift => (
+                <div key={shift.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-5">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Turno Activo</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500">{shift.pos_name || 'Sin terminal'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                            <span className="text-[9px] font-black uppercase text-slate-400">Vendedor</span>
+                            <p className="text-xs font-bold text-slate-700 truncate">{shift.seller_name || 'Sin asignar'}</p>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-[9px] font-black uppercase text-slate-400">Fondo Inicial</span>
+                            <p className="text-sm font-black text-slate-900">${parseFloat(shift.opening_balance).toFixed(2)}</p>
                         </div>
                     </div>
+                    <div className="text-xs font-bold text-slate-600 mb-3">
+                        {new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        {' — '}
+                        {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </div>
+                    <button 
+                        onClick={() => { setSelectedShiftId(shift.id); loadSummary(shift.id); }}
+                        className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center justify-center gap-2 transition-all"
+                    >
+                        Realizar Arqueo
+                        <Calculator size={14} />
+                    </button>
                 </div>
-            ) : (
+                    ))}
+                </div>
+            )}
+            {activeShifts.length === 0 && (
                 <div className="bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200 p-16 text-center">
                     <div className="w-20 h-20 bg-slate-100 rounded-[2rem] flex items-center justify-center text-slate-400 mx-auto mb-6">
                         <AlertCircle size={40} />
@@ -393,14 +382,14 @@ const CashClosing = () => {
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Vendedor Responsable</label>
                             <select name="seller_id" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all">
                                 <option value="">Seleccione vendedor</option>
-                                {sellers.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                                {branchSellers.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Punto de Venta (Terminal)</label>
                             <select name="pos_id" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all">
                                 <option value="">Seleccione terminal</option>
-                                {posList.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                                {branchPOS.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                             </select>
                         </div>
                         <div>
@@ -640,7 +629,7 @@ const CashClosing = () => {
                                             return toast.error('El total de gastos no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
                                         }
                                         closeShiftMutation.mutate({ 
-                                            id: currentShiftStatus.shift.id, 
+                                            id: shiftSummary?.id || selectedShiftId || activeShifts[0]?.id, 
                                             actualCash, 
                                             expenses: expenses.filter(e => parseFloat(e.amount) > 0),
                                             incomes: incomes.filter(i => parseFloat(i.amount) > 0)
@@ -679,7 +668,7 @@ const CashClosing = () => {
                             </div>
                         </div>
 
-                        <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 space-y-6">
+                        <div id="arqueo-print-area" className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 space-y-6">
                             {/* Bloque de Totales de Arqueo */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left">
@@ -757,7 +746,69 @@ const CashClosing = () => {
 
                         <div className="flex flex-col gap-3">
                             <button 
-                                onClick={() => window.print()}
+                                onClick={() => {
+                                    const s = shiftSummary;
+                                    if (!s) return;
+                                    const totalSales = parseFloat(s.total_sales || 0);
+                                    const catsHtml = (s.salesByCategory || []).map(c => {
+                                        const pct = totalSales > 0 ? ((c.total / totalSales) * 100).toFixed(1) : 0;
+                                        return `<div class="row"><span>${c.categoria}</span><span>$${c.total.toFixed(2)} (${pct}%)</span></div>`;
+                                    }).join('');
+                                    const methodsHtml = (s.methods || []).map(m => 
+                                        `<div class="row"><span>${m.name}</span><span>$${m.total.toFixed(2)}</span></div>`
+                                    ).join('');
+                                    const expensesHtml = (s.expenses || []).map(e =>
+                                        `<div class="row"><span>${e.description}</span><span>-$${e.amount.toFixed(2)}</span></div>`
+                                    ).join('');
+                                    const incomesHtml = (s.incomes || []).map(i =>
+                                        `<div class="row"><span>Ingreso: ${i.description}</span><span>+$${i.amount.toFixed(2)}</span></div>`
+                                    ).join('');
+
+                                    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Arqueo</title>
+                                    <style>
+                                        @page { margin: 0; }
+                                        body { 
+                                            font-family: 'Courier New', Courier, monospace; 
+                                            width: 80mm; 
+                                            margin: 0; 
+                                            padding: 5mm;
+                                            font-size: 11px;
+                                            line-height: 1.3;
+                                        }
+                                        .center { text-align: center; }
+                                        .bold { font-weight: bold; }
+                                        .dashed { border-top: 1px dashed #000; margin: 6px 0; }
+                                        .row { display: flex; justify-content: space-between; }
+                                    </style></head><body>
+                                    <div class="center bold" style="font-size:13px;">ARQUEO DE TURNO</div>
+                                    <div class="center" style="font-size:9px;">${s.status === 'closed' ? 'CERRADO' : 'ACTIVO'}</div>
+                                    <div class="center" style="font-size:9px; margin-top:3px;">${s.pos_name || 'Sin terminal'} — ${s.branch_name || ''}</div>
+                                    <div class="center" style="font-size:8px; margin-top:2px;">Vendedor: ${s.seller_name || 'Sin asignar'}</div>
+                                    <div class="center" style="font-size:8px;">Apertura: ${new Date(s.start_time).toLocaleString('es-SV')}</div>
+                                    ${s.end_time ? `<div class="center" style="font-size:8px;">Cierre: ${new Date(s.end_time).toLocaleString('es-SV')}</div>` : ''}
+                                    <div class="center" style="font-size:9px; margin-top:3px;">${new Date().toLocaleDateString('es-SV')} — ${new Date().toLocaleTimeString('es-SV')}</div>
+                                    <div class="dashed"></div>
+                                    <div class="row bold"><span>Fondo Inicial</span><span>$${parseFloat(s.opening_balance || 0).toFixed(2)}</span></div>
+                                    <div class="dashed"></div>
+                                    <div class="bold" style="margin-bottom:2px;">VENTAS POR MÉTODO</div>${methodsHtml}
+                                    <div class="row bold" style="margin-top:4px;"><span>TOTAL VENTAS</span><span>$${totalSales.toFixed(2)}</span></div>
+                                    <div class="dashed"></div>
+                                    ${catsHtml ? `<div class="bold" style="margin-bottom:2px;">VENTAS POR CATEGORÍA</div>${catsHtml}<div class="dashed"></div>` : ''}
+                                    ${incomesHtml ? `<div class="bold" style="margin-bottom:2px;">INGRESOS</div>${incomesHtml}<div class="dashed"></div>` : ''}
+                                    ${expensesHtml ? `<div class="bold" style="margin-bottom:2px;">GASTOS</div>${expensesHtml}<div class="dashed"></div>` : ''}
+                                    <div class="row bold"><span>Esperado en Caja</span><span>$${(s.expected || 0).toFixed(2)}</span></div>
+                                    <div class="row bold"><span>Contado Físico</span><span>$${(s.actual || 0).toFixed(2)}</span></div>
+                                    <div class="row bold"><span>Diferencia</span><span>$${(s.difference || 0).toFixed(2)}</span></div>
+                                    <div class="dashed"></div>
+                                    <div class="center" style="font-size:8px; margin-top:6px;">Impreso ${new Date().toLocaleString('es-SV')}</div>
+                                    </body></html>`;
+
+                                    const pw = window.open('', '_blank', 'width=400,height=600');
+                                    pw.document.write(html);
+                                    pw.document.close();
+                                    pw.focus();
+                                    setTimeout(() => { pw.print(); pw.close(); }, 400);
+                                }}
                                 className="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest flex items-center justify-center gap-2 shadow-xl"
                             >
                                 <Printer size={18} />

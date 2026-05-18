@@ -6,14 +6,15 @@ import Modal from '../components/ui/Modal';
 import { Plus, Shield, Edit, GitBranch, User, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
 
 const Users = () => {
     const queryClient = useQueryClient();
     const { user: currentUser } = useAuth();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
-    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     
@@ -62,12 +63,21 @@ const Users = () => {
         onSuccess: () => {
             toast.success('Usuario eliminado del sistema');
             queryClient.invalidateQueries(['users']);
-            setConfirmDeleteId(null);
         },
         onError: (error) => {
             toast.error(error.response?.data?.message || 'Error al eliminar usuario');
         }
     });
+
+    const handleDelete = async (id, nombre) => {
+        const ok = await confirm({
+            title: '¿Eliminar usuario?',
+            message: `El usuario "${nombre}" perderá acceso al sistema permanentemente. Esta acción no se puede deshacer.`,
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const toggleStatusMutation = useMutation({
         mutationFn: ({ id, status }) => axios.put(`/api/users/${id}`, { status: status === 'activo' ? 'inactivo' : 'activo' }),
@@ -80,14 +90,6 @@ const Users = () => {
         }
     });
 
-    const handleDelete = (id) => {
-        if (confirmDeleteId === id) {
-            deleteMutation.mutate(id);
-        } else {
-            setConfirmDeleteId(id);
-            setTimeout(() => setConfirmDeleteId(null), 3000);
-        }
-    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -191,13 +193,9 @@ const Users = () => {
                                         <Edit size={18}/>
                                     </button>
                                     <button 
-                                        onClick={() => handleDelete(u.id)} 
-                                        className={`p-2 rounded-lg transition-all ${
-                                            confirmDeleteId === u.id 
-                                            ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' 
-                                            : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
-                                        }`}
-                                        title={confirmDeleteId === u.id ? "Confirmar eliminación" : "Eliminar"}
+                                        onClick={() => handleDelete(u.id, u.nombre)} 
+                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                        title="Eliminar"
                                     >
                                         <Trash2 size={18}/>
                                     </button>

@@ -3,31 +3,51 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
 
 const Customers = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
+    const [condicionFiscal, setCondicionFiscal] = useState('contribuyente');
+    const [exentoIva, setExentoIva] = useState(false);
+
+    // Sucursales
+    const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+    const [branchCustomer, setBranchCustomer] = useState(null);
+    const [editingBranch, setEditingBranch] = useState(null);
+    const [branchDept, setBranchDept] = useState('');
+    const [branchMun, setBranchMun] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [nitValue, setNitValue] = useState('');
+    const [docType, setDocType] = useState('DUI');
 
-    const formatNIT = (value) => {
+    const formatNIT = (value, type = 'DUI') => {
         const digits = value.replace(/\D/g, '');
         let formatted = '';
-        if (digits.length > 0) formatted += digits.substring(0, 4);
-        if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
-        if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
-        if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
+        
+        if (type === 'DUI') {
+            // Formato DUI: 00000000-0
+            if (digits.length > 0) formatted += digits.substring(0, 8);
+            if (digits.length > 8) formatted += '-' + digits.substring(8, 9);
+        } else {
+            // Formato NIT: 0000-000000-000-0
+            if (digits.length > 0) formatted += digits.substring(0, 4);
+            if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
+            if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
+            if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
+        }
         return formatted;
     };
 
@@ -97,18 +117,100 @@ const Customers = () => {
         }
     });
 
+    // Sucursales queries & mutations
+    const { data: branches = [], isLoading: branchesLoading } = useQuery({
+        queryKey: ['customer-branches', branchCustomer?.id],
+        queryFn: async () => (await axios.get('/api/customer-branches', { params: { customer_id: branchCustomer?.id } })).data,
+        enabled: !!branchCustomer?.id
+    });
+
+    const branchMutations = {
+        save: useMutation({
+            mutationFn: (data) => {
+                if (editingBranch) return axios.put(`/api/customer-branches/${editingBranch.id}`, data);
+                return axios.post('/api/customer-branches', data);
+            },
+            onSuccess: () => {
+                queryClient.invalidateQueries(['customer-branches', branchCustomer?.id]);
+                setEditingBranch(null);
+                setBranchDept('');
+                setBranchMun('');
+                toast.success(editingBranch ? 'Sucursal actualizada' : 'Sucursal agregada');
+            },
+            onError: (error) => {
+                toast.error(error.response?.data?.message || 'Error al guardar sucursal');
+            }
+        }),
+        delete: useMutation({
+            mutationFn: (id) => axios.delete(`/api/customer-branches/${id}`),
+            onSuccess: () => {
+                queryClient.invalidateQueries(['customer-branches', branchCustomer?.id]);
+                toast.success('Sucursal eliminada');
+            }
+        })
+    };
+
+    const { data: branchMunicipalities = [] } = useQuery({
+        queryKey: ['catalogs', 'municipalities', branchDept],
+        queryFn: async () => (await axios.get(`/api/catalogs/municipalities?dep_code=${branchDept}`)).data,
+        enabled: !!branchDept
+    });
+
+    const handleOpenBranches = (customer) => {
+        setBranchCustomer(customer);
+        setEditingBranch(null);
+        setBranchDept('');
+        setBranchMun('');
+        setIsBranchModalOpen(true);
+    };
+
+    const handleEditBranch = (branch) => {
+        setEditingBranch(branch);
+        setBranchDept(branch.departamento || '');
+        setBranchMun(branch.municipio || '');
+    };
+
+    const handleBranchSubmit = (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
+        data.customer_id = branchCustomer.id;
+        branchMutations.save.mutate(data);
+    };
+
+    const handleDeleteBranch = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar sucursal?',
+            message: 'Esta sucursal será eliminada permanentemente.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) branchMutations.delete.mutate(id);
+    };
+
+    const handleDeleteCustomer = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar cliente?',
+            message: 'El cliente y su historial asociado serán eliminados permanentemente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
-        data.aplica_iva = formData.get('aplica_iva') === 'on';
         data.exento_iva = formData.get('exento_iva') === 'on';
         data.aplica_fovial = formData.get('aplica_fovial') === 'on';
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
 
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        if (data.nit && !nitRegex.test(data.nit)) {
-            toast.error('Formato de NIT inválido (0000-000000-000-0)');
+        const duiRegex = /^\d{8}-\d{1}$/;
+        
+        if (data.nit && !nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
+            toast.error('Formato de NIT o DUI inválido');
             return;
         }
 
@@ -120,6 +222,9 @@ const Customers = () => {
         setSelectedDept(customer.departamento);
         setSelectedMun(customer.municipio);
         setSelectedActivity(customer.codigo_actividad);
+        setCondicionFiscal(customer.condicion_fiscal || 'contribuyente');
+        setExentoIva(customer.exento_iva || false);
+        setDocType(customer.tipo_documento || 'DUI');
         setNitValue(customer.nit || '');
         setIsModalOpen(true);
     };
@@ -140,6 +245,9 @@ const Customers = () => {
                         setSelectedDept(''); 
                         setSelectedMun('');
                         setSelectedActivity('');
+                        setCondicionFiscal('contribuyente');
+                        setExentoIva(false);
+                        setDocType('DUI');
                         setNitValue('');
                         setIsModalOpen(true); 
                     }} 
@@ -170,15 +278,15 @@ const Customers = () => {
                     isLoading={isLoading}
                     renderRow={(c) => (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-2.5">
                                 <div className="text-sm font-bold text-slate-900">{c.nombre}</div>
                                 <div className="text-xs text-slate-500 font-medium">{c.nombre_comercial}</div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-2.5">
                                 <div className="text-xs text-slate-600 font-medium">{c.municipio_nombre || c.municipio}, {c.departamento_nombre || c.departamento}</div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[150px]">{c.direccion}</div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-2.5">
                                 <div className="text-xs font-bold text-indigo-600 uppercase">
                                     {personTypes.find(t => t.code === c.tipo_persona)?.description || 'Natural'}
                                 </div>
@@ -186,11 +294,11 @@ const Customers = () => {
                                     {countries.find(t => t.code === c.pais)?.description || 'El Salvador'}
                                 </div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-2.5">
                                 <div className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block">{c.nit || c.numero_documento}</div>
                                 <div className="text-[10px] text-slate-400 mt-1 uppercase font-bold">{c.tipo_documento}</div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-2.5">
                                 <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase ${
                                     c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
                                 }`}>
@@ -202,9 +310,10 @@ const Customers = () => {
                                     </div>
                                 )}
                             </td>
-                            <td className="px-6 py-4 flex gap-2">
+                            <td className="px-4 py-2.5 flex gap-2">
                                 <button onClick={() => handleEdit(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => { if(confirm('¿Eliminar cliente?')) deleteMutation.mutate(c.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleOpenBranches(c)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Sucursales"><Building2 size={18}/></button>
+                                <button onClick={() => handleDeleteCustomer(c.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}
@@ -244,7 +353,12 @@ const Customers = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Tipo Documento</label>
-                            <select name="tipo_documento" defaultValue={selectedCustomer?.tipo_documento} className={fieldCls}>
+                            <select 
+                                name="tipo_documento" 
+                                value={docType} 
+                                onChange={(e) => setDocType(e.target.value)}
+                                className={fieldCls}
+                            >
                                 <option value="DUI">DUI</option>
                                 <option value="NIT">NIT</option>
                                 <option value="Pasaporte">Pasaporte</option>
@@ -262,10 +376,10 @@ const Customers = () => {
                             <input 
                                 name="nit" 
                                 value={nitValue} 
-                                onChange={(e) => setNitValue(formatNIT(e.target.value))}
-                                placeholder="0000-000000-000-0" 
+                                onChange={(e) => setNitValue(formatNIT(e.target.value, docType))}
+                                placeholder={docType === 'DUI' ? "00000000-0" : "0000-000000-000-0"} 
                                 className={fieldCls} 
-                                maxLength={17}
+                                maxLength={docType === 'DUI' ? 10 : 17}
                             />
                         </div>
                         <div>
@@ -294,11 +408,16 @@ const Customers = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Condición Fiscal</label>
-                            <select name="condicion_fiscal" defaultValue={selectedCustomer?.condicion_fiscal} className={fieldCls}>
+                            <select name="condicion_fiscal" value={condicionFiscal} onChange={(e) => {
+                                const val = e.target.value;
+                                setCondicionFiscal(val);
+                                if (val === 'exento IVA') setExentoIva(true);
+                            }} className={fieldCls}>
                                 <option value="contribuyente">Contribuyente</option>
                                 <option value="gran contribuyente">Gran Contribuyente</option>
                                 <option value="exento IVA">Exento IVA</option>
-                                <option value="sujeto excluido">Sujeto Excluido</option>
+                                <option value="extranjero">Extranjero</option>
+                                <option value="otro">Otro</option>
                             </select>
                         </div>
                         
@@ -335,13 +454,20 @@ const Customers = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                         {[
-                            { id: 'aplica_iva', label: 'Aplica IVA', default: true },
-                            { id: 'exento_iva', label: 'Exento de IVA', default: false },
+                            { id: 'exento_iva', label: 'Exento de IVA', checked: exentoIva, onChange: (e) => setExentoIva(e.target.checked) },
                             { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
                             { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
                         ].map(tax => (
                             <label key={tax.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-xs font-semibold text-slate-600">
-                                <input type="checkbox" name={tax.id} defaultChecked={selectedCustomer ? selectedCustomer[tax.id] : tax.default} className="accent-indigo-600 w-4 h-4" />
+                                <input 
+                                    type="checkbox" 
+                                    name={tax.id} 
+                                    {...(tax.checked !== undefined 
+                                        ? { checked: tax.checked, onChange: tax.onChange } 
+                                        : { defaultChecked: selectedCustomer ? selectedCustomer[tax.id] : tax.default }
+                                    )}
+                                    className="accent-indigo-600 w-4 h-4" 
+                                />
                                 {tax.label}
                             </label>
                         ))}
@@ -353,6 +479,86 @@ const Customers = () => {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Sucursales Modal */}
+            <Modal 
+                isOpen={isBranchModalOpen} 
+                onClose={() => { setIsBranchModalOpen(false); setEditingBranch(null); }}
+                title={`Sucursales de ${branchCustomer?.nombre || ''}`}
+                maxWidth="max-w-lg"
+            >
+                <div className="space-y-4">
+                    <form onSubmit={handleBranchSubmit} className="space-y-3">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase">
+                            {editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
+                        </h4>
+                        <div>
+                            <label className={labelCls}>Nombre</label>
+                            <input name="nombre" defaultValue={editingBranch?.nombre} required placeholder="Nombre de la sucursal" className={fieldCls} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className={labelCls}>Departamento</label>
+                                <select name="departamento" className={fieldCls} value={branchDept} onChange={(e) => { setBranchDept(e.target.value); setBranchMun(''); }} required>
+                                    <option value="">Seleccionar</option>
+                                    {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className={labelCls}>Municipio</label>
+                                <select name="municipio" value={branchMun} onChange={(e) => setBranchMun(e.target.value)} className={fieldCls} required>
+                                    <option value="">Seleccionar</option>
+                                    {branchMunicipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className={labelCls}>Dirección</label>
+                            <input name="direccion" defaultValue={editingBranch?.direccion} placeholder="Dirección exacta" className={fieldCls} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Teléfono</label>
+                            <input name="telefono" defaultValue={editingBranch?.telefono} placeholder="2200-0000" className={fieldCls} />
+                        </div>
+                        <div className="flex justify-end gap-3 pt-2">
+                            {editingBranch && (
+                                <button type="button" onClick={() => { setEditingBranch(null); setBranchDept(''); setBranchMun(''); }} className="px-3 py-1.5 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-xs">
+                                    Cancelar edición
+                                </button>
+                            )}
+                            <button type="submit" disabled={branchMutations.save.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-bold transition-all text-sm active:scale-95 disabled:opacity-50">
+                                {editingBranch ? 'Actualizar' : 'Agregar'}
+                            </button>
+                        </div>
+                    </form>
+
+                    {branches.length > 0 && (
+                        <div className="border-t border-slate-100 pt-4 space-y-2 max-h-48 overflow-y-auto">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase">Sucursales registradas</h4>
+                            {branches.map(b => (
+                                <div key={b.id} className={`flex items-center justify-between p-3 rounded-lg border ${editingBranch?.id === b.id ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-bold text-slate-800">{b.nombre}</div>
+                                        <div className="text-xs text-slate-500">
+                                            {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                            {b.direccion && ` — ${b.direccion}`}
+                                        </div>
+                                        {b.telefono && <div className="text-xs text-slate-400">{b.telefono}</div>}
+                                    </div>
+                                    <div className="flex gap-1 ml-2">
+                                        <button type="button" onClick={() => handleEditBranch(b)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={14}/></button>
+                                        <button type="button" onClick={() => handleDeleteBranch(b.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {!branchesLoading && branches.length === 0 && (
+                        <p className="text-center text-slate-400 text-sm py-4">No hay sucursales registradas</p>
+                    )}
+                </div>
             </Modal>
         </div>
     );

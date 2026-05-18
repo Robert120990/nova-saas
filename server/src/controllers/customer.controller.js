@@ -55,7 +55,7 @@ const validColumns = [
     'tipo_documento', 'numero_documento', 'nit', 'nrc', 
     'codigo_actividad', 'condicion_fiscal', 'pais', 'departamento', 
     'municipio', 'direccion', 'telefono', 'correo', 
-    'aplica_iva', 'exento_iva', 'aplica_fovial', 'aplica_cotrans'
+    'exento_iva', 'aplica_fovial', 'aplica_cotrans'
 ];
 
 const createCustomer = async (req, res) => {
@@ -68,14 +68,15 @@ const createCustomer = async (req, res) => {
 
     if (data.nit) {
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        if (!nitRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT inválido (0000-000000-000-0)' });
+        const duiRegex = /^\d{8}-\d{1}$/;
+        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
+            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
         }
     }
 
     data.company_id = req.company_id;
     if (!data.tipo_persona) data.tipo_persona = '1';
-    if (!data.pais) data.pais = '9300';
+    if (!data.pais) data.pais = '222';
 
     try {
         const [result] = await pool.query('INSERT INTO customers SET ?', [data]);
@@ -97,8 +98,9 @@ const updateCustomer = async (req, res) => {
 
     if (data.nit) {
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        if (!nitRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT inválido (0000-000000-000-0)' });
+        const duiRegex = /^\d{8}-\d{1}$/;
+        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
+            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
         }
     }
 

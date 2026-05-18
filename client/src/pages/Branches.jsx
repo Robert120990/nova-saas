@@ -5,9 +5,11 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Phone, Mail, Home } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 
 const Branches = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedBranch, setSelectedBranch] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
@@ -53,6 +55,16 @@ const Branches = () => {
             toast.success('Sucursal eliminada');
         }
     });
+
+    const handleDeleteBranch = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar establecimiento?',
+            message: 'Esta sucursal será eliminada permanentemente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const { data: establishmentTypes = [] } = useQuery({
         queryKey: ['catalogs', 'cat_009_tipo_establecimiento'],
@@ -125,7 +137,7 @@ const Branches = () => {
                             </td>
                             <td className="px-6 py-4 flex gap-2">
                                 <button onClick={() => handleEdit(b)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => { if(confirm('¿Eliminar establecimiento?')) deleteMutation.mutate(b.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteBranch(b.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

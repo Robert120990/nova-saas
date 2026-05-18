@@ -29,12 +29,15 @@ const shiftController = require('../controllers/shift.controller');
 const comboController = require('../controllers/combo.controller');
 const vatBooksController = require('../controllers/vatBooks.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
+const customerBranchController = require('../controllers/customerBranch.controller');
+const discountRulesController = require('../controllers/discountRules.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
+router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
 
 // Routes
 router.use(verifyToken);
@@ -107,6 +110,12 @@ router.get('/customers', customerController.getCustomers);
 router.post('/customers', customerController.createCustomer);
 router.put('/customers/:id', customerController.updateCustomer);
 router.delete('/customers/:id', customerController.deleteCustomer);
+
+// Customer Branches (Sucursales)
+router.get('/customer-branches', customerBranchController.getBranches);
+router.post('/customer-branches', customerBranchController.createBranch);
+router.put('/customer-branches/:id', customerBranchController.updateBranch);
+router.delete('/customer-branches/:id', customerBranchController.deleteBranch);
 
 // Providers
 router.get('/providers', providerController.getProviders);
@@ -189,6 +198,7 @@ router.post('/expenses/:id/void', expenseController.voidExpense);
 
 // Sales
 router.get('/sales', salesController.getSales);
+router.get('/sales/check-cr', salesController.checkExistingCR);
 router.get('/sales/reports/pdf', salesController.getSalesReportPDF);
 router.get('/sales/reports/by-category', salesController.getSalesByCategory);
 router.get('/sales/reports/category/pdf', salesController.exportSalesByCategoryPDF);
@@ -203,6 +213,11 @@ router.get('/sales/dte-json/:id', salesController.getDTEJson);
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
+
+// Contingency (proxy to dte-api)
+router.get('/contingency/status', salesController.getContingencyStatus);
+router.post('/contingency/start', salesController.startContingency);
+router.post('/contingency/stop/:id', salesController.stopContingency);
 
 // POS Shifts (Corte de Caja)
 router.get('/shifts', shiftController.getShiftsHistory);
@@ -224,6 +239,13 @@ router.delete('/combos/:id', comboController.deleteCombo);
 router.get('/customer-discounts', customerDiscountController.getDiscounts);
 router.post('/customer-discounts', customerDiscountController.createDiscount);
 router.delete('/customer-discounts/:id', customerDiscountController.deleteDiscount);
+
+// Product Discount Rules
+router.get('/discount-rules', discountRulesController.getRules);
+router.post('/discount-rules', discountRulesController.createRule);
+router.put('/discount-rules/:id', discountRulesController.updateRule);
+router.delete('/discount-rules/:id', discountRulesController.deleteRule);
+
 // Accounts Receivable (CXC)
 router.get('/cxc/statement', cxcController.getCustomerStatement);
 router.get('/cxc/statement/pdf', cxcController.exportStatementPDF);
@@ -271,3 +293,4 @@ router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesC
 router.use('/ai', aiRoutes);
 
 module.exports = router;
+

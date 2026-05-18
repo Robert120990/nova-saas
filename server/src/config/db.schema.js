@@ -66,7 +66,7 @@ REGLA DE NOMBRES (MUY IMPORTANTE):
 - direccion, departamento, municipio, pais
 - telefono, correo, tipo_contribuyente
 - condicion_fiscal ENUM('contribuyente','gran contribuyente','exento IVA','exento impuestos','sujeto excluido')
-- aplica_iva, exento_iva, aplica_fovial, aplica_cotrans
+- exento_iva, aplica_fovial, aplica_cotrans
 - tipo_operacion ENUM('local','exportacion'), created_at
 
 ---

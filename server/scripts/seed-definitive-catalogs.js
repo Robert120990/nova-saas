@@ -29,8 +29,22 @@ const fullCatalogs = {
         ['13', 'Morazan'], ['14', 'La Uni\u00F3n']
     ],
     cat_014_unidad_medida: [
-        ['59', 'Unidad'], ['39', 'Kilogramo'], ['41', 'Libra'], ['57', 'Metro'], ['18', 'Litro'],
-        ['23', 'Mililitro'], ['01', 'Gramo'], ['05', 'Caja'], ['10', 'Bolsa'], ['99', 'Otro']
+        ['1', 'Kilogramo'], ['2', 'Litro'], ['3', 'Metro'], ['4', 'Metro cuadrado'],
+        ['5', 'Metro cúbico'], ['6', 'Tonelada métrica'], ['7', 'Tonelada corta'], ['8', 'Tonelada larga'],
+        ['9', 'Barril'], ['10', 'Botella'], ['11', 'Libra'], ['12', 'Onza'],
+        ['13', 'Onza troy'], ['14', 'Galón imperial'], ['15', 'Galón US'], ['16', 'Centímetro'],
+        ['17', 'Pie'], ['18', 'Yarda'], ['19', 'Pulgada'], ['20', 'Milímetro'],
+        ['21', 'Kilómetro'], ['22', 'Hectolitro'], ['23', 'Mililitro'], ['24', 'Miligramo'],
+        ['25', 'Gramo neto'], ['26', 'Kilowatt'], ['27', 'Megawatt'], ['28', 'Minuto'],
+        ['29', 'Hora'], ['30', 'Día'], ['31', 'Segundo'], ['32', 'Par'],
+        ['33', 'Docena'], ['34', 'Ciento'], ['35', 'Millar'], ['36', 'Fardo'],
+        ['37', 'Saco'], ['38', 'Quintal'], ['39', 'Quintal métrico'], ['40', 'Caja'],
+        ['41', 'Bolsa'], ['42', 'Rollo'], ['43', 'Resma'], ['44', 'Pliego'],
+        ['45', 'Juego'], ['46', 'Tambor'], ['47', 'Gruesa'], ['48', 'Plato'],
+        ['49', 'Millar de hojas'], ['50', 'Metro lineal'], ['51', 'Pie cuadrado'], ['52', 'Yarda cuadrada'],
+        ['53', 'Centímetro cuadrado'], ['54', 'Pulgada cuadrada'], ['55', 'Galón'], ['56', 'Centilitro'],
+        ['57', 'Decilitro'], ['58', 'Kilolitro'], ['59', 'Unidad'], ['60', 'Servicio'],
+        ['61', 'Kilómetro cuadrado'], ['99', 'Otras']
     ],
     cat_015_tributo: [
         ['20', 'IVA'], ['C3', 'FOVIAL'], ['C1', 'COTRANS'], ['A6', 'Impuesto Ad-valorem Bebidas Alcoh\u00F3licas'],

@@ -16,9 +16,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { useConfirm } from '../context/ConfirmContext';
 
 const CustomerDiscounts = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterBranchId, setFilterBranchId] = useState('');
@@ -91,6 +93,16 @@ const CustomerDiscounts = () => {
             toast.success('Descuento eliminado');
         }
     });
+
+    const handleDelete = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar regla de descuento?',
+            message: 'Esta regla de precio personalizado será eliminada permanentemente.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const filteredDiscounts = discounts.filter(d => 
         d.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -210,7 +222,7 @@ const CustomerDiscounts = () => {
                                         </td>
                                         <td className="px-8 py-4 text-center">
                                             <button 
-                                                onClick={() => { if(window.confirm('¿Eliminar esta regla?')) deleteMutation.mutate(d.id); }}
+                                                onClick={() => handleDelete(d.id)}
                                                 className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all active:scale-90"
                                             >
                                                 <Trash2 size={18} />

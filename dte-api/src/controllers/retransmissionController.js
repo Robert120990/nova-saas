@@ -1,241 +1,213 @@
 /**
  * Retransmission Controller
+ * Regenera el DTE desde los datos originales de la venta usando el mismo
+ * generador que una venta nueva, y lo reenvía a Hacienda.
  */
 
+const dteGenerator = require('../services/dteGenerator');
 const signatureService = require('../services/signature/signatureService');
 const transmissionService = require('../transmission/transmissionService');
 const pool = require('../../config/db');
-const { round, getAmountInWords } = require('../utils/calculations');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
+
+/**
+ * Reconstruye el payload que generateDTE() espera a partir de los datos
+ * originales de la venta (sales_headers, sales_items, customers, etc.)
+ */
+async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
+    const ventaId = dteRecord.venta_id;
+
+    // 1. Obtener cabecera de venta
+    const [headers] = await pool.query(
+        'SELECT * FROM sales_headers WHERE id = ? AND company_id = ?',
+        [ventaId, companyId]
+    );
+    if (headers.length === 0) throw new Error(`Venta ${ventaId} no encontrada`);
+    const sale = headers[0];
+
+    // 2. Obtener items
+    const [items] = await pool.query(
+        'SELECT * FROM sales_items WHERE sale_id = ? ORDER BY id',
+        [ventaId]
+    );
+
+    // 3. Obtener pagos
+    const [payments] = await pool.query(
+        'SELECT * FROM sales_payments WHERE sale_id = ?',
+        [ventaId]
+    );
+
+    // 4. Obtener cliente (si existe)
+    let customer = null;
+    if (sale.customer_id) {
+        const [custRows] = await pool.query(
+            'SELECT * FROM customers WHERE id = ? AND company_id = ?',
+            [sale.customer_id, companyId]
+        );
+        if (custRows.length > 0) customer = custRows[0];
+    }
+
+    // 5. Obtener datos de sucursal para el emisor_adicional
+    const [pos] = await pool.query(
+        'SELECT codigo FROM points_of_sale WHERE id = ?',
+        [sale.pos_id]
+    );
+
+    // 6. Obtener datos de la empresa (actividad económica)
+    const [companies] = await pool.query(
+        `SELECT c.*, cat.description as actividad_economica 
+         FROM companies c
+         LEFT JOIN cat_019_actividad_economica cat ON c.codigo_actividad = cat.code
+         WHERE c.id = ?`,
+        [companyId]
+    );
+    const company = companies[0];
+
+    // 7. Construir receptor (con posibilidad de sobreescribir con newReceptor)
+    const mergedRec = {
+        nombre: customer?.nombre || newReceptor?.nombre || sale.cliente_nombre || 'Consumidor Final',
+        nit: customer?.nit || newReceptor?.nit || null,
+        nrc: customer?.nrc || newReceptor?.nrc || null,
+        numDocumento: customer?.num_documento || newReceptor?.numDocumento || null,
+        tipoDocumento: customer?.tipo_documento || newReceptor?.tipoDocumento || null,
+        correo: customer?.correo || newReceptor?.correo || null,
+        telefono: customer?.telefono || newReceptor?.telefono || null,
+        nombreComercial: customer?.nombre_comercial || newReceptor?.nombreComercial || null,
+        tipo_persona: parseInt(customer?.tipo_persona || newReceptor?.tipo_persona) || 1,
+        pais_code: customer?.pais_code || newReceptor?.pais_code || null,
+        pais_name: customer?.pais_name || newReceptor?.pais_name || null,
+        codActividad: customer?.codigo_actividad || newReceptor?.codActividad || '10005',
+        descActividad: customer?.actividad_economica || newReceptor?.descActividad || 'Otros',
+        direccion: customer?.direccion ? {
+            departamento: customer.departamento || '06',
+            municipio: customer.municipio || '01',
+            complemento: customer.direccion || 'Direccion de entrega'
+        } : (newReceptor?.direccion || null)
+    };
+
+    // Si se proveyó newReceptor, sobreescribe todo lo que venga
+    if (newReceptor) {
+        Object.keys(newReceptor).forEach(k => {
+            if (newReceptor[k] !== undefined && newReceptor[k] !== null) {
+                mergedRec[k] = newReceptor[k];
+            }
+        });
+    }
+
+    // 8. Mapear items al formato que espera calculateItem()
+    const mappedItems = items.map((item, idx) => {
+        const isExento = item.venta_exenta > 0 && item.venta_gravada === 0;
+        let tributos = [];
+        try {
+            const parsed = typeof item.tributos === 'string' ? JSON.parse(item.tributos) : item.tributos;
+            if (Array.isArray(parsed)) tributos = parsed;
+        } catch (e) { /* ignore */ }
+
+        return {
+            numItem: idx + 1,
+            descripcion: item.descripcion || `Item ${idx + 1}`,
+            codigo: item.codigo || null,
+            cantidad: parseFloat(item.cantidad) || 0,
+            precioUnitario: parseFloat(item.precio_unitario) || 0,
+            montoDescu: parseFloat(item.monto_descuento) || 0,
+            ventaGravada: parseFloat(item.venta_gravada) || 0,
+            ventaExenta: parseFloat(item.venta_exenta) || 0,
+            tributos: tributos,
+            tipoItem: isExento ? 2 : 1, // 1: Gravado, 2: Exento
+            exento: isExento
+        };
+    });
+
+    // 9. Mapear pagos
+    const mappedPayments = payments.map(p => ({
+        codigo: p.metodo_pago || '01',
+        monto: parseFloat(p.monto) || 0,
+        referencia: p.referencia || null
+    }));
+
+    // 10. Construir payload completo para generateDTE
+    return {
+        venta_id: ventaId,
+        tipoDte: dteRecord.tipo_dte,
+        companyId: companyId,
+        branchId: dteRecord.branch_id,
+        userId: dteRecord.usuario_id || 0,
+        items: mappedItems,
+        receptor: mergedRec,
+        pagos: mappedPayments,
+        condicionOperacion: sale.condicion_operacion || 1,
+        emisor_adicional: {
+            descActividad: company?.actividad_economica || 'Actividad no definida',
+            codPuntoVentaMH: pos.length > 0 ? pos[0].codigo : null
+        },
+        exportacion: dteRecord.tipo_dte === '11' ? {
+            tipoItemExpor: sale.export_item_type || 3,
+            recintoFiscal: sale.fiscal_enclosure || null,
+            regimen: sale.export_regime || null,
+            codPaisDestino: customer?.pais_code || sale.dest_country_code || '',
+            incoterms: sale.incoterms || '01',
+            descIncoterms: sale.desc_incoterms || 'EXW- En fabrica',
+            flete: sale.flete || 0,
+            seguro: sale.seguro || 0,
+            observaciones: sale.observaciones || ''
+        } : null
+    };
+}
 
 async function retransmit(req, res) {
     try {
         const { codigoGeneracion, receptor: newReceptor } = req.body;
-        
-        // 1. Get existing DTE
-        const [rows] = await pool.query('SELECT * FROM dtes WHERE codigo_generacion = ? AND company_id = ?', [codigoGeneracion, req.company_id]);
+
+        // 1. Get existing DTE record
+        const [rows] = await pool.query(
+            'SELECT * FROM dtes WHERE codigo_generacion = ? AND company_id = ?',
+            [codigoGeneracion, req.company_id]
+        );
         if (rows.length === 0) return res.status(404).json({ success: false, message: 'DTE no encontrado' });
 
         const dteRecord = rows[0];
-        let dteJson = dteRecord.json_original;
-        
-        // If it's a string, parse it
-        if (typeof dteJson === 'string') {
-            dteJson = JSON.parse(dteJson);
-        }
+        let dteJson;
 
-        // 2. Update receptor if provided
-        if (newReceptor) {
-            console.log(`[Retransmit] Updating receptor for DTE ${codigoGeneracion}`);
-            
-            // SANITIZATION: Hacienda strictly forbids dashes in NIT, NRC and Phone numbers
-            const sanitizedRec = { ...newReceptor };
-            if (sanitizedRec.nit) sanitizedRec.nit = cleanNumbers(sanitizedRec.nit);
-            if (sanitizedRec.nrc) sanitizedRec.nrc = cleanNumbers(sanitizedRec.nrc);
-            if (sanitizedRec.telefono) sanitizedRec.telefono = cleanNumbers(sanitizedRec.telefono);
-
-            dteJson.receptor = {
-                ...dteJson.receptor,
-                ...sanitizedRec
-            };
-        }
-
-        // 3. RECOVER PERSISTED METADATA if venta_id exists
+        // 2. Regenerar DTE desde los datos originales de la venta si existe venta_id
         if (dteRecord.venta_id) {
-            console.log(`[Retransmit] Recovering persisted metadata for venta ${dteRecord.venta_id}`);
-            
-            // Get Terminal code
-            const [sales] = await pool.query(`
-                SELECT h.pos_id, p.codigo as terminal_codigo
-                FROM sales_headers h
-                LEFT JOIN points_of_sale p ON h.pos_id = p.id
-                WHERE h.id = ?
-            `, [dteRecord.venta_id]);
-            
-            if (sales.length > 0 && sales[0].terminal_codigo && dteRecord.tipo_dte !== '05') {
-                dteJson.emisor.codPuntoVentaMH = sales[0].terminal_codigo;
+            console.log(`[Retransmit] Regenerando DTE desde venta ${dteRecord.venta_id}...`);
+            const payload = await buildPayloadFromSale(dteRecord, newReceptor, req.company_id);
+            dteJson = await dteGenerator.generateDTE(payload);
+            // Preservar datos de identificación originales (Hacienda espera los mismos)
+            dteJson.identificacion.codigoGeneracion = dteRecord.codigo_generacion;
+            dteJson.identificacion.numeroControl = dteRecord.numero_control;
+            // Mantener fecEmi/horEmi originales si existen
+            if (dteRecord.json_original) {
+                const origJson = typeof dteRecord.json_original === 'string'
+                    ? JSON.parse(dteRecord.json_original)
+                    : dteRecord.json_original;
+                if (origJson.identificacion) {
+                    dteJson.identificacion.fecEmi = origJson.identificacion.fecEmi;
+                    dteJson.identificacion.horEmi = origJson.identificacion.horEmi;
+                }
             }
+            console.log(`[Retransmit] DTE regenerado exitosamente: ${dteJson.identificacion.codigoGeneracion}`);
+        } else {
+            // Fallback: usar el json_original guardado (sin venta asociada)
+            dteJson = typeof dteRecord.json_original === 'string'
+                ? JSON.parse(dteRecord.json_original)
+                : dteRecord.json_original;
 
-            // Get Item codes
-            const [items] = await pool.query('SELECT descripcion, codigo FROM sales_items WHERE sale_id = ?', [dteRecord.venta_id]);
-            const itemCodeMap = {};
-            items.forEach(it => {
-                if (it.codigo) itemCodeMap[it.descripcion] = it.codigo;
-            });
-
-            if (dteJson.cuerpoDocumento && Array.isArray(dteJson.cuerpoDocumento)) {
-                dteJson.cuerpoDocumento.forEach(item => {
-                    if (itemCodeMap[item.descripcion]) {
-                        item.codigo = itemCodeMap[item.descripcion];
-                    }
-                });
+            // Si hay nuevo receptor, actualizarlo manualmente
+            if (newReceptor) {
+                console.log(`[Retransmit] Actualizando receptor (sin venta_id) para DTE ${codigoGeneracion}`);
+                dteJson.receptor = { ...dteJson.receptor, ...newReceptor };
             }
         }
 
-        // 4. REPAIR ITEMS: Previous rejected documents might have invalid uniMedida or tributos
-        if (dteJson.cuerpoDocumento && Array.isArray(dteJson.cuerpoDocumento)) {
-            console.log(`[Retransmit] Repairing corpoItems codes for DTE ${codigoGeneracion}`);
-            // Ensure receptor data is fully cleaned
-            if (dteJson.receptor) {
-                if (dteJson.receptor.nombre) {
-                    dteJson.receptor.nombre = sanitizeText(dteJson.receptor.nombre);
-                }
-                if (dteJson.receptor.direccion && dteJson.receptor.direccion.complemento) {
-                    dteJson.receptor.direccion.complemento = sanitizeText(dteJson.receptor.direccion.complemento);
-                }
-            }
-            dteJson.cuerpoDocumento.forEach(item => {
-                // Fix uniMedida for fuel if it was generic (59)
-                const desc = (item.descripcion || '').toLowerCase();
-                if (item.uniMedida === 59) {
-                    if (desc.includes('gasolin') || desc.includes('diesel') || desc.includes('combust')) {
-                        item.uniMedida = 55; // Galones
-                    }
-                }
-
-                // Sanitize tributos: must be strings, no nulls
-                if (item.tributos && Array.isArray(item.tributos)) {
-                    item.tributos = item.tributos
-                        .map(t => typeof t === 'object' ? t.codigo : String(t))
-                        .filter(t => t && t !== 'null' && t !== 'undefined' && t.trim() !== '');
-                    // ESPECIAL COMBUSTIBLES: Históricamente el POS incluye impuestos en el precio unitario base,
-                    // por lo que reportaremos únicamente el IVA ("20") al Ministerio para cuadrar el monto pagado.
-                    if (dteRecord.tipo_dte === '03' || dteRecord.tipo_dte === '05') {
-                        item.tributos = item.tributos.filter(t => t !== 'D1' && t !== 'C8');
-                        if (item.tributos.length === 0) {
-                            item.tributos = ["20"];
-                        }
-                    }
-
-                    item.tributos = [...new Set(item.tributos)];
-                } else if (!item.tributos && dteRecord.tipo_dte === '03') {
-                    item.tributos = ["20"]; // Default IVA if missing
-                }
-            });
-        }
-
-        // 3. Robustness: Ensure CCF/Factura has correct taxes and RECALCULATE totals
-        if (dteJson.resumen) {
-            const isCCF = dteRecord.tipo_dte === '03' || dteRecord.tipo_dte === '05';
-            const isFactura = dteRecord.tipo_dte === '01';
-            
-            if (isCCF) {
-                // Ensure IVA is present in summary taxes
-                if (!dteJson.resumen.tributos) dteJson.resumen.tributos = [];
-                const totalGravada = dteJson.resumen.totalGravada || 0;
-                const calculatedIva = round(totalGravada * 0.13);
-
-                dteJson.resumen.tributos = [{
-                    codigo: '20',
-                    descripcion: 'IVA 13%',
-                    valor: calculatedIva
-                }];
-            } else {
-                dteJson.resumen.tributos = []; // Factura doesn't use it
-            }
-
-            // RECALCULATE EVERYTHING to ensure perfect precision
-            const resumen = dteJson.resumen;
-            
-            // Clean summary taxes to only include valid and non-zero taxes
-            resumen.tributos = (resumen.tributos || []).filter(t => t && t.codigo && t.valor > 0);
-            const totalTaxes = resumen.tributos.reduce((sum, t) => round(sum + (t.valor || 0)), 0);
-            
-            resumen.subTotalVentas = round(
-                (resumen.totalNoSuj || 0) + 
-                (resumen.totalExenta || 0) + 
-                (resumen.totalGravada || 0)
-            );
-
-            resumen.totalDescu = round(resumen.totalDescu || 0);
-            resumen.subTotal = round(resumen.subTotalVentas - resumen.totalDescu);
-            
-            resumen.montoTotalOperacion = round(
-                resumen.subTotal + 
-                totalTaxes + 
-                (resumen.totalNoGravado || 0)
-            );
-            
-            if (isFactura) {
-                resumen.totalIva = round((resumen.totalGravada || 0) * 0.13);
-            }
-
-            resumen.totalPagar = round(
-                resumen.montoTotalOperacion - 
-                (resumen.ivaRete1 || 0) - 
-                (resumen.reteRenta || 0)
-            );
-            
-            resumen.totalLetras = getAmountInWords(resumen.totalPagar);
-
-            // CORRECTION: Ensure payments sum matches totalPagar exactly
-            if (resumen.pagos && resumen.pagos.length > 0) {
-                if (resumen.pagos.length === 1) {
-                    resumen.pagos[0].montoPago = resumen.totalPagar;
-                } else {
-                    // If multiple payments, adjust the last one to fix rounding differences
-                    let currentSum = 0;
-                    for (let i = 0; i < resumen.pagos.length - 1; i++) {
-                        currentSum = round(currentSum + resumen.pagos[i].montoPago);
-                    }
-                    resumen.pagos[resumen.pagos.length - 1].montoPago = round(resumen.totalPagar - currentSum);
-                }
-            }
-            
-            console.log(`[Retransmit] Summary recalibrated: totalGravada=${resumen.totalGravada}, totalTaxes=${totalTaxes}, totalPagar=${resumen.totalPagar}`);
-        }
-
-        // 3. Get Company/Branch credentials
-        const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
-        const certPass = company[0].certificate_password;
-
-        // 2.3 Ensure receptor data is fully cleaned (Accents and special chars cause 099 errors in MH)
-        if (dteJson.receptor) {
-            if (dteJson.receptor.nombre) {
-                dteJson.receptor.nombre = sanitizeText(dteJson.receptor.nombre);
-            }
-            if (dteJson.receptor.direccion && dteJson.receptor.direccion.complemento) {
-                dteJson.receptor.direccion.complemento = sanitizeText(dteJson.receptor.direccion.complemento);
-            }
-        }
-        
-        if (dteRecord.tipo_dte === '05') {
-            console.log(`[Retransmit] Applying strict schema cleanup for NC (05)`);
-            // Emisor cleanup
-            delete dteJson.emisor.codEstableMH;
-            delete dteJson.emisor.codEstable;
-            delete dteJson.emisor.codPuntoVentaMH;
-            delete dteJson.emisor.codPuntoVenta;
-
-            // Resumen cleanup
-            if (dteJson.resumen) {
-                delete dteJson.resumen.porcentajeDescuento;
-                delete dteJson.resumen.totalNoGravado;
-                delete dteJson.resumen.totalPagar;
-                delete dteJson.resumen.saldoFavor;
-                delete dteJson.resumen.pagos;
-                delete dteJson.resumen.numPagoElectronico;
-            }
-
-            // Items cleanup
-            if (dteJson.cuerpoDocumento) {
-                const relatedDocId = (dteJson.documentoRelacionado && dteJson.documentoRelacionado.length > 0)
-                    ? dteJson.documentoRelacionado[0].numeroDocumento
-                    : ".";
-
-                dteJson.cuerpoDocumento.forEach(item => {
-                    delete item.psv;
-                    delete item.noGravado;
-                    delete item.ivaItem;
-                    item.numeroDocumento = relatedDocId;
-                });
-            }
-
-            // Root cleanup
-            delete dteJson.otrosDocumentos;
-        }
-        
         console.log('--- FINAL DTE JSON FOR TRANSMISSION GENERATED ---');
+
+        // 3. Get Company credentials
+        const [company] = await pool.query(
+            'SELECT nit, api_user, api_password, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?',
+            [req.company_id]
+        );
+        const certPass = company[0].certificate_password;
 
         // 4. Sign Document
         const signResult = await signatureService.signDTE(dteJson, {
@@ -258,11 +230,14 @@ async function retransmit(req, res) {
         let jwsString = typeof signResult.jws === 'string' ? signResult.jws : signResult.jws?.body || JSON.stringify(signResult.jws);
         jwsString = jwsString.replace(/^"|"$/g, '').trim();
 
+        const tipoDte = dteJson.identificacion?.tipoDte || dteRecord.tipo_dte;
+        const version = (tipoDte === '01' || tipoDte === '11' || tipoDte === '07') ? 1 : 3;
+
         const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
             ambiente: company[0].ambiente === 'produccion' ? '01' : '00',
-            tipoDte: dteRecord.tipo_dte,
+            tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
-            version: dteRecord.tipo_dte === '01' ? 1 : 3
+            version: version
         });
 
         // 7. Update Database

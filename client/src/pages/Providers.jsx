@@ -5,11 +5,13 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Phone, Mail, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
 
 const Providers = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
@@ -95,6 +97,16 @@ const Providers = () => {
             toast.success('Proveedor eliminado');
         }
     });
+
+    const handleDeleteProvider = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar proveedor?',
+            message: 'El proveedor y sus datos fiscales serán eliminados permanentemente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -196,7 +208,7 @@ const Providers = () => {
                             </td>
                             <td className="px-6 py-4 flex gap-2">
                                 <button onClick={() => handleEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => { if(confirm('¿Eliminar proveedor?')) deleteMutation.mutate(p.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteProvider(p.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

@@ -5,10 +5,12 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Tag, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
 
 const Categories = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState(null);
 
@@ -54,6 +56,16 @@ const Categories = () => {
             toast.success('Categoría eliminada');
         }
     });
+
+    const handleDeleteCategory = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar categoría?',
+            message: 'Esta categoría será eliminada permanentemente. Los productos asociados quedarán sin categoría.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -122,7 +134,7 @@ const Categories = () => {
                             <td className="px-6 py-4 text-sm text-slate-500">{c.description || '-'}</td>
                             <td className="px-6 py-4 flex gap-2">
                                 <button onClick={() => handleEdit(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => { if(confirm('¿Eliminar categoría?')) deleteMutation.mutate(c.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteCategory(c.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

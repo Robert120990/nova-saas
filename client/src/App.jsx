@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 
 // Pages
 import Login from './pages/Login';
@@ -29,7 +30,9 @@ import PurchasePeriod from './pages/PurchasePeriod';
 import SalesTerminal from './pages/SalesTerminal';
 import SalesHistory from './pages/SalesHistory';
 import CustomerDiscounts from './pages/CustomerDiscounts';
+import DiscountRules from './pages/DiscountRules';
 import DailySalesReport from './pages/DailySalesReport';
+import Contingency from './pages/Contingency';
 import CashClosing from './pages/CashClosing';
 import Combos from './pages/Combos';
 import CustomerStatement from './pages/CustomerStatement';
@@ -77,6 +80,7 @@ const ProtectedRoute = () => {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+        <ConfirmProvider>
         <BrowserRouter>
             <AuthProvider>
                 <Routes>
@@ -124,6 +128,8 @@ function App() {
                         <Route path="/ventas/combos" element={<Combos />} />
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
+                        <Route path="/ventas/reglas-descuento" element={<DiscountRules />} />
+                        <Route path="/ventas/contingencia" element={<Contingency />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         
                         {/* Accounts Receivable (CXC) */}
@@ -146,6 +152,7 @@ function App() {
                 <Toaster richColors position="top-right" />
             </AuthProvider>
         </BrowserRouter>
+        </ConfirmProvider>
     </QueryClientProvider>
   )
 }

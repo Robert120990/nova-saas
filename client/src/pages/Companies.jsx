@@ -5,10 +5,12 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Building2, Globe, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 
 const Companies = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCompany, setSelectedCompany] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
@@ -99,6 +101,16 @@ const Companies = () => {
             toast.success('Empresa eliminada');
         }
     });
+
+    const handleDeleteCompany = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar empresa?',
+            message: 'Esta empresa y su configuración DTE serán eliminadas permanentemente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -202,7 +214,7 @@ const Companies = () => {
                             </td>
                             <td className="px-6 py-4 flex gap-2">
                                 <button onClick={() => handleEdit(company)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => { if(confirm('¿Eliminar empresa?')) deleteMutation.mutate(company.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

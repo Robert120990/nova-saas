@@ -31,6 +31,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
@@ -38,6 +39,7 @@ import Modal from '../components/ui/Modal';
 const PhysicalInventory = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
     
     // Header State
@@ -296,9 +298,17 @@ const PhysicalInventory = () => {
         });
     };
 
-    const handleLoadProducts = () => {
+    const handleLoadProducts = async () => {
         if (!branchId) return toast.error('Seleccione una sucursal');
-        if (items.length > 0 && !window.confirm('Se perderá el progreso actual. ¿Desea continuar?')) return;
+        if (items.length > 0) {
+            const ok = await confirm({
+                title: '¿Cargar nuevos productos?',
+                message: 'Se perderá el progreso del conteo actual. ¿Desea continuar?',
+                confirmLabel: 'Sí, continuar',
+                variant: 'warning',
+            });
+            if (!ok) return;
+        }
         setSelectedCategoryIds([]);
         setIsCategoryModalOpen(true);
     };
@@ -355,10 +365,14 @@ const PhysicalInventory = () => {
         }
     };
 
-    const handleDelete = (id) => {
-        if (window.confirm('¿Está seguro de eliminar este borrador de inventario? Esta acción no se puede deshacer.')) {
-            deleteMutation.mutate(id);
-        }
+    const handleDelete = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar borrador?',
+            message: 'Este borrador de inventario será eliminado permanentemente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
     };
 
     const handleExportExcel = async (inv) => {
@@ -619,10 +633,14 @@ const PhysicalInventory = () => {
                                     </div>
 
                                     <button 
-                                        onClick={() => {
-                                            if (window.confirm('¿Confirmas que deseas APLICAR este inventario? El stock se ajustará irreversiblemente.')) {
-                                                applyMutation.mutate(inventoryId);
-                                            }
+                                        onClick={async () => {
+                                            const ok = await confirm({
+                                                title: '¿Aplicar inventario físico?',
+                                                message: 'El stock será ajustado de forma irreversible según los conteos registrados. Asegúrese de haber completado el conteo.',
+                                                confirmLabel: 'Sí, aplicar ajustes',
+                                                variant: 'warning',
+                                            });
+                                            if (ok) applyMutation.mutate(inventoryId);
                                         }}
                                         disabled={!inventoryId || applyMutation.isPending}
                                         className="w-full bg-white text-indigo-600 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:bg-indigo-50 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"

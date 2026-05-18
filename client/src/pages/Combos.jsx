@@ -5,10 +5,12 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Barcode, Search, Package, Info, AlertCircle, Trash } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
 
 const Combos = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCombo, setSelectedCombo] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -73,9 +75,15 @@ const Combos = () => {
         }
     }, [selectedCombo]);
 
-    const handleBranchChange = (newBranchId) => {
+    const handleBranchChange = async (newBranchId) => {
         if (comboItems.length > 0 && newBranchId !== selectedBranch) {
-            if (confirm('Al cambiar de sucursal se limpiarán los productos seleccionados. ¿Continuar?')) {
+            const ok = await confirm({
+                title: '¿Cambiar sucursal?',
+                message: 'Al cambiar de sucursal se limpiarán los productos seleccionados en el combo. ¿Desea continuar?',
+                confirmLabel: 'Sí, cambiar',
+                variant: 'warning',
+            });
+            if (ok) {
                 setComboItems([]);
                 setSelectedBranch(newBranchId);
             }
@@ -107,6 +115,16 @@ const Combos = () => {
             toast.success('Combo eliminado');
         }
     });
+
+    const handleDeleteCombo = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar combo?',
+            message: 'Este combo será eliminado permanentemente del catálogo. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
+    };
 
     const addProductToCombo = (product) => {
         if (comboItems.find(item => item.product_id === product.id)) {
@@ -220,7 +238,7 @@ const Combos = () => {
                             </td>
                             <td className="px-6 py-4 flex gap-2">
                                 <button onClick={() => { setSelectedCombo(c); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => { if(confirm('¿Eliminar combo?')) deleteMutation.mutate(c.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteCombo(c.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

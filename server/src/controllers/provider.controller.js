@@ -65,8 +65,9 @@ const createProvider = async (req, res) => {
 
     if (data.nit) {
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        if (!nitRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT inválido (0000-000000-000-0)' });
+        const duiRegex = /^\d{8}-\d{1}$/;
+        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
+            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
         }
     }
 
@@ -94,8 +95,9 @@ const updateProvider = async (req, res) => {
 
     if (data.nit) {
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        if (!nitRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT inválido (0000-000000-000-0)' });
+        const duiRegex = /^\d{8}-\d{1}$/;
+        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
+            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
         }
     }
 

@@ -215,17 +215,17 @@ const SalesHistory = () => {
     const getStatusBadge = (status) => {
         switch (status) {
             case 'ACCEPTED':
-                return <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-wider"><CheckCircle2 size={12} /> Aceptado</span>;
+                return <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><CheckCircle2 size={11} /> Aceptado</span>;
             case 'REJECTED':
             case 'RECHAZADO':
-                return <span className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-wider"><XCircle size={12} /> Rechazado</span>;
+                return <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><XCircle size={11} /> Rechazado</span>;
             case 'SENT':
-                return <span className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-wider"><Clock size={12} /> Enviado</span>;
+                return <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><Clock size={11} /> Enviado</span>;
             case 'anulado':
             case 'INVALIDADO':
-                return <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black uppercase tracking-wider"><Ban size={12} /> Anulado</span>;
+                return <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><Ban size={11} /> Anulado</span>;
             default:
-                return <span className="flex items-center gap-1 px-2.5 py-1 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-wider"><AlertCircle size={12} /> Pendiente</span>;
+                return <span className="flex items-center gap-1 px-2 py-0.5 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-wider"><AlertCircle size={11} /> Pendiente</span>;
         }
     };
 
@@ -279,7 +279,7 @@ const SalesHistory = () => {
                     isLoading={isLoading}
                     renderRow={(sale) => (
                         <tr key={sale.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 text-sm">
-                            <td className="px-4 py-2">
+                            <td className="px-4 py-1">
                                 <span className="text-[11px] font-bold text-slate-600 block leading-tight">
                                     {formatDateTime(sale.fh_procesamiento || `${sale.fecha_emision.substring(0, 10)}T${sale.hora_emision}`).split(' ')[0]}
                                 </span>
@@ -287,29 +287,38 @@ const SalesHistory = () => {
                                     {formatDateTime(sale.fh_procesamiento || `${sale.fecha_emision.substring(0, 10)}T${sale.hora_emision}`).split(' ')[1]}
                                 </span>
                             </td>
-                            <td className="px-4 py-2">
-                                <div className="flex flex-col leading-tight">
-                                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-tighter">
+                            <td className="px-4 py-1">
+                                <div className="flex flex-col leading-[1.1]">
+                                    <span className="text-[9px] font-black text-slate-900 uppercase tracking-tighter">
                                         {sale.branch_name || 'Central'}
                                     </span>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
                                         {sale.pos_name || 'Principal'}
+                                    </span>
+                                    <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-tighter mt-0.5">
+                                        {sale.seller_name || '---'}
                                     </span>
                                 </div>
                             </td>
-                            <td className="px-4 py-2">
-                                <div className="flex flex-col leading-tight">
-                                    <span className="font-bold text-slate-900 text-xs">{sale.tipo_documento_name}</span>
-                                    {sale.numero_control ? (
-                                        <span className="text-[9px] font-mono font-bold text-indigo-500 opacity-80 break-all line-clamp-1" title={sale.numero_control}>{sale.numero_control}</span>
-                                    ) : (
-                                        <span className="text-[8px] px-1 bg-slate-100 text-slate-400 rounded w-fit font-bold uppercase tracking-widest">Sin Control</span>
-                                    )}
-                                </div>
-                            </td>
-                            <td className="px-4 py-2">
-                                <div className="flex flex-col leading-tight">
-                                    <span className="font-bold text-slate-700 text-xs truncate max-w-[120px]" title={sale.customer_name}>{sale.customer_name || 'Consumidor Final'}</span>
+                             <td className="px-4 py-1">
+                                 <div className="flex flex-col leading-[1.1]">
+                                     <span className="font-bold text-slate-900 text-[10px] truncate leading-none mb-0.5">{sale.tipo_documento_name}</span>
+                                     <div className="flex flex-col">
+                                         {sale.numero_control ? (
+                                             <span className="text-[10.25px] font-mono font-bold text-indigo-500 opacity-80 truncate max-w-[300px]" title={`Control: ${sale.numero_control}`}>{sale.numero_control}</span>
+                                         ) : null}
+                                         {sale.codigo_generacion ? (
+                                             <span className="text-[9.25px] font-mono text-emerald-600/80 truncate mt-0 max-w-[300px]" title={`Generación: ${sale.codigo_generacion}`}>{sale.codigo_generacion}</span>
+                                         ) : null}
+                                         {!sale.numero_control && !sale.codigo_generacion && (
+                                             <span className="text-[8px] px-1 bg-slate-100 text-slate-400 rounded w-fit font-bold uppercase tracking-widest">Sin DTE</span>
+                                         )}
+                                     </div>
+                                 </div>
+                             </td>
+                            <td className="px-4 py-1">
+                                 <div className="flex flex-col leading-tight">
+                                     <span className="font-bold text-slate-700 text-[9px] truncate max-w-[300px]" title={sale.customer_name}>{sale.customer_name || 'Consumidor Final'}</span>
                                     <span className={`text-[8px] px-1 rounded w-fit font-black uppercase tracking-widest ${
                                         sale.condicion_operacion == 1 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
                                     }`}>
@@ -317,7 +326,7 @@ const SalesHistory = () => {
                                     </span>
                                 </div>
                             </td>
-                            <td className="px-4 py-2">
+                            <td className="px-4 py-1">
                                 <div className="flex items-center gap-2">
                                     {getStatusBadge(sale.dte_status)}
                                     {sale.dte_status === 'ACCEPTED' && (
@@ -330,10 +339,10 @@ const SalesHistory = () => {
                                     )}
                                 </div>
                             </td>
-                            <td className="px-4 py-2 font-black text-slate-900 text-sm">
+                            <td className="px-4 py-1 font-black text-slate-900 text-[12.5px]">
                                 ${parseFloat(sale.total_pagar).toFixed(2)}
                             </td>
-                            <td className="px-6 py-4 text-right overflow-visible">
+                            <td className="px-6 py-1 text-right overflow-visible">
                                 <div className="relative flex justify-end">
                                     <button 
                                         onClick={() => setOpenMenuId(openMenuId === sale.id ? null : sale.id)}

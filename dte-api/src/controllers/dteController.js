@@ -72,7 +72,7 @@ async function emit(req, res) {
             ambiente: company[0].ambiente === 'produccion' ? '01' : '00',
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
-            version: tipoDte === '01' ? 1 : 3
+            version: (tipoDte === '01' || tipoDte === '11' || tipoDte === '07') ? 1 : 3
         });
 
         // 6. Store in Database

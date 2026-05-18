@@ -5,6 +5,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ const ViewModal = ({ paymentId, onClose }) => {
 const AddPayment = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     
     // UI State
     const [activeTab, setActiveTab] = useState('nuevo');
@@ -252,7 +254,13 @@ const AddPayment = () => {
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm('¿Está seguro de eliminar este abono? Los saldos se restaurarán.')) return;
+        const ok = await confirm({
+            title: '¿Eliminar abono?',
+            message: 'Los saldos de los documentos afectados serán restaurados automáticamente.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (!ok) return;
         try {
             await axios.delete(`/api/cxc/payments/${id}`);
             toast.success('Abono eliminado');

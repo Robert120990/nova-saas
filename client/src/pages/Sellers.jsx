@@ -132,7 +132,7 @@ const Sellers = () => {
             </div>
 
             <Table 
-                headers={['Vendedor', 'Sucursal / POS', 'Estado', 'Acciones']}
+                headers={['Vendedor', 'Sucursal', 'Estado', 'Acciones']}
                 data={data?.data || []}
                 isLoading={isLoading}
                 renderRow={(seller) => (
@@ -151,7 +151,6 @@ const Sellers = () => {
                         <td className="px-6 py-4">
                             <div className="flex flex-col">
                                 <span className="text-sm font-medium text-slate-700">{seller.branch_name || 'Sin sucursal'}</span>
-                                <span className="text-xs text-slate-500">{seller.pos_name || 'Sin POS'}</span>
                             </div>
                         </td>
                         <td className="px-6 py-4">
@@ -229,23 +228,6 @@ const Sellers = () => {
                             >
                                 <option value="">Seleccionar...</option>
                                 {branches.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-                            </select>
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Punto de Venta</label>
-                            <select
-                                name="pos_id"
-                                value={selectedPosId}
-                                onChange={(e) => setSelectedPosId(e.target.value)}
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-400 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={!selectedBranchId}
-                            >
-                                <option value="">Seleccionar...</option>
-                                {filteredPos.length > 0 ? (
-                                    filteredPos.map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.codigo})</option>)
-                                ) : selectedPosId ? (
-                                    <option value={selectedPosId} disabled>Cargando POS...</option>
-                                ) : null}
                             </select>
                         </div>
                     </div>

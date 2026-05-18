@@ -25,7 +25,7 @@ const getCurrentShift = async (req, res) => {
             params.push(seller_id);
         }
 
-        query += ` ORDER BY s.start_time DESC LIMIT 1`;
+        query += ` ORDER BY s.start_time DESC`;
 
         const [shifts] = await pool.query(query, params);
 
@@ -33,7 +33,13 @@ const getCurrentShift = async (req, res) => {
             return res.json({ open: false });
         }
 
-        res.json({ open: true, shift: shifts[0] });
+        // Si se pidió un POS específico, devolver solo ese turno
+        if (pos_id && pos_id !== 'undefined') {
+            return res.json({ open: true, shift: shifts[0] });
+        }
+
+        // Sin POS específico: devolver todos los turnos abiertos
+        res.json({ open: true, shifts });
     } catch (error) {
         console.error('Error in getCurrentShift:', error);
         res.status(500).json({ message: 'Error al verificar turno' });
@@ -73,8 +79,15 @@ const openShift = async (req, res) => {
 const getShiftSummary = async (req, res) => {    const { id } = req.params;
     console.log(`[DEBUG] getShiftSummary called for ID: ${id}`);
     try {
-        // Obtener datos del turno
-        const [shifts] = await pool.query('SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
+        // Obtener datos del turno con nombres
+        const [shifts] = await pool.query(`
+            SELECT ps.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name
+            FROM pos_shifts ps
+            LEFT JOIN sellers s ON ps.seller_id = s.id
+            LEFT JOIN points_of_sale p ON ps.pos_id = p.id
+            LEFT JOIN branches b ON ps.branch_id = b.id
+            WHERE ps.id = ? AND ps.company_id = ?
+        `, [id, req.company_id]);
         if (shifts.length === 0) {
             console.error(`[DEBUG] Shift ${id} not found for company ${req.company_id}`);
             return res.status(404).json({ message: 'Turno no encontrado' });
@@ -105,6 +118,20 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             FROM pos_shift_incomes i
             LEFT JOIN cat_017_forma_pago cat ON i.payment_method COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
             WHERE i.shift_id = ?
+         `, [id]);
+
+        // Ventas por categoría de producto
+        const [salesByCategory] = await pool.query(`
+            SELECT 
+                COALESCE(pc.name, 'Sin Categoría') as categoria,
+                SUM(si.cantidad * si.precio_unitario) as total
+            FROM sales_items si
+            JOIN sales_headers h ON si.sale_id = h.id
+            LEFT JOIN products p ON si.product_id = p.id
+            LEFT JOIN product_categories pc ON p.category_id = pc.id
+            WHERE h.shift_id = ? AND h.estado = 'emitido'
+            GROUP BY pc.name
+            ORDER BY total DESC
         `, [id]);
 
         let totalSales = 0;
@@ -123,6 +150,11 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         const summary = {
             id: Number(shift.id),
             status: shift.status,
+            seller_name: shift.seller_name || 'Sin vendedor',
+            pos_name: shift.pos_name || 'Sin terminal',
+            branch_name: shift.branch_name || 'Sin sucursal',
+            start_time: shift.start_time,
+            end_time: shift.end_time || null,
             opening_balance: parseFloat(shift.opening_balance || 0),
             total_sales: totalSales,
             cash: cashSales,
@@ -133,7 +165,11 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             total_incomes: parseFloat(shift.total_incomes || incomes.reduce((acc, i) => acc + parseFloat(i.amount || 0), 0)),
             actual: parseFloat(shift.actual_cash || 0),
             expected: parseFloat(shift.expected_cash || (parseFloat(shift.opening_balance || 0) + cashSales)),
-            difference: parseFloat(shift.difference || 0)
+            difference: parseFloat(shift.difference || 0),
+            salesByCategory: salesByCategory.map(c => ({
+                categoria: c.categoria,
+                total: parseFloat(c.total || 0)
+            }))
         };
 
         summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses;

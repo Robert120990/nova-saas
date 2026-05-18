@@ -29,7 +29,7 @@ class DteService {
 
             // 2. Mapear datos al formato esperado por dte-api
             // dte-api espera: { tipoDte, receptor, items, pagos, totalLetras, taxes }
-            const receptor = await this._getReceptorData(payload.header.customer_id, payload.header.cliente_nombre || null);
+            const receptor = await this._getReceptorData(payload.header.customer_id, payload.header.cliente_nombre || null, payload.header.customer_branch_id || null);
 
             // Calcular impuestos de cabecera si vienen por separado (Combustibles)
             const extraTaxes = [];
@@ -54,17 +54,28 @@ class DteService {
                 receptor: receptor,
                 emisor_adicional: payload.emisor_adicional || null,
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
-                items: payload.items.map(item => ({
+                items: payload.header.dte_type === '07' 
+                    ? (payload.linkedDocuments || []).map(doc => ({
+                        tipoDte: doc.doc_type || '03',
+                        tipoDoc: doc.generation_type || 1,
+                        numDocumento: doc.doc_number || '',
+                        fechaEmision: doc.emission_date || '',
+                        montoSujetoGrav: doc.montoSujeto || doc.monto_sujeto || 0,
+                        ivaRetenido: doc.ivaRetenido || doc.iva_retenido || 0,
+                        descripcion: doc.descripcion || `RETENCION AL DOCUMENTO ${doc.doc_number || ''}`
+                    }))
+                    : payload.items.map(item => ({
                     descripcion: item.descripcion || item.nombre,
                     codigo: item.codigo,
                     cantidad: item.cantidad,
                     precioUnitario: item.precio_unitario || item.precio,
                     montoDescu: item.monto_descuento || item.descuento || 0,
                     // Preservar tributos específicos o usar IVA por defecto
-                    tributos: item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
-                        ? item.tributos 
-                        : (item.exento ? [] : ["20"]),
-                    tipoItem: item.exento ? 2 : 1 // 1: Gravado, 2: Exento
+                    tributos: payload.header.dte_type === '11' ? []
+                        : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
+                            ? item.tributos 
+                            : (item.exento ? [] : ["20"])),
+                    tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
                 })),
                 pagos: payload.payments || [],
                 totalLetras: payload.header.total_letras || '',
@@ -74,7 +85,12 @@ class DteService {
                     tipoItemExpor: payload.header.export_item_type || 1,
                     recintoFiscal: payload.header.fiscal_enclosure,
                     regimen: payload.header.export_regime,
-                    codPaisDestino: payload.header.dest_country_code
+                    codPaisDestino: payload.header.dest_country_code,
+                    incoterms: payload.header.incoterms || '01',
+                    descIncoterms: payload.header.desc_incoterms || 'EXW- En fabrica',
+                    flete: payload.header.flete || 0,
+                    seguro: payload.header.seguro || 0,
+                    observaciones: payload.header.observaciones || 'Exportación'
                 } : null,
                 transporte: payload.header.dte_type === '04' ? {
                     bienTitulo: payload.header.remission_type || '02',
@@ -238,7 +254,7 @@ class DteService {
         }
     }
 
-    async _getReceptorData(customerId, manualName = null) {
+    async _getReceptorData(customerId, manualName = null, customerBranchId = null) {
         if (!customerId) return { 
             nombre: manualName || 'PUBLICO GENERAL', 
             nit: null, 
@@ -250,6 +266,20 @@ class DteService {
         if (rows.length === 0) return { nombre: 'RECEPTOR NO ENCONTRADO' };
         
         const c = rows[0];
+        let departamento = c.departamento || '06';
+        let municipio = c.municipio || '14';
+        let complemento = c.direccion || 'San Salvador';
+
+        if (customerBranchId) {
+            const [branches] = await pool.query('SELECT * FROM customer_branches WHERE id = ? AND customer_id = ?', [customerBranchId, customerId]);
+            if (branches.length > 0) {
+                const b = branches[0];
+                departamento = b.departamento || departamento;
+                municipio = b.municipio || municipio;
+                complemento = b.direccion || complemento;
+            }
+        }
+
         return {
             nombre: c.nombre,
             nit: c.nit,
@@ -260,10 +290,13 @@ class DteService {
             telefono: c.telefono,
             codActividad: c.codigo_actividad,
             descActividad: c.actividad_nombre || c.giro,
+            tipo_persona: c.tipo_persona || 1,
+            pais_code: c.pais_code || c.pais || null,
+            pais_name: c.pais_name || null,
             direccion: {
-                departamento: c.departamento || '06',
-                municipio: c.municipio || '14',
-                complemento: c.direccion || 'San Salvador'
+                departamento,
+                municipio,
+                complemento
             }
         };
     }

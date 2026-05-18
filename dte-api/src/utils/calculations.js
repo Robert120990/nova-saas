@@ -18,14 +18,13 @@ const round6 = (num) => {
 /**
  * Calcula un ítem basado en el tipo de DTE y la política de precios inclusive del sistema.
  */
-function calculateItem(item, tipoDte = '01') {
+function calculateItem(item, tipoDte = '01', ivaRate = 13) {
     const quantity = parseFloat(item.cantidad) || 0;
     const priceInput = parseFloat(item.precioUnitario) || 0;
     const discountInput = parseFloat(item.montoDescu) || 0;
 
-    // EL SALVADOR BUSINESS LOGIC:
-    // If tipoDte is '01' (Factura), Hacienda accepts INCLUSIVE values in precioUni and ventaGravada.
-    // If tipoDte is '03' (CCF), Hacienda REQUIRES NET values.
+    const rate = ivaRate / 100;
+    const divisor = 1 + rate;
     
     let netPrice, netDiscount, ventaGravada, iva;
 
@@ -34,14 +33,19 @@ function calculateItem(item, tipoDte = '01') {
         netPrice = priceInput;
         netDiscount = discountInput;
         ventaGravada = round((netPrice * quantity) - netDiscount);
-        // IVA is extracted for information purposes (01841 logic)
-        iva = round6((ventaGravada * 13) / 113);
+        iva = round6((ventaGravada * ivaRate) / (100 + ivaRate));
+    } else if (tipoDte === '11') {
+        // MODO EXPORTACIÓN: No lleva IVA, extraer el neto del precio inclusive
+        netPrice = round6(priceInput / divisor);
+        netDiscount = round6(discountInput / divisor);
+        ventaGravada = round((netPrice * quantity) - netDiscount);
+        iva = 0;
     } else {
         // MODO CRÉDITO FISCAL: Extraer Neto
-        netPrice = round6(priceInput / 1.13);
-        netDiscount = round6(discountInput / 1.13);
+        netPrice = round6(priceInput / divisor);
+        netDiscount = round6(discountInput / divisor);
         ventaGravada = round((netPrice * quantity) - netDiscount);
-        iva = round(ventaGravada * 0.13); 
+        iva = round(ventaGravada * rate); 
     }
 
     return {
@@ -87,11 +91,11 @@ function calculateTotals(items, taxes = [], tipoDte = '01') {
     
     if (tipoDte === '01') {
         // En Factura 01, subTotal es igual a subTotalVentas porque ya incluye impuestos
-        subTotal = round(rSubTotalVentas - rTotalDescu);
+        subTotal = round(rSubTotalVentas);
         totalPagar = round(subTotal + rOtrosImp);
     } else {
         // En CCF 03, subTotal es estrictamente la base imponible sin impuestos
-        subTotal = round(rSubTotalVentas - rTotalDescu);
+        subTotal = round(rSubTotalVentas);
         // totalPagar suma la base + IVA + otros impuestos
         totalPagar = round(subTotal + rTotalIva + rOtrosImp);
     }

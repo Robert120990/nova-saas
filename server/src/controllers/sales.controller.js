@@ -4,7 +4,26 @@ const dteService = require('../services/dte.service');
 const pdfService = require('../services/pdf.service');
 const path = require('path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
+
+const dteTypeNames = {
+    '01': 'Factura',
+    '03': 'Crédito Fiscal',
+    '04': 'Nota de Remisión',
+    '05': 'Nota de Crédito',
+    '06': 'Nota de Débito',
+    '07': 'Comprobante de Retención',
+    '08': 'Comprobante de Liquidación',
+    '09': 'Documento Contable de Liquidación',
+    '11': 'Factura de Exportación',
+    '14': 'Factura de Sujeto Excluido',
+    '15': 'Comprobante de Donación'
+};
+
+function getDteTypeName(tipoDte) {
+    return dteTypeNames[tipoDte] || 'Documento Tributario';
+}
 
 /**
  * Procesa una nueva venta junto con sus ítems, pagos y documentos vinculados.
@@ -77,7 +96,9 @@ const createSale = async (req, res) => {
                 } else {
                     // Si no hay código de generación, fue un error crítico antes de crear el DTE
                     console.error('[SalesController] DTE Schema Error Details:', JSON.stringify(dteResult.details, null, 2));
-                    throw new Error('Error crítico en DTE: ' + (dteResult.error || 'Error desconocido'));
+                    const err = new Error('Error crítico en DTE: ' + (dteResult.error || 'Error desconocido'));
+                    err.details = dteResult.details || null;
+                    throw err;
                 }
             }
         }
@@ -87,6 +108,7 @@ const createSale = async (req, res) => {
             company_id: req.company_id,
             branch_id: req.user.branch_id,
             customer_id: header.customer_id,
+            customer_branch_id: header.customer_branch_id || null,
             seller_id: header.seller_id,
             pos_id: header.pos_id,
             shift_id: header.shift_id || null,
@@ -210,12 +232,15 @@ const createSale = async (req, res) => {
             }
         }
 
-        // 4. Documentos Vinculados (Para Notas de Crédito / Remisiones)
+        // 4. Documentos Vinculados (Para Notas de Crédito / Remisiones / Retención)
         if (linkedDocuments && linkedDocuments.length > 0) {
             for (const doc of linkedDocuments) {
                 await connection.query('INSERT INTO sales_linked_documents SET ?', [{
-                    ...doc,
-                    sale_id: saleId
+                    sale_id: saleId,
+                    doc_type: doc.doc_type || null,
+                    doc_number: doc.doc_number || null,
+                    emission_date: doc.emission_date || null,
+                    generation_type: doc.generation_type || null
                 }]);
             }
         }
@@ -248,7 +273,8 @@ const createSale = async (req, res) => {
         res.status(201).json({ 
             id: saleId, 
             message: 'Venta procesada exitosamente',
-            success: true 
+            success: true,
+            dte: dteInfo
         });
 
     } catch (error) {
@@ -257,7 +283,7 @@ const createSale = async (req, res) => {
         res.status(500).json({ 
             message: 'Error al procesar la venta', 
             error: error.message,
-            stack: error.stack,
+            details: error.details || null,
             success: false 
         });
     } finally {
@@ -283,6 +309,7 @@ const getSales = async (req, res) => {
                 WHEN '03' THEN 'Crédito Fiscal'
                 WHEN '04' THEN 'Nota de Remisión'
                 WHEN '05' THEN 'Nota de Crédito'
+                WHEN '07' THEN 'C. Retención'
                 WHEN '11' THEN 'Factura de Exportación'
                 ELSE h.tipo_documento 
             END as tipo_documento_name
@@ -1239,11 +1266,14 @@ const exportRTEE = async (req, res) => {
                 nrc: dteJson.receptor.nrc || null,
                 numDocumento: dteJson.receptor.numDocumento,
                 direccion: dteJson.receptor.direccion,
-                codActividad: dteJson.receptor.codActividad || null
+                codActividad: dteJson.receptor.codActividad || null,
+                descActividad: dteJson.receptor.descActividad || null,
+                codPais: dteJson.receptor.codPais || null,
+                nombrePais: dteJson.receptor.nombrePais || null,
             },
             dte: {
                 tipoDte: dteJson.identificacion.tipoDte,
-                tipoDteNombre: venta.tipo_documento_name || 'Factura',
+                tipoDteNombre: getDteTypeName(dteJson.identificacion.tipoDte),
                 codigoGeneracion: dteJson.identificacion.codigoGeneracion,
                 numeroControl: dteJson.identificacion.numeroControl,
                 selloRecepcion: venta.sello_recepcion,
@@ -1255,22 +1285,27 @@ const exportRTEE = async (req, res) => {
                 fecha_emision: dteJson.identificacion.fecEmi,
                 hora_emision: dteJson.identificacion.horEmi,
                 condicion_operacion: dteJson.resumen.condicionOperacion,
-                total_gravado: dteJson.resumen.totalGravada,
-                total_iva: dteJson.resumen.totalIva || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
+                total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
+                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
                 total_descuento: dteJson.resumen.descuNoExenta || 0,
-                total_pagar: dteJson.resumen.totalPagar,
-                total_letras: dteJson.resumen.totalLetras,
+                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIVAretenido || 0,
+                total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
                 fovial: parseFloat(venta.fovial) || 0,
                 cotrans: parseFloat(venta.cotrans) || 0,
-                tributos: dteJson.resumen.tributos || []
+                tributos: dteJson.resumen.tributos || [],
+                totalSujetoRetencion: dteJson.resumen.totalSujetoRetencion || 0,
+                totalIVAretenido: dteJson.resumen.totalIVAretenido || 0,
             },
             items: dteJson.cuerpoDocumento.map(item => ({
-                cantidad: item.cantidad,
-                descripcion: item.descripcion,
-                precioUnitario: item.precioUni,
-                montoDescuento: item.montoDescu,
-                totalItem: item.ventaGravada,
-                uniMedida: item.uniMedida || 59
+                cantidad: item.cantidad || 1,
+                descripcion: item.descripcion || '',
+                precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
+                montoDescuento: item.montoDescu || 0,
+                totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
+                uniMedida: item.uniMedida || 59,
+                tipoDte: item.tipoDte || null,
+                numDocumento: item.numDocumento || null,
+                ivaRetenido: item.ivaRetenido || 0,
             }))
         };
 
@@ -1281,6 +1316,125 @@ const exportRTEE = async (req, res) => {
         res.send(pdfBuffer);
     } catch (error) {
         console.error('[ExportRTEE] Error:', error);
+        res.status(500).json({ message: 'Error al generar Representación Gráfica (RTEE)', error: error.message });
+    }
+};
+
+const getPublicRTEE = async (req, res) => {
+    const { codigo } = req.params;
+
+    try {
+        // 1. Obtener datos detallados de la venta y DTE por codigo_generacion
+        const [header] = await pool.query(
+            `SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
+            d.status as dte_status, d.numero_control as dte_control, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
+            d.json_original, d.sello_recepcion, d.fh_procesamiento
+            FROM sales_headers h
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN sellers s ON h.seller_id = s.id
+            LEFT JOIN points_of_sale p ON h.pos_id = p.id
+            LEFT JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
+            WHERE h.codigo_generacion = ?`, [codigo]);
+
+        if (header.length === 0) {
+            return res.status(404).json({ message: 'Documento no encontrado' });
+        }
+
+        const venta = header[0];
+        
+        let dteJson = venta.json_original;
+        if (typeof dteJson === 'string') {
+            try { dteJson = JSON.parse(dteJson); } catch (e) {
+                return res.status(500).json({ message: 'Error al procesar el JSON del DTE' });
+            }
+        }
+
+        if (!dteJson) {
+            return res.status(400).json({ message: 'Este documento no tiene un DTE asociado' });
+        }
+
+        // 2. Obtener datos del emisor usando el company_id de la venta
+        const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [venta.company_id]);
+        const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
+
+        let logoPath = null;
+        const rawLogoUrl = (branch[0]?.logo_url || company[0]?.logo_url);
+        
+        if (rawLogoUrl) {
+            const cleanPath = rawLogoUrl.startsWith('/') ? rawLogoUrl.substring(1) : rawLogoUrl;
+            const absoluteLogoPath = path.join(__dirname, '..', '..', cleanPath);
+            if (fs.existsSync(absoluteLogoPath)) logoPath = absoluteLogoPath;
+        }
+
+        const reportData = {
+            emisor: {
+                nombre: company[0].razon_social,
+                nit: company[0].nit,
+                nrc: company[0].nrc,
+                descActividad: dteJson.emisor.descActividad,
+                direccion: dteJson.emisor.direccion,
+                telefono: dteJson.emisor.telefono,
+                correo: dteJson.emisor.correo,
+                departamento_nombre: 'San Salvador',
+                municipio_nombre: 'San Salvador',
+                logoPath: logoPath
+            },
+            receptor: {
+                nombre: dteJson.receptor.nombre,
+                nit: dteJson.receptor.nit,
+                nrc: dteJson.receptor.nrc || null,
+                numDocumento: dteJson.receptor.numDocumento,
+                direccion: dteJson.receptor.direccion,
+                codActividad: dteJson.receptor.codActividad || null,
+                descActividad: dteJson.receptor.descActividad || null,
+                codPais: dteJson.receptor.codPais || null,
+                nombrePais: dteJson.receptor.nombrePais || null,
+            },
+            dte: {
+                tipoDte: dteJson.identificacion.tipoDte,
+                tipoDteNombre: getDteTypeName(dteJson.identificacion.tipoDte),
+                codigoGeneracion: dteJson.identificacion.codigoGeneracion,
+                numeroControl: dteJson.identificacion.numeroControl,
+                selloRecepcion: venta.sello_recepcion,
+                ambiente: dteJson.identificacion.ambiente,
+                tipoModelo: dteJson.identificacion.tipoModelo,
+                tipoOperacion: dteJson.identificacion.tipoOperacion
+            },
+            venta: {
+                fecha_emision: dteJson.identificacion.fecEmi,
+                hora_emision: dteJson.identificacion.horEmi,
+                condicion_operacion: dteJson.resumen.condicionOperacion,
+                total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
+                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
+                total_descuento: dteJson.resumen.descuNoExenta || 0,
+                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIVAretenido || 0,
+                total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
+                fovial: parseFloat(venta.fovial) || 0,
+                cotrans: parseFloat(venta.cotrans) || 0,
+                tributos: dteJson.resumen.tributos || [],
+                totalSujetoRetencion: dteJson.resumen.totalSujetoRetencion || 0,
+                totalIVAretenido: dteJson.resumen.totalIVAretenido || 0,
+            },
+            items: dteJson.cuerpoDocumento.map(item => ({
+                cantidad: item.cantidad || 1,
+                descripcion: item.descripcion || '',
+                precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
+                montoDescuento: item.montoDescu || 0,
+                totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
+                uniMedida: item.uniMedida || 59,
+                tipoDte: item.tipoDte || null,
+                numDocumento: item.numDocumento || null,
+                ivaRetenido: item.ivaRetenido || 0,
+            }))
+        };
+
+        const pdfBuffer = await pdfService.generateRTEE(reportData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=DTE-${codigo}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[GetPublicRTEE] Error:', error);
         res.status(500).json({ message: 'Error al generar Representación Gráfica (RTEE)', error: error.message });
     }
 };
@@ -1541,6 +1695,70 @@ const retransmitSaleDTE = async (req, res) => {
     }
 };
 
+const checkExistingCR = async (req, res) => {
+    try {
+        const { doc_number, doc_type } = req.query;
+        if (!doc_number) return res.json({ exists: false });
+
+        const [rows] = await pool.query(
+            `SELECT 1 FROM sales_linked_documents ld
+             JOIN sales_headers h ON ld.sale_id = h.id
+             WHERE ld.doc_number = ? AND h.tipo_documento = '07' AND h.company_id = ?
+             LIMIT 1`,
+            [doc_number, req.company_id]
+        );
+        res.json({ exists: rows.length > 0 });
+    } catch (error) {
+        console.error('[checkExistingCR] Error:', error.message);
+        res.json({ exists: false });
+    }
+};
+
+const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
+const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+
+const getContingencyStatus = async (req, res) => {
+    try {
+        const token = jwt.sign({ id: 0, username: 'system', company_id: req.company_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
+        const response = await fetch(`${DTE_API_URL}/contingency/status`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id }
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const startContingency = async (req, res) => {
+    try {
+        const token = jwt.sign({ id: req.user.id, username: req.user.username, company_id: req.company_id, branch_id: req.user.branch_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
+        const response = await fetch(`${DTE_API_URL}/contingency/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id },
+            body: JSON.stringify(req.body)
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const stopContingency = async (req, res) => {
+    try {
+        const token = jwt.sign({ id: req.user.id, username: req.user.username, company_id: req.company_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
+        const response = await fetch(`${DTE_API_URL}/contingency/stop/${req.params.id}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id }
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -1553,6 +1771,11 @@ module.exports = {
     getSalesByPOS,
     exportSalesByPOSPDF,
     exportRTEE,
+    getPublicRTEE,
+    checkExistingCR,
+    getContingencyStatus,
+    startContingency,
+    stopContingency,
     getDTEJson,
     resendDTEEmail,
     voidSale,

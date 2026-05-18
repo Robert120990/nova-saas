@@ -5,9 +5,11 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Monitor, Edit, Trash2, Power } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 
 const POS = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedPos, setSelectedPos] = useState(null);
 
@@ -71,10 +73,14 @@ const POS = () => {
         setIsModalOpen(true);
     };
 
-    const handleDelete = (id) => {
-        if (window.confirm('¿Estás seguro de eliminar este punto de venta?')) {
-            deleteMutation.mutate(id);
-        }
+    const handleDelete = async (id) => {
+        const ok = await confirm({
+            title: '¿Eliminar punto de venta?',
+            message: 'Esta terminal será eliminada permanentemente del sistema.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteMutation.mutate(id);
     };
 
     return (

@@ -33,10 +33,12 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 const Purchases = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -223,6 +225,16 @@ const Purchases = () => {
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
     });
+
+    const handleVoidPurchase = async (id) => {
+        const ok = await confirm({
+            title: '¿Anular compra?',
+            message: 'El stock afectado será revertido automáticamente. Esta acción no se puede deshacer.',
+            confirmLabel: 'Sí, anular',
+            variant: 'warning',
+        });
+        if (ok) voidMutation.mutate(id);
+    };
 
     // Tax Logic SV
     useEffect(() => {
@@ -1042,7 +1054,7 @@ const Purchases = () => {
                                             </button>
                                             {c.status !== 'ANULADO' && (
                                                 <button 
-                                                    onClick={() => { if(window.confirm('\u00BFAnular?')) voidMutation.mutate(c.id); }} 
+                                                    onClick={() => handleVoidPurchase(c.id)} 
                                                     className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                     title="Anular"
                                                 >
