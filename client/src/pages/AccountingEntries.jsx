@@ -178,9 +178,9 @@ const AccountingEntries = () => {
             {/* New Entry Modal */}
             <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingEntry(null); }} title={editingEntry ? 'Editar Partida' : 'Nueva Partida Contable'} maxWidth="max-w-3xl">
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-3">
                         {!editingEntry && (
-                        <>
+                        <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Tipo de Partida</label>
                             <select name="entry_type_id" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
@@ -191,9 +191,9 @@ const AccountingEntries = () => {
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Fecha</label>
                             <input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                         </div>
-                        </>
+                        </div>
                         )}
-                        <div className={editingEntry ? 'col-span-3' : ''}>
+                        <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Descripción</label>
                             <input name="description" placeholder="Concepto de la partida" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                         </div>
@@ -204,48 +204,57 @@ const AccountingEntries = () => {
                         
                         {/* Quick-add bar */}
                         <div className="flex gap-2 items-end mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
-                            <div className="flex-1 relative">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta (F3 buscar)</label>
-                                <div className="relative">
-                                    <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                                    <input
-                                        id="quick-account"
-                                        autoComplete="off"
-                                        placeholder="Código o nombre de cuenta..."
-                                        className="w-full pl-8 pr-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                        onFocus={(e) => { setAccountSearch(e.target.value); }}
-                                        onChange={(e) => setAccountSearch(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); }
-                                            if (e.key === 'Enter') {
-                                                const first = accountResults[0];
-                                                if (first) { setSelectedAccountId(first.id); document.getElementById('quick-account').value = first.code + ' - ' + first.name; setAccountSearch(''); }
+                            <div className="w-24 relative">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta (F3)</label>
+                                <input
+                                    id="quick-account"
+                                    autoComplete="off"
+                                    placeholder="Código..."
+                                    className="w-full px-2 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    onChange={(e) => {
+                                        setAccountSearch(e.target.value);
+                                        if (!e.target.value) setSelectedAccountId('');
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); document.getElementById('quick-account-name').value = ''; }
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const first = accountResults[0];
+                                            if (first) {
+                                                setSelectedAccountId(first.id);
+                                                document.getElementById('quick-account').value = first.code;
+                                                document.getElementById('quick-account-name').value = first.name;
+                                                setAccountSearch('');
                                             }
-                                        }}
-                                    />
-                                    {accountSearch && (
-                                        <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto mt-1">
-                                            {accountResults.length === 0 ? (
-                                                <div className="px-3 py-2 text-[10px] text-slate-400">Sin resultados</div>
-                                            ) : (
-                                                accountResults.map(a => (
-                                                    <div key={a.id}
-                                                        className="px-3 py-2 text-[10px] font-bold hover:bg-indigo-50 cursor-pointer border-b border-slate-50 flex justify-between"
-                                                        onClick={() => {
-                                                            setSelectedAccountId(a.id);
-                                                            document.getElementById('quick-account').value = a.code + ' - ' + a.name;
-                                                            setAccountSearch('');
-                                                        }}
-                                                    >
-                                                        <span className="font-mono text-indigo-500">{a.code}</span>
-                                                        <span className="flex-1 ml-2 truncate">{a.name}</span>
-                                                        <span className="text-slate-400 text-[9px]">{a.type_name}</span>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                                        }
+                                    }}
+                                />
+                                {accountSearch && (
+                                    <div className="absolute top-full left-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg w-64 max-h-48 overflow-y-auto mt-1">
+                                        {accountResults.length === 0 ? (
+                                            <div className="px-3 py-2 text-[10px] text-slate-400">Sin resultados</div>
+                                        ) : (
+                                            accountResults.map(a => (
+                                                <div key={a.id}
+                                                    className="px-3 py-2 text-[10px] font-bold hover:bg-indigo-50 cursor-pointer border-b border-slate-50 flex justify-between"
+                                                    onClick={() => {
+                                                        setSelectedAccountId(a.id);
+                                                        document.getElementById('quick-account').value = a.code;
+                                                        document.getElementById('quick-account-name').value = a.name;
+                                                        setAccountSearch('');
+                                                    }}
+                                                >
+                                                    <span className="font-mono text-indigo-500">{a.code}</span>
+                                                    <span className="flex-1 ml-2 truncate">{a.name}</span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Nombre</label>
+                                <input id="quick-account-name" readOnly placeholder="Seleccione una cuenta" className="w-full px-2 py-2 bg-slate-100 border border-indigo-100 rounded-xl text-[11px] font-bold text-slate-600 outline-none cursor-default" />
                             </div>
                             <div className="w-32">
                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Detalle</label>
