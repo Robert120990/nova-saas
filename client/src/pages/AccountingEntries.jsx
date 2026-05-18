@@ -3,12 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Plus, Eye, Ban, Edit, FileText, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 
 const AccountingEntries = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [page, setPage] = useState(1);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [viewEntry, setViewEntry] = useState(null);
@@ -76,8 +78,6 @@ const AccountingEntries = () => {
             toast.error('Error al cargar partida');
         }
     };
-
-    const resetForm = () => setLines([{ account_id: '', description: '', debit: '', credit: '' }]);
 
     const addLine = () => setLines([...lines, { account_id: '', description: '', debit: '', credit: '' }]);
     const removeLine = (idx) => { if (lines.length > 1) setLines(lines.filter((_, i) => i !== idx)); };
@@ -152,7 +152,7 @@ const AccountingEntries = () => {
                             <div className="flex gap-2">
                                 <button onClick={async () => { const { data } = await axios.get(`/api/accounting/entries/${e.id}`); setViewEntry(data); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Eye size={14} /></button>
                                 <button onClick={() => handleEdit(e)} className="p-1.5 text-slate-400 hover:text-amber-600"><Edit size={14} /></button>
-                                {e.status === 'posted' && <button onClick={() => { if (confirm('¿Anular esta partida?')) voidMutation.mutate(e.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Ban size={14} /></button>}
+                                {e.status === 'posted' && <button onClick={async () => { const ok = await confirm({ title: 'Anular Partida', message: '¿Anular esta partida contable?', confirmLabel: 'Anular' }); if (ok) voidMutation.mutate(e.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Ban size={14} /></button>}
                             </div>
                         </td>
                     </tr>

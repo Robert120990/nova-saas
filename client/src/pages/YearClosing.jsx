@@ -3,9 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Lock, Calendar, TrendingDown, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 
 const YearClosing = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [year, setYear] = useState(new Date().getFullYear());
     const [date, setDate] = useState(`${year}-12-31`);
     const [description, setDescription] = useState('Cierre del Ejercicio Contable');
@@ -84,7 +86,7 @@ const YearClosing = () => {
                         <label className="text-[10px] font-black uppercase text-slate-400">Descripción de la Partida</label>
                         <input value={description} onChange={e => setDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 rounded-xl text-sm font-bold" />
                         <button
-                            onClick={() => { if (confirm('¿Generar partida de cierre? Esto no se puede deshacer.')) closeMutation.mutate(); }}
+                            onClick={async () => { const ok = await confirm({ title: 'Cierre Anual', message: '¿Generar partida de cierre? Esto no se puede deshacer.', confirmLabel: 'Cerrar Ejercicio' }); if (ok) closeMutation.mutate(); }}
                             disabled={closeMutation.isPending || incomeAccounts.length === 0}
                             className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black uppercase text-sm disabled:opacity-50"
                         >

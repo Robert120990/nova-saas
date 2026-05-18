@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Plus, Edit, Trash2, BookOpen, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 
 const ChartOfAccounts = () => {
     const queryClient = useQueryClient();
+    const confirm = useConfirm();
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState(null);
     const [selectedFormType, setSelectedFormType] = useState('');
@@ -90,7 +92,7 @@ const ChartOfAccounts = () => {
                         <td className="px-6 py-3">
                             <div className="flex gap-2">
                                 <button onClick={() => { setEditingAccount(a); setSelectedFormType(a.account_type_id); setIsAccountModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit size={14} /></button>
-                                <button onClick={() => { if (confirm('¿Eliminar?')) deleteMutation.mutate(a.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
+                                <button onClick={async () => { const ok = await confirm({ title: 'Eliminar Cuenta', message: '¿Eliminar esta cuenta contable?', confirmLabel: 'Eliminar' }); if (ok) deleteMutation.mutate(a.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
                             </div>
                         </td>
                     </tr>

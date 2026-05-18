@@ -3,8 +3,10 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
 import { Unlock, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../context/ConfirmContext';
 
 const YearOpening = () => {
+    const confirm = useConfirm();
     const [year, setYear] = useState(new Date().getFullYear() + 1);
     const [date, setDate] = useState(`${year}-01-01`);
     const [description, setDescription] = useState('Apertura del Ejercicio Contable');
@@ -83,7 +85,7 @@ const YearOpening = () => {
                         <label className="text-[10px] font-black uppercase text-slate-400">Descripción</label>
                         <input value={description} onChange={e => setDescription(e.target.value)} className="w-full px-4 py-3 bg-slate-50 rounded-xl text-sm font-bold" />
                         <button
-                            onClick={() => { if (confirm('¿Generar partida de apertura?')) openMutation.mutate(); }}
+                            onClick={async () => { const ok = await confirm({ title: 'Apertura de Ejercicio', message: '¿Generar partida de apertura?', confirmLabel: 'Abrir Ejercicio' }); if (ok) openMutation.mutate(); }}
                             disabled={openMutation.isPending || balanceAccounts.length === 0}
                             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black uppercase text-sm disabled:opacity-50"
                         >
