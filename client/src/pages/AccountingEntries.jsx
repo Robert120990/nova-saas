@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Eye, Ban, Edit, FileText, Trash2 } from 'lucide-react';
+import { Plus, Eye, Ban, Edit, FileText, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
@@ -13,12 +13,24 @@ const AccountingEntries = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [viewEntry, setViewEntry] = useState(null);
     const [editingEntry, setEditingEntry] = useState(null);
+    const [search, setSearch] = useState('');
     const [lines, setLines] = useState([{ account_id: '', description: '', debit: '', credit: '' }]);
 
     const { data: entriesData, isLoading } = useQuery({
         queryKey: ['entries', page],
         queryFn: async () => (await axios.get(`/api/accounting/entries?page=${page}&limit=15`)).data,
     });
+
+    const entries = entriesData?.data || [];
+    const filteredEntries = useMemo(() => {
+        if (!search) return entries;
+        const q = search.toLowerCase();
+        return entries.filter(e => 
+            e.number?.toLowerCase().includes(q) || 
+            e.description?.toLowerCase().includes(q) ||
+            e.entry_type_name?.toLowerCase().includes(q)
+        );
+    }, [entries, search]);
 
     const { data: accountTypes = [] } = useQuery({
         queryKey: ['accountTypes'], queryFn: async () => (await axios.get('/api/accounting/account-types')).data,
@@ -121,7 +133,12 @@ const AccountingEntries = () => {
                 </button>
             </div>
 
-            <Table headers={['Número', 'Fecha', 'Tipo', 'Descripción', 'Débito', 'Crédito', 'Estado']} data={entriesData?.data || []} isLoading={isLoading}
+            <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por número, descripción o tipo..." className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold w-full md:w-80 outline-none" />
+            </div>
+
+            <Table headers={['Número', 'Fecha', 'Tipo', 'Descripción', 'Débito', 'Crédito', 'Estado']} data={filteredEntries} isLoading={isLoading}
                 renderRow={(e) => (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                         <td className="px-6 py-3 font-mono font-bold text-xs">{e.number}</td>

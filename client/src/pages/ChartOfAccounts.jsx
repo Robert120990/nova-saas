@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Edit, Trash2, BookOpen } from 'lucide-react';
+import { Plus, Edit, Trash2, BookOpen, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
@@ -11,11 +11,18 @@ const ChartOfAccounts = () => {
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState(null);
     const [selectedFormType, setSelectedFormType] = useState('');
+    const [search, setSearch] = useState('');
 
     const { data: accounts = [], isLoading } = useQuery({
         queryKey: ['accounts'],
         queryFn: async () => (await axios.get('/api/accounting/accounts')).data,
     });
+
+    const filteredAccounts = useMemo(() => {
+        if (!search) return accounts;
+        const q = search.toLowerCase();
+        return accounts.filter(a => a.code?.toLowerCase().includes(q) || a.name?.toLowerCase().includes(q));
+    }, [accounts, search]);
 
     const { data: accountTypes = [] } = useQuery({
         queryKey: ['accountTypes'],
@@ -61,13 +68,17 @@ const ChartOfAccounts = () => {
                     <p className="text-slate-500 font-medium">Gestión del plan contable</p>
                 </div>
                 <div className="flex gap-3">
+                    <div className="relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold w-56 outline-none" />
+                    </div>
                     <button                     onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
                         <Plus size={16} /> Nueva Cuenta
                     </button>
                 </div>
             </div>
 
-            <Table headers={['Código', 'Nombre', 'Tipo', 'Padre', 'Detalle', 'Estado']} data={accounts} isLoading={isLoading}
+            <Table headers={['Código', 'Nombre', 'Tipo', 'Padre', 'Detalle', 'Estado']} data={filteredAccounts} isLoading={isLoading}
                 renderRow={(a) => (
                     <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                         <td className="px-6 py-3 font-mono font-bold text-xs">{a.code}</td>
