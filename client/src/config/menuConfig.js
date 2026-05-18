@@ -22,6 +22,8 @@ import {
     Calculator,
     AlertTriangle,
     CreditCard,
+    BookOpen,
+    FileText,
     Sparkles
 } from 'lucide-react';
 
@@ -58,12 +60,18 @@ export const menuConfig = [
                 label: 'Reportes', 
                 icon: BarChart3,
                 children: [
-                    { id: 'ventas-report-ventas', label: 'Reporte de Ventas', path: '/ventas/reportes/ventas', icon: FileText, permission: 'manage_sales' },
-                    { id: 'ventas-report-diarias', label: 'Reporte de Ventas Diarias', path: '/ventas/reportes/diarias', icon: FileText, permission: 'manage_sales' },
-                    { id: 'ventas-report-categoria', label: 'Ventas por Categoría', path: '/ventas/reportes/categoria', icon: FileText, permission: 'manage_sales' },
-                    { id: 'ventas-report-pos', label: 'Ventas por POS', path: '/ventas/reportes/pos', icon: FileText, permission: 'manage_sales' },
+                    { id: 'ventas-reporte-historico', label: 'Histórico de Ventas', path: '/ventas/reporte-historico', icon: FileText, permission: 'view_sales' },
                 ]
             },
+        ]
+    },
+    {
+        id: 'contabilidad',
+        label: 'Contabilidad',
+        icon: BookOpen,
+        children: [
+            { id: 'contabilidad-cuentas', label: 'Catálogo de Cuentas', path: '/contabilidad/cuentas', icon: BookOpen, permission: 'manage_sales' },
+            { id: 'contabilidad-partidas', label: 'Partidas Contables', path: '/contabilidad/partidas', icon: FileText, permission: 'manage_sales' },
         ]
     },
     {

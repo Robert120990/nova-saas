@@ -106,7 +106,7 @@ export async function qzPrint(html, printerName) {
         const data = [{
             type: 'html',
             format: 'plain',
-            data: `<html><body style="font-family:monospace;font-size:10px;margin:0;padding:5px;width:280px;">${html}</body></html>`
+            data: html  // Ya viene como HTML completo desde SalesTerminal/CashClosing
         }];
 
         await qzModule.print(config, data);

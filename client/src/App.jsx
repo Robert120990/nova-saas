@@ -31,6 +31,8 @@ import SalesTerminal from './pages/SalesTerminal';
 import SalesHistory from './pages/SalesHistory';
 import CustomerDiscounts from './pages/CustomerDiscounts';
 import DiscountRules from './pages/DiscountRules';
+import ChartOfAccounts from './pages/ChartOfAccounts';
+import AccountingEntries from './pages/AccountingEntries';
 import DailySalesReport from './pages/DailySalesReport';
 import Contingency from './pages/Contingency';
 import CashClosing from './pages/CashClosing';
@@ -130,6 +132,8 @@ function App() {
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
                         <Route path="/ventas/reglas-descuento" element={<DiscountRules />} />
                         <Route path="/ventas/contingencia" element={<Contingency />} />
+                        <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
+                        <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         
                         {/* Accounts Receivable (CXC) */}

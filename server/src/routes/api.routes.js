@@ -31,6 +31,7 @@ const vatBooksController = require('../controllers/vatBooks.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const customerBranchController = require('../controllers/customerBranch.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
+const accountingController = require('../controllers/accounting.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
@@ -288,6 +289,27 @@ router.get('/cxp/payments/:id/pdf', cxpController.exportPaymentPDF);
 router.get('/vat-books/purchases-pdf', vatBooksController.getVatBookPurchasesPDF);
 router.get('/vat-books/sales-taxpayers-pdf', vatBooksController.getVatBookSalesTaxpayersPDF);
 router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesConsumersPDF);
+
+// Accounting Module
+router.get('/accounting/account-types', accountingController.getAccountTypes);
+router.post('/accounting/account-types', accountingController.createAccountType);
+router.put('/accounting/account-types/:id', accountingController.updateAccountType);
+router.delete('/accounting/account-types/:id', accountingController.deleteAccountType);
+
+router.get('/accounting/entry-types', accountingController.getEntryTypes);
+router.post('/accounting/entry-types', accountingController.createEntryType);
+router.put('/accounting/entry-types/:id', accountingController.updateEntryType);
+router.delete('/accounting/entry-types/:id', accountingController.deleteEntryType);
+
+router.get('/accounting/accounts', accountingController.getAccounts);
+router.post('/accounting/accounts', accountingController.createAccount);
+router.put('/accounting/accounts/:id', accountingController.updateAccount);
+router.delete('/accounting/accounts/:id', accountingController.deleteAccount);
+
+router.get('/accounting/entries', accountingController.getEntries);
+router.get('/accounting/entries/:id', accountingController.getEntry);
+router.post('/accounting/entries', accountingController.createEntry);
+router.put('/accounting/entries/:id/void', accountingController.voidEntry);
 
 // AI Assistant
 router.use('/ai', aiRoutes);
