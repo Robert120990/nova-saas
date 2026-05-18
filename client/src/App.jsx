@@ -33,6 +33,8 @@ import CustomerDiscounts from './pages/CustomerDiscounts';
 import DiscountRules from './pages/DiscountRules';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import AccountingEntries from './pages/AccountingEntries';
+import YearClosing from './pages/YearClosing';
+import YearOpening from './pages/YearOpening';
 import DailySalesReport from './pages/DailySalesReport';
 import Contingency from './pages/Contingency';
 import CashClosing from './pages/CashClosing';
@@ -134,6 +136,8 @@ function App() {
                         <Route path="/ventas/contingencia" element={<Contingency />} />
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
                         <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
+                        <Route path="/contabilidad/cierre" element={<YearClosing />} />
+                        <Route path="/contabilidad/apertura" element={<YearOpening />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         
                         {/* Accounts Receivable (CXC) */}

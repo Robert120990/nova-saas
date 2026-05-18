@@ -310,6 +310,9 @@ router.get('/accounting/entries', accountingController.getEntries);
 router.get('/accounting/entries/:id', accountingController.getEntry);
 router.post('/accounting/entries', accountingController.createEntry);
 router.put('/accounting/entries/:id/void', accountingController.voidEntry);
+router.get('/accounting/trial-balance', accountingController.getTrialBalance);
+router.post('/accounting/closing', accountingController.performClosing);
+router.post('/accounting/opening', accountingController.performOpening);
 
 // AI Assistant
 router.use('/ai', aiRoutes);
