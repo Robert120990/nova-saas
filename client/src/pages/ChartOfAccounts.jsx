@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Edit, Trash2, BookOpen, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, BookOpen, Search, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
+import Pagination from '../components/ui/Pagination';
 
 const ChartOfAccounts = () => {
     const queryClient = useQueryClient();
@@ -14,6 +15,9 @@ const ChartOfAccounts = () => {
     const [editingAccount, setEditingAccount] = useState(null);
     const [selectedFormType, setSelectedFormType] = useState('');
     const [search, setSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [isImporting, setIsImporting] = useState(false);
+    const PAGE_SIZE = 30;
 
     const { data: accounts = [], isLoading } = useQuery({
         queryKey: ['accounts'],
@@ -25,6 +29,10 @@ const ChartOfAccounts = () => {
         const q = search.toLowerCase();
         return accounts.filter(a => a.code?.toLowerCase().includes(q) || a.name?.toLowerCase().includes(q));
     }, [accounts, search]);
+
+    const totalPages = Math.ceil(filteredAccounts.length / PAGE_SIZE);
+    const paginatedAccounts = filteredAccounts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    if (page > totalPages && totalPages > 0) setPage(1);
 
     const { data: accountTypes = [] } = useQuery({
         queryKey: ['accountTypes'],
@@ -54,7 +62,6 @@ const ChartOfAccounts = () => {
             parent_id: fd.get('parent_id') || null,
             code: fd.get('code'),
             name: fd.get('name'),
-            description: fd.get('description') || null,
             allows_entries: fd.get('allows_entries') === '1' ? 1 : 0,
             active: fd.get('active') === '1' ? 1 : 0,
         };
@@ -77,10 +84,42 @@ const ChartOfAccounts = () => {
                     <button                     onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
                         <Plus size={16} /> Nueva Cuenta
                     </button>
+                    <label className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2 cursor-pointer transition-colors">
+                        <Upload size={16} /> Importar CSV
+                        <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                            const file = e.target.files[0];
+                            if (!file) return;
+                            setIsImporting(true);
+                            try {
+                                const text = await file.text();
+                                const lines = text.split('\n').filter(l => l.trim());
+                                const headers = lines[0].toLowerCase().split(',');
+                                // Esperado: code,name,account_type_id,parent_code,allows_entries
+                                const accounts = lines.slice(1).map(line => {
+                                    const vals = line.split(',');
+                                    return {
+                                        code: vals[0]?.trim(),
+                                        name: vals[1]?.trim(),
+                                        account_type_id: vals[2]?.trim(),
+                                        parent_code: vals[3]?.trim(),
+                                        allows_entries: vals[4]?.trim()
+                                    };
+                                });
+                                const { data } = await axios.post('/api/accounting/import', { accounts });
+                                queryClient.invalidateQueries(['accounts']);
+                                toast.success(data.message);
+                            } catch (err) {
+                                toast.error('Error al importar: ' + (err.response?.data?.message || err.message));
+                            } finally {
+                                setIsImporting(false);
+                                e.target.value = '';
+                            }
+                        }} />
+                    </label>
                 </div>
             </div>
 
-            <Table headers={['Código', 'Nombre', 'Tipo', 'Padre', 'Detalle', 'Estado']} data={filteredAccounts} isLoading={isLoading}
+            <Table headers={['Código', 'Nombre', 'Tipo', 'Padre', 'Detalle', 'Estado']} data={paginatedAccounts} isLoading={isLoading}
                 renderRow={(a) => (
                     <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                         <td className="px-6 py-3 font-mono font-bold text-xs">{a.code}</td>
@@ -98,6 +137,7 @@ const ChartOfAccounts = () => {
                     </tr>
                 )}
             />
+            {totalPages > 1 && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />}
 
             <Modal isOpen={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); setSelectedFormType(''); }} title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'} maxWidth="max-w-md">
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
@@ -124,10 +164,6 @@ const ChartOfAccounts = () => {
                     <div>
                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Nombre</label>
                         <input name="name" defaultValue={editingAccount?.name} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Descripción</label>
-                        <input name="description" defaultValue={editingAccount?.description || ''} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                     </div>
                     <div className="flex items-center gap-4">
                         <label className="flex items-center gap-2"><input type="checkbox" name="allows_entries" value="1" defaultChecked={editingAccount ? editingAccount.allows_entries : true} className="w-4 h-4 text-indigo-600" /> <span className="text-xs font-bold">Permite asientos</span></label>

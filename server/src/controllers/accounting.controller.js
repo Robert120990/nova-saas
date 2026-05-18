@@ -515,11 +515,50 @@ const saveSettings = async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
+const importAccounts = async (req, res) => {
+    try {
+        const { accounts } = req.body;
+        if (!Array.isArray(accounts) || accounts.length === 0) {
+            return res.status(400).json({ message: 'No se recibieron cuentas para importar' });
+        }
+
+        let imported = 0, errors = 0;
+        const codeToId = {};
+
+        const [existing] = await pool.query('SELECT id, code FROM chart_of_accounts WHERE company_id = ?', [req.company_id]);
+        existing.forEach(a => { codeToId[a.code] = a.id; });
+
+        for (const row of accounts) {
+            try {
+                const code = String(row.code || '').trim();
+                const name = String(row.name || '').trim();
+                const typeId = parseInt(row.account_type_id) || 1;
+                const parentCode = String(row.parent_code || '').trim();
+                const allows = row.allows_entries === '1' || row.allows_entries === 1 || row.allows_entries === true ? 1 : 0;
+
+                if (!code || !name) { errors++; continue; }
+
+                const parentId = parentCode ? codeToId[parentCode] : null;
+
+                await pool.query(
+                    `INSERT INTO chart_of_accounts (company_id, account_type_id, parent_id, code, name, allows_entries, active) 
+                     VALUES (?, ?, ?, ?, ?, ?, 1) 
+                     ON DUPLICATE KEY UPDATE name = VALUES(name), account_type_id = VALUES(account_type_id), parent_id = VALUES(parent_id), allows_entries = VALUES(allows_entries)`,
+                    [req.company_id, typeId, parentId || null, code, name, allows]
+                );
+                imported++;
+            } catch (e) { errors++; }
+        }
+
+        res.json({ message: `Importadas: ${imported}, Errores: ${errors}`, imported, errors });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
 module.exports = {
     getAccountTypes, createAccountType, updateAccountType, deleteAccountType,
     getEntryTypes, createEntryType, updateEntryType, deleteEntryType,
     getAccounts, createAccount, updateAccount, deleteAccount,
     getEntries, getEntry, createEntry, updateEntry, voidEntry,
     getTrialBalance, performClosing, performOpening,
-    getSettings, saveSettings
+    getSettings, saveSettings, importAccounts
 };
