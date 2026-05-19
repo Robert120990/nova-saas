@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { jsPDF } from 'jspdf';
 import {
     Activity,
     Plus,
@@ -168,6 +169,105 @@ const EggPackaging = () => {
                 return 'bg-rose-500/10 text-rose-500 border border-rose-500/20 animate-bounce';
             default:
                 return 'bg-slate-800 text-slate-400';
+        }
+    };
+
+    // Generate and download a real PDF label for physical printing
+    const handlePrintLabel = async (p) => {
+        try {
+            // Crear instancia de jsPDF (etiqueta industrial de 4x4 pulgadas)
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'in',
+                format: [4, 4]
+            });
+
+            // Margen y fuentes
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text('NOVA INDUSTRIAL PLANT', 0.2, 0.3);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.text('FDA CERTIFIED #98217A', 2.5, 0.3);
+
+            // Línea divisoria
+            doc.setLineWidth(0.01);
+            doc.line(0.2, 0.35, 3.8, 0.35);
+
+            // Código de Lote GS1
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.text('CODIGO DE LOTE GS1', 0.2, 0.55);
+            doc.setFontSize(11);
+            doc.text(p.lot_code, 0.2, 0.75);
+
+            // Línea divisoria
+            doc.line(0.2, 0.85, 3.8, 0.85);
+
+            // Datos del Lote
+            doc.setFontSize(8);
+            doc.text('Producto:', 0.2, 1.05);
+            doc.setFont('helvetica', 'bold');
+            doc.text(p.product_type.toUpperCase(), 1.2, 1.05);
+
+            doc.setFont('helvetica', 'normal');
+            doc.text('Presentacion:', 0.2, 1.25);
+            doc.setFont('helvetica', 'bold');
+            doc.text(p.presentation.toUpperCase(), 1.2, 1.25);
+
+            doc.setFont('helvetica', 'normal');
+            doc.text('Cant. Envasada:', 0.2, 1.45);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${p.units_packaged} Unidades`, 1.2, 1.45);
+
+            doc.setFont('helvetica', 'normal');
+            doc.text('Peso Total:', 0.2, 1.65);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${parseFloat(p.total_batch_weight_lbs).toLocaleString()} Lbs`, 1.2, 1.65);
+
+            doc.setFont('helvetica', 'normal');
+            doc.text('F. Empaque:', 0.2, 1.85);
+            doc.setFont('helvetica', 'bold');
+            doc.text(new Date(p.created_at).toLocaleDateString(), 1.2, 1.85);
+
+            doc.setFont('helvetica', 'normal');
+            doc.text('F. Vencimiento:', 0.2, 2.05);
+            doc.setFont('helvetica', 'bold');
+            doc.text(new Date(p.expiry_date).toLocaleDateString(), 1.2, 2.05);
+
+            // Línea divisoria
+            doc.setLineWidth(0.01);
+            doc.line(0.2, 2.15, 3.8, 2.15);
+
+            // Código de barras simulado
+            doc.setFont('Courier', 'bold');
+            doc.setFontSize(10);
+            doc.text('|||| | | ||| || ||| || |||', 1.0, 2.35);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.text(`(${p.barcode})`, 1.5, 2.48);
+
+            // Cargar y pintar código QR real
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(p.qr_code_payload)}`;
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.src = qrUrl;
+            img.onload = () => {
+                doc.addImage(img, 'PNG', 1.4, 2.6, 1.2, 1.2);
+                doc.setFontSize(6);
+                doc.text('ESCANEAR PARA TRAZABILIDAD 360', 1.1, 3.9);
+                doc.save(`etiqueta-${p.lot_code}.pdf`);
+                toast.success('Etiqueta PDF generada e iniciada la descarga.');
+            };
+            img.onerror = () => {
+                doc.setFontSize(6);
+                doc.text('ERROR AL CARGAR QR DE TRAZABILIDAD', 1.1, 3.5);
+                doc.save(`etiqueta-${p.lot_code}.pdf`);
+                toast.warning('Etiqueta PDF generada sin código QR dinámico.');
+            };
+        } catch (error) {
+            console.error('Error al generar la etiqueta PDF:', error);
+            toast.error('Error al generar la etiqueta imprimible.');
         }
     };
 
@@ -496,7 +596,7 @@ const EggPackaging = () => {
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('records')}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded-xl text-xs font-bold transition-all border border-slate-750"
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
                             >
                                 Cancelar
                             </button>
@@ -577,29 +677,14 @@ const EggPackaging = () => {
                                 <span className="text-[9px] text-slate-700 font-bold font-mono mt-1">({selectedLabel.barcode})</span>
                             </div>
 
-                            {/* Simulated QR Code Canvas */}
+                            {/* Dynamic QR Code from API */}
                             <div className="flex flex-col items-center bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <div className="h-28 w-28 bg-slate-950 rounded-xl flex items-center justify-center p-2 text-white shadow-md relative">
-                                    {/* QR Simulated Pattern */}
-                                    <div className="grid grid-cols-4 gap-1.5 w-full h-full opacity-90">
-                                        <div className="bg-white w-4 h-4 rounded border-2 border-slate-950" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white w-4 h-4 rounded border-2 border-slate-950" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white" />
-                                        <div className="bg-white" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white w-4 h-4 rounded border-2 border-slate-950" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white/40" />
-                                        <div className="bg-white w-4 h-4 rounded border-2 border-slate-950" />
-                                    </div>
-                                    <QrCode className="h-8 w-8 text-teal-400 absolute center animate-pulse" />
+                                <div className="h-28 w-28 bg-white rounded-xl flex items-center justify-center p-1 shadow-md relative overflow-hidden">
+                                    <img
+                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(selectedLabel.qr_code_payload)}`}
+                                        alt="QR Trazabilidad"
+                                        className="h-full w-full object-contain"
+                                    />
                                 </div>
                                 <span className="text-[7px] text-slate-500 font-black mt-2 tracking-tight uppercase">Escanear para verificar Trazabilidad 360°</span>
                             </div>
@@ -608,13 +693,13 @@ const EggPackaging = () => {
                         <div className="flex gap-3 pt-2">
                             <button
                                 onClick={() => {
-                                    toast.success('Etiqueta enviada a la impresora térmica Zebra ZD420.');
+                                    handlePrintLabel(selectedLabel);
                                     setSelectedLabel(null);
                                 }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 shadow-lg"
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95"
                             >
                                 <Printer size={14} />
-                                Imprimir Etiqueta
+                                Imprimir Etiqueta (PDF)
                             </button>
                         </div>
                     </div>

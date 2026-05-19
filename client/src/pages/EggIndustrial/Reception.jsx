@@ -328,7 +328,7 @@ const EggReception = () => {
                             <button
                                 type="button"
                                 onClick={() => setShowForm(false)}
-                                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-extrabold transition-all border border-slate-750"
+                                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-extrabold transition-all border border-slate-800"
                             >
                                 Cancelar
                             </button>

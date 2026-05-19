@@ -305,7 +305,7 @@ const EggTraceability = () => {
                                         </div>
                                         <div className="mt-1">
                                             <span className="text-[8px] font-black text-slate-500 block uppercase">Operador Envasador:</span>
-                                            <span className="font-bold text-slate-350">{traceData.packaging.operator_name}</span>
+                                            <span className="font-bold text-slate-300">{traceData.packaging.operator_name}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -369,7 +369,7 @@ const EggTraceability = () => {
                                             }`}>
                                                 {event.event_type}
                                             </span>
-                                            <p className="text-[11px] text-slate-350 font-semibold mt-1">{event.description}</p>
+                                            <p className="text-[11px] text-slate-300 font-semibold mt-1">{event.description}</p>
                                             <span className="text-[9px] text-slate-500 block">Operador Responsable: <b>{event.operator_name}</b></span>
                                         </div>
                                         <span className="text-[10px] text-slate-500 font-extrabold whitespace-nowrap">{new Date(event.created_at).toLocaleString()}</span>

@@ -645,7 +645,7 @@ const EggProduction = () => {
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('batches')}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-750"
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
                             >
                                 Cancelar
                             </button>
@@ -762,7 +762,7 @@ const EggProduction = () => {
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('batches')}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-750"
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
                             >
                                 Cancelar
                             </button>
@@ -845,7 +845,7 @@ const EggProduction = () => {
                                 <button
                                     type="button"
                                     onClick={() => setSelectedBatchForComplete(null)}
-                                    className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded-xl text-xs font-bold transition-all border border-slate-750"
+                                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
                                 >
                                     Cancelar
                                 </button>
