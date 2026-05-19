@@ -333,14 +333,14 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 doc.fontSize(7).font('Helvetica-Bold');
                 doc.text('FECHA', startX, y);
                 doc.text('DEL No.', startX + 55, y);
-                doc.text('AL No.', startX + 155, y);
-                doc.text('GRAVADO', startX + 250, y, { width: 70, align: 'right' });
-                doc.text('EXENTO', startX + 325, y, { width: 65, align: 'right' });
-                doc.text('IVA', startX + 395, y, { width: 55, align: 'right' });
-                doc.text('FOVIAL', startX + 455, y, { width: 55, align: 'right' });
-                doc.text('COTRANS', startX + 515, y, { width: 55, align: 'right' });
-                doc.text('TOTAL', startX + 580, y, { width: 80, align: 'right' });
-                doc.moveTo(startX, y + 10).lineTo(startX + 660, y + 10).stroke();
+                doc.text('AL No.', startX + 195, y);
+                doc.text('GRAVADO', startX + 335, y, { width: 60, align: 'right' });
+                doc.text('EXENTO', startX + 395, y, { width: 55, align: 'right' });
+                doc.text('IVA', startX + 450, y, { width: 45, align: 'right' });
+                doc.text('FOVIAL', startX + 495, y, { width: 45, align: 'right' });
+                doc.text('COTRANS', startX + 540, y, { width: 45, align: 'right' });
+                doc.text('TOTAL', startX + 585, y, { width: 70, align: 'right' });
+                doc.moveTo(startX, y + 10).lineTo(startX + 655, y + 10).stroke();
                 return y + 15;
             };
 
@@ -356,14 +356,14 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
 
                 doc.fontSize(7).font('Helvetica');
                 doc.text(safeFormatDate(r.fecha), startX, currentY);
-                doc.text(String(r.num_desde || '---'), startX + 55, currentY, { width: 95, truncate: true });
-                doc.text(String(r.num_hasta || '---'), startX + 155, currentY, { width: 90, truncate: true });
-                doc.text(`$${g.toFixed(2)}`, startX + 250, currentY, { width: 70, align: 'right' });
-                doc.text(`$${e.toFixed(2)}`, startX + 325, currentY, { width: 65, align: 'right' });
-                doc.text(`$${i.toFixed(2)}`, startX + 395, currentY, { width: 55, align: 'right' });
-                doc.text(`$${f.toFixed(2)}`, startX + 455, currentY, { width: 55, align: 'right' });
-                doc.text(`$${c.toFixed(2)}`, startX + 515, currentY, { width: 55, align: 'right' });
-                doc.text(`$${to.toFixed(2)}`, startX + 580, currentY, { width: 80, align: 'right' });
+                doc.text(String(r.num_desde || '---'), startX + 55, currentY, { width: 135, truncate: true });
+                doc.text(String(r.num_hasta || '---'), startX + 195, currentY, { width: 135, truncate: true });
+                doc.text(`$${g.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
+                doc.text(`$${e.toFixed(2)}`, startX + 395, currentY, { width: 50, align: 'right' });
+                doc.text(`$${i.toFixed(2)}`, startX + 450, currentY, { width: 40, align: 'right' });
+                doc.text(`$${f.toFixed(2)}`, startX + 495, currentY, { width: 40, align: 'right' });
+                doc.text(`$${c.toFixed(2)}`, startX + 540, currentY, { width: 40, align: 'right' });
+                doc.text(`$${to.toFixed(2)}`, startX + 585, currentY, { width: 65, align: 'right' });
 
                 t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
                 currentY += 13;
