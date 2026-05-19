@@ -156,7 +156,7 @@ const AccountingEntries = () => {
                 renderRow={(e) => (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                         <td className="px-6 py-3 font-mono font-bold text-xs">{e.number}</td>
-                        <td className="px-6 py-3 text-xs">{new Date(e.date).toLocaleDateString('es-SV')}</td>
+                        <td className="px-6 py-3 text-xs">{e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '—'}</td>
                         <td className="px-6 py-3 text-xs">{e.entry_type_name}</td>
                         <td className="px-6 py-3 text-xs text-slate-600 max-w-xs truncate">{e.description}</td>
                         <td className="px-6 py-3 font-bold text-xs text-emerald-600">${parseFloat(e.total_debit).toFixed(2)}</td>
@@ -290,24 +290,39 @@ const AccountingEntries = () => {
                             )}
                         </div>
 
-                        {/* Lines list */}
+                        {/* Lines table */}
                         {lines.length === 0 ? (
-                            <p className="text-center py-4 text-slate-300 text-xs">Sin líneas. Use la barra superior para agregar.</p>
+                            <p className="text-center py-6 text-slate-300 text-xs">Sin líneas. Use la barra superior para agregar.</p>
                         ) : (
-                            <div className="space-y-1 max-h-64 overflow-y-auto">
-                                {lines.map((line, idx) => (
-                                    <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100 group hover:bg-white transition-colors">
-                                        <span className="font-mono text-[10px] font-bold text-slate-400 w-6 text-right">{idx + 1}</span>
-                                        <span className="flex-1 text-xs font-bold truncate">
-                                            {accounts.find(a => a.id == line.account_id)?.code || '?'} - {accounts.find(a => a.id == line.account_id)?.name?.substring(0, 30) || '?'}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400 w-24 truncate">{line.description}</span>
-                                        {parseFloat(line.debit) > 0 && <span className="text-xs font-bold text-emerald-600 w-24 text-right">${parseFloat(line.debit).toFixed(2)} D</span>}
-                                        {parseFloat(line.credit) > 0 && <span className="text-xs font-bold text-rose-600 w-24 text-right">${parseFloat(line.credit).toFixed(2)} C</span>}
-                                        <button type="button" onClick={() => removeLine(idx)} className="p-1 text-rose-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
-                                    </div>
-                                ))}
-                            </div>
+                            <table className="w-full text-left border rounded-xl overflow-hidden">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                                        <th className="px-3 py-2 w-8">#</th>
+                                        <th className="px-3 py-2">Cuenta</th>
+                                        <th className="px-3 py-2">Detalle</th>
+                                        <th className="px-3 py-2 text-right w-28">Débito</th>
+                                        <th className="px-3 py-2 text-right w-28">Crédito</th>
+                                        <th className="px-3 py-2 w-8"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {lines.map((line, idx) => (
+                                        <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-3 py-2 text-[10px] text-slate-400">{idx + 1}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold">
+                                                <span className="font-mono text-indigo-500">{accounts.find(a => a.id == line.account_id)?.code || '?'}</span>
+                                                <span className="ml-2 text-slate-700">{accounts.find(a => a.id == line.account_id)?.name || '?'}</span>
+                                            </td>
+                                            <td className="px-3 py-2 text-[10px] text-slate-500">{line.description}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold text-emerald-600 text-right">{parseFloat(line.debit) > 0 ? `$${parseFloat(line.debit).toFixed(2)}` : ''}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold text-rose-600 text-right">{parseFloat(line.credit) > 0 ? `$${parseFloat(line.credit).toFixed(2)}` : ''}</td>
+                                            <td className="px-3 py-2">
+                                                <button type="button" onClick={() => removeLine(idx)} className="p-1 text-rose-300 hover:text-rose-600"><Trash2 size={14} /></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         )}
                         <div className="flex justify-between text-xs font-bold mt-3 pt-3 border-t">
                             <span className={balanced ? 'text-emerald-600' : 'text-rose-600'}>{balanced ? '✓ Cuadra' : '✗ No cuadra'}</span>
@@ -330,7 +345,7 @@ const AccountingEntries = () => {
                     <div className="space-y-4 pt-4">
                         <div className="grid grid-cols-3 gap-4 text-sm">
                             <div><span className="text-[10px] font-black uppercase text-slate-400">Tipo</span><p className="font-bold">{viewEntry.entry_type_name}</p></div>
-                            <div><span className="text-[10px] font-black uppercase text-slate-400">Fecha</span><p className="font-bold">{new Date(viewEntry.date).toLocaleDateString('es-SV')}</p></div>
+                            <div><span className="text-[10px] font-black uppercase text-slate-400">Fecha</span><p className="font-bold">{viewEntry.date ? viewEntry.date.split('T')[0].split('-').reverse().join('/') : '—'}</p></div>
                             <div><span className="text-[10px] font-black uppercase text-slate-400">Estado</span><p className="font-bold">{viewEntry.status === 'posted' ? 'Contabilizado' : viewEntry.status === 'voided' ? 'Anulado' : 'Borrador'}</p></div>
                         </div>
                         <p className="text-sm text-slate-600">{viewEntry.description}</p>

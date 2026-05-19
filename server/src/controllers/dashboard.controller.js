@@ -182,11 +182,34 @@ const getStats = async (req, res) => {
             summary.totalCashInHand = activeShifts.reduce((acc, s) => acc + s.expected_cash, 0);
             summary.activeShiftsCount = activeShifts.length;
 
+            let salesByCategory = [];
+            try {
+                const [catRows] = await pool.query(`
+                    SELECT COALESCE(pc.name, 'Sin Categoría') as category,
+                           SUM(si.cantidad * si.precio_unitario) as total
+                    FROM sales_items si
+                    JOIN sales_headers sh ON si.sale_id = sh.id
+                    LEFT JOIN products p ON si.product_id = p.id
+                    LEFT JOIN product_categories pc ON p.category_id = pc.id
+                    WHERE sh.company_id = ? AND MONTH(sh.created_at) = MONTH(CURDATE()) AND YEAR(sh.created_at) = YEAR(CURDATE())
+                      AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'
+                    GROUP BY pc.name
+                    ORDER BY total DESC LIMIT 10
+                `, [companyId]);
+                const grandTotal = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
+                salesByCategory = catRows.map(r => ({
+                    category: r.category,
+                    total: parseFloat(r.total),
+                    pct: grandTotal > 0 ? ((r.total / grandTotal) * 100).toFixed(1) : '0'
+                }));
+            } catch (e) { console.error('CAT SALES ERR', e); }
+
             return res.json({
                 summary,
                 recentActivity,
                 branches,
-                activeShifts
+                activeShifts,
+                salesByCategory
             });
         } catch (e) { 
             console.error('SHIFTS ERR', e);
