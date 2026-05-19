@@ -235,16 +235,16 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
                 doc.fontSize(7).font('Helvetica-Bold');
                 doc.text('FECHA', startX, y);
                 doc.text('DOCUMENTO', startX + 50, y);
-                doc.text('CLIENTE', startX + 125, y);
-                doc.text('NRC', startX + 260, y);
-                doc.text('GRAVADA', startX + 310, y, { width: 50, align: 'right' });
-                doc.text('EXENTA', startX + 365, y, { width: 50, align: 'right' });
-                doc.text('IVA DEB.', startX + 420, y, { width: 45, align: 'right' });
-                doc.text('FOV', startX + 470, y, { width: 40, align: 'right' });
-                doc.text('COT', startX + 515, y, { width: 40, align: 'right' });
-                doc.text('RET/PER', startX + 560, y, { width: 45, align: 'right' });
-                doc.text('TOTAL', startX + 615, y, { width: 65, align: 'right' });
-                doc.moveTo(startX, y + 10).lineTo(startX + 680, y + 10).stroke();
+                doc.text('CLIENTE', startX + 200, y);
+                doc.text('NRC', startX + 335, y);
+                doc.text('GRAVADA', startX + 380, y, { width: 50, align: 'right' });
+                doc.text('EXENTA', startX + 430, y, { width: 45, align: 'right' });
+                doc.text('IVA DEB.', startX + 475, y, { width: 40, align: 'right' });
+                doc.text('FOV', startX + 515, y, { width: 35, align: 'right' });
+                doc.text('COT', startX + 550, y, { width: 35, align: 'right' });
+                doc.text('RET/PER', startX + 585, y, { width: 35, align: 'right' });
+                doc.text('TOTAL', startX + 620, y, { width: 55, align: 'right' });
+                doc.moveTo(startX, y + 10).lineTo(startX + 675, y + 10).stroke();
                 return y + 15;
             };
 
@@ -258,16 +258,16 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
 
                 doc.fontSize(7).font('Helvetica');
                 doc.text(safeFormatDate(r.fecha_emision), startX, currentY);
-                doc.text(String(r.numero_control || '---'), startX + 50, currentY, { width: 70, truncate: true });
-                doc.text(String(r.customer_nombre || 'CLIENTE S/N'), startX + 125, currentY, { width: 130, truncate: true });
-                doc.text(String(r.customer_nrc || ''), startX + 260, currentY);
-                doc.text(`$${g.toFixed(2)}`, startX + 310, currentY, { width: 50, align: 'right' });
-                doc.text(`$${e.toFixed(2)}`, startX + 365, currentY, { width: 50, align: 'right' });
-                doc.text(`$${i.toFixed(2)}`, startX + 420, currentY, { width: 45, align: 'right' });
-                doc.text(`$${f.toFixed(2)}`, startX + 470, currentY, { width: 40, align: 'right' });
-                doc.text(`$${c.toFixed(2)}`, startX + 515, currentY, { width: 40, align: 'right' });
-                doc.text(`$${re.toFixed(2)}`, startX + 560, currentY, { width: 45, align: 'right' });
-                doc.text(`$${to.toFixed(2)}`, startX + 615, currentY, { width: 65, align: 'right' });
+                doc.text(String(r.numero_control || '---'), startX + 50, currentY, { width: 145, truncate: true });
+                doc.text(String(r.customer_nombre || 'CLIENTE S/N'), startX + 200, currentY, { width: 130, truncate: true });
+                doc.text(String(r.customer_nrc || ''), startX + 335, currentY);
+                doc.text(`$${g.toFixed(2)}`, startX + 380, currentY, { width: 45, align: 'right' });
+                doc.text(`$${e.toFixed(2)}`, startX + 430, currentY, { width: 40, align: 'right' });
+                doc.text(`$${i.toFixed(2)}`, startX + 475, currentY, { width: 35, align: 'right' });
+                doc.text(`$${f.toFixed(2)}`, startX + 515, currentY, { width: 30, align: 'right' });
+                doc.text(`$${c.toFixed(2)}`, startX + 550, currentY, { width: 30, align: 'right' });
+                doc.text(`$${re.toFixed(2)}`, startX + 585, currentY, { width: 30, align: 'right' });
+                doc.text(`$${to.toFixed(2)}`, startX + 620, currentY, { width: 50, align: 'right' });
 
                 t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
                 currentY += 13;
