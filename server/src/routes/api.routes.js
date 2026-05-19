@@ -229,6 +229,7 @@ router.post('/shifts/:id/close', shiftController.closeShift);
 
 // Dashboard
 router.get('/dashboard/general-stats', dashboardController.getStats);
+router.get('/dashboard/category-sales', dashboardController.getCategorySales);
 
 // Product Combos
 router.get('/combos', comboController.getCombos);

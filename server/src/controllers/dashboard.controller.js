@@ -224,6 +224,39 @@ const getStats = async (req, res) => {
     }
 };
 
+const getCategorySales = async (req, res) => {
+    try {
+        const { start_date, end_date, branch_id } = req.query;
+        const companyId = req.company_id;
+
+        let sql = `SELECT COALESCE(pc.name, 'Sin Categoría') as category,
+                          SUM(si.cantidad * si.precio_unitario) as total
+                   FROM sales_items si
+                   JOIN sales_headers sh ON si.sale_id = sh.id
+                   LEFT JOIN products p ON si.product_id = p.id
+                   LEFT JOIN product_categories pc ON p.category_id = pc.id
+                   WHERE sh.company_id = ? AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'`;
+        const params = [companyId];
+
+        if (start_date) { sql += ' AND sh.created_at >= ?'; params.push(start_date); }
+        if (end_date) { sql += ' AND sh.created_at <= ?'; params.push(end_date + ' 23:59:59'); }
+        if (branch_id) { sql += ' AND sh.branch_id = ?'; params.push(branch_id); }
+
+        sql += ' GROUP BY pc.name ORDER BY total DESC LIMIT 10';
+
+        const [rows] = await pool.query(sql, params);
+        const grandTotal = rows.reduce((s, r) => s + parseFloat(r.total), 0);
+        const result = rows.map(r => ({
+            category: r.category,
+            total: parseFloat(r.total),
+            pct: grandTotal > 0 ? ((r.total / grandTotal) * 100).toFixed(1) : '0'
+        }));
+
+        res.json(result);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
 module.exports = {
-    getStats
+    getStats,
+    getCategorySales
 };
