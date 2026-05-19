@@ -121,36 +121,6 @@ const Dashboard = () => {
                 </div>
             </div>
 
-            {/* Ventas por Categoría */}
-            {stats?.salesByCategory?.length > 0 && (
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
-                    <div className="flex items-center gap-2">
-                        <TrendingUp size={14} className="text-indigo-500" />
-                        <h3 className="text-[10px] font-black text-slate-900 tracking-widest uppercase">Ventas por Categoría (Mes Actual)</h3>
-                    </div>
-                </div>
-                <div className="p-5 space-y-3">
-                    {stats.salesByCategory.map((cat, i) => (
-                        <div key={i} className="flex items-center gap-3">
-                            <span className="text-[10px] font-bold text-slate-600 w-32 truncate">{cat.category}</span>
-                            <div className="flex-1 h-6 bg-slate-100 rounded-full overflow-hidden">
-                                <div 
-                                    className="h-full rounded-full transition-all duration-700"
-                                    style={{ 
-                                        width: `${cat.pct}%`,
-                                        backgroundColor: ['#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6'][i % 10]
-                                    }}
-                                />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-500 w-16 text-right">{formatCurrency(cat.total)}</span>
-                            <span className="text-[9px] font-bold text-slate-400 w-10 text-right">{cat.pct}%</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            )}
-
             {/* Cajas en Línea — Fila completa */}
             <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
