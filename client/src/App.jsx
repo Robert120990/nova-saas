@@ -62,6 +62,14 @@ import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
 import VatBookSalesConsumers from './pages/VatBooks/VatBookSalesConsumers';
 
+// Egg Industrial Processing Pages
+import EggDashboard from './pages/EggIndustrial/Dashboard';
+import EggReception from './pages/EggIndustrial/Reception';
+import EggProduction from './pages/EggIndustrial/Production';
+import EggPackaging from './pages/EggIndustrial/Packaging';
+import EggCostsMaintenance from './pages/EggIndustrial/CostsMaintenance';
+import EggTraceability from './pages/EggIndustrial/Traceability';
+
 import Layout from './components/layout/Layout';
 
 const queryClient = new QueryClient({
@@ -118,6 +126,14 @@ function App() {
                         <Route path="/iva/compras" element={<VatBookPurchases />} />
                         <Route path="/iva/ventas-ccf" element={<VatBookSalesTaxpayers />} />
                         <Route path="/iva/ventas-fac" element={<VatBookSalesConsumers />} />
+                        
+                        {/* Procesamiento Industrial de Huevo */}
+                        <Route path="/industrial/planta" element={<EggDashboard />} />
+                        <Route path="/industrial/recepcion" element={<EggReception />} />
+                        <Route path="/industrial/produccion" element={<EggProduction />} />
+                        <Route path="/industrial/empaque" element={<EggPackaging />} />
+                        <Route path="/industrial/costos-mantenimiento" element={<EggCostsMaintenance />} />
+                        <Route path="/industrial/trazabilidad" element={<EggTraceability />} />
                         
                         <Route path="/compras" element={<Purchases />} />
                         <Route path="/compras/gastos" element={<Expenses />} />

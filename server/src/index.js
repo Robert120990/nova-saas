@@ -46,7 +46,15 @@ app.use((err, req, res, next) => {
     });
 });
 
+const http = require('http');
+const { initWebSocket } = require('./services/websocket.service');
+
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+// Inicializar el WebSocket acoplado al servidor HTTP
+initWebSocket(server);
+
+server.listen(PORT, () => {
     console.log(`Servidor SaaS corriendo en puerto ${PORT}`);
 });

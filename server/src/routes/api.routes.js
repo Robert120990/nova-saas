@@ -314,6 +314,38 @@ router.put('/accounting/entries/:id', accountingController.updateEntry);
 router.put('/accounting/entries/:id/void', accountingController.voidEntry);
 router.get('/accounting/trial-balance', accountingController.getTrialBalance);
 router.post('/accounting/closing', accountingController.performClosing);
+router.post('/cxp/payments/:id/send-email', cxpController.sendReceiptEmail);
+router.get('/cxp/balances-report', cxpController.getProviderBalancesReport);
+router.get('/cxp/payments/:id/pdf', cxpController.exportPaymentPDF);
+
+// Libros de IVA
+router.get('/vat-books/purchases-pdf', vatBooksController.getVatBookPurchasesPDF);
+router.get('/vat-books/sales-taxpayers-pdf', vatBooksController.getVatBookSalesTaxpayersPDF);
+router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesConsumersPDF);
+
+// Accounting Module
+router.get('/accounting/account-types', accountingController.getAccountTypes);
+router.post('/accounting/account-types', accountingController.createAccountType);
+router.put('/accounting/account-types/:id', accountingController.updateAccountType);
+router.delete('/accounting/account-types/:id', accountingController.deleteAccountType);
+
+router.get('/accounting/entry-types', accountingController.getEntryTypes);
+router.post('/accounting/entry-types', accountingController.createEntryType);
+router.put('/accounting/entry-types/:id', accountingController.updateEntryType);
+router.delete('/accounting/entry-types/:id', accountingController.deleteEntryType);
+
+router.get('/accounting/accounts', accountingController.getAccounts);
+router.post('/accounting/accounts', accountingController.createAccount);
+router.put('/accounting/accounts/:id', accountingController.updateAccount);
+router.delete('/accounting/accounts/:id', accountingController.deleteAccount);
+
+router.get('/accounting/entries', accountingController.getEntries);
+router.get('/accounting/entries/:id', accountingController.getEntry);
+router.post('/accounting/entries', accountingController.createEntry);
+router.put('/accounting/entries/:id', accountingController.updateEntry);
+router.put('/accounting/entries/:id/void', accountingController.voidEntry);
+router.get('/accounting/trial-balance', accountingController.getTrialBalance);
+router.post('/accounting/closing', accountingController.performClosing);
 router.post('/accounting/opening', accountingController.performOpening);
 router.get('/accounting/settings', accountingController.getSettings);
 router.post('/accounting/settings', accountingController.saveSettings);
@@ -322,5 +354,8 @@ router.post('/accounting/import', accountingController.importAccounts);
 // AI Assistant
 router.use('/ai', aiRoutes);
 
-module.exports = router;
+// Industrial Egg Processing Module
+const eggIndustrialRoutes = require('./eggIndustrial.routes');
+router.use('/egg-industrial', eggIndustrialRoutes);
 
+module.exports = router;
