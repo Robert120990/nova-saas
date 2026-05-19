@@ -145,8 +145,8 @@ const completeProductionBatch = async (req, res) => {
         if (batches.length === 0) return res.status(404).json({ message: 'Lote no encontrado' });
         const batch = batches[0];
 
-        // Cambiar estado a pasteurizado o empaquetado
-        const nextStatus = batch.status === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'pasteurizado';
+        // Cambiar estado a aprobado_calidad o mantener bloqueado_haccp
+        const nextStatus = batch.status === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'aprobado_calidad';
 
         await pool.query(
             `UPDATE egg_production_batches 
