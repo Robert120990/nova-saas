@@ -33,7 +33,8 @@ const EggPackaging = () => {
     const [loading, setLoading] = useState(true);
 
     // Tab state
-    const [activeTab, setActiveTab] = useState('records'); // 'records', 'freezer', 'new-packaging'
+    const [activeTab, setActiveTab] = useState('records'); // 'records', 'freezer'
+    const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
 
     // Form states
     const [packagingForm, setPackagingForm] = useState({
@@ -102,6 +103,7 @@ const EggPackaging = () => {
                 operator_name: packagingForm.operator_name
             });
             toast.success('Registro de empaque envasado con éxito.');
+            setIsNewPackagingModalOpen(false);
             setPackagingForm({
                 batch_id: '',
                 units_packaged: '',
@@ -284,6 +286,13 @@ const EggPackaging = () => {
                         <p className="text-[12px] text-slate-400 font-semibold tracking-tight">Impresión de etiquetas con código de barras GS1/QR, inocuidad de envasado y monitoreo de congelación ultra-rápida (Blast Freezer)</p>
                     </div>
                 </div>
+                <button
+                    onClick={() => setIsNewPackagingModalOpen(true)}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 flex items-center gap-1.5 shadow-lg"
+                >
+                    <Plus size={14} />
+                    Registrar Envasado
+                </button>
             </div>
 
             {/* Custom Tab Selectors */}
@@ -295,15 +304,6 @@ const EggPackaging = () => {
                     }`}
                 >
                     Lotes Empacados
-                </button>
-                <button
-                    onClick={() => setActiveTab('new-packaging')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        activeTab === 'new-packaging' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                    <Plus size={14} />
-                    Registrar Envasado
                 </button>
                 <button
                     onClick={() => setActiveTab('freezer')}
@@ -396,8 +396,9 @@ const EggPackaging = () => {
                 </div>
             )}
 
-            {activeTab === 'new-packaging' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl max-w-2xl mx-auto space-y-6">
+            {isNewPackagingModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-6">
                     <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
                             <Plus className="h-4 w-4 text-purple-400" />
@@ -567,6 +568,7 @@ const EggPackaging = () => {
                             </button>
                         </div>
                     </div>
+                </div>
                 </div>
             )}
 
