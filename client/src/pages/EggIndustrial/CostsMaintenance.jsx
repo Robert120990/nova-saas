@@ -288,10 +288,10 @@ const EggCostsMaintenance = () => {
                         </div>
                         <div className="h-px bg-slate-800" />
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mb-2">
-                            <div className="bg-slate-950 border border-slate-850 rounded-lg p-2 text-center">
-                                <span className="text-[7px] font-black text-slate-500 uppercase block">Costo Fijo Total</span>
-                                <span className="text-xs font-black text-amber-400">${getTotalFixedCost().toLocaleString()}</span>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-1 mb-2">
+                            <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
+                                <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo Fijo Total</span>
+                                <span className="text-[10px] font-black text-amber-400">${getTotalFixedCost().toLocaleString()}</span>
                             </div>
                             {(() => {
                                 const filtered = batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59');
@@ -300,21 +300,21 @@ const EggCostsMaintenance = () => {
                                 const totalAll = getTotalFixedCost() * filtered.length + totalVar;
                                 return (
                                     <>
-                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-2 text-center">
-                                            <span className="text-[7px] font-black text-slate-500 uppercase block">Lotes en Rango</span>
-                                            <span className="text-xs font-black text-white">{filtered.length}</span>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
+                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Lotes</span>
+                                            <span className="text-[10px] font-black text-white">{filtered.length}</span>
                                         </div>
-                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-2 text-center">
-                                            <span className="text-[7px] font-black text-slate-500 uppercase block">Rendimiento Total</span>
-                                            <span className="text-xs font-black text-teal-400">{totalYield.toLocaleString()} Lbs</span>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
+                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Rendimiento</span>
+                                            <span className="text-[10px] font-black text-teal-400">{totalYield.toLocaleString()} Lbs</span>
                                         </div>
-                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-2 text-center">
-                                            <span className="text-[7px] font-black text-slate-500 uppercase block">Costo Total Rango</span>
-                                            <span className="text-xs font-black text-amber-400">${totalAll.toLocaleString()}</span>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
+                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo Total</span>
+                                            <span className="text-[10px] font-black text-amber-400">${totalAll.toLocaleString()}</span>
                                         </div>
-                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-2 text-center">
-                                            <span className="text-[7px] font-black text-slate-500 uppercase block">Costo x Lb Prom.</span>
-                                            <span className="text-xs font-black text-indigo-400">${totalYield > 0 ? (totalAll / totalYield).toFixed(4) : '0'}</span>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
+                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo/Lb Prom.</span>
+                                            <span className="text-[10px] font-black text-indigo-400">${totalYield > 0 ? (totalAll / totalYield).toFixed(4) : '0'}</span>
                                         </div>
                                     </>
                                 );
