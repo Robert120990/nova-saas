@@ -10,6 +10,14 @@ const EggConfig = () => {
     const [config, setConfig] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    const defaults = {
+        'huevo entero': '32.00',
+        'clara': '8.00',
+        'yema salada': '4.00',
+        'yema azucarada': '4.00',
+        'fórmula especial': '32.00'
+    };
+
     const products = [
         { type: 'huevo entero', label: 'Huevo Entero Pasteurizado' },
         { type: 'clara', label: 'Clara Pasteurizada' },
@@ -18,11 +26,21 @@ const EggConfig = () => {
         { type: 'fórmula especial', label: 'Fórmula Especial / Mezcla Premium' }
     ];
 
+    const getWeight = (productType) => {
+        const cfg = config.find(c => c.product_type === productType);
+        return cfg ? cfg.weight_per_unit_lbs : defaults[productType] || '32.00';
+    };
+
     const fetchConfig = async () => {
         setLoading(true);
         try {
             const res = await axios.get('/api/egg-industrial/product-config');
-            setConfig(res.data);
+            const data = Array.isArray(res.data) ? res.data : [];
+            const merged = products.map(p => {
+                const existing = data.find(c => c.product_type === p.type);
+                return existing || { product_type: p.type, weight_per_unit_lbs: defaults[p.type] };
+            });
+            setConfig(merged);
         } catch (e) {
             toast.error('Error al cargar configuración.');
         } finally {
@@ -32,15 +50,26 @@ const EggConfig = () => {
 
     useEffect(() => { fetchConfig(); }, [companyId]);
 
+    const handleUpdate = (productType, value) => {
+        setConfig(prev => {
+            const idx = prev.findIndex(c => c.product_type === productType);
+            if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], weight_per_unit_lbs: value };
+                return updated;
+            }
+            return [...prev, { product_type: productType, weight_per_unit_lbs: value }];
+        });
+    };
+
     const handleSave = async (product_type) => {
-        const cfg = config.find(c => c.product_type === product_type);
-        if (!cfg) return;
+        const weight = getWeight(product_type);
         try {
             await axios.put('/api/egg-industrial/product-config', {
                 product_type,
-                weight_per_unit_lbs: parseFloat(cfg.weight_per_unit_lbs)
+                weight_per_unit_lbs: parseFloat(weight)
             });
-            toast.success(`${cfg.product_type}: ${cfg.weight_per_unit_lbs} Lbs guardado`);
+            toast.success(`${product_type}: ${weight} Lbs guardado`);
         } catch (e) {
             toast.error('Error al guardar.');
         }
@@ -48,10 +77,10 @@ const EggConfig = () => {
 
     const handleSaveAll = async () => {
         try {
-            for (const cfg of config) {
+            for (const p of products) {
                 await axios.put('/api/egg-industrial/product-config', {
-                    product_type: cfg.product_type,
-                    weight_per_unit_lbs: parseFloat(cfg.weight_per_unit_lbs)
+                    product_type: p.type,
+                    weight_per_unit_lbs: parseFloat(getWeight(p.type))
                 });
             }
             toast.success('Toda la configuración guardada.');
@@ -93,19 +122,14 @@ const EggConfig = () => {
                 ) : (
                     <div className="space-y-3">
                         {products.map(p => {
-                            const cfg = config.find(c => c.product_type === p.type) || { product_type: p.type, weight_per_unit_lbs: '32.00' };
                             return (
                                 <div key={p.type} className="flex items-center gap-4 bg-slate-950 border border-slate-850 rounded-xl p-4">
                                     <span className="text-xs font-bold text-white capitalize flex-1">{p.label}</span>
                                     <div className="flex items-center gap-2">
                                         <input
                                             type="number"
-                                            value={cfg.weight_per_unit_lbs}
-                                            onChange={(e) => {
-                                                setConfig(config.map(c =>
-                                                    c.product_type === p.type ? { ...c, weight_per_unit_lbs: e.target.value } : c
-                                                ));
-                                            }}
+                                            value={getWeight(p.type)}
+                                            onChange={(e) => handleUpdate(p.type, e.target.value)}
                                             className="w-24 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold text-right focus:outline-none focus:border-indigo-500"
                                             step="0.01"
                                         />
