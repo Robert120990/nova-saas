@@ -314,53 +314,57 @@ const EggCostsMaintenance = () => {
                             No hay lotes finalizados en el rango de fechas seleccionado.
                         </div>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950">
+                            <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[9px]">
+                                        <th className="px-3 py-2">Producto</th>
+                                        <th className="px-3 py-2">Fecha Fin</th>
+                                        <th className="px-3 py-2 text-right">Rendimiento</th>
+                                        <th className="px-3 py-2 text-right">Costo Fijo</th>
+                                        <th className="px-3 py-2 text-right">Costo/Lb</th>
+                                        <th className="px-3 py-2 text-center w-10"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
                             {batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map(b => {
                                 const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
                                 const fixedTotal = getTotalFixedCost();
-                                const varTotal = (b.variable_costs || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-                                const totalCost = fixedTotal + varTotal;
-                                const costPerLb = yieldLbs > 0 ? totalCost / yieldLbs : 0;
+                                const costPerLb = yieldLbs > 0 ? fixedTotal / yieldLbs : 0;
                                 return (
-                                    <div key={b.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                                        <div className="flex flex-col md:flex-row justify-between gap-3">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-xs font-black text-white capitalize">{b.product_type}</span>
-                                                    <span className="text-[10px] text-slate-400">({b.presentation})</span>
-                                                    <span className="text-[9px] text-slate-500">{new Date(b.completed_at).toLocaleDateString()}</span>
-                                                </div>
-                                                <div className="flex gap-4 text-[10px]">
-                                                    <span className="text-slate-500">Rend: <b className="text-teal-400">{yieldLbs.toLocaleString()} Lbs</b></span>
-                                                    <span className="text-slate-500">Costo/Lb: <b className="text-indigo-400">${costPerLb.toFixed(4)}</b></span>
-                                                </div>
+                                    <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
+                                        <td className="px-3 py-2.5">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-white text-[11px] capitalize">{b.product_type}</span>
+                                                <span className="text-[9px] text-slate-500">{b.presentation}</span>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <div className="text-right">
-                                                    <span className="text-[8px] font-black text-slate-500 block">Fijo + Variable</span>
-                                                    <span className="text-sm font-black text-amber-400">${totalCost.toLocaleString()}</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => openVariableCosts(b)}
-                                                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1"
-                                                >
-                                                    <Plus size={12} /> Costos Variables
-                                                </button>
-                                            </div>
-                                        </div>
-                                        {costConcepts.length > 0 && (
-                                            <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-3 md:grid-cols-4 gap-1 text-[9px]">
-                                                {costConcepts.map(cc => (
-                                                    <div key={cc.id} className="flex justify-between">
-                                                        <span className="text-slate-500 truncate">{cc.concept_name}</span>
-                                                        <span className="font-bold text-slate-300 ml-1">${parseFloat(cc.default_value).toFixed(2)}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-[10px] text-slate-400">
+                                            {new Date(b.completed_at).toLocaleDateString()}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="font-bold text-teal-400 text-[11px]">{yieldLbs.toLocaleString()} Lbs</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="font-bold text-amber-400 text-[11px]">${fixedTotal.toLocaleString()}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="font-bold text-indigo-400 text-[11px]">${costPerLb.toFixed(4)}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center">
+                                            <button
+                                                onClick={() => openVariableCosts(b)}
+                                                className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-extrabold flex items-center gap-1"
+                                                title="Agregar costos variables"
+                                            >
+                                                <Plus size={11} />
+                                            </button>
+                                        </td>
+                                    </tr>
                                 );
                             })}
+                                </tbody>
+                            </table>
                         </div>
                     )}
 
