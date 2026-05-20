@@ -8,6 +8,7 @@ import {
     FileSpreadsheet,
     Flame,
     Copy,
+    Search,
     Droplets,
     ShieldAlert,
     CheckCircle,
@@ -29,6 +30,7 @@ const EggProduction = () => {
     const [rawMaterials, setRawMaterials] = useState([]);
     const [cipLogs, setCipLogs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Navigation sub-tabs
     const [activeTab, setActiveTab] = useState('batches'); // 'batches', 'cip', 'new-batch', 'pasteurize'
@@ -253,6 +255,12 @@ const EggProduction = () => {
         }
     };
 
+    const filteredBatches = batches.filter(b =>
+        b.batch_uuid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.product_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.presentation?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -309,10 +317,22 @@ const EggProduction = () => {
             {/* TAB CONTENT */}
             {activeTab === 'batches' && (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                    <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                        <ClipboardList className="h-4 w-4 text-indigo-400" />
-                        Historial de Procesamiento por Lotes
-                    </h2>
+                    <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <ClipboardList className="h-4 w-4 text-indigo-400" />
+                            Historial de Procesamiento por Lotes
+                        </h2>
+                        <div className="relative w-full md:w-72">
+                            <input
+                                type="text"
+                                placeholder="Buscar por UUID, producto..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-8 pr-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                            />
+                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                        </div>
+                    </div>
                     <div className="h-px bg-slate-800" />
 
                     <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950">
@@ -320,7 +340,7 @@ const EggProduction = () => {
                             <div className="p-8 text-center text-slate-400 text-xs font-bold animate-pulse">
                                 Cargando lotes de producción...
                             </div>
-                        ) : batches.length === 0 ? (
+                        ) : filteredBatches.length === 0 ? (
                             <div className="p-8 text-center text-slate-500 text-xs font-semibold">
                                 No hay lotes de producción registrados.
                             </div>
@@ -339,7 +359,7 @@ const EggProduction = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
-                                    {batches.map(b => (
+                                    {filteredBatches.map(b => (
                                         <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center gap-1">
