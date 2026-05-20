@@ -174,6 +174,12 @@ const getProductionBatches = async (req, res) => {
                 [batch.id, req.company_id]
             );
             batch.packaged_weight_lbs = pkgSum[0].packaged_weight;
+
+            const [varCosts] = await pool.query(
+                'SELECT * FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?',
+                [batch.id, req.company_id]
+            );
+            batch.variable_costs = varCosts;
         }
 
         res.json(rows);

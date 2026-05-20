@@ -289,6 +289,8 @@ const EggCostsMaintenance = () => {
                             {(() => {
                                 const filtered = batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59');
                                 const totalYield = filtered.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
+                                const totalVar = filtered.reduce((s, b) => s + (b.variable_costs || []).reduce((ss, c) => ss + parseFloat(c.amount || 0), 0), 0);
+                                const totalAll = getTotalFixedCost() * filtered.length + totalVar;
                                 return (
                                     <>
                                         <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
@@ -300,8 +302,12 @@ const EggCostsMaintenance = () => {
                                             <span className="text-sm font-black text-teal-400">{totalYield.toLocaleString()} Lbs</span>
                                         </div>
                                         <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                            <span className="text-[8px] font-black text-slate-500 uppercase block">Costo Total Rango</span>
+                                            <span className="text-sm font-black text-amber-400">${totalAll.toLocaleString()}</span>
+                                        </div>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
                                             <span className="text-[8px] font-black text-slate-500 uppercase block">Costo x Lb Prom.</span>
-                                            <span className="text-sm font-black text-indigo-400">${totalYield > 0 ? (getTotalFixedCost() / totalYield).toFixed(4) : '0'}</span>
+                                            <span className="text-sm font-black text-indigo-400">${totalYield > 0 ? (totalAll / totalYield).toFixed(4) : '0'}</span>
                                         </div>
                                     </>
                                 );
@@ -321,7 +327,7 @@ const EggCostsMaintenance = () => {
                                         <th className="px-3 py-2">Producto</th>
                                         <th className="px-3 py-2">Fecha Fin</th>
                                         <th className="px-3 py-2 text-right">Rendimiento</th>
-                                        <th className="px-3 py-2 text-right">Costo Fijo</th>
+                                        <th className="px-3 py-2 text-right">Costo Total</th>
                                         <th className="px-3 py-2 text-right">Costo/Lb</th>
                                         <th className="px-3 py-2 text-center w-10"></th>
                                     </tr>
@@ -330,7 +336,9 @@ const EggCostsMaintenance = () => {
                             {batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map(b => {
                                 const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
                                 const fixedTotal = getTotalFixedCost();
-                                const costPerLb = yieldLbs > 0 ? fixedTotal / yieldLbs : 0;
+                                const varTotal = (b.variable_costs || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+                                const totalCost = fixedTotal + varTotal;
+                                const costPerLb = yieldLbs > 0 ? totalCost / yieldLbs : 0;
                                 return (
                                     <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
                                         <td className="px-3 py-2.5">
@@ -346,7 +354,10 @@ const EggCostsMaintenance = () => {
                                             <span className="font-bold text-teal-400 text-[11px]">{yieldLbs.toLocaleString()} Lbs</span>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
-                                            <span className="font-bold text-amber-400 text-[11px]">${fixedTotal.toLocaleString()}</span>
+                                            <div className="flex flex-col items-end">
+                                                <span className="font-bold text-amber-400 text-[11px]">${totalCost.toLocaleString()}</span>
+                                                {varTotal > 0 && <span className="text-[8px] text-indigo-400">+${varTotal.toLocaleString()} var</span>}
+                                            </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <span className="font-bold text-indigo-400 text-[11px]">${costPerLb.toFixed(4)}</span>
@@ -390,8 +401,9 @@ const EggCostsMaintenance = () => {
                             {(() => {
                                 const filtered = batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59');
                                 const totalYield = filtered.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
-                                const fixedTotal = getTotalFixedCost();
-                                const avgCostPerLb = totalYield > 0 ? fixedTotal / totalYield : 0;
+                                const totalVar = filtered.reduce((s, b) => s + (b.variable_costs || []).reduce((ss, c) => ss + parseFloat(c.amount || 0), 0), 0);
+                                const totalCostAll = getTotalFixedCost() * filtered.length + totalVar;
+                                const avgCostPerLb = totalYield > 0 ? totalCostAll / totalYield : 0;
                                 const suggestedPrice = avgCostPerLb / (1 - (profitMarginPercent / 100));
                                 return (
                                     <div className="bg-slate-950 border border-slate-850 rounded-xl p-4 grid grid-cols-2 gap-3 text-center">
