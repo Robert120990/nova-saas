@@ -882,18 +882,18 @@ const EggProduction = () => {
                                 <span className="text-xs font-bold text-white">{parseFloat(selectedBatchForComplete.input_weight_lbs).toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[9px] font-black text-slate-500 block uppercase">Producto Esperado</span>
+                                <span className="text-[9px] font-black text-slate-500 block uppercase">Producto Esperado ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</span>
                                 <span className="text-xs font-bold text-indigo-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return parseFloat(cfg.yield_pct || 85) / 100; })()).toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[9px] font-black text-slate-500 block uppercase">Cáscaras/Pérdidas</span>
+                                <span className="text-[9px] font-black text-slate-500 block uppercase">Cáscara+Pérdida ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 12}%+{(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 3}%)</span>
                                 <span className="text-xs font-bold text-slate-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return (parseFloat(cfg.waste_shell_pct || 12) + parseFloat(cfg.waste_loss_pct || 3)) / 100; })()).toLocaleString()} Lbs</span>
                             </div>
                         </div>
 
                         <form onSubmit={handleCompleteBatch} className="space-y-4">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Rendimiento Líquido Logrado (Lbs)</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Rendimiento Líquido ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</label>
                                 <input
                                     type="number"
                                     value={completeForm.yield_liquid_lbs}
@@ -906,7 +906,7 @@ const EggProduction = () => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Desperdicio Cáscara (Lbs)</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Cáscara ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 12}%)</label>
                                     <input
                                         type="number"
                                         value={completeForm.waste_shell_lbs}
@@ -917,7 +917,7 @@ const EggProduction = () => {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Mermas de Proceso (Lbs)</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Merma ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 3}%)</label>
                                     <input
                                         type="number"
                                         value={completeForm.waste_loss_lbs}
