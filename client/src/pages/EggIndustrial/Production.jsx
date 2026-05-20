@@ -70,6 +70,8 @@ const EggProduction = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cipBlockedError, setCipBlockedError] = useState(null);
     const [haccpViolationAlert, setHaccpViolationAlert] = useState(null);
+    const [isNewBatchModalOpen, setIsNewBatchModalOpen] = useState(false);
+    const [isPasteurizeModalOpen, setIsPasteurizeModalOpen] = useState(false);
 
     const fetchData = async () => {
         setLoading(true);
@@ -121,7 +123,7 @@ const EggProduction = () => {
                 operator_name: user?.nombre || ''
             });
             fetchData();
-            setActiveTab('batches');
+            setIsNewBatchModalOpen(false);
         } catch (error) {
             console.error('Error starting production batch:', error);
             if (error.response?.status === 400 && error.response?.data?.message?.includes('BLOQUEO')) {
@@ -198,7 +200,7 @@ const EggProduction = () => {
             } else {
                 toast.success('Monitoreo HACCP validado. El lote pasó a estado pasteurizado.');
                 setSelectedBatchForPasteurize('');
-                setActiveTab('batches');
+                setIsPasteurizeModalOpen(false);
             }
             fetchData();
         } catch (error) {
@@ -271,6 +273,7 @@ const EggProduction = () => {
             </div>
 
             {/* Custom Tab Selectors */}
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
             <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-900 w-fit">
                 <button
                     onClick={() => { setActiveTab('batches'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
@@ -286,26 +289,25 @@ const EggProduction = () => {
                         activeTab === 'cip' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
                     }`}
                 >
-                    Registros Sanitización CIP
+                    Registros CIP
                 </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
                 <button
-                    onClick={() => { setActiveTab('new-batch'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        activeTab === 'new-batch' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    onClick={() => { setIsNewBatchModalOpen(true); setCipBlockedError(null); }}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 flex items-center gap-1.5 shadow-lg shadow-teal-600/15"
                 >
                     <Plus size={14} />
                     Iniciar Nuevo Lote
                 </button>
                 <button
-                    onClick={() => { setActiveTab('pasteurize'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        activeTab === 'pasteurize' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    onClick={() => { setIsPasteurizeModalOpen(true); setHaccpViolationAlert(null); }}
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-extrabold transition-all border border-orange-500 flex items-center gap-1.5 shadow-lg shadow-orange-600/15"
                 >
                     <Flame size={14} />
-                    Validación HACCP PCC
+                    Pasteurizar
                 </button>
+            </div>
             </div>
 
             {/* TAB CONTENT */}
@@ -387,7 +389,7 @@ const EggProduction = () => {
                                                     <button
                                                         onClick={() => {
                                                             setSelectedBatchForPasteurize(b.id);
-                                                            setActiveTab('pasteurize');
+                                                            setIsPasteurizeModalOpen(true);
                                                         }}
                                                         className="px-3 py-1 bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/20 text-amber-400 hover:text-amber-300 rounded-lg text-[10px] font-extrabold transition-all flex items-center gap-1 mx-auto"
                                                     >
@@ -554,8 +556,9 @@ const EggProduction = () => {
                 </div>
             )}
 
-            {activeTab === 'new-batch' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl max-w-2xl mx-auto space-y-6">
+            {isNewBatchModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-6">
                     <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
                             <Plus className="h-4 w-4 text-teal-400" />
@@ -644,7 +647,7 @@ const EggProduction = () => {
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
                             <button
                                 type="button"
-                                onClick={() => setActiveTab('batches')}
+                                onClick={() => setIsNewBatchModalOpen(false)}
                                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
                             >
                                 Cancelar
@@ -659,10 +662,12 @@ const EggProduction = () => {
                         </div>
                     </form>
                 </div>
+                </div>
             )}
 
-            {activeTab === 'pasteurize' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl max-w-2xl mx-auto space-y-6">
+            {isPasteurizeModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-6">
                     <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
                             <Flame className="h-4 w-4 text-orange-400" />
@@ -761,7 +766,7 @@ const EggProduction = () => {
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
                             <button
                                 type="button"
-                                onClick={() => setActiveTab('batches')}
+                                onClick={() => setIsPasteurizeModalOpen(false)}
                                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
                             >
                                 Cancelar
@@ -859,6 +864,7 @@ const EggProduction = () => {
                             </div>
                         </form>
                     </div>
+                </div>
                 </div>
             )}
         </div>
