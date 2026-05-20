@@ -493,16 +493,16 @@ const EggReception = () => {
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                                        <th className="p-4">Fecha</th>
-                                        <th className="p-4">Proveedor</th>
-                                        <th className="p-4">Lote Prov.</th>
-                                        <th className="p-4">Tipo Materia</th>
-                                        <th className="p-4 text-right">Peso (Lbs)</th>
-                                        <th className="p-4 text-center">Temp.</th>
-                                        <th className="p-4 text-center">Estatus</th>
-                                        <th className="p-4">Operador / Cert</th>
-                                        <th className="p-4 text-center">Acciones</th>
+                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[10px]">
+                                        <th className="px-2 py-1.5">Fecha</th>
+                                        <th className="px-2 py-1.5">Proveedor</th>
+                                        <th className="px-2 py-1.5">Lote</th>
+                                        <th className="px-2 py-1.5">Tipo</th>
+                                        <th className="px-2 py-1.5 text-right">Peso (Lbs)</th>
+                                        <th className="px-2 py-1.5 text-center">Temp</th>
+                                        <th className="px-2 py-1.5 text-center">Estatus</th>
+                                        <th className="px-2 py-1.5">Operador</th>
+                                        <th className="px-2 py-1.5 text-center w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
@@ -516,19 +516,19 @@ const EggReception = () => {
 
                                         return (
                                             <tr key={rm.id} className="hover:bg-slate-900/40 transition-colors">
-                                                <td className="p-4 text-[11px] whitespace-nowrap">
-                                                    <span className="flex items-center gap-1.5 text-slate-400">
-                                                        <Calendar size={12} />
+                                                <td className="px-2 py-1.5 text-[10px] whitespace-nowrap">
+                                                    <span className="flex items-center gap-1 text-slate-400">
+                                                        <Calendar size={10} />
                                                         {formatDate(rm.fecha || rm.created_at)}
                                                     </span>
                                                 </td>
-                                                <td className="p-4 font-bold text-white truncate max-w-[180px]">{rm.provider_name}</td>
-                                                <td className="p-4">
-                                                    <span className="bg-slate-900 border border-slate-800 text-indigo-400 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                                                <td className="px-2 py-1.5 font-bold text-white text-[11px] truncate max-w-[140px]">{rm.provider_name}</td>
+                                                <td className="px-2 py-1.5">
+                                                    <span className="bg-slate-900 border border-slate-800 text-indigo-400 px-1.5 py-0.5 rounded text-[9px] font-bold">
                                                         {rm.provider_lot}
                                                     </span>
                                                 </td>
-                                                <td className="p-4 capitalize">
+                                                <td className="px-2 py-1.5 capitalize">
                                                     <div className="flex flex-col">
                                                         <span className="text-white text-[12px]">{rm.egg_type}</span>
                                                         {rm.egg_type === 'huevo cáscara' && (
@@ -536,11 +536,11 @@ const EggReception = () => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="p-4 text-right font-black text-white text-[12px]">
+                                                <td className="px-2 py-1.5 text-right font-black text-white text-[11px]">
                                                     {parseFloat(rm.weight_lbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="p-4 text-center">
-                                                    <span className={`px-2 py-1 rounded-lg text-[11px] font-black ${
+                                                <td className="px-2 py-1.5 text-center">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
                                                         parseFloat(rm.temperature_c) > 6.0 
                                                             ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' 
                                                             : 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
@@ -548,31 +548,31 @@ const EggReception = () => {
                                                         {rm.temperature_c}°C
                                                     </span>
                                                 </td>
-                                                <td className="p-4 text-center">
-                                                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight shadow-sm">
-                                                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-black ${getStatusBadge(rm.status)}`}>
+                                                <td className="px-2 py-1.5 text-center">
+                                                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight">
+                                                        <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full font-black ${getStatusBadge(rm.status)}`}>
                                                             {getStatusIcon(rm.status)}
                                                             {rm.status}
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="p-4">
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="text-slate-400 flex items-center gap-1 text-[10px]">
-                                                            <User size={10} />
+                                                <td className="px-2 py-1.5">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="text-slate-400 flex items-center gap-1 text-[9px]">
+                                                            <User size={9} />
                                                             {rm.operator_name}
                                                         </span>
                                                         {certs.length > 0 && (
-                                                            <div className="flex gap-1.5 mt-0.5">
+                                                            <div className="flex gap-1 mt-0.5">
                                                                 {certs.map((url, idx) => (
                                                                     <a 
                                                                         key={idx} 
                                                                         href={url} 
                                                                         target="_blank" 
                                                                         rel="noopener noreferrer"
-                                                                        className="text-indigo-400 hover:text-indigo-300 text-[10px] underline font-bold flex items-center gap-0.5"
+                                                                        className="text-indigo-400 hover:text-indigo-300 text-[9px] underline font-bold flex items-center gap-0.5"
                                                                     >
-                                                                        <FileText size={10} />
+                                                                        <FileText size={9} />
                                                                         Cert #{idx + 1}
                                                                     </a>
                                                                 ))}
@@ -580,8 +580,8 @@ const EggReception = () => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="p-4 text-center">
-                                                    <div className="flex items-center justify-center gap-1.5">
+                                                <td className="px-2 py-1.5 text-center">
+                                                    <div className="flex items-center justify-center gap-1">
                                                         {rm.status !== 'anulado' && (
                                                             <button
                                                                 onClick={() => handleEdit(rm)}
