@@ -522,7 +522,7 @@ const EggReception = () => {
                                                         {formatDate(rm.fecha || rm.created_at)}
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1.5 font-bold text-white text-[11px] truncate max-w-[140px]">{rm.provider_name}</td>
+                                                <td className="px-2 py-1.5 font-bold text-white text-[11px] truncate max-w-[220px]">{rm.provider_name}</td>
                                                 <td className="px-2 py-1.5">
                                                     <span className="bg-slate-900 border border-slate-800 text-indigo-400 px-1.5 py-0.5 rounded text-[9px] font-bold">
                                                         {rm.provider_lot}
