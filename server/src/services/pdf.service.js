@@ -697,8 +697,8 @@ const generateDailySalesReportPDF = (data) => {
             const startX = 20;
             const tableTop = doc.y;
             const colWidths = {
-                fecha: 50, tipo: 65, doc: 75, cond: 45, cliente: 120,
-                grav: 50, exen: 50, iva: 45, fov: 40, cot: 40, ret: 45, perc: 45, total: 60
+                fecha: 45, tipo: 90, doc: 150, cond: 35, cliente: 100,
+                grav: 45, exen: 45, iva: 40, fov: 35, cot: 35, ret: 40, perc: 40, total: 50
             };
 
             const drawTableHeader = () => {
