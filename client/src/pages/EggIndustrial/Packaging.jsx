@@ -302,9 +302,8 @@ const EggPackaging = () => {
                 </button>
             </div>
 
-            {/* TAB CONTENTS */}
-            {activeTab === 'records' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+            {/* HISTORIAL DE LOTES EMPACADOS */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
                     <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                         <Boxes className="h-4 w-4 text-indigo-400" />
                         Historial de Unidades Empacadas
@@ -380,7 +379,6 @@ const EggPackaging = () => {
                         )}
                     </div>
                 </div>
-            )}
 
             {isNewPackagingModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">

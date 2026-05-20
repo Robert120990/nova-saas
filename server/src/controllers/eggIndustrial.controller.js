@@ -90,6 +90,12 @@ const voidRawMaterial = async (req, res) => {
             return res.status(404).json({ message: 'Recepción no encontrada.' });
         }
 
+        const stock = parseFloat(existing[0].stock_lbs || 0);
+        const weight = parseFloat(existing[0].weight_lbs || 0);
+        if (stock < weight) {
+            return res.status(400).json({ message: `No se puede anular: el stock disponible (${stock.toFixed(2)} Lbs) es menor al peso original (${weight.toFixed(2)} Lbs). Parte del lote ya fue consumido en producción.` });
+        }
+
         await pool.query(
             'UPDATE egg_raw_materials SET status = ? WHERE id = ? AND company_id = ?',
             ['anulado', id, req.company_id]

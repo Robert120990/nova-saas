@@ -597,7 +597,7 @@ const EggReception = () => {
                                                                 <Pencil size={12} />
                                                             </button>
                                                         )}
-                                                        {rm.status !== 'anulado' && (
+                                                        {rm.status !== 'anulado' && parseFloat(rm.stock_lbs || 0) >= parseFloat(rm.weight_lbs || 0) && (
                                                             <button
                                                                 onClick={() => setVoidConfirmId(rm.id)}
                                                                 className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-colors"
