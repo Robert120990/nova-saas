@@ -13,6 +13,7 @@ import {
     Snowflake,
     Thermometer,
     CheckCircle,
+    XCircle,
     Boxes,
     Search,
     Printer,
@@ -735,13 +736,16 @@ const EggPackaging = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto">
                     {/* Add Blast Freezer Log Form */}
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
-                        <div>
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                                 <Snowflake className="h-4 w-4 text-cyan-400" />
-                                Entrada a Blast Freezer
+                                Blast Freezer
                             </h2>
-                            <div className="h-px bg-slate-800" />
+                            <button onClick={() => setIsFreezerModalOpen(false)} className="text-slate-500 hover:text-white transition-colors">
+                                <XCircle size={18} />
+                            </button>
                         </div>
+                        <div className="h-px bg-slate-800" />
 
                         <form onSubmit={handleCreateFreezerLog} className="space-y-4">
                             <div className="space-y-1">
