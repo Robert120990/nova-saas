@@ -406,20 +406,26 @@ const EggPackaging = () => {
                     </div>
 
                     {/* Stock de Producto Terminado */}
-                    {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').length > 0 && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').sort((a, b) => b.id - a.id).slice(0, 4).map(b => {
-                                const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0));
-                                return (
-                                    <div key={b.id} className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
-                                        <span className="text-[8px] font-black text-slate-500 uppercase block truncate">{b.product_type}</span>
-                                        <span className={`text-sm font-black ${disp > 0 ? 'text-teal-400' : 'text-rose-500'}`}>{disp.toLocaleString()} Lbs</span>
+                    {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').length > 0 && (() => {
+                        const stockByProduct = {};
+                        batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').forEach(b => {
+                            const key = b.product_type || 'otro';
+                            if (!stockByProduct[key]) stockByProduct[key] = 0;
+                            stockByProduct[key] += Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0));
+                        });
+                        const entries = Object.entries(stockByProduct);
+                        return (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+                                {entries.map(([product, lbs]) => (
+                                    <div key={product} className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block truncate">{product}</span>
+                                        <span className={`text-sm font-black ${lbs > 0 ? 'text-teal-400' : 'text-rose-500'}`}>{lbs.toLocaleString(undefined, {maximumFractionDigits: 0})} Lbs</span>
                                         <span className="text-[7px] text-slate-500 block">disponible</span>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                ))}
+                            </div>
+                        );
+                    })()}
                     <div className="h-px bg-slate-800" />
 
                     <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950">
