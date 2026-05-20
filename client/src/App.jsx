@@ -69,6 +69,7 @@ import EggProduction from './pages/EggIndustrial/Production';
 import EggPackaging from './pages/EggIndustrial/Packaging';
 import EggCostsMaintenance from './pages/EggIndustrial/CostsMaintenance';
 import EggTraceability from './pages/EggIndustrial/Traceability';
+import EggConfig from './pages/EggIndustrial/Config';
 
 import Layout from './components/layout/Layout';
 
@@ -134,6 +135,7 @@ function App() {
                         <Route path="/industrial/empaque" element={<EggPackaging />} />
                         <Route path="/industrial/costos-mantenimiento" element={<EggCostsMaintenance />} />
                         <Route path="/industrial/trazabilidad" element={<EggTraceability />} />
+                        <Route path="/industrial/configuracion" element={<EggConfig />} />
                         
                         <Route path="/compras" element={<Purchases />} />
                         <Route path="/compras/gastos" element={<Expenses />} />

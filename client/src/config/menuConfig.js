@@ -190,7 +190,8 @@ export const menuConfig = [
             { id: 'industrial-production', label: 'Producción y Pasteurización', path: '/industrial/produccion', icon: Box, permission: 'manage_transfers' },
             { id: 'industrial-packaging', label: 'Empaque y Congelado', path: '/industrial/empaque', icon: Package, permission: 'manage_physical_inventory' },
             { id: 'industrial-costs', label: 'Costeo y Mantenimiento', path: '/industrial/costos-mantenimiento', icon: Banknote, permission: 'manage_purchases' },
-            { id: 'industrial-traceability', label: 'Trazabilidad 360°', path: '/industrial/trazabilidad', icon: History, permission: 'manage_kardex' }
+            { id: 'industrial-traceability', label: 'Trazabilidad 360°', path: '/industrial/trazabilidad', icon: History, permission: 'manage_kardex' },
+            { id: 'industrial-config', label: 'Configuración', path: '/industrial/configuracion', icon: Settings, permission: 'manage_system' }
         ]
     },
     {
