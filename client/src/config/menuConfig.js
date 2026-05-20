@@ -187,7 +187,7 @@ export const menuConfig = [
         children: [
             { id: 'industrial-dashboard', label: 'Panel IoT / SCADA', path: '/industrial/planta', icon: Monitor, permission: 'view_dashboard' },
             { id: 'industrial-reception', label: 'Recepción MP', path: '/industrial/recepcion', icon: Truck, permission: 'manage_purchases' },
-            { id: 'industrial-production', label: 'CIP y Lotes Pasteurización', path: '/industrial/produccion', icon: Box, permission: 'manage_transfers' },
+            { id: 'industrial-production', label: 'Producción y Pasteurización', path: '/industrial/produccion', icon: Box, permission: 'manage_transfers' },
             { id: 'industrial-packaging', label: 'Empaque y Congelado', path: '/industrial/empaque', icon: Package, permission: 'manage_physical_inventory' },
             { id: 'industrial-costs', label: 'Costeo y Mantenimiento', path: '/industrial/costos-mantenimiento', icon: Banknote, permission: 'manage_purchases' },
             { id: 'industrial-traceability', label: 'Trazabilidad 360°', path: '/industrial/trazabilidad', icon: History, permission: 'manage_kardex' }
