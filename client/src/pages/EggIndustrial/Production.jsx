@@ -336,7 +336,7 @@ const EggProduction = () => {
                                         <th className="p-4 text-right">Peso Entrada (Lbs)</th>
                                         <th className="p-4 text-right">Rendimiento (Lbs)</th>
                                         <th className="p-4 text-center">Estado Lote</th>
-                                        <th className="p-4">Inicio / Fin</th>
+                                        <th className="p-4 min-w-[200px]">Inicio / Fin</th>
                                         <th className="p-4 text-center">Acciones</th>
                                     </tr>
                                 </thead>
@@ -355,7 +355,7 @@ const EggProduction = () => {
                                                     {b.status}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-[10px] text-slate-400 space-y-1">
+                                            <td className="p-4 text-[10px] text-slate-400 space-y-1 min-w-[200px] whitespace-nowrap">
                                                 <div>
                                                     <span className="text-slate-500 font-extrabold block uppercase text-[8px]">Iniciado:</span>
                                                     {new Date(b.started_at).toLocaleString()}
