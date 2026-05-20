@@ -363,7 +363,7 @@ const EggProduction = () => {
                                         <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center gap-1">
-                                                    <span className="font-mono text-[9px] text-slate-400 select-all truncate max-w-[180px]">{b.batch_uuid}</span>
+                                                    <span className="font-mono text-[9px] text-slate-400 select-all truncate max-w-[280px]">{b.batch_uuid}</span>
                                                     <button
                                                         onClick={() => { navigator.clipboard.writeText(b.batch_uuid); toast.success('UUID copiado'); }}
                                                         className="p-0.5 hover:bg-indigo-500/10 rounded text-slate-500 hover:text-indigo-400 transition-colors flex-shrink-0"
@@ -775,7 +775,7 @@ const EggProduction = () => {
                                 <option value="">Seleccione Lote Activo...</option>
                                 {batches.filter(b => b.status === 'en_proceso').map(b => (
                                     <option key={b.id} value={b.id}>
-                                        Lote: {b.batch_uuid.slice(0, 8)}... - {b.product_type} ({b.presentation})
+                                        [{b.batch_uuid}] {b.product_type} ({b.presentation})
                                     </option>
                                 ))}
                             </select>

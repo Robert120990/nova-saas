@@ -451,7 +451,7 @@ const EggPackaging = () => {
                                 <option value="">Seleccione Lote Pasteurizado...</option>
                                 {batches.filter(b => b.status === 'pasteurizado' || b.status === 'aprobado_calidad' || b.status === 'bloqueado_haccp').map(b => (
                                     <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
-                                        {b.batch_uuid.slice(0, 8)}... - {b.product_type} ({b.presentation}) {b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
+                                        [{b.batch_uuid}] {b.product_type} ({b.presentation}) {b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
                                     </option>
                                 ))}
                             </select>
