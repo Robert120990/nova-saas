@@ -27,6 +27,13 @@ const EggCostsMaintenance = () => {
     const { user } = useAuth();
     const companyId = user?.company_id || 1;
 
+    const formatDate = (dateStr) => {
+        if (!dateStr) return 'N/A';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 'N/A';
+        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    };
+
     // Lists
     const [costs, setCosts] = useState([]);
     const [batches, setBatches] = useState([]);
@@ -329,6 +336,7 @@ const EggCostsMaintenance = () => {
                                         <th className="px-3 py-2 text-right">Rendimiento</th>
                                         <th className="px-3 py-2 text-right">Costo Total</th>
                                         <th className="px-3 py-2 text-right">Costo/Lb</th>
+                                        <th className="px-3 py-2 text-right">Precio Vta. Sug.</th>
                                         <th className="px-3 py-2 text-center w-10"></th>
                                     </tr>
                                 </thead>
@@ -348,7 +356,7 @@ const EggCostsMaintenance = () => {
                                             </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-[10px] text-slate-400">
-                                            {new Date(b.completed_at).toLocaleDateString()}
+                                            {formatDate(b.completed_at)}
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <span className="font-bold text-teal-400 text-[11px]">{yieldLbs.toLocaleString()} Lbs</span>
@@ -361,6 +369,9 @@ const EggCostsMaintenance = () => {
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <span className="font-bold text-indigo-400 text-[11px]">${costPerLb.toFixed(4)}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="font-bold text-teal-400 text-[11px]">${(costPerLb / (1 - (profitMarginPercent / 100))).toFixed(4)}</span>
                                         </td>
                                         <td className="px-3 py-2.5 text-center">
                                             <button
