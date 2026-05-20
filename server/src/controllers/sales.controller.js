@@ -415,7 +415,7 @@ const getSales = async (req, res) => {
             )`;
         }
 
-        sql += ' ORDER BY h.created_at DESC LIMIT ? OFFSET ?';
+        sql += ' ORDER BY h.fecha_emision DESC, h.hora_emision DESC LIMIT ? OFFSET ?';
         params.push(parseInt(limit), parseInt(offset));
 
         const [rows] = await pool.query(sql, params);
@@ -951,18 +951,18 @@ const getSalesReportPDF = async (req, res) => {
         const drawTableHeader = (y) => {
             doc.fontSize(7).font('Helvetica-Bold');
             doc.text('FECHA', startX, y);
-            doc.text('TIPO DOC', startX + 45, y);
-            doc.text('NÚMERO', startX + 150, y);
-            doc.text('CONDICIÓN', startX + 220, y);
-            doc.text('GRAVADA', startX + 275, y, { width: 55, align: 'right' });
-            doc.text('EXENTA', startX + 335, y, { width: 55, align: 'right' });
-            doc.text('IVA', startX + 395, y, { width: 45, align: 'right' });
-            doc.text('RET.', startX + 445, y, { width: 40, align: 'right' });
-            doc.text('PER.', startX + 490, y, { width: 40, align: 'right' });
-            doc.text('FOV.', startX + 535, y, { width: 45, align: 'right' });
-            doc.text('COT.', startX + 585, y, { width: 45, align: 'right' });
-            doc.text('TOTAL', startX + 635, y, { width: 70, align: 'right' });
-            doc.moveTo(startX, y + 10).lineTo(740, y + 10).stroke();
+            doc.text('TIPO DOC', startX + 38, y);
+            doc.text('NÚMERO', startX + 120, y);
+            doc.text('CONDICIÓN', startX + 248, y);
+            doc.text('GRAVADA', startX + 298, y, { width: 55, align: 'right' });
+            doc.text('EXENTA', startX + 358, y, { width: 55, align: 'right' });
+            doc.text('IVA', startX + 418, y, { width: 45, align: 'right' });
+            doc.text('RET.', startX + 468, y, { width: 40, align: 'right' });
+            doc.text('PER.', startX + 513, y, { width: 40, align: 'right' });
+            doc.text('FOV.', startX + 558, y, { width: 45, align: 'right' });
+            doc.text('COT.', startX + 608, y, { width: 45, align: 'right' });
+            doc.text('TOTAL', startX + 658, y, { width: 70, align: 'right' });
+            doc.moveTo(startX, y + 10).lineTo(758, y + 10).stroke();
             return y + 15;
         };
 
@@ -982,15 +982,15 @@ const getSalesReportPDF = async (req, res) => {
             if (row.customer_name !== currentCustomer) {
                 if (currentCustomer !== null) {
                     doc.fontSize(7).font('Helvetica-Bold');
-                    doc.text('SUBTOTAL:', startX + 220, currentY, { width: 50, align: 'right' });
-                    doc.text(`$${cTotals.grav.toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${cTotals.exe.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${cTotals.iva.toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${cTotals.ret.toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${cTotals.per.toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${cTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${cTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${cTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
+                    doc.text('SUBTOTAL:', startX + 240, currentY, { width: 53, align: 'right' });
+                    doc.text(`$${cTotals.grav.toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
+                    doc.text(`$${cTotals.exe.toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
+                    doc.text(`$${cTotals.iva.toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
+                    doc.text(`$${cTotals.ret.toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
+                    doc.text(`$${cTotals.per.toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
+                    doc.text(`$${cTotals.fov.toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
+                    doc.text(`$${cTotals.cot.toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
+                    doc.text(`$${cTotals.total.toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
                     currentY += 15;
                     cTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
                 }
@@ -1006,17 +1006,17 @@ const getSalesReportPDF = async (req, res) => {
             doc.fontSize(7).font('Helvetica');
             const fechaVal = new Date(row.fecha_emision).toLocaleDateString();
             doc.text(fechaVal, startX, currentY);
-            doc.text(row.tipo_doc_nombre || '---', startX + 45, currentY, { width: 100, truncate: true });
-            doc.text(row.numero_control || `VTA-${row.id}`, startX + 150, currentY, { width: 65 });
-            doc.text(row.condicion_nombre || 'CONTADO', startX + 220, currentY, { width: 50 });
-            doc.text(`$${parseFloat(row.total_gravado || 0).toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-            doc.text(`$${parseFloat(row.total_exento || 0).toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-            doc.text(`$${parseFloat(row.total_iva || 0).toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.iva_retenido || 0).toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-            doc.text(`$${parseFloat(row.iva_percibido || 0).toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-            doc.text(`$${parseFloat(row.fovial || 0).toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.cotrans || 0).toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.total_pagar || 0).toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
+            doc.text(row.tipo_doc_nombre || '---', startX + 38, currentY, { width: 80, truncate: true });
+            doc.text(row.numero_control || `VTA-${row.id}`, startX + 120, currentY, { width: 125 });
+            doc.text(row.condicion_nombre || 'CONTADO', startX + 248, currentY, { width: 48 });
+            doc.text(`$${parseFloat(row.total_gravado || 0).toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
+            doc.text(`$${parseFloat(row.total_exento || 0).toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
+            doc.text(`$${parseFloat(row.total_iva || 0).toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
+            doc.text(`$${parseFloat(row.iva_retenido || 0).toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
+            doc.text(`$${parseFloat(row.iva_percibido || 0).toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
+            doc.text(`$${parseFloat(row.fovial || 0).toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
+            doc.text(`$${parseFloat(row.cotrans || 0).toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
+            doc.text(`$${parseFloat(row.total_pagar || 0).toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
 
             // Sum cTotals
             cTotals.grav += parseFloat(row.total_gravado || 0);
@@ -1042,32 +1042,32 @@ const getSalesReportPDF = async (req, res) => {
 
             if (index === rows.length - 1) {
                 doc.fontSize(7).font('Helvetica-Bold');
-                doc.text('SUBTOTAL:', startX + 220, currentY, { width: 50, align: 'right' });
-                doc.text(`$${cTotals.grav.toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-                doc.text(`$${cTotals.exe.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-                doc.text(`$${cTotals.iva.toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-                doc.text(`$${cTotals.ret.toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-                doc.text(`$${cTotals.per.toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-                doc.text(`$${cTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-                doc.text(`$${cTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-                doc.text(`$${cTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
+                doc.text('SUBTOTAL:', startX + 240, currentY, { width: 53, align: 'right' });
+                doc.text(`$${cTotals.grav.toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
+                doc.text(`$${cTotals.exe.toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
+                doc.text(`$${cTotals.iva.toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
+                doc.text(`$${cTotals.ret.toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
+                doc.text(`$${cTotals.per.toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
+                doc.text(`$${cTotals.fov.toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
+                doc.text(`$${cTotals.cot.toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
+                doc.text(`$${cTotals.total.toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
                 currentY += 20;
             }
         });
 
         // Grand Total
-        doc.moveTo(startX, currentY).lineTo(740, currentY).stroke();
+        doc.moveTo(startX, currentY).lineTo(758, currentY).stroke();
         currentY += 10;
         doc.fontSize(9).font('Helvetica-Bold');
-        doc.text('TOTAL GENERAL:', startX + 115, currentY, { width: 155, align: 'right' });
-        doc.text(`$${gTotals.grav.toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-        doc.text(`$${gTotals.exe.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-        doc.text(`$${gTotals.iva.toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.ret.toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-        doc.text(`$${gTotals.per.toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-        doc.text(`$${gTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
+        doc.text('TOTAL GENERAL:', startX + 138, currentY, { width: 155, align: 'right' });
+        doc.text(`$${gTotals.grav.toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
+        doc.text(`$${gTotals.exe.toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
+        doc.text(`$${gTotals.iva.toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
+        doc.text(`$${gTotals.ret.toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
+        doc.text(`$${gTotals.per.toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
+        doc.text(`$${gTotals.fov.toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
+        doc.text(`$${gTotals.cot.toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
+        doc.text(`$${gTotals.total.toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
         doc.end();
 
     } catch (error) {

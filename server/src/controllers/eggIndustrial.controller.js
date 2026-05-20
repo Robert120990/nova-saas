@@ -40,6 +40,69 @@ const createRawMaterial = async (req, res) => {
     }
 };
 
+const updateRawMaterial = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status } = req.body;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Recepción no encontrada.' });
+        }
+
+        await pool.query(
+            `UPDATE egg_raw_materials SET 
+                provider_id = ?, egg_type = ?, egg_color = ?, egg_size = ?, 
+                weight_lbs = ?, temperature_c = ?, provider_lot = ?, 
+                certificate_urls = ?, operator_name = ?, status = ?
+             WHERE id = ? AND company_id = ?`,
+            [provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado', id, req.company_id]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'raw_material.updated', 'info', ?, ?, ?)`,
+            [req.company_id, `Recepción de materia prima #${id} actualizada.`, JSON.stringify({ raw_material_id: parseInt(id), ...req.body }), operator_name]
+        );
+
+        res.json({ id, ...req.body });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const voidRawMaterial = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Recepción no encontrada.' });
+        }
+
+        await pool.query(
+            'UPDATE egg_raw_materials SET status = ? WHERE id = ? AND company_id = ?',
+            ['anulado', id, req.company_id]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'raw_material.voided', 'warning', ?, ?, ?)`,
+            [req.company_id, `Recepción de materia prima #${id} anulada.`, JSON.stringify({ raw_material_id: parseInt(id) }), existing[0].operator_name]
+        );
+
+        res.json({ id, status: 'anulado' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // 2. CIP LOGS (Clean In Place)
 const getCipLogs = async (req, res) => {
     try {
@@ -643,6 +706,8 @@ const getIndustrialEvents = async (req, res) => {
 module.exports = {
     getRawMaterials,
     createRawMaterial,
+    updateRawMaterial,
+    voidRawMaterial,
     getCipLogs,
     createCipLog,
     getProductionBatches,

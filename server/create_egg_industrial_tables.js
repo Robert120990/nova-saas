@@ -20,11 +20,14 @@ async function main() {
                 provider_lot VARCHAR(100) NOT NULL,
                 certificate_urls TEXT,
                 operator_name VARCHAR(100) NOT NULL,
-                status ENUM('aprobado', 'cuarentena', 'rechazado') DEFAULT 'aprobado',
+                status ENUM('aprobado', 'cuarentena', 'rechazado', 'anulado') DEFAULT 'aprobado',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
         console.log('- Tabla egg_raw_materials creada o verificada');
+        // Ensure 'anulado' status is supported in existing tables
+        await pool.query(`ALTER TABLE egg_raw_materials MODIFY COLUMN status ENUM('aprobado', 'cuarentena', 'rechazado', 'anulado') DEFAULT 'aprobado'`).catch(() => {});
+        console.log('- Columna status de egg_raw_materials verificada (anulado).');
 
         // 2. Registro de Sanitización y Limpieza CIP (Clean In Place)
         await pool.query(`

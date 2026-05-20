@@ -5,6 +5,8 @@ const eggController = require('../controllers/eggIndustrial.controller');
 // 1. Recepción de Materia Prima
 router.get('/raw-materials', eggController.getRawMaterials);
 router.post('/raw-materials', eggController.createRawMaterial);
+router.put('/raw-materials/:id', eggController.updateRawMaterial);
+router.put('/raw-materials/:id/void', eggController.voidRawMaterial);
 
 // 2. CIP (Clean In Place)
 router.get('/cip', eggController.getCipLogs);
