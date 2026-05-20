@@ -27,6 +27,8 @@ router.post('/holding-temps', eggController.createHoldingTemperature);
 // 6. Empaque Final
 router.get('/packaging', eggController.getPackagingRecords);
 router.post('/packaging', eggController.createPackagingRecord);
+router.put('/packaging/:id', eggController.updatePackagingRecord);
+router.delete('/packaging/:id', eggController.deletePackagingRecord);
 
 // 7. Blast Freezer
 router.get('/blast-freezer', eggController.getBlastFreezerLogs);

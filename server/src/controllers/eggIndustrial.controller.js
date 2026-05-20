@@ -522,6 +522,75 @@ const createPackagingRecord = async (req, res) => {
     }
 };
 
+const updatePackagingRecord = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { units_packaged, weight_per_unit_lbs, operator_name } = req.body;
+        const company_id = req.company_id;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_packaging_records WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Registro de empaque no encontrado.' });
+        }
+
+        const total_batch_weight_lbs = parseFloat(units_packaged) * parseFloat(weight_per_unit_lbs);
+
+        await pool.query(
+            `UPDATE egg_packaging_records SET units_packaged = ?, weight_per_unit_lbs = ?, total_batch_weight_lbs = ?, operator_name = ? WHERE id = ? AND company_id = ?`,
+            [parseInt(units_packaged), parseFloat(weight_per_unit_lbs), total_batch_weight_lbs, operator_name, id, company_id]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'packaging.updated', 'info', ?, ?, ?)`,
+            [company_id, `Empaque #${id} actualizado: ${units_packaged} unidades, ${total_batch_weight_lbs} Lbs.`, JSON.stringify({ packaging_id: parseInt(id) }), operator_name]
+        );
+
+        res.json({ id, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deletePackagingRecord = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_packaging_records WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Registro de empaque no encontrado.' });
+        }
+
+        // Check if this packaging record is linked to a blast freezer log
+        const [freezerRefs] = await pool.query(
+            'SELECT id FROM egg_blast_freezer_logs WHERE packaging_id = ?',
+            [id]
+        );
+        if (freezerRefs.length > 0) {
+            return res.status(400).json({ message: 'No se puede eliminar: este empaque tiene registros de Blast Freezer asociados. Elimine primero los registros de congelación.' });
+        }
+
+        await pool.query('DELETE FROM egg_packaging_records WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'packaging.deleted', 'warning', ?, ?, ?)`,
+            [company_id, `Empaque #${id} eliminado.`, JSON.stringify({ packaging_id: parseInt(id) }), existing[0].operator_name]
+        );
+
+        res.json({ id, deleted: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // 7. BLAST FREEZER (Congelador rápido)
 const getBlastFreezerLogs = async (req, res) => {
     try {
@@ -821,6 +890,8 @@ module.exports = {
     createHoldingTemperature,
     getPackagingRecords,
     createPackagingRecord,
+    updatePackagingRecord,
+    deletePackagingRecord,
     getBlastFreezerLogs,
     createBlastFreezerLog,
     getMaintenanceLogs,

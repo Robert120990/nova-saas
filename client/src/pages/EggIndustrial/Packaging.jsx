@@ -18,7 +18,9 @@ import {
     Printer,
     Info,
     TrendingDown,
-    Lock
+    Lock,
+    Pencil,
+    Trash2
 } from 'lucide-react';
 
 const EggPackaging = () => {
@@ -59,6 +61,9 @@ const EggPackaging = () => {
     const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
     const [isFreezerModalOpen, setIsFreezerModalOpen] = useState(false);
     const [productConfig, setProductConfig] = useState([]);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingPackaging, setEditingPackaging] = useState(null);
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
     // Form states
     const [packagingForm, setPackagingForm] = useState({
@@ -304,6 +309,54 @@ const EggPackaging = () => {
         p.presentation?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const handleEdit = (p) => {
+        setEditingPackaging(p);
+        setPackagingForm({
+            batch_id: String(p.batch_id || ''),
+            units_packaged: String(p.units_packaged || ''),
+            weight_per_unit_lbs: String(p.weight_per_unit_lbs || '32.00'),
+            operator_name: p.operator_name || ''
+        });
+        setIsEditModalOpen(true);
+    };
+
+    const handleEditSubmit = async (e) => {
+        e.preventDefault();
+        if (!packagingForm.units_packaged || parseInt(packagingForm.units_packaged) <= 0) {
+            return toast.error('La cantidad debe ser mayor a cero.');
+        }
+        setIsSubmitting(true);
+        try {
+            const units = parseInt(packagingForm.units_packaged);
+            const weight = parseFloat(packagingForm.weight_per_unit_lbs);
+            await axios.put(`/api/egg-industrial/packaging/${editingPackaging.id}`, {
+                units_packaged: units,
+                weight_per_unit_lbs: weight,
+                operator_name: packagingForm.operator_name
+            });
+            toast.success('Empaque actualizado.');
+            setIsEditModalOpen(false);
+            setEditingPackaging(null);
+            setPackagingForm({ batch_id: '', units_packaged: '', weight_per_unit_lbs: '32.00', operator_name: user?.nombre || '' });
+            fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al actualizar.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        try {
+            await axios.delete(`/api/egg-industrial/packaging/${id}`);
+            toast.success('Empaque eliminado.');
+            setDeleteConfirmId(null);
+            fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al eliminar.');
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -351,6 +404,22 @@ const EggPackaging = () => {
                             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
                         </div>
                     </div>
+
+                    {/* Stock de Producto Terminado */}
+                    {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').length > 0 && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').sort((a, b) => b.id - a.id).slice(0, 4).map(b => {
+                                const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0));
+                                return (
+                                    <div key={b.id} className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block truncate">{b.product_type}</span>
+                                        <span className={`text-sm font-black ${disp > 0 ? 'text-teal-400' : 'text-rose-500'}`}>{disp.toLocaleString()} Lbs</span>
+                                        <span className="text-[7px] text-slate-500 block">disponible</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                     <div className="h-px bg-slate-800" />
 
                     <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950">
@@ -407,13 +476,29 @@ const EggPackaging = () => {
                                                 </span>
                                             </td>
                                             <td className="p-4 text-center">
-                                                <button
-                                                    onClick={() => setSelectedLabel(p)}
-                                                    className="px-3 py-1 bg-indigo-600/10 hover:bg-indigo-600/25 border border-indigo-500/20 text-indigo-400 hover:text-indigo-300 rounded-lg text-[10px] font-extrabold transition-all flex items-center gap-1.5 mx-auto"
-                                                >
-                                                    <QrCode size={11} />
-                                                    Etiqueta QR
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => setSelectedLabel(p)}
+                                                        className="px-2 py-1 bg-indigo-600/10 hover:bg-indigo-600/25 border border-indigo-500/20 text-indigo-400 hover:text-indigo-300 rounded-lg text-[9px] font-extrabold transition-all flex items-center gap-1"
+                                                    >
+                                                        <QrCode size={10} />
+                                                        QR
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEdit(p)}
+                                                        className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg border border-indigo-500/20 transition-colors"
+                                                        title="Editar"
+                                                    >
+                                                        <Pencil size={11} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setDeleteConfirmId(p.id)}
+                                                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-colors"
+                                                        title="Eliminar"
+                                                    >
+                                                        <Trash2 size={11} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -772,6 +857,67 @@ const EggPackaging = () => {
                 </div>
             )}
 
+            {isEditModalOpen && editingPackaging && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-md w-full mx-4 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <Pencil className="h-4 w-4 text-indigo-400" />
+                        Editar Empaque
+                    </h3>
+                    <form onSubmit={handleEditSubmit} className="space-y-3">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase">Lote</label>
+                            <input type="text" value={editingPackaging.lot_code} disabled className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-slate-500 font-semibold" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Unidades</label>
+                                <input
+                                    type="number"
+                                    value={packagingForm.units_packaged}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, units_packaged: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase">Peso/Unidad (Lbs)</label>
+                                <input
+                                    type="number"
+                                    value={packagingForm.weight_per_unit_lbs}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, weight_per_unit_lbs: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    step="0.01"
+                                />
+                            </div>
+                        </div>
+                        {packagingForm.units_packaged && packagingForm.weight_per_unit_lbs && (
+                            <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-2 text-center">
+                                <span className="text-[9px] font-black text-teal-400 uppercase block">Total</span>
+                                <span className="text-sm font-black text-teal-300">
+                                    {(parseFloat(packagingForm.units_packaged || 0) * parseFloat(packagingForm.weight_per_unit_lbs || 0)).toFixed(2)} Lbs
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button type="button" onClick={() => { setIsEditModalOpen(false); setEditingPackaging(null); }} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Cancelar</button>
+                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+                </div>
+            )}
+
+            {deleteConfirmId !== null && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-sm w-full mx-4 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Confirmar Eliminación</h3>
+                    <p className="text-xs text-slate-400">¿Eliminar este registro de empaque? Se liberará el stock consumido del lote.</p>
+                    <div className="flex justify-end gap-3">
+                        <button onClick={() => setDeleteConfirmId(null)} className="px-4 py-2 bg-slate-900 text-slate-300 rounded-xl text-xs font-bold">Cancelar</button>
+                        <button onClick={() => handleDelete(deleteConfirmId)} className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-extrabold">Eliminar</button>
+                    </div>
+                </div>
+                </div>
             )}
         </div>
     );
