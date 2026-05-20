@@ -346,10 +346,15 @@ const EggCostsMaintenance = () => {
                                 <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
                             {batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map(b => {
                                 const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
+                                const inputLbs = parseFloat(b.input_weight_lbs || 1);
+                                const wasteShell = parseFloat(b.waste_shell_lbs || 0);
+                                const wasteLoss = parseFloat(b.waste_loss_lbs || 0);
                                 const fixedTotal = getTotalFixedCost();
                                 const varTotal = (b.variable_costs || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
                                 const totalCost = fixedTotal + varTotal;
                                 const costPerLb = yieldLbs > 0 ? totalCost / yieldLbs : 0;
+                                const shellCost = (wasteShell / inputLbs) * totalCost;
+                                const lossCost = (wasteLoss / inputLbs) * totalCost;
                                 return (
                                     <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
                                         <td className="px-3 py-2.5">
@@ -365,15 +370,22 @@ const EggCostsMaintenance = () => {
                                             <span className="font-bold text-teal-400 text-[11px]">{yieldLbs.toLocaleString()}</span>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
-                                            <span className="text-[10px] text-slate-400">{parseFloat(b.waste_shell_lbs || 0).toLocaleString()} Lbs</span>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] text-slate-400">{wasteShell.toLocaleString()} Lbs</span>
+                                                <span className="text-[8px] text-rose-400">${shellCost.toFixed(2)}</span>
+                                            </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
-                                            <span className="text-[10px] text-slate-400">{parseFloat(b.waste_loss_lbs || 0).toLocaleString()} Lbs</span>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] text-slate-400">{wasteLoss.toLocaleString()} Lbs</span>
+                                                <span className="text-[8px] text-rose-400">${lossCost.toFixed(2)}</span>
+                                            </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <div className="flex flex-col items-end">
                                                 <span className="font-bold text-amber-400 text-[11px]">${totalCost.toLocaleString()}</span>
                                                 {varTotal > 0 && <span className="text-[8px] text-indigo-400">+${varTotal.toLocaleString()} var</span>}
+                                                {(shellCost + lossCost) > 0 && <span className="text-[8px] text-rose-500">Desp: ${(shellCost + lossCost).toFixed(2)}</span>}
                                             </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
