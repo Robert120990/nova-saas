@@ -162,7 +162,8 @@ const EggConfig = () => {
                 </button>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6 max-w-2xl">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
                 <div>
                     <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-1 flex items-center gap-2">
                         <Settings className="h-4 w-4 text-indigo-400" />
@@ -182,58 +183,29 @@ const EggConfig = () => {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                     <div className="space-y-0.5">
                                         <span className="text-[8px] font-black text-slate-500 uppercase block">Peso/Unidad</span>
-                                        <input
-                                            type="number"
-                                            value={getWeight(p.type)}
-                                            onChange={(e) => handleUpdate(p.type, 'weight_per_unit_lbs', e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-semibold text-right focus:outline-none"
-                                            step="0.01"
-                                        />
+                                        <input type="number" value={getWeight(p.type)} onChange={(e) => handleUpdate(p.type, 'weight_per_unit_lbs', e.target.value)} className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-semibold text-right focus:outline-none" step="0.01" />
                                     </div>
                                     <div className="space-y-0.5">
                                         <span className="text-[8px] font-black text-slate-500 uppercase block">Rendimiento %</span>
-                                        <input
-                                            type="number"
-                                            value={getPct(p.type, 'yield_pct')}
-                                            onChange={(e) => handleUpdate(p.type, 'yield_pct', e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-teal-400 font-semibold text-right focus:outline-none"
-                                            step="0.01"
-                                        />
+                                        <input type="number" value={getPct(p.type, 'yield_pct')} onChange={(e) => handleUpdate(p.type, 'yield_pct', e.target.value)} className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-teal-400 font-semibold text-right focus:outline-none" step="0.01" />
                                     </div>
                                     <div className="space-y-0.5">
                                         <span className="text-[8px] font-black text-slate-500 uppercase block">Cáscara %</span>
-                                        <input
-                                            type="number"
-                                            value={getPct(p.type, 'waste_shell_pct')}
-                                            onChange={(e) => handleUpdate(p.type, 'waste_shell_pct', e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-amber-400 font-semibold text-right focus:outline-none"
-                                            step="0.01"
-                                        />
+                                        <input type="number" value={getPct(p.type, 'waste_shell_pct')} onChange={(e) => handleUpdate(p.type, 'waste_shell_pct', e.target.value)} className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-amber-400 font-semibold text-right focus:outline-none" step="0.01" />
                                     </div>
                                     <div className="space-y-0.5">
                                         <span className="text-[8px] font-black text-slate-500 uppercase block">Merma %</span>
-                                        <input
-                                            type="number"
-                                            value={getPct(p.type, 'waste_loss_pct')}
-                                            onChange={(e) => handleUpdate(p.type, 'waste_loss_pct', e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-rose-400 font-semibold text-right focus:outline-none"
-                                            step="0.01"
-                                        />
+                                        <input type="number" value={getPct(p.type, 'waste_loss_pct')} onChange={(e) => handleUpdate(p.type, 'waste_loss_pct', e.target.value)} className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-rose-400 font-semibold text-right focus:outline-none" step="0.01" />
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => handleSave(p.type)}
-                                    className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold transition-all"
-                                >
-                                    Guardar {p.label}
-                                </button>
+                                <button onClick={() => handleSave(p.type)} className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold transition-all">Guardar {p.label}</button>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6 max-w-2xl">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
                 <div>
                     <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-1 flex items-center gap-2">
                         <Settings className="h-4 w-4 text-indigo-400" />
@@ -292,6 +264,7 @@ const EggConfig = () => {
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     );
