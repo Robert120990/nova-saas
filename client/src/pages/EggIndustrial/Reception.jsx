@@ -499,6 +499,7 @@ const EggReception = () => {
                                         <th className="px-2 py-1.5">Lote</th>
                                         <th className="px-2 py-1.5">Tipo</th>
                                         <th className="px-2 py-1.5 text-right">Peso (Lbs)</th>
+                                        <th className="px-2 py-1.5 text-right">Stock</th>
                                         <th className="px-2 py-1.5 text-center">Temp</th>
                                         <th className="px-2 py-1.5 text-center">Estatus</th>
                                         <th className="px-2 py-1.5">Operador</th>
@@ -538,6 +539,11 @@ const EggReception = () => {
                                                 </td>
                                                 <td className="px-2 py-1.5 text-right font-black text-white text-[11px]">
                                                     {parseFloat(rm.weight_lbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-2 py-1.5 text-right font-bold text-[11px]">
+                                                    <span className={parseFloat(rm.stock_lbs || 0) <= 0 ? 'text-rose-500' : parseFloat(rm.stock_lbs) < 1000 ? 'text-amber-400' : 'text-teal-400'}>
+                                                        {parseFloat(rm.stock_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
                                                 </td>
                                                 <td className="px-2 py-1.5 text-center">
                                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
