@@ -353,6 +353,7 @@ const EggProduction = () => {
                                         <th className="px-2 py-1.5">Presentación</th>
                                         <th className="px-2 py-1.5 text-right">Peso Ent.</th>
                                         <th className="px-2 py-1.5 text-right">Rend.</th>
+                                        <th className="px-2 py-1.5 text-right">Disp.</th>
                                         <th className="px-2 py-1.5 text-center">Estado</th>
                                         <th className="px-2 py-1.5 min-w-[200px]">Inicio / Fin</th>
                                         <th className="px-2 py-1.5 text-center w-10"></th>
@@ -385,6 +386,13 @@ const EggProduction = () => {
                                             <td className="px-2 py-1.5 text-right text-white font-bold text-[11px]">{parseFloat(b.input_weight_lbs).toLocaleString()}</td>
                                             <td className="px-2 py-1.5 text-right text-teal-400 font-black text-[11px]">
                                                 {b.yield_liquid_lbs > 0 ? parseFloat(b.yield_liquid_lbs).toLocaleString() : '-'}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right font-bold text-[11px]">
+                                                {b.yield_liquid_lbs > 0 ? (
+                                                    <span className={Math.max(0, parseFloat(b.yield_liquid_lbs) - parseFloat(b.packaged_weight_lbs || 0)) > 0 ? 'text-amber-400' : 'text-rose-500'}>
+                                                        {Math.max(0, parseFloat(b.yield_liquid_lbs) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()}
+                                                    </span>
+                                                ) : '-'}
                                             </td>
                                             <td className="px-2 py-1.5 text-center">
                                                 <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${getBatchStatusBadge(b.status)}`}>
