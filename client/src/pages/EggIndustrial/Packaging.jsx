@@ -539,10 +539,15 @@ const EggPackaging = () => {
                                 }}
                                 className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                             >
-                                <option value="">Seleccione Lote Pasteurizado...</option>
-                                {batches.filter(b => b.status === 'pasteurizado' || b.status === 'aprobado_calidad' || b.status === 'bloqueado_haccp').map(b => (
+                                <option value="">Seleccione Lote Disponible...</option>
+                                {batches.filter(b => {
+                                    const allowed = ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'];
+                                    if (!allowed.includes(b.status)) return false;
+                                    const disp = parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0);
+                                    return disp > 0;
+                                }).map(b => (
                                     <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
-                                        [{b.batch_uuid}] {b.product_type} ({b.presentation}) {b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
+                                        [{b.batch_uuid}] {b.product_type} ({b.presentation}) - Disp: {(parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0)).toFixed(0)} Lbs{b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
                                     </option>
                                 ))}
                             </select>
