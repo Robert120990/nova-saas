@@ -573,7 +573,6 @@ const EggPackaging = () => {
                         </div>
                     </div>
                 </div>
-                </div>
             )}
 
             {isFreezerModalOpen && (
