@@ -781,6 +781,7 @@ const EggProduction = () => {
                         </div>
                     </form>
                 </div>
+                </div>
             )}
 
             {/* BALANCE DE MASAS DIALOG MODAL */}
@@ -864,7 +865,6 @@ const EggProduction = () => {
                             </div>
                         </form>
                     </div>
-                </div>
                 </div>
             )}
         </div>
