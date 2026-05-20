@@ -15,6 +15,7 @@ async function main() {
                 egg_type ENUM('huevo cáscara', 'huevo líquido', 'clara', 'yema') NOT NULL,
                 egg_color ENUM('blanco', 'marrón', 'mixto', 'N/A') DEFAULT 'N/A',
                 egg_size ENUM('S', 'M', 'L', 'XL', 'N/A') DEFAULT 'N/A',
+                fecha DATE NOT NULL,
                 weight_lbs DECIMAL(12,2) NOT NULL,
                 temperature_c DECIMAL(5,2) NOT NULL,
                 provider_lot VARCHAR(100) NOT NULL,
@@ -28,6 +29,9 @@ async function main() {
         // Ensure 'anulado' status is supported in existing tables
         await pool.query(`ALTER TABLE egg_raw_materials MODIFY COLUMN status ENUM('aprobado', 'cuarentena', 'rechazado', 'anulado') DEFAULT 'aprobado'`).catch(() => {});
         console.log('- Columna status de egg_raw_materials verificada (anulado).');
+        await pool.query("ALTER TABLE egg_raw_materials ADD COLUMN IF NOT EXISTS fecha DATE NOT NULL DEFAULT (CURDATE())").catch(() => {});
+        await pool.query("ALTER TABLE egg_raw_materials ALTER COLUMN fecha SET DEFAULT (CURDATE())").catch(() => {});
+        console.log('- Columna fecha de egg_raw_materials verificada.');
 
         // 2. Registro de Sanitización y Limpieza CIP (Clean In Place)
         await pool.query(`

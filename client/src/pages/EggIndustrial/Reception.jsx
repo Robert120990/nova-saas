@@ -30,12 +30,15 @@ const EggReception = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
+    const todayStr = new Date().toISOString().split('T')[0];
+
     // Form state
     const [formData, setFormData] = useState({
         provider_id: '',
         egg_type: 'huevo cáscara',
         egg_color: 'blanco',
         egg_size: 'L',
+        fecha: todayStr,
         weight_lbs: '',
         temperature_c: '',
         provider_lot: '',
@@ -54,6 +57,7 @@ const EggReception = () => {
         egg_type: 'huevo cáscara',
         egg_color: 'blanco',
         egg_size: 'L',
+        fecha: '',
         weight_lbs: '',
         temperature_c: '',
         provider_lot: '',
@@ -131,6 +135,7 @@ const EggReception = () => {
                 egg_type: 'huevo cáscara',
                 egg_color: 'blanco',
                 egg_size: 'L',
+                fecha: new Date().toISOString().split('T')[0],
                 weight_lbs: '',
                 temperature_c: '',
                 provider_lot: '',
@@ -157,6 +162,7 @@ const EggReception = () => {
             egg_type: rm.egg_type || 'huevo cáscara',
             egg_color: rm.egg_color || 'blanco',
             egg_size: rm.egg_size || 'L',
+            fecha: rm.fecha ? rm.fecha.split('T')[0] : '',
             weight_lbs: rm.weight_lbs || '',
             temperature_c: rm.temperature_c || '',
             provider_lot: rm.provider_lot || '',
@@ -301,6 +307,16 @@ const EggReception = () => {
                                     placeholder="Buscar proveedor..."
                                     codeKey="nrc"
                                     codeLabel="NRC"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Fecha de Recepción</label>
+                                <input
+                                    type="date"
+                                    value={formData.fecha}
+                                    onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                 />
                             </div>
 
@@ -501,7 +517,7 @@ const EggReception = () => {
                                                 <td className="p-4 text-[11px] whitespace-nowrap">
                                                     <span className="flex items-center gap-1.5 text-slate-400">
                                                         <Calendar size={12} />
-                                                        {formatDate(rm.created_at)}
+                                                        {formatDate(rm.fecha || rm.created_at)}
                                                     </span>
                                                 </td>
                                                 <td className="p-4 font-bold text-white truncate max-w-[180px]">{rm.provider_name}</td>
@@ -616,6 +632,15 @@ const EggReception = () => {
                                         placeholder="Buscar proveedor..."
                                         codeKey="nrc"
                                         codeLabel="NRC"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Fecha de Recepción</label>
+                                    <input
+                                        type="date"
+                                        value={editForm.fecha}
+                                        onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                     />
                                 </div>
                                 <div className="space-y-2">

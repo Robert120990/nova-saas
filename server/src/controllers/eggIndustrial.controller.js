@@ -20,11 +20,11 @@ const getRawMaterials = async (req, res) => {
 
 const createRawMaterial = async (req, res) => {
     try {
-        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status } = req.body;
+        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status, fecha } = req.body;
         const [result] = await pool.query(
-            `INSERT INTO egg_raw_materials (company_id, branch_id, provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.company_id, req.body.branch_id || 1, provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado']
+            `INSERT INTO egg_raw_materials (company_id, branch_id, provider_id, egg_type, egg_color, egg_size, fecha, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.company_id, req.body.branch_id || 1, provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', fecha || new Date().toISOString().split('T')[0], weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado']
         );
 
         // Crear evento de auditoría
@@ -43,7 +43,7 @@ const createRawMaterial = async (req, res) => {
 const updateRawMaterial = async (req, res) => {
     try {
         const { id } = req.params;
-        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status } = req.body;
+        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status, fecha } = req.body;
 
         const [existing] = await pool.query(
             'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ?',
@@ -56,10 +56,10 @@ const updateRawMaterial = async (req, res) => {
         await pool.query(
             `UPDATE egg_raw_materials SET 
                 provider_id = ?, egg_type = ?, egg_color = ?, egg_size = ?, 
-                weight_lbs = ?, temperature_c = ?, provider_lot = ?, 
+                fecha = ?, weight_lbs = ?, temperature_c = ?, provider_lot = ?, 
                 certificate_urls = ?, operator_name = ?, status = ?
              WHERE id = ? AND company_id = ?`,
-            [provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado', id, req.company_id]
+            [provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', fecha || existing[0].fecha, weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado', id, req.company_id]
         );
 
         await pool.query(
