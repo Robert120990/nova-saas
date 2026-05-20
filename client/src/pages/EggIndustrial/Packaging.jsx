@@ -33,8 +33,9 @@ const EggPackaging = () => {
     const [loading, setLoading] = useState(true);
 
     // Tab state
-    const [activeTab, setActiveTab] = useState('records'); // 'records', 'freezer'
+    const [activeTab, setActiveTab] = useState('records'); // 'records' only
     const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
+    const [isFreezerModalOpen, setIsFreezerModalOpen] = useState(false);
 
     // Form states
     const [packagingForm, setPackagingForm] = useState({
@@ -151,7 +152,7 @@ const EggPackaging = () => {
                 status: 'congelando'
             });
             fetchData();
-            setActiveTab('freezer');
+            setIsFreezerModalOpen(false);
         } catch (error) {
             console.error('Error logging blast freezer entry:', error);
             toast.error('Error al guardar registro en Blast Freezer.');
@@ -293,26 +294,12 @@ const EggPackaging = () => {
                     <Plus size={14} />
                     Registrar Envasado
                 </button>
-            </div>
-
-            {/* Custom Tab Selectors */}
-            <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-900 w-fit">
                 <button
-                    onClick={() => setActiveTab('records')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        activeTab === 'records' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                    Lotes Empacados
-                </button>
-                <button
-                    onClick={() => setActiveTab('freezer')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        activeTab === 'freezer' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    onClick={() => setIsFreezerModalOpen(true)}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-extrabold transition-all border border-cyan-500 flex items-center gap-1.5 shadow-lg"
                 >
                     <Snowflake size={14} />
-                    Blast Freezer (Túnel)
+                    Blast Freezer
                 </button>
             </div>
 
@@ -573,8 +560,9 @@ const EggPackaging = () => {
                 </div>
             )}
 
-            {activeTab === 'freezer' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {isFreezerModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto">
                     {/* Add Blast Freezer Log Form */}
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
                         <div>
@@ -706,6 +694,7 @@ const EggPackaging = () => {
                             ))}
                         </div>
                     </div>
+                </div>
                 </div>
             )}
         </div>
