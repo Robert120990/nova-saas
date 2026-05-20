@@ -44,7 +44,7 @@ const EggReception = () => {
     });
 
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [showForm, setShowForm] = useState(false);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     const [editingId, setEditingId] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -124,7 +124,7 @@ const EggReception = () => {
             });
 
             toast.success('Recepción de materia prima registrada con éxito.');
-            setShowForm(false);
+            setIsCreateModalOpen(false);
             setFormData({
                 provider_id: '',
                 egg_type: 'huevo cáscara',
@@ -270,17 +270,17 @@ const EggReception = () => {
                 </div>
                 
                 <button 
-                    onClick={() => setShowForm(!showForm)}
+                    onClick={() => setIsCreateModalOpen(true)}
                     className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold transition-all border border-indigo-500 flex items-center gap-2 shadow-lg shadow-indigo-600/15"
                 >
                     <Plus size={16} />
-                    {showForm ? 'Ver Historial' : 'Nueva Recepción'}
+                    Nueva Recepción
                 </button>
             </div>
 
-            {showForm ? (
-                /* INTAKE FORM CARD */
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl max-w-4xl mx-auto">
+            {isCreateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
                     <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2">
                         <Plus className="h-4 w-4 text-teal-400" />
                         Formulario de Ingreso y Control de Calidad
@@ -420,7 +420,7 @@ const EggReception = () => {
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
                             <button
                                 type="button"
-                                onClick={() => setShowForm(false)}
+                                onClick={() => setIsCreateModalOpen(false)}
                                 className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-extrabold transition-all border border-slate-800"
                             >
                                 Cancelar
@@ -435,9 +435,11 @@ const EggReception = () => {
                         </div>
                     </form>
                 </div>
-            ) : (
-                /* HISTORY LIST CARD */
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                </div>
+            )}
+
+            {/* HISTORY LIST CARD */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
                     {/* Search and Filters */}
                     <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -592,7 +594,6 @@ const EggReception = () => {
                         )}
                     </div>
                 </div>
-            )}
 
             {isEditModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
