@@ -863,19 +863,12 @@ const getProductConfig = async (req, res) => {
 const updateProductConfig = async (req, res) => {
     try {
         const { product_type, weight_per_unit_lbs, yield_pct, waste_shell_pct, waste_loss_pct } = req.body;
-        const fields = [];
-        const values = [req.company_id, product_type];
-        if (weight_per_unit_lbs !== undefined) { fields.push('weight_per_unit_lbs = ?'); values.push(weight_per_unit_lbs); }
-        if (yield_pct !== undefined) { fields.push('yield_pct = ?'); values.push(yield_pct); }
-        if (waste_shell_pct !== undefined) { fields.push('waste_shell_pct = ?'); values.push(waste_shell_pct); }
-        if (waste_loss_pct !== undefined) { fields.push('waste_loss_pct = ?'); values.push(waste_loss_pct); }
-        if (fields.length === 0) return res.status(400).json({ message: 'Sin campos para actualizar.' });
 
         await pool.query(
-            `INSERT INTO egg_product_config (company_id, product_type${weight_per_unit_lbs !== undefined ? ', weight_per_unit_lbs' : ''}${yield_pct !== undefined ? ', yield_pct' : ''}${waste_shell_pct !== undefined ? ', waste_shell_pct' : ''}${waste_loss_pct !== undefined ? ', waste_loss_pct' : ''}) 
-             VALUES (?, ?${weight_per_unit_lbs !== undefined ? ', ?' : ''}${yield_pct !== undefined ? ', ?' : ''}${waste_shell_pct !== undefined ? ', ?' : ''}${waste_loss_pct !== undefined ? ', ?' : ''}) 
-             ON DUPLICATE KEY UPDATE ${fields.join(', ')}`,
-            values
+            `INSERT INTO egg_product_config (company_id, product_type, weight_per_unit_lbs, yield_pct, waste_shell_pct, waste_loss_pct) 
+             VALUES (?, ?, ?, ?, ?, ?) 
+             ON DUPLICATE KEY UPDATE weight_per_unit_lbs = VALUES(weight_per_unit_lbs), yield_pct = VALUES(yield_pct), waste_shell_pct = VALUES(waste_shell_pct), waste_loss_pct = VALUES(waste_loss_pct)`,
+            [req.company_id, product_type, weight_per_unit_lbs || 32.00, yield_pct || 85.00, waste_shell_pct || 12.00, waste_loss_pct || 3.00]
         );
         res.json({ product_type, ...req.body });
     } catch (error) {
