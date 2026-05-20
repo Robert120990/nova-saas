@@ -876,6 +876,79 @@ const updateProductConfig = async (req, res) => {
     }
 };
 
+// 14. CONCEPTOS DE COSTOS
+const getCostConcepts = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM egg_cost_concepts WHERE company_id = ? ORDER BY concept_name',
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const saveCostConcept = async (req, res) => {
+    try {
+        const { id, concept_name, default_value } = req.body;
+        if (id) {
+            await pool.query('UPDATE egg_cost_concepts SET concept_name = ?, default_value = ? WHERE id = ? AND company_id = ?',
+                [concept_name, default_value, id, req.company_id]);
+        } else {
+            await pool.query('INSERT INTO egg_cost_concepts (company_id, concept_name, default_value) VALUES (?, ?, ?)',
+                [req.company_id, concept_name, default_value]);
+        }
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteCostConcept = async (req, res) => {
+    try {
+        await pool.query('DELETE FROM egg_cost_concepts WHERE id = ? AND company_id = ?', [req.params.id, req.company_id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 15. COSTOS VARIABLES POR LOTE
+const getBatchVariableCosts = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?',
+            [req.params.batchId, req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const saveBatchVariableCost = async (req, res) => {
+    try {
+        const { concept_name, amount } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO egg_batch_variable_costs (company_id, batch_id, concept_name, amount) VALUES (?, ?, ?, ?)',
+            [req.company_id, req.params.batchId, concept_name, amount]
+        );
+        res.json({ id: result.insertId });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteBatchVariableCost = async (req, res) => {
+    try {
+        await pool.query('DELETE FROM egg_batch_variable_costs WHERE id = ? AND company_id = ?', [req.params.id, req.company_id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -903,5 +976,11 @@ module.exports = {
     getTraceability,
     getIndustrialEvents,
     getProductConfig,
-    updateProductConfig
+    updateProductConfig,
+    getCostConcepts,
+    saveCostConcept,
+    deleteCostConcept,
+    getBatchVariableCosts,
+    saveBatchVariableCost,
+    deleteBatchVariableCost
 };

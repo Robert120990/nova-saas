@@ -55,4 +55,15 @@ router.get('/events', eggController.getIndustrialEvents);
 router.get('/product-config', eggController.getProductConfig);
 router.put('/product-config', eggController.updateProductConfig);
 
+// 14. Conceptos de Costos
+router.get('/cost-concepts', eggController.getCostConcepts);
+router.post('/cost-concepts', eggController.saveCostConcept);
+router.put('/cost-concepts/:id', eggController.saveCostConcept);
+router.delete('/cost-concepts/:id', eggController.deleteCostConcept);
+
+// 15. Costos Variables por Lote
+router.get('/batches/:batchId/variable-costs', eggController.getBatchVariableCosts);
+router.post('/batches/:batchId/variable-costs', eggController.saveBatchVariableCost);
+router.delete('/variable-costs/:id', eggController.deleteBatchVariableCost);
+
 module.exports = router;

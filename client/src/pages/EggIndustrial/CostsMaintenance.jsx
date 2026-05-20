@@ -18,7 +18,9 @@ import {
     Calendar,
     Settings,
     FileText,
-    Info
+    Info,
+    XCircle,
+    Trash2
 } from 'lucide-react';
 
 const EggCostsMaintenance = () => {
@@ -58,20 +60,28 @@ const EggCostsMaintenance = () => {
     });
 
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [profitMarginPercent, setProfitMarginPercent] = useState(35); // Slider for interactive price simulator
+    const [profitMarginPercent, setProfitMarginPercent] = useState(35);
+    const [dateStart, setDateStart] = useState(new Date(new Date().setDate(1)).toISOString().split('T')[0]);
+    const [dateEnd, setDateEnd] = useState(new Date().toISOString().split('T')[0]);
+    const [costConcepts, setCostConcepts] = useState([]);
+    const [variableCostsModal, setVariableCostsModal] = useState(null);
+    const [variableCosts, setVariableCosts] = useState([]);
+    const [newVarCost, setNewVarCost] = useState({ concept_name: '', amount: '' });
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [cRes, bRes, mRes, fRes] = await Promise.all([
+            const [cRes, bRes, mRes, fRes, ccRes] = await Promise.all([
                 axios.get('/api/egg-industrial/costs'),
                 axios.get('/api/egg-industrial/batches'),
                 axios.get('/api/egg-industrial/maintenance'),
-                axios.get('/api/egg-industrial/forecast')
+                axios.get('/api/egg-industrial/forecast'),
+                axios.get('/api/egg-industrial/cost-concepts')
             ]);
             setCosts(cRes.data);
             setBatches(bRes.data);
             setMaintenanceLogs(mRes.data);
+            setCostConcepts(ccRes.data);
             setForecast(fRes.data);
         } catch (error) {
             console.error('Error fetching cost and maintenance data:', error);
@@ -125,6 +135,38 @@ const EggCostsMaintenance = () => {
             setIsSubmitting(false);
         }
     };
+
+    const openVariableCosts = async (batch) => {
+        setVariableCostsModal(batch);
+        try {
+            const res = await axios.get(`/api/egg-industrial/batches/${batch.id}/variable-costs`);
+            setVariableCosts(res.data);
+        } catch (e) { setVariableCosts([]); }
+        setNewVarCost({ concept_name: '', amount: '' });
+    };
+
+    const addVariableCost = async () => {
+        if (!newVarCost.concept_name.trim() || !newVarCost.amount) return toast.error('Complete nombre y monto.');
+        try {
+            await axios.post(`/api/egg-industrial/batches/${variableCostsModal.id}/variable-costs`, {
+                concept_name: newVarCost.concept_name,
+                amount: parseFloat(newVarCost.amount)
+            });
+            toast.success('Costo variable agregado.');
+            setNewVarCost({ concept_name: '', amount: '' });
+            openVariableCosts(variableCostsModal);
+        } catch (e) { toast.error('Error al agregar.'); }
+    };
+
+    const deleteVariableCost = async (id) => {
+        try {
+            await axios.delete(`/api/egg-industrial/variable-costs/${id}`);
+            openVariableCosts(variableCostsModal);
+        } catch (e) { toast.error('Error al eliminar.'); }
+    };
+
+    const getTotalFixedCost = () => costConcepts.reduce((s, c) => s + parseFloat(c.default_value || 0), 0);
+    const getTotalVariableCost = () => variableCosts.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
     // Handle create maintenance log
     const handleCreateMaintenance = async (e) => {
@@ -221,195 +263,145 @@ const EggCostsMaintenance = () => {
 
             {/* TAB CONTENTS */}
             {activeTab === 'costs' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Log industrial cost Form */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
-                        <div>
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+                <div className="space-y-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                                 <DollarSign className="h-4 w-4 text-teal-400" />
-                                Cargar Costos Operativos
+                                Centro de Costos por Lote
                             </h2>
-                            <div className="h-px bg-slate-800" />
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Calendar size={14} className="text-slate-500" />
+                                    <input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[11px] text-white font-semibold focus:outline-none" />
+                                    <span className="text-slate-500 text-xs">a</span>
+                                    <input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[11px] text-white font-semibold focus:outline-none" />
+                                </div>
+                            </div>
                         </div>
+                        <div className="h-px bg-slate-800" />
 
-                        <form onSubmit={handleCreateCost} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Finalizado A Costear</label>
-                                <select
-                                    value={costForm.batch_id}
-                                    onChange={(e) => setCostForm({ ...costForm, batch_id: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                >
-                                    <option value="">Seleccione Lote Finalizado...</option>
-                                    {batches.filter(b => b.yield_liquid_lbs > 0).map(b => (
-                                        <option key={b.id} value={b.id}>
-                                            Lote: {b.batch_uuid.slice(0, 8)}... ({b.product_type})
-                                        </option>
-                                    ))}
-                                </select>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                            <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                <span className="text-[8px] font-black text-slate-500 uppercase block">Costo Fijo Total</span>
+                                <span className="text-sm font-black text-amber-400">${getTotalFixedCost().toLocaleString()}</span>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Diesel Combustión ($)</label>
-                                    <input
-                                        type="number"
-                                        value={costForm.diesel_cost}
-                                        onChange={(e) => setCostForm({ ...costForm, diesel_cost: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        step="0.01"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Electricidad ($)</label>
-                                    <input
-                                        type="number"
-                                        value={costForm.electricity_cost}
-                                        onChange={(e) => setCostForm({ ...costForm, electricity_cost: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        step="0.01"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Agua de Proceso ($)</label>
-                                    <input
-                                        type="number"
-                                        value={costForm.water_cost}
-                                        onChange={(e) => setCostForm({ ...costForm, water_cost: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        step="0.01"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Mano de Obra ($)</label>
-                                    <input
-                                        type="number"
-                                        value={costForm.labor_cost}
-                                        onChange={(e) => setCostForm({ ...costForm, labor_cost: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        step="0.01"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Materiales Empaque ($)</label>
-                                    <input
-                                        type="number"
-                                        value={costForm.packaging_materials_cost}
-                                        onChange={(e) => setCostForm({ ...costForm, packaging_materials_cost: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        step="0.01"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Químicos CIP ($)</label>
-                                    <input
-                                        type="number"
-                                        value={costForm.chemicals_cip_cost}
-                                        onChange={(e) => setCostForm({ ...costForm, chemicals_cip_cost: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        step="0.01"
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Pruebas de Calidad/Lab ($)</label>
-                                <input
-                                    type="number"
-                                    value={costForm.quality_tests_cost}
-                                    onChange={(e) => setCostForm({ ...costForm, quality_tests_cost: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                    step="0.01"
-                                />
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 shadow-lg shadow-teal-600/15"
-                            >
-                                Registrar Costeo
-                            </button>
-                        </form>
+                            {(() => {
+                                const filtered = batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59');
+                                const totalYield = filtered.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
+                                return (
+                                    <>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                            <span className="text-[8px] font-black text-slate-500 uppercase block">Lotes en Rango</span>
+                                            <span className="text-sm font-black text-white">{filtered.length}</span>
+                                        </div>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                            <span className="text-[8px] font-black text-slate-500 uppercase block">Rendimiento Total</span>
+                                            <span className="text-sm font-black text-teal-400">{totalYield.toLocaleString()} Lbs</span>
+                                        </div>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
+                                            <span className="text-[8px] font-black text-slate-500 uppercase block">Costo x Lb Prom.</span>
+                                            <span className="text-sm font-black text-indigo-400">${totalYield > 0 ? (getTotalFixedCost() / totalYield).toFixed(4) : '0'}</span>
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
                     </div>
 
-                    {/* Cost calculations List */}
-                    <div className="lg:col-span-2 space-y-6">
-                        {/* Interactive profit margin simulator */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                                <BarChart3 className="h-4 w-4 text-indigo-400" />
-                                Simulador de Margen de Ganancia Industrial
-                            </h2>
-                            <div className="h-px bg-slate-800" />
-
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center text-xs font-bold text-slate-300">
-                                    <span>Margen de Utilidad Deseado:</span>
-                                    <span className="text-teal-400 font-black text-sm">{profitMarginPercent}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="15"
-                                    max="75"
-                                    value={profitMarginPercent}
-                                    onChange={(e) => setProfitMarginPercent(parseInt(e.target.value))}
-                                    className="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-indigo-500 focus:outline-none"
-                                />
-                            </div>
+                    {batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').length === 0 ? (
+                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center text-slate-500 text-xs font-semibold">
+                            No hay lotes finalizados en el rango de fechas seleccionado.
                         </div>
-
-                        {/* Breakdown per batch */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                                Análisis Unitario de Centros de Costo
-                            </h2>
-                            <div className="h-px bg-slate-800" />
-
-                            <div className="space-y-4 overflow-y-auto max-h-[400px] pr-1">
-                                {costs.map(c => {
-                                    const totalCost = calculateTotalCost(c);
-                                    const yieldWeight = parseFloat(c.yield_liquid_lbs || 0.0);
-                                    const costPerLb = yieldWeight > 0 ? (totalCost / yieldWeight) : 0;
-                                    const suggestedSalePriceLb = costPerLb / (1 - (profitMarginPercent / 100));
-
-                                    return (
-                                        <div key={c.id} className="bg-slate-950 border border-slate-850 rounded-2xl p-4 space-y-3">
-                                            <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs font-black text-white capitalize">{c.product_type} ({c.presentation})</span>
-                                                    <span className="text-[9px] text-slate-500 font-bold font-mono">UUID: {c.batch_uuid.slice(0, 8)}...</span>
+                    ) : (
+                        <div className="space-y-3">
+                            {batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map(b => {
+                                const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
+                                const fixedTotal = getTotalFixedCost();
+                                const varTotal = (b.variable_costs || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+                                const totalCost = fixedTotal + varTotal;
+                                const costPerLb = yieldLbs > 0 ? totalCost / yieldLbs : 0;
+                                return (
+                                    <div key={b.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                                        <div className="flex flex-col md:flex-row justify-between gap-3">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs font-black text-white capitalize">{b.product_type}</span>
+                                                    <span className="text-[10px] text-slate-400">({b.presentation})</span>
+                                                    <span className="text-[9px] text-slate-500">{new Date(b.completed_at).toLocaleDateString()}</span>
                                                 </div>
-                                                <span className="text-sm font-black text-white">${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                                                <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-850 text-center">
-                                                    <span className="text-[8px] font-black text-slate-500 block uppercase">Lbs Obtenidas</span>
-                                                    <span className="font-extrabold text-slate-300">{yieldWeight.toLocaleString()} Lbs</span>
-                                                </div>
-                                                <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-850 text-center">
-                                                    <span className="text-[8px] font-black text-slate-500 block uppercase">Costo por Libra</span>
-                                                    <span className="font-extrabold text-teal-400">${costPerLb.toFixed(3)} / Lb</span>
-                                                </div>
-                                                <div className="bg-slate-900/60 p-2 rounded-xl border border-slate-850 text-center col-span-2">
-                                                    <span className="text-[8px] font-black text-indigo-400 block uppercase">Venta Sugerida Lb ({profitMarginPercent}%)</span>
-                                                    <span className="font-extrabold text-white">${suggestedSalePriceLb.toFixed(3)} / Lb</span>
+                                                <div className="flex gap-4 text-[10px]">
+                                                    <span className="text-slate-500">Rend: <b className="text-teal-400">{yieldLbs.toLocaleString()} Lbs</b></span>
+                                                    <span className="text-slate-500">Costo/Lb: <b className="text-indigo-400">${costPerLb.toFixed(4)}</b></span>
                                                 </div>
                                             </div>
-                                            
-                                            {/* Cost items chips */}
-                                            <div className="flex flex-wrap gap-1.5 text-[8.5px] font-extrabold uppercase text-slate-500 tracking-tight pt-1">
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded-lg">Diesel: ${c.diesel_cost}</span>
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded-lg">Luz: ${c.electricity_cost}</span>
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded-lg">Agua: ${c.water_cost}</span>
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded-lg">Mano Obra: ${c.labor_cost}</span>
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded-lg">Empaque: ${c.packaging_materials_cost}</span>
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded-lg">CIP: ${c.chemicals_cip_cost}</span>
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-right">
+                                                    <span className="text-[8px] font-black text-slate-500 block">Fijo + Variable</span>
+                                                    <span className="text-sm font-black text-amber-400">${totalCost.toLocaleString()}</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => openVariableCosts(b)}
+                                                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1"
+                                                >
+                                                    <Plus size={12} /> Costos Variables
+                                                </button>
                                             </div>
                                         </div>
-                                    );
-                                })}
+                                        {costConcepts.length > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-3 md:grid-cols-4 gap-1 text-[9px]">
+                                                {costConcepts.map(cc => (
+                                                    <div key={cc.id} className="flex justify-between">
+                                                        <span className="text-slate-500 truncate">{cc.concept_name}</span>
+                                                        <span className="font-bold text-slate-300 ml-1">${parseFloat(cc.default_value).toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <BarChart3 className="h-4 w-4 text-indigo-400" />
+                            Simulador de Precio de Venta
+                        </h2>
+                        <div className="h-px bg-slate-800" />
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center text-xs font-bold text-slate-300">
+                                <span>Margen de Utilidad Deseado:</span>
+                                <span className="text-teal-400 font-black text-sm">{profitMarginPercent}%</span>
                             </div>
+                            <input
+                                type="range"
+                                min="15"
+                                max="75"
+                                value={profitMarginPercent}
+                                onChange={(e) => setProfitMarginPercent(parseInt(e.target.value))}
+                                className="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-indigo-500 focus:outline-none"
+                            />
+                            {(() => {
+                                const filtered = batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59');
+                                const totalYield = filtered.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
+                                const fixedTotal = getTotalFixedCost();
+                                const avgCostPerLb = totalYield > 0 ? fixedTotal / totalYield : 0;
+                                const suggestedPrice = avgCostPerLb / (1 - (profitMarginPercent / 100));
+                                return (
+                                    <div className="bg-slate-950 border border-slate-850 rounded-xl p-4 grid grid-cols-2 gap-3 text-center">
+                                        <div>
+                                            <span className="text-[9px] font-black text-slate-500 block">Costo Prom./Lb</span>
+                                            <span className="text-sm font-bold text-white">${avgCostPerLb.toFixed(4)}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9px] font-black text-slate-500 block">Precio Venta Sug./Lb</span>
+                                            <span className="text-sm font-black text-teal-400">${suggestedPrice.toFixed(4)}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -673,6 +665,51 @@ const EggCostsMaintenance = () => {
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {variableCostsModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-md w-full mx-4 space-y-4 max-h-[80vh] overflow-y-auto">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white uppercase">Costos Variables</h3>
+                        <button onClick={() => setVariableCostsModal(null)} className="text-slate-500 hover:text-white">
+                            <XCircle size={18} />
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                        Lote: <b>{variableCostsModal.product_type}</b> ({variableCostsModal.presentation})
+                    </p>
+                    <div className="space-y-2">
+                        <div className="text-[9px] font-black text-slate-500 uppercase">Costos Fijos</div>
+                        {costConcepts.map(cc => (
+                            <div key={cc.id} className="flex justify-between bg-slate-950 rounded-lg p-2 text-[10px]">
+                                <span className="text-slate-400">{cc.concept_name}</span>
+                                <span className="font-bold text-slate-300">${parseFloat(cc.default_value).toFixed(2)}</span>
+                            </div>
+                        ))}
+                        <div className="text-[9px] font-black text-slate-500 uppercase pt-2">Costos Variables Agregados</div>
+                        {variableCosts.map(vc => (
+                            <div key={vc.id} className="flex justify-between items-center bg-slate-950 rounded-lg p-2 text-[10px]">
+                                <span className="text-indigo-400">{vc.concept_name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold text-indigo-300">${parseFloat(vc.amount).toFixed(2)}</span>
+                                    <button onClick={() => deleteVariableCost(vc.id)} className="text-rose-400 hover:text-rose-300">
+                                        <Trash2 size={12} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        <div className="flex gap-2 pt-2">
+                            <input type="text" value={newVarCost.concept_name} onChange={(e) => setNewVarCost({ ...newVarCost, concept_name: e.target.value })} placeholder="Concepto" className="flex-1 px-2 py-1.5 bg-slate-950 border border-slate-850 rounded-lg text-[10px] text-white font-semibold focus:outline-none" />
+                            <input type="number" value={newVarCost.amount} onChange={(e) => setNewVarCost({ ...newVarCost, amount: e.target.value })} placeholder="$" className="w-24 px-2 py-1.5 bg-slate-950 border border-slate-850 rounded-lg text-[10px] text-white font-semibold text-right focus:outline-none" step="0.01" />
+                            <button onClick={addVariableCost} className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-[10px] font-extrabold">
+                                <Plus size={12} />
+                            </button>
+                        </div>
+                    </div>
+                    <button onClick={() => setVariableCostsModal(null)} className="w-full py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Cerrar</button>
+                </div>
                 </div>
             )}
         </div>
