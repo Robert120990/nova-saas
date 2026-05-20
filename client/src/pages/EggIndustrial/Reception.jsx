@@ -123,6 +123,7 @@ const EggReception = () => {
 
             await axios.post('/api/egg-industrial/raw-materials', {
                 ...formData,
+                provider_lot: formData.provider_lot.trim().toUpperCase(),
                 weight_lbs: parsedWeight,
                 temperature_c: parsedTemp,
                 certificate_urls: urlsArray
@@ -188,6 +189,7 @@ const EggReception = () => {
                 : [];
             await axios.put(`/api/egg-industrial/raw-materials/${editingId}`, {
                 ...editForm,
+                provider_lot: editForm.provider_lot.trim().toUpperCase(),
                 weight_lbs: parseFloat(editForm.weight_lbs),
                 temperature_c: parseFloat(editForm.temperature_c),
                 certificate_urls: urlsArray
