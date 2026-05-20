@@ -29,8 +29,12 @@ async function main() {
         // Ensure 'anulado' status is supported in existing tables
         await pool.query(`ALTER TABLE egg_raw_materials MODIFY COLUMN status ENUM('aprobado', 'cuarentena', 'rechazado', 'anulado') DEFAULT 'aprobado'`).catch(() => {});
         console.log('- Columna status de egg_raw_materials verificada (anulado).');
-        await pool.query("ALTER TABLE egg_raw_materials ADD COLUMN IF NOT EXISTS fecha DATE NOT NULL DEFAULT (CURDATE())").catch(() => {});
-        await pool.query("ALTER TABLE egg_raw_materials ALTER COLUMN fecha SET DEFAULT (CURDATE())").catch(() => {});
+        const [fechaCol] = await pool.query("SHOW COLUMNS FROM egg_raw_materials LIKE 'fecha'");
+        if (!fechaCol.length) {
+            await pool.query("ALTER TABLE egg_raw_materials ADD COLUMN fecha DATE NOT NULL DEFAULT (CURDATE())").catch(async () => {
+                await pool.query("ALTER TABLE egg_raw_materials ADD COLUMN fecha DATE NOT NULL");
+            });
+        }
         console.log('- Columna fecha de egg_raw_materials verificada.');
 
         // 2. Registro de Sanitización y Limpieza CIP (Clean In Place)
