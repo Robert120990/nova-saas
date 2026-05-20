@@ -331,45 +331,45 @@ const EggProduction = () => {
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                                        <th className="p-4">UUID de Trazabilidad</th>
-                                        <th className="p-4">Producto</th>
-                                        <th className="p-4">Presentación</th>
-                                        <th className="p-4 text-right">Peso Entrada (Lbs)</th>
-                                        <th className="p-4 text-right">Rendimiento (Lbs)</th>
-                                        <th className="p-4 text-center">Estado Lote</th>
-                                        <th className="p-4 min-w-[200px]">Inicio / Fin</th>
-                                        <th className="p-4 text-center">Acciones</th>
+                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[9px]">
+                                        <th className="px-2 py-1.5">UUID</th>
+                                        <th className="px-2 py-1.5">Producto</th>
+                                        <th className="px-2 py-1.5">Presentación</th>
+                                        <th className="px-2 py-1.5 text-right">Peso Ent.</th>
+                                        <th className="px-2 py-1.5 text-right">Rend.</th>
+                                        <th className="px-2 py-1.5 text-center">Estado</th>
+                                        <th className="px-2 py-1.5 min-w-[200px]">Inicio / Fin</th>
+                                        <th className="px-2 py-1.5 text-center w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
                                     {batches.map(b => (
                                         <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
-                                            <td className="p-4 font-mono text-[10px] text-slate-400 select-all">{b.batch_uuid}</td>
-                                            <td className="p-4 font-bold text-white capitalize">{b.product_type}</td>
-                                            <td className="p-4 font-semibold text-slate-400">{b.presentation}</td>
-                                            <td className="p-4 text-right text-white font-bold">{parseFloat(b.input_weight_lbs).toLocaleString()}</td>
-                                            <td className="p-4 text-right text-teal-400 font-black">
+                                            <td className="px-2 py-1.5 font-mono text-[9px] text-slate-400 select-all">{b.batch_uuid}</td>
+                                            <td className="px-2 py-1.5 font-bold text-white text-[11px] capitalize">{b.product_type}</td>
+                                            <td className="px-2 py-1.5 font-semibold text-slate-400 text-[10px]">{b.presentation}</td>
+                                            <td className="px-2 py-1.5 text-right text-white font-bold text-[11px]">{parseFloat(b.input_weight_lbs).toLocaleString()}</td>
+                                            <td className="px-2 py-1.5 text-right text-teal-400 font-black text-[11px]">
                                                 {b.yield_liquid_lbs > 0 ? parseFloat(b.yield_liquid_lbs).toLocaleString() : '-'}
                                             </td>
-                                            <td className="p-4 text-center">
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${getBatchStatusBadge(b.status)}`}>
+                                            <td className="px-2 py-1.5 text-center">
+                                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${getBatchStatusBadge(b.status)}`}>
                                                     {b.status}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-[10px] text-slate-400 space-y-1 min-w-[200px] whitespace-nowrap">
+                                            <td className="px-2 py-1.5 text-[9px] text-slate-400 space-y-0.5 min-w-[200px] whitespace-nowrap">
                                                 <div>
-                                                    <span className="text-slate-500 font-extrabold block uppercase text-[8px]">Iniciado:</span>
+                                                    <span className="text-slate-500 font-extrabold block uppercase text-[7px]">Iniciado:</span>
                                                     {new Date(b.started_at).toLocaleString()}
                                                 </div>
                                                 {b.completed_at && (
                                                     <div>
-                                                        <span className="text-slate-500 font-extrabold block uppercase text-[8px]">Completado:</span>
+                                                        <span className="text-slate-500 font-extrabold block uppercase text-[7px]">Completado:</span>
                                                         {new Date(b.completed_at).toLocaleString()}
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="p-4 text-center">
+                                            <td className="px-2 py-1.5 text-center">
                                                 {b.status === 'pasteurizado' && (
                                                     <button
                                                         onClick={() => {
