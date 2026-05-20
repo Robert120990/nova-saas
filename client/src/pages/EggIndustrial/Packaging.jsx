@@ -26,6 +26,28 @@ const EggPackaging = () => {
     const { user } = useAuth();
     const companyId = user?.company_id || 1;
 
+    const formatDate = (dateStr) => {
+        if (!dateStr) return 'N/A';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 'N/A';
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+    };
+
+    const formatDateTime = (dateStr) => {
+        if (!dateStr) return 'N/A';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 'N/A';
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const h = String(d.getHours()).padStart(2, '0');
+        const m = String(d.getMinutes()).padStart(2, '0');
+        return `${day}/${month}/${year} ${h}:${m}`;
+    };
+
     // Lists
     const [packagingRecords, setPackagingRecords] = useState([]);
     const [batches, setBatches] = useState([]);
@@ -231,12 +253,12 @@ const EggPackaging = () => {
             doc.setFont('helvetica', 'normal');
             doc.text('F. Empaque:', 0.2, 1.85);
             doc.setFont('helvetica', 'bold');
-            doc.text(new Date(p.created_at).toLocaleDateString(), 1.2, 1.85);
+            doc.text(formatDate(p.created_at), 1.2, 1.85);
 
             doc.setFont('helvetica', 'normal');
             doc.text('F. Vencimiento:', 0.2, 2.05);
             doc.setFont('helvetica', 'bold');
-            doc.text(new Date(p.expiry_date).toLocaleDateString(), 1.2, 2.05);
+            doc.text(formatDate(p.expiry_date), 1.2, 2.05);
 
             // Línea divisoria
             doc.setLineWidth(0.01);
@@ -373,7 +395,7 @@ const EggPackaging = () => {
                                             <td className="p-4">
                                                 <span className="text-slate-400 flex items-center gap-1 text-[11px]">
                                                     <Calendar size={12} />
-                                                    {new Date(p.expiry_date).toLocaleDateString()}
+                                                    {formatDate(p.expiry_date)}
                                                 </span>
                                             </td>
                                             <td className="p-4 text-slate-400">
@@ -530,11 +552,11 @@ const EggPackaging = () => {
                                 </div>
                                 <div className="mt-1">
                                     <span className="text-slate-500 block text-[7px] uppercase font-black">F. Empaque:</span>
-                                    <span className="font-extrabold text-slate-950">{new Date(selectedLabel.created_at).toLocaleDateString()}</span>
+                                    <span className="font-extrabold text-slate-950">{formatDate(selectedLabel.created_at)}</span>
                                 </div>
                                 <div className="mt-1">
                                     <span className="text-slate-500 block text-[7px] uppercase font-black">F. Vencimiento:</span>
-                                    <span className="font-extrabold text-rose-600">{new Date(selectedLabel.expiry_date).toLocaleDateString()}</span>
+                                    <span className="font-extrabold text-rose-600">{formatDate(selectedLabel.expiry_date)}</span>
                                 </div>
                             </div>
 
@@ -686,7 +708,7 @@ const EggPackaging = () => {
                                         </div>
                                         <p className="text-[11px] text-slate-400 font-semibold">Ubicación física: <b>{log.freezer_location}</b></p>
                                         <div className="flex gap-2.5 text-[9px] text-slate-500 font-extrabold uppercase">
-                                            <span>Entrado: <b>{new Date(log.created_at).toLocaleString()}</b></span>
+                                            <span>Entrado: <b>{formatDateTime(log.created_at)}</b></span>
                                         </div>
                                     </div>
                                     
