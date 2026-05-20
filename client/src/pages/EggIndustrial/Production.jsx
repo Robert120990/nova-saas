@@ -299,7 +299,7 @@ const EggProduction = () => {
                     className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 flex items-center gap-1.5 shadow-lg shadow-teal-600/15"
                 >
                     <Plus size={14} />
-                    Iniciar Nuevo Lote
+                    Iniciar Nueva Producción
                 </button>
                 <button
                     onClick={() => { setIsPasteurizeModalOpen(true); setHaccpViolationAlert(null); }}
@@ -574,7 +574,7 @@ const EggProduction = () => {
                     <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
                             <Plus className="h-4 w-4 text-teal-400" />
-                            Iniciar Lote de Producción
+                            Iniciar Nueva Producción
                         </h2>
                         <p className="text-[11px] text-slate-400">Recuerde que el pasteurizador debe contar con una limpieza CIP válida en las últimas 12 horas.</p>
                         <div className="h-px bg-slate-800 mt-4" />
