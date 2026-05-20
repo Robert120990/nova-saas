@@ -333,7 +333,9 @@ const EggCostsMaintenance = () => {
                                     <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[9px]">
                                         <th className="px-3 py-2">Producto</th>
                                         <th className="px-3 py-2">Fecha Fin</th>
-                                        <th className="px-3 py-2 text-right">Rendimiento</th>
+                                        <th className="px-3 py-2 text-right">Rend.</th>
+                                        <th className="px-3 py-2 text-right">Cáscara</th>
+                                        <th className="px-3 py-2 text-right">Merma</th>
                                         <th className="px-3 py-2 text-right">Costo Total</th>
                                         <th className="px-3 py-2 text-right">Costo/Lb</th>
                                         <th className="px-3 py-2 text-right">Precio/Lb Sug.</th>
@@ -360,7 +362,13 @@ const EggCostsMaintenance = () => {
                                             {formatDate(b.completed_at)}
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
-                                            <span className="font-bold text-teal-400 text-[11px]">{yieldLbs.toLocaleString()} Lbs</span>
+                                            <span className="font-bold text-teal-400 text-[11px]">{yieldLbs.toLocaleString()}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="text-[10px] text-slate-400">{parseFloat(b.waste_shell_lbs || 0).toLocaleString()} Lbs</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="text-[10px] text-slate-400">{parseFloat(b.waste_loss_lbs || 0).toLocaleString()} Lbs</span>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <div className="flex flex-col items-end">
