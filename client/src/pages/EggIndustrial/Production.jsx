@@ -7,6 +7,7 @@ import {
     Plus,
     FileSpreadsheet,
     Flame,
+    Copy,
     Droplets,
     ShieldAlert,
     CheckCircle,
@@ -345,7 +346,18 @@ const EggProduction = () => {
                                 <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
                                     {batches.map(b => (
                                         <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
-                                            <td className="px-2 py-1.5 font-mono text-[9px] text-slate-400 select-all">{b.batch_uuid}</td>
+                                            <td className="px-2 py-1.5">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-mono text-[9px] text-slate-400 select-all truncate max-w-[180px]">{b.batch_uuid}</span>
+                                                    <button
+                                                        onClick={() => { navigator.clipboard.writeText(b.batch_uuid); toast.success('UUID copiado'); }}
+                                                        className="p-0.5 hover:bg-indigo-500/10 rounded text-slate-500 hover:text-indigo-400 transition-colors flex-shrink-0"
+                                                        title="Copiar UUID"
+                                                    >
+                                                        <Copy size={10} />
+                                                    </button>
+                                                </div>
+                                            </td>
                                             <td className="px-2 py-1.5 font-bold text-white text-[11px] capitalize">{b.product_type}</td>
                                             <td className="px-2 py-1.5 font-semibold text-slate-400 text-[10px]">{b.presentation}</td>
                                             <td className="px-2 py-1.5 text-right text-white font-bold text-[11px]">{parseFloat(b.input_weight_lbs).toLocaleString()}</td>
