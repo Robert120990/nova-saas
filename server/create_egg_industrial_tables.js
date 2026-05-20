@@ -36,6 +36,12 @@ async function main() {
             });
         }
         console.log('- Columna fecha de egg_raw_materials verificada.');
+        const [stockCol] = await pool.query("SHOW COLUMNS FROM egg_raw_materials LIKE 'stock_lbs'");
+        if (!stockCol.length) {
+            await pool.query("ALTER TABLE egg_raw_materials ADD COLUMN stock_lbs DECIMAL(12,2) NOT NULL DEFAULT 0");
+            await pool.query("UPDATE egg_raw_materials SET stock_lbs = weight_lbs WHERE status = 'aprobado' AND stock_lbs = 0");
+        }
+        console.log('- Columna stock_lbs de egg_raw_materials verificada.');
 
         // 2. Registro de Sanitización y Limpieza CIP (Clean In Place)
         await pool.query(`
@@ -75,6 +81,18 @@ async function main() {
             )
         `);
         console.log('- Tabla egg_production_batches creada o verificada');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS batch_raw_materials (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                batch_id INT NOT NULL,
+                raw_material_id INT NOT NULL,
+                quantity_lbs DECIMAL(12,2) NOT NULL,
+                FOREIGN KEY (batch_id) REFERENCES egg_production_batches(id) ON DELETE CASCADE,
+                FOREIGN KEY (raw_material_id) REFERENCES egg_raw_materials(id)
+            )
+        `);
+        console.log('- Tabla batch_raw_materials creada o verificada');
 
         // 4. Parámetros Críticos de Pasteurización (HACCP PCC)
         await pool.query(`

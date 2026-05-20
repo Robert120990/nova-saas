@@ -37,8 +37,7 @@ const EggProduction = () => {
     const [batchForm, setBatchForm] = useState({
         product_type: 'huevo entero',
         presentation: 'cubeta 32LB',
-        raw_material_id: '',
-        input_weight_lbs: '',
+        raw_materials: [],
         operator_name: user?.nombre || ''
     });
 
@@ -79,7 +78,7 @@ const EggProduction = () => {
         try {
             const [bRes, rmRes, cRes] = await Promise.all([
                 axios.get('/api/egg-industrial/batches'),
-                axios.get('/api/egg-industrial/raw-materials'),
+                axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }),
                 axios.get('/api/egg-industrial/cip')
             ]);
             setBatches(bRes.data);
@@ -102,38 +101,34 @@ const EggProduction = () => {
         e.preventDefault();
         setCipBlockedError(null);
 
-        if (!batchForm.raw_material_id) {
-            return toast.error('Debe seleccionar la materia prima de origen.');
+        if (!batchForm.raw_materials || batchForm.raw_materials.length === 0) {
+            return toast.error('Debe agregar al menos una materia prima.');
         }
-        if (!batchForm.input_weight_lbs || parseFloat(batchForm.input_weight_lbs) <= 0) {
-            return toast.error('El peso de entrada debe ser mayor a cero.');
+
+        const totalWeight = batchForm.raw_materials.reduce((sum, rm) => sum + parseFloat(rm.quantity_lbs || 0), 0);
+        if (totalWeight <= 0) {
+            return toast.error('El peso total debe ser mayor a cero.');
         }
 
         setIsSubmitting(true);
         try {
             await axios.post('/api/egg-industrial/batches', {
                 ...batchForm,
-                input_weight_lbs: parseFloat(batchForm.input_weight_lbs)
+                raw_materials: batchForm.raw_materials
             });
             toast.success('Lote de producción iniciado exitosamente.');
             setBatchForm({
                 product_type: 'huevo entero',
                 presentation: 'cubeta 32LB',
-                raw_material_id: '',
-                input_weight_lbs: '',
+                raw_materials: [],
                 operator_name: user?.nombre || ''
             });
             fetchData();
             setIsNewBatchModalOpen(false);
         } catch (error) {
-            console.error('Error starting production batch:', error);
-            if (error.response?.status === 400 && error.response?.data?.message?.includes('BLOQUEO')) {
-                // CIP Block Rule
-                setCipBlockedError(error.response.data.message);
-                toast.error('BLOQUEO CIP: Sanitización requerida.');
-            } else {
-                toast.error(error.response?.data?.message || 'Error al iniciar el lote.');
-            }
+            console.error('Error creating production batch:', error);
+            setCipBlockedError(error.response?.data?.message || 'Error al iniciar el lote.');
+            toast.error(error.response?.data?.message || 'Error al iniciar lote de producción.');
         } finally {
             setIsSubmitting(false);
         }
@@ -358,7 +353,14 @@ const EggProduction = () => {
                                                     </button>
                                                 </div>
                                             </td>
-                                            <td className="px-2 py-1.5 font-bold text-white text-[11px] capitalize">{b.product_type}</td>
+                                            <td className="px-2 py-1.5">
+                                                <div className="font-bold text-white text-[11px] capitalize">{b.product_type}</div>
+                                                {b.raw_materials && b.raw_materials.length > 0 && (
+                                                    <div className="text-[8px] text-slate-500 mt-0.5">
+                                                        {b.raw_materials.map(m => `${m.egg_type} (${parseFloat(m.quantity_lbs).toFixed(0)}Lbs)`).join(', ')}
+                                                    </div>
+                                                )}
+                                            </td>
                                             <td className="px-2 py-1.5 font-semibold text-slate-400 text-[10px]">{b.presentation}</td>
                                             <td className="px-2 py-1.5 text-right text-white font-bold text-[11px]">{parseFloat(b.input_weight_lbs).toLocaleString()}</td>
                                             <td className="px-2 py-1.5 text-right text-teal-400 font-black text-[11px]">
@@ -628,32 +630,65 @@ const EggProduction = () => {
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Materia Prima de Entrada Aprobada</label>
-                                <select
-                                    value={batchForm.raw_material_id}
-                                    onChange={(e) => setBatchForm({ ...batchForm, raw_material_id: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                >
-                                    <option value="">Seleccione Materia Prima...</option>
-                                    {rawMaterials.map(rm => (
-                                        <option key={rm.id} value={rm.id}>
-                                            {rm.provider_lot} - {rm.egg_type} ({rm.weight_lbs} Lbs libres)
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                        </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Peso a Procesar (Libras)</label>
-                                <input
-                                    type="number"
-                                    value={batchForm.input_weight_lbs}
-                                    onChange={(e) => setBatchForm({ ...batchForm, input_weight_lbs: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                    placeholder="Ej: 12000"
-                                />
+                        {/* Materias Primas */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Materias Primas</label>
+                                <span className="text-[9px] font-bold text-slate-500">
+                                    Total: {batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs
+                                </span>
                             </div>
+                            {batchForm.raw_materials.map((rm, idx) => (
+                                <div key={idx} className="flex items-center gap-2 bg-slate-950 border border-slate-850 rounded-xl p-2">
+                                    <select
+                                        value={rm.raw_material_id}
+                                        onChange={(e) => {
+                                            const updated = [...batchForm.raw_materials];
+                                            updated[idx].raw_material_id = e.target.value;
+                                            setBatchForm({ ...batchForm, raw_materials: updated });
+                                        }}
+                                        className="flex-1 px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-[10px] text-white font-semibold focus:outline-none"
+                                    >
+                                        <option value="">Seleccionar...</option>
+                                        {rawMaterials.map(m => (
+                                            <option key={m.id} value={m.id} disabled={batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id))}>
+                                                {m.egg_type} - {m.provider_lot} ({parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs)
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="number"
+                                        value={rm.quantity_lbs}
+                                        onChange={(e) => {
+                                            const updated = [...batchForm.raw_materials];
+                                            updated[idx].quantity_lbs = e.target.value;
+                                            setBatchForm({ ...batchForm, raw_materials: updated });
+                                        }}
+                                        className="w-24 px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-[10px] text-white font-semibold focus:outline-none text-right"
+                                        placeholder="Lbs"
+                                        step="0.01"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setBatchForm({ ...batchForm, raw_materials: batchForm.raw_materials.filter((_, i) => i !== idx) });
+                                        }}
+                                        className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg"
+                                    >
+                                        <XCircle size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={() => setBatchForm({ ...batchForm, raw_materials: [...batchForm.raw_materials, { raw_material_id: '', quantity_lbs: '' }] })}
+                                className="w-full py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-[10px] font-extrabold transition-all border border-indigo-500/20 flex items-center justify-center gap-1"
+                            >
+                                <Plus size={12} />
+                                Agregar Materia Prima
+                            </button>
                         </div>
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">

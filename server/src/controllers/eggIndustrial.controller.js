@@ -4,14 +4,18 @@ const { broadcastToCompany } = require('../services/websocket.service');
 // 1. RECEPCIÓN DE MATERIA PRIMA
 const getRawMaterials = async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            `SELECT rm.*, p.nombre as provider_name 
+        const { only_with_stock } = req.query;
+        let sql = `SELECT rm.*, p.nombre as provider_name 
              FROM egg_raw_materials rm
              LEFT JOIN providers p ON rm.provider_id = p.id
-             WHERE rm.company_id = ? 
-             ORDER BY rm.created_at DESC`,
-            [req.company_id]
-        );
+             WHERE rm.company_id = ?`;
+        const params = [req.company_id];
+        if (only_with_stock === 'true') {
+            sql += ' AND rm.status = ? AND rm.stock_lbs > 0';
+            params.push('aprobado');
+        }
+        sql += ' ORDER BY rm.created_at DESC';
+        const [rows] = await pool.query(sql, params);
         res.json(rows);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -142,13 +146,24 @@ const createCipLog = async (req, res) => {
 const getProductionBatches = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT b.*, rm.egg_type as raw_egg_type, rm.provider_lot as raw_provider_lot
+            `SELECT b.*
              FROM egg_production_batches b
-             LEFT JOIN egg_raw_materials rm ON b.raw_material_id = rm.id
              WHERE b.company_id = ? 
              ORDER BY b.started_at DESC`,
             [req.company_id]
         );
+
+        for (const batch of rows) {
+            const [materials] = await pool.query(
+                `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size
+                 FROM batch_raw_materials brm
+                 JOIN egg_raw_materials rm ON brm.raw_material_id = rm.id
+                 WHERE brm.batch_id = ?`,
+                [batch.id]
+            );
+            batch.raw_materials = materials;
+        }
+
         res.json(rows);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -156,14 +171,25 @@ const getProductionBatches = async (req, res) => {
 };
 
 const createProductionBatch = async (req, res) => {
+    const connection = await pool.getConnection();
     try {
-        const { product_type, presentation, raw_material_id, input_weight_lbs, operator_name } = req.body;
+        await connection.beginTransaction();
+
+        const { product_type, presentation, raw_materials, operator_name } = req.body;
         const company_id = req.company_id;
         const branch_id = req.body.branch_id || 1;
 
-        // --- REGLA CRÍTICA INDUSTRIAL: VALIDAR CIP RECIENTE (Últimas 12 horas) ---
-        // Verificamos si hay un CIP completado para el pasteurizador en las últimas 12 horas
-        const [cipLogs] = await pool.query(
+        if (!raw_materials || !Array.isArray(raw_materials) || raw_materials.length === 0) {
+            return res.status(400).json({ message: 'Debe seleccionar al menos una materia prima.' });
+        }
+
+        const totalInputWeight = raw_materials.reduce((sum, rm) => sum + parseFloat(rm.quantity_lbs || 0), 0);
+        if (totalInputWeight <= 0) {
+            return res.status(400).json({ message: 'El peso total de entrada debe ser mayor a cero.' });
+        }
+
+        // --- REGLA CRÍTICA INDUSTRIAL: VALIDAR CIP RECIENTE ---
+        const [cipLogs] = await connection.query(
             `SELECT id FROM egg_cip_logs 
              WHERE company_id = ? AND equipment_name = 'pasteurizador' 
                AND validation_status = 'completado'
@@ -172,29 +198,66 @@ const createProductionBatch = async (req, res) => {
         );
 
         if (cipLogs.length === 0) {
+            await connection.rollback();
             return res.status(400).json({
                 message: 'BLOQUEO DE INICIO: No se puede iniciar la producción porque no se ha registrado una limpieza de sanitización CIP aprobada para el "pasteurizador" en las últimas 12 horas. Por favor realice y valide el CIP antes de iniciar.'
             });
         }
 
+        // Validate stock availability for each raw material
+        for (const rm of raw_materials) {
+            const [rows] = await connection.query(
+                'SELECT id, stock_lbs, egg_type FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
+                [rm.raw_material_id, company_id]
+            );
+            if (rows.length === 0) {
+                await connection.rollback();
+                return res.status(400).json({ message: `Materia prima #${rm.raw_material_id} no encontrada.` });
+            }
+            if (parseFloat(rows[0].stock_lbs) < parseFloat(rm.quantity_lbs)) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `Stock insuficiente para ${rows[0].egg_type} (disponible: ${parseFloat(rows[0].stock_lbs).toFixed(2)} Lbs, solicitado: ${parseFloat(rm.quantity_lbs).toFixed(2)} Lbs).`
+                });
+            }
+        }
+
         const batch_uuid = require('crypto').randomUUID();
 
-        const [result] = await pool.query(
-            `INSERT INTO egg_production_batches (company_id, branch_id, batch_uuid, product_type, presentation, status, raw_material_id, input_weight_lbs, operator_name) 
-             VALUES (?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?)`,
-            [company_id, branch_id, batch_uuid, product_type, presentation, raw_material_id, input_weight_lbs, operator_name]
+        const [result] = await connection.query(
+            `INSERT INTO egg_production_batches (company_id, branch_id, batch_uuid, product_type, presentation, status, input_weight_lbs, operator_name) 
+             VALUES (?, ?, ?, ?, ?, 'en_proceso', ?, ?)`,
+            [company_id, branch_id, batch_uuid, product_type, presentation, totalInputWeight, operator_name]
         );
+        const batchId = result.insertId;
+
+        // Insert batch_raw_materials and deduct stock
+        for (const rm of raw_materials) {
+            await connection.query(
+                'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs) VALUES (?, ?, ?)',
+                [batchId, rm.raw_material_id, parseFloat(rm.quantity_lbs)]
+            );
+            await connection.query(
+                'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ? WHERE id = ?',
+                [parseFloat(rm.quantity_lbs), rm.raw_material_id]
+            );
+        }
 
         // Crear evento
-        await pool.query(
+        await connection.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'production.started', 'info', ?, ?, ?)`,
-            [company_id, `Iniciado lote de producción ${product_type} (${presentation}) con UUID ${batch_uuid}.`, JSON.stringify({ batch_id: result.insertId, batch_uuid, input_weight_lbs }), operator_name]
+            [company_id, `Iniciado lote de producción ${product_type} (${presentation}) con UUID ${batch_uuid}, ${raw_materials.length} materias primas.`, JSON.stringify({ batch_id: batchId, batch_uuid, totalInputWeight, raw_materials }), operator_name]
         );
 
-        res.status(201).json({ id: result.insertId, batch_uuid, product_type, presentation, status: 'en_proceso' });
+        await connection.commit();
+
+        res.status(201).json({ id: batchId, batch_uuid, product_type, presentation, status: 'en_proceso', totalInputWeight });
     } catch (error) {
+        await connection.rollback();
         res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
     }
 };
 
