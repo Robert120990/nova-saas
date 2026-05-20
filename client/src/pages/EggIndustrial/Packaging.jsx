@@ -297,15 +297,6 @@ const EggPackaging = () => {
                     Lotes Empacados
                 </button>
                 <button
-                    onClick={() => setActiveTab('freezer')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        activeTab === 'freezer' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                    <Snowflake size={14} />
-                    Blast Freezer (Túnel)
-                </button>
-                <button
                     onClick={() => setActiveTab('new-packaging')}
                     className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                         activeTab === 'new-packaging' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
@@ -313,6 +304,15 @@ const EggPackaging = () => {
                 >
                     <Plus size={14} />
                     Registrar Envasado
+                </button>
+                <button
+                    onClick={() => setActiveTab('freezer')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        activeTab === 'freezer' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                    <Snowflake size={14} />
+                    Blast Freezer (Túnel)
                 </button>
             </div>
 
@@ -392,142 +392,6 @@ const EggPackaging = () => {
                                 </tbody>
                             </table>
                         )}
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'freezer' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Add Blast Freezer Log Form */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
-                        <div>
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <Snowflake className="h-4 w-4 text-cyan-400" />
-                                Entrada a Blast Freezer
-                            </h2>
-                            <div className="h-px bg-slate-800" />
-                        </div>
-
-                        <form onSubmit={handleCreateFreezerLog} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Envasado a Congelar</label>
-                                <select
-                                    value={freezerForm.packaging_id}
-                                    onChange={(e) => setFreezerForm({ ...freezerForm, packaging_id: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                >
-                                    <option value="">Seleccione Lote Envasado...</option>
-                                    {packagingRecords.map(p => (
-                                        <option key={p.id} value={p.id}>
-                                            {p.lot_code} - {p.product_type} ({p.units_packaged} Uds)
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ubicación del Túnel</label>
-                                <select
-                                    value={freezerForm.freezer_location}
-                                    onChange={(e) => setFreezerForm({ ...freezerForm, freezer_location: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                >
-                                    <option value="Túnel A - Posición 1">Túnel Rápido A - Posición 1</option>
-                                    <option value="Túnel A - Posición 2">Túnel Rápido A - Posición 2</option>
-                                    <option value="Túnel B - Posición 1">Túnel Rápido B - Posición 1</option>
-                                    <option value="Túnel B - Posición 2">Túnel Rápido B - Posición 2</option>
-                                    <option value="Túnel C (Ultra-frío)">Túnel C - Criogénico</option>
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Temp Núcleo (°C)</label>
-                                    <input
-                                        type="number"
-                                        value={freezerForm.core_temperature_c}
-                                        onChange={(e) => setFreezerForm({ ...freezerForm, core_temperature_c: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        placeholder="Ej: -18.5"
-                                        step="0.1"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Horas en Túnel</label>
-                                    <input
-                                        type="number"
-                                        value={freezerForm.freezing_duration_hours}
-                                        onChange={(e) => setFreezerForm({ ...freezerForm, freezing_duration_hours: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                        placeholder="Ej: 4.0"
-                                        step="0.1"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estatus del Congelado</label>
-                                <select
-                                    value={freezerForm.status}
-                                    onChange={(e) => setFreezerForm({ ...freezerForm, status: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
-                                >
-                                    <option value="congelando">Congelando (Activo)</option>
-                                    <option value="congelado_ok">Congelado Aprobado (-18°C núcleo)</option>
-                                    <option value="alarma_tiempo">Alarma de Desviación de Tiempo</option>
-                                </select>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 shadow-lg shadow-teal-600/15"
-                            >
-                                Guardar Registro Túnel
-                            </button>
-                        </form>
-                    </div>
-
-                    {/* Freezer active logs */}
-                    <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-cyan-400" />
-                            Bitácora del Blast Freezer (Cadena de Frío Ultra-baja)
-                        </h2>
-                        <div className="h-px bg-slate-800" />
-
-                        <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
-                            {freezerLogs.map(log => (
-                                <div key={log.id} className="bg-slate-950 border border-slate-850 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4">
-                                    <div className="space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black text-white">{log.lot_code}</span>
-                                            <span className="text-[10px] text-slate-500 capitalize">{log.product_type}</span>
-                                        </div>
-                                        <p className="text-[11px] text-slate-400 font-semibold">Ubicación física: <b>{log.freezer_location}</b></p>
-                                        <div className="flex gap-2.5 text-[9px] text-slate-500 font-extrabold uppercase">
-                                            <span>Entrado: <b>{new Date(log.created_at).toLocaleString()}</b></span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex md:flex-col justify-between items-end text-right">
-                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${getFreezerStatusBadge(log.status)}`}>
-                                            {log.status === 'congelado_ok' ? 'Congelado Aprobado' : log.status}
-                                        </span>
-                                        <div className="flex gap-3 text-xs mt-2">
-                                            <div className="text-center bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
-                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Núcleo</span>
-                                                <span className="text-[11px] font-bold text-cyan-400">{log.core_temperature_c}°C</span>
-                                            </div>
-                                            <div className="text-center bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
-                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Horas</span>
-                                                <span className="text-[11px] font-bold text-white">{log.freezing_duration_hours}h</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
                     </div>
                 </div>
             )}
@@ -701,6 +565,142 @@ const EggPackaging = () => {
                                 <Printer size={14} />
                                 Imprimir Etiqueta (PDF)
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'freezer' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Add Blast Freezer Log Form */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
+                        <div>
+                            <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+                                <Snowflake className="h-4 w-4 text-cyan-400" />
+                                Entrada a Blast Freezer
+                            </h2>
+                            <div className="h-px bg-slate-800" />
+                        </div>
+
+                        <form onSubmit={handleCreateFreezerLog} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Envasado a Congelar</label>
+                                <select
+                                    value={freezerForm.packaging_id}
+                                    onChange={(e) => setFreezerForm({ ...freezerForm, packaging_id: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                >
+                                    <option value="">Seleccione Lote Envasado...</option>
+                                    {packagingRecords.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.lot_code} - {p.product_type} ({p.units_packaged} Uds)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ubicación del Túnel</label>
+                                <select
+                                    value={freezerForm.freezer_location}
+                                    onChange={(e) => setFreezerForm({ ...freezerForm, freezer_location: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                >
+                                    <option value="Túnel A - Posición 1">Túnel Rápido A - Posición 1</option>
+                                    <option value="Túnel A - Posición 2">Túnel Rápido A - Posición 2</option>
+                                    <option value="Túnel B - Posición 1">Túnel Rápido B - Posición 1</option>
+                                    <option value="Túnel B - Posición 2">Túnel Rápido B - Posición 2</option>
+                                    <option value="Túnel C (Ultra-frío)">Túnel C - Criogénico</option>
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Temp Núcleo (°C)</label>
+                                    <input
+                                        type="number"
+                                        value={freezerForm.core_temperature_c}
+                                        onChange={(e) => setFreezerForm({ ...freezerForm, core_temperature_c: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                        placeholder="Ej: -18.5"
+                                        step="0.1"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Horas en Túnel</label>
+                                    <input
+                                        type="number"
+                                        value={freezerForm.freezing_duration_hours}
+                                        onChange={(e) => setFreezerForm({ ...freezerForm, freezing_duration_hours: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                        placeholder="Ej: 4.0"
+                                        step="0.1"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estatus del Congelado</label>
+                                <select
+                                    value={freezerForm.status}
+                                    onChange={(e) => setFreezerForm({ ...freezerForm, status: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                >
+                                    <option value="congelando">Congelando (Activo)</option>
+                                    <option value="congelado_ok">Congelado Aprobado (-18°C núcleo)</option>
+                                    <option value="alarma_tiempo">Alarma de Desviación de Tiempo</option>
+                                </select>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 shadow-lg shadow-teal-600/15"
+                            >
+                                Guardar Registro Túnel
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Freezer active logs */}
+                    <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <Activity className="h-4 w-4 text-cyan-400" />
+                            Bitácora del Blast Freezer (Cadena de Frío Ultra-baja)
+                        </h2>
+                        <div className="h-px bg-slate-800" />
+
+                        <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
+                            {freezerLogs.map(log => (
+                                <div key={log.id} className="bg-slate-950 border border-slate-850 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-black text-white">{log.lot_code}</span>
+                                            <span className="text-[10px] text-slate-500 capitalize">{log.product_type}</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 font-semibold">Ubicación física: <b>{log.freezer_location}</b></p>
+                                        <div className="flex gap-2.5 text-[9px] text-slate-500 font-extrabold uppercase">
+                                            <span>Entrado: <b>{new Date(log.created_at).toLocaleString()}</b></span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex md:flex-col justify-between items-end text-right">
+                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${getFreezerStatusBadge(log.status)}`}>
+                                            {log.status === 'congelado_ok' ? 'Congelado Aprobado' : log.status}
+                                        </span>
+                                        <div className="flex gap-3 text-xs mt-2">
+                                            <div className="text-center bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
+                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Núcleo</span>
+                                                <span className="text-[11px] font-bold text-cyan-400">{log.core_temperature_c}°C</span>
+                                            </div>
+                                            <div className="text-center bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
+                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Horas</span>
+                                                <span className="text-[11px] font-bold text-white">{log.freezing_duration_hours}h</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
