@@ -288,9 +288,9 @@ const EggCostsMaintenance = () => {
                         </div>
                         <div className="h-px bg-slate-800" />
 
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-1 mb-2">
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-1 mb-2">
                             <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
-                                <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo Fijo Total</span>
+                                <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo Fijo</span>
                                 <span className="text-[10px] font-black text-amber-400">${getTotalFixedCost().toLocaleString()}</span>
                             </div>
                             {(() => {
@@ -298,6 +298,9 @@ const EggCostsMaintenance = () => {
                                 const totalYield = filtered.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
                                 const totalVar = filtered.reduce((s, b) => s + (b.variable_costs || []).reduce((ss, c) => ss + parseFloat(c.amount || 0), 0), 0);
                                 const totalAll = getTotalFixedCost() * filtered.length + totalVar;
+                                const totalWasteLbs = filtered.reduce((s, b) => s + parseFloat(b.waste_shell_lbs || 0) + parseFloat(b.waste_loss_lbs || 0), 0);
+                                const totalInput = filtered.reduce((s, b) => s + parseFloat(b.input_weight_lbs || 0), 0);
+                                const wasteCost = totalInput > 0 ? (totalWasteLbs / totalInput) * totalAll : 0;
                                 return (
                                     <>
                                         <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
@@ -309,11 +312,15 @@ const EggCostsMaintenance = () => {
                                             <span className="text-[10px] font-black text-teal-400">{totalYield.toLocaleString()} Lbs</span>
                                         </div>
                                         <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
+                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Desperdicio</span>
+                                            <span className="text-[10px] font-black text-rose-400">{totalWasteLbs.toLocaleString()} Lbs</span>
+                                        </div>
+                                        <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
                                             <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo Total</span>
                                             <span className="text-[10px] font-black text-amber-400">${totalAll.toLocaleString()}</span>
                                         </div>
                                         <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">
-                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo/Lb Prom.</span>
+                                            <span className="text-[7px] font-black text-slate-500 uppercase block truncate">Costo/Lb</span>
                                             <span className="text-[10px] font-black text-indigo-400">${totalYield > 0 ? (totalAll / totalYield).toFixed(4) : '0'}</span>
                                         </div>
                                     </>
@@ -334,8 +341,7 @@ const EggCostsMaintenance = () => {
                                         <th className="px-3 py-2">Producto</th>
                                         <th className="px-3 py-2">Fecha Fin</th>
                                         <th className="px-3 py-2 text-right">Rend.</th>
-                                        <th className="px-3 py-2 text-right">Cáscara</th>
-                                        <th className="px-3 py-2 text-right">Merma</th>
+                                        <th className="px-3 py-2 text-right">Desperdicio</th>
                                         <th className="px-3 py-2 text-right">Costo Total</th>
                                         <th className="px-3 py-2 text-right">Costo/Lb</th>
                                         <th className="px-3 py-2 text-right">Precio/Lb Sug.</th>
@@ -371,21 +377,14 @@ const EggCostsMaintenance = () => {
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <div className="flex flex-col items-end">
-                                                <span className="text-[10px] text-slate-400">{wasteShell.toLocaleString()} Lbs</span>
-                                                <span className="text-[8px] text-rose-400">${shellCost.toFixed(2)}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-3 py-2.5 text-right">
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[10px] text-slate-400">{wasteLoss.toLocaleString()} Lbs</span>
-                                                <span className="text-[8px] text-rose-400">${lossCost.toFixed(2)}</span>
+                                                <span className="text-[10px] text-slate-400">{(wasteShell + wasteLoss).toLocaleString()} Lbs</span>
+                                                <span className="text-[8px] text-rose-400">${(shellCost + lossCost).toFixed(2)}</span>
                                             </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <div className="flex flex-col items-end">
                                                 <span className="font-bold text-amber-400 text-[11px]">${totalCost.toLocaleString()}</span>
                                                 {varTotal > 0 && <span className="text-[8px] text-indigo-400">+${varTotal.toLocaleString()} var</span>}
-                                                {(shellCost + lossCost) > 0 && <span className="text-[8px] text-rose-500">Desp: ${(shellCost + lossCost).toFixed(2)}</span>}
                                             </div>
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
