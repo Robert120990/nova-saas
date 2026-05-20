@@ -475,6 +475,7 @@ const EggPackaging = () => {
                         </div>
                     </form>
                 </div>
+                </div>
             )}
 
             {/* INTERACTIVE GS1 LABEL PREVIEW MODAL */}
