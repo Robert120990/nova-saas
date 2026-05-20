@@ -168,6 +168,12 @@ const getProductionBatches = async (req, res) => {
                 [batch.id]
             );
             batch.raw_materials = materials;
+
+            const [pkgSum] = await pool.query(
+                'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
+                [batch.id, req.company_id]
+            );
+            batch.packaged_weight_lbs = pkgSum[0].packaged_weight;
         }
 
         res.json(rows);

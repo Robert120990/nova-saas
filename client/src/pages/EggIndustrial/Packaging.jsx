@@ -457,6 +457,27 @@ const EggPackaging = () => {
                             </div>
                         )}
 
+                        {packagingForm.batch_id && (() => {
+                            const b = batches.find(x => x.id === parseInt(packagingForm.batch_id));
+                            if (b) return (
+                                <div className="bg-slate-950 border border-slate-850 rounded-2xl p-4 grid grid-cols-3 gap-3 text-center">
+                                    <div>
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Rendimiento Lote</span>
+                                        <span className="text-sm font-bold text-teal-400">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Ya Envasado</span>
+                                        <span className="text-sm font-bold text-indigo-400">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Disponible</span>
+                                        <span className="text-sm font-bold text-amber-400">{Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()} Lbs</span>
+                                    </div>
+                                </div>
+                            );
+                            return null;
+                        })()}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Unidades Envasadas</label>
@@ -481,6 +502,15 @@ const EggPackaging = () => {
                                 />
                             </div>
                         </div>
+
+                        {packagingForm.units_packaged && packagingForm.weight_per_unit_lbs && (
+                            <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 text-center">
+                                <span className="text-[9px] font-black text-teal-400 uppercase block">Total Producido</span>
+                                <span className="text-base font-black text-teal-300">
+                                    {(parseFloat(packagingForm.units_packaged || 0) * parseFloat(packagingForm.weight_per_unit_lbs || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Lbs
+                                </span>
+                            </div>
+                        )}
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
                             <button
