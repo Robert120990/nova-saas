@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import SearchableSelect from '../../components/ui/SearchableSelect';
 import {
     Plus,
     FileText,
@@ -291,16 +292,16 @@ const EggReception = () => {
                             {/* Provider selection */}
                             <div className="space-y-2">
                                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Proveedor de Origen</label>
-                                <select
+                                <SearchableSelect
+                                    options={providers}
                                     value={formData.provider_id}
                                     onChange={(e) => setFormData({ ...formData, provider_id: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
-                                >
-                                    <option value="">Seleccionar Proveedor...</option>
-                                    {providers.map(p => (
-                                        <option key={p.id} value={p.id}>{p.nombre}</option>
-                                    ))}
-                                </select>
+                                    valueKey="id"
+                                    labelKey="nombre"
+                                    placeholder="Buscar proveedor..."
+                                    codeKey="nrc"
+                                    codeLabel="NRC"
+                                />
                             </div>
 
                             {/* Egg type */}
@@ -606,16 +607,16 @@ const EggReception = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Proveedor de Origen</label>
-                                    <select
+                                    <SearchableSelect
+                                        options={providers}
                                         value={editForm.provider_id}
                                         onChange={(e) => setEditForm({ ...editForm, provider_id: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
-                                    >
-                                        <option value="">Seleccionar Proveedor...</option>
-                                        {providers.map(p => (
-                                            <option key={p.id} value={p.id}>{p.nombre}</option>
-                                        ))}
-                                    </select>
+                                        valueKey="id"
+                                        labelKey="nombre"
+                                        placeholder="Buscar proveedor..."
+                                        codeKey="nrc"
+                                        codeLabel="NRC"
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Tipo de Huevo</label>
