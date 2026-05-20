@@ -11,11 +11,11 @@ const EggConfig = () => {
     const [loading, setLoading] = useState(true);
 
     const defaults = {
-        'huevo entero': '32.00',
-        'clara': '8.00',
-        'yema salada': '4.00',
-        'yema azucarada': '4.00',
-        'fórmula especial': '32.00'
+        'huevo entero': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'clara': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'yema salada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'yema azucarada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'fórmula especial': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' }
     };
 
     const products = [
@@ -28,7 +28,12 @@ const EggConfig = () => {
 
     const getWeight = (productType) => {
         const cfg = config.find(c => c.product_type === productType);
-        return cfg ? cfg.weight_per_unit_lbs : defaults[productType] || '32.00';
+        return cfg ? cfg.weight_per_unit_lbs : defaults[productType]?.weight || '32.00';
+    };
+
+    const getPct = (productType, field) => {
+        const cfg = config.find(c => c.product_type === productType);
+        return cfg && cfg[field] !== undefined ? cfg[field] : (defaults[productType]?.[field] || '0');
     };
 
     const fetchConfig = async () => {
@@ -38,7 +43,13 @@ const EggConfig = () => {
             const data = Array.isArray(res.data) ? res.data : [];
             const merged = products.map(p => {
                 const existing = data.find(c => c.product_type === p.type);
-                return existing || { product_type: p.type, weight_per_unit_lbs: defaults[p.type] };
+                return existing || { 
+                    product_type: p.type, 
+                    weight_per_unit_lbs: defaults[p.type]?.weight || '32.00',
+                    yield_pct: defaults[p.type]?.yield_pct || '85.00',
+                    waste_shell_pct: defaults[p.type]?.shell_pct || '12.00',
+                    waste_loss_pct: defaults[p.type]?.loss_pct || '3.00'
+                };
             });
             setConfig(merged);
         } catch (e) {
@@ -50,26 +61,28 @@ const EggConfig = () => {
 
     useEffect(() => { fetchConfig(); }, [companyId]);
 
-    const handleUpdate = (productType, value) => {
+    const handleUpdate = (productType, field, value) => {
         setConfig(prev => {
             const idx = prev.findIndex(c => c.product_type === productType);
             if (idx >= 0) {
                 const updated = [...prev];
-                updated[idx] = { ...updated[idx], weight_per_unit_lbs: value };
+                updated[idx] = { ...updated[idx], [field]: value };
                 return updated;
             }
-            return [...prev, { product_type: productType, weight_per_unit_lbs: value }];
+            return [...prev, { product_type: productType, [field]: value }];
         });
     };
 
     const handleSave = async (product_type) => {
-        const weight = getWeight(product_type);
         try {
             await axios.put('/api/egg-industrial/product-config', {
                 product_type,
-                weight_per_unit_lbs: parseFloat(weight)
+                weight_per_unit_lbs: parseFloat(getWeight(product_type)),
+                yield_pct: parseFloat(getPct(product_type, 'yield_pct')),
+                waste_shell_pct: parseFloat(getPct(product_type, 'waste_shell_pct')),
+                waste_loss_pct: parseFloat(getPct(product_type, 'waste_loss_pct'))
             });
-            toast.success(`${product_type}: ${weight} Lbs guardado`);
+            toast.success(`${product_type}: configurado`);
         } catch (e) {
             toast.error('Error al guardar.');
         }
@@ -80,7 +93,10 @@ const EggConfig = () => {
             for (const p of products) {
                 await axios.put('/api/egg-industrial/product-config', {
                     product_type: p.type,
-                    weight_per_unit_lbs: parseFloat(getWeight(p.type))
+                    weight_per_unit_lbs: parseFloat(getWeight(p.type)),
+                    yield_pct: parseFloat(getPct(p.type, 'yield_pct')),
+                    waste_shell_pct: parseFloat(getPct(p.type, 'waste_shell_pct')),
+                    waste_loss_pct: parseFloat(getPct(p.type, 'waste_loss_pct'))
                 });
             }
             toast.success('Toda la configuración guardada.');
@@ -120,30 +136,60 @@ const EggConfig = () => {
                 {loading ? (
                     <div className="text-center text-slate-400 text-xs py-8 animate-pulse">Cargando configuración...</div>
                 ) : (
-                    <div className="space-y-3">
-                        {products.map(p => {
-                            return (
-                                <div key={p.type} className="flex items-center gap-4 bg-slate-950 border border-slate-850 rounded-xl p-4">
-                                    <span className="text-xs font-bold text-white capitalize flex-1">{p.label}</span>
-                                    <div className="flex items-center gap-2">
+                    <div className="space-y-4">
+                        {products.map(p => (
+                            <div key={p.type} className="bg-slate-950 border border-slate-850 rounded-xl p-4 space-y-3">
+                                <span className="text-xs font-bold text-white capitalize block">{p.label}</span>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    <div className="space-y-0.5">
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Peso/Unidad</span>
                                         <input
                                             type="number"
                                             value={getWeight(p.type)}
-                                            onChange={(e) => handleUpdate(p.type, e.target.value)}
-                                            className="w-24 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold text-right focus:outline-none focus:border-indigo-500"
+                                            onChange={(e) => handleUpdate(p.type, 'weight_per_unit_lbs', e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-semibold text-right focus:outline-none"
                                             step="0.01"
                                         />
-                                        <span className="text-[10px] text-slate-500 font-bold">Lbs/Unidad</span>
                                     </div>
-                                    <button
-                                        onClick={() => handleSave(p.type)}
-                                        className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-extrabold transition-all"
-                                    >
-                                        Guardar
-                                    </button>
+                                    <div className="space-y-0.5">
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Rendimiento %</span>
+                                        <input
+                                            type="number"
+                                            value={getPct(p.type, 'yield_pct')}
+                                            onChange={(e) => handleUpdate(p.type, 'yield_pct', e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-teal-400 font-semibold text-right focus:outline-none"
+                                            step="0.01"
+                                        />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Cáscara %</span>
+                                        <input
+                                            type="number"
+                                            value={getPct(p.type, 'waste_shell_pct')}
+                                            onChange={(e) => handleUpdate(p.type, 'waste_shell_pct', e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-amber-400 font-semibold text-right focus:outline-none"
+                                            step="0.01"
+                                        />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Merma %</span>
+                                        <input
+                                            type="number"
+                                            value={getPct(p.type, 'waste_loss_pct')}
+                                            onChange={(e) => handleUpdate(p.type, 'waste_loss_pct', e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-rose-400 font-semibold text-right focus:outline-none"
+                                            step="0.01"
+                                        />
+                                    </div>
                                 </div>
-                            );
-                        })}
+                                <button
+                                    onClick={() => handleSave(p.type)}
+                                    className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold transition-all"
+                                >
+                                    Guardar {p.label}
+                                </button>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>

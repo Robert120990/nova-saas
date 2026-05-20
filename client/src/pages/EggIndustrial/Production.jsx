@@ -74,18 +74,21 @@ const EggProduction = () => {
     const [haccpViolationAlert, setHaccpViolationAlert] = useState(null);
     const [isNewBatchModalOpen, setIsNewBatchModalOpen] = useState(false);
     const [isPasteurizeModalOpen, setIsPasteurizeModalOpen] = useState(false);
+    const [productConfig, setProductConfig] = useState([]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [bRes, rmRes, cRes] = await Promise.all([
+            const [bRes, rmRes, cRes, cfgRes] = await Promise.all([
                 axios.get('/api/egg-industrial/batches'),
                 axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }),
-                axios.get('/api/egg-industrial/cip')
+                axios.get('/api/egg-industrial/cip'),
+                axios.get('/api/egg-industrial/product-config')
             ]);
             setBatches(bRes.data);
             setRawMaterials(rmRes.data.filter(rm => rm.status === 'aprobado'));
             setCipLogs(cRes.data);
+            setProductConfig(cfgRes.data);
         } catch (error) {
             console.error('Error fetching production data:', error);
             toast.error('Error al cargar datos del módulo de producción.');
@@ -416,10 +419,14 @@ const EggProduction = () => {
                                                     <button
                                                         onClick={() => {
                                                             setSelectedBatchForComplete(b);
+                                                            const cfg = productConfig.find(c => c.product_type === b.product_type) || {};
+                                                            const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
+                                                            const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
+                                                            const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
                                                             setCompleteForm({
-                                                                yield_liquid_lbs: (parseFloat(b.input_weight_lbs) * 0.85).toFixed(2),
-                                                                waste_shell_lbs: (parseFloat(b.input_weight_lbs) * 0.12).toFixed(2),
-                                                                waste_loss_lbs: (parseFloat(b.input_weight_lbs) * 0.03).toFixed(2)
+                                                                yield_liquid_lbs: (parseFloat(b.input_weight_lbs) * yieldPct).toFixed(2),
+                                                                waste_shell_lbs: (parseFloat(b.input_weight_lbs) * shellPct).toFixed(2),
+                                                                waste_loss_lbs: (parseFloat(b.input_weight_lbs) * lossPct).toFixed(2)
                                                             });
                                                         }}
                                                         className="px-3 py-1 bg-teal-600/10 hover:bg-teal-600/25 border border-teal-500/20 text-teal-400 hover:text-teal-300 rounded-lg text-[10px] font-extrabold transition-all"
@@ -876,11 +883,11 @@ const EggProduction = () => {
                             </div>
                             <div className="text-center">
                                 <span className="text-[9px] font-black text-slate-500 block uppercase">Producto Esperado</span>
-                                <span className="text-xs font-bold text-indigo-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * 0.86).toLocaleString()} Lbs</span>
+                                <span className="text-xs font-bold text-indigo-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return parseFloat(cfg.yield_pct || 85) / 100; })()).toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
                                 <span className="text-[9px] font-black text-slate-500 block uppercase">Cáscaras/Pérdidas</span>
-                                <span className="text-xs font-bold text-slate-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * 0.14).toLocaleString()} Lbs</span>
+                                <span className="text-xs font-bold text-slate-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return (parseFloat(cfg.waste_shell_pct || 12) + parseFloat(cfg.waste_loss_pct || 3)) / 100; })()).toLocaleString()} Lbs</span>
                             </div>
                         </div>
 

@@ -152,10 +152,16 @@ async function main() {
                 company_id INT NOT NULL,
                 product_type VARCHAR(50) NOT NULL,
                 weight_per_unit_lbs DECIMAL(8,2) NOT NULL DEFAULT 32.00,
+                yield_pct DECIMAL(5,2) NOT NULL DEFAULT 85.00,
+                waste_shell_pct DECIMAL(5,2) NOT NULL DEFAULT 12.00,
+                waste_loss_pct DECIMAL(5,2) NOT NULL DEFAULT 3.00,
                 UNIQUE KEY (company_id, product_type)
             )
         `);
         console.log('- Tabla egg_product_config creada o verificada');
+        await pool.query("ALTER TABLE egg_product_config ADD COLUMN IF NOT EXISTS yield_pct DECIMAL(5,2) NOT NULL DEFAULT 85.00").catch(() => {});
+        await pool.query("ALTER TABLE egg_product_config ADD COLUMN IF NOT EXISTS waste_shell_pct DECIMAL(5,2) NOT NULL DEFAULT 12.00").catch(() => {});
+        await pool.query("ALTER TABLE egg_product_config ADD COLUMN IF NOT EXISTS waste_loss_pct DECIMAL(5,2) NOT NULL DEFAULT 3.00").catch(() => {});
         await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
             SELECT DISTINCT company_id, 'huevo entero', 32.00 FROM companies`).catch(() => {});
         await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
