@@ -146,6 +146,28 @@ async function main() {
         `);
         console.log('- Tabla egg_packaging_records creada o verificada');
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS egg_product_config (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                product_type VARCHAR(50) NOT NULL,
+                weight_per_unit_lbs DECIMAL(8,2) NOT NULL DEFAULT 32.00,
+                UNIQUE KEY (company_id, product_type)
+            )
+        `);
+        console.log('- Tabla egg_product_config creada o verificada');
+        await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
+            SELECT DISTINCT company_id, 'huevo entero', 32.00 FROM companies`).catch(() => {});
+        await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
+            SELECT DISTINCT company_id, 'clara', 8.00 FROM companies`).catch(() => {});
+        await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
+            SELECT DISTINCT company_id, 'yema salada', 4.00 FROM companies`).catch(() => {});
+        await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
+            SELECT DISTINCT company_id, 'yema azucarada', 4.00 FROM companies`).catch(() => {});
+        await pool.query(`INSERT IGNORE INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
+            SELECT DISTINCT company_id, 'fórmula especial', 32.00 FROM companies`).catch(() => {});
+        console.log('- Configuraciones de producto inicializadas');
+
         // 7. Blast Freezer
         await pool.query(`
             CREATE TABLE IF NOT EXISTS egg_blast_freezer_logs (

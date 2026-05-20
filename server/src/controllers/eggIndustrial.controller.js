@@ -778,6 +778,34 @@ const getIndustrialEvents = async (req, res) => {
     }
 };
 
+// 13. CONFIGURACIÓN DE PRODUCTOS
+const getProductConfig = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM egg_product_config WHERE company_id = ? ORDER BY product_type',
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const updateProductConfig = async (req, res) => {
+    try {
+        const { product_type, weight_per_unit_lbs } = req.body;
+        await pool.query(
+            `INSERT INTO egg_product_config (company_id, product_type, weight_per_unit_lbs) 
+             VALUES (?, ?, ?) 
+             ON DUPLICATE KEY UPDATE weight_per_unit_lbs = ?`,
+            [req.company_id, product_type, weight_per_unit_lbs, weight_per_unit_lbs]
+        );
+        res.json({ product_type, weight_per_unit_lbs });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -801,5 +829,7 @@ module.exports = {
     createIndustrialCosts,
     getForecasting,
     getTraceability,
-    getIndustrialEvents
+    getIndustrialEvents,
+    getProductConfig,
+    updateProductConfig
 };

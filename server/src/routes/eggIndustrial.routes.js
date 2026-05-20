@@ -49,4 +49,8 @@ router.get('/trace/:code', eggController.getTraceability);
 // 12. Bitácora de Eventos de Auditoría
 router.get('/events', eggController.getIndustrialEvents);
 
+// 13. Configuración de Productos
+router.get('/product-config', eggController.getProductConfig);
+router.put('/product-config', eggController.updateProductConfig);
+
 module.exports = router;

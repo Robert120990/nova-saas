@@ -8,6 +8,7 @@ import {
     Plus,
     Barcode,
     QrCode,
+    Settings,
     Calendar,
     User,
     Snowflake,
@@ -59,6 +60,8 @@ const EggPackaging = () => {
     const [activeTab, setActiveTab] = useState('records'); // 'records' only
     const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
     const [isFreezerModalOpen, setIsFreezerModalOpen] = useState(false);
+    const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+    const [productConfig, setProductConfig] = useState([]);
 
     // Form states
     const [packagingForm, setPackagingForm] = useState({
@@ -82,14 +85,16 @@ const EggPackaging = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [pkgRes, bRes, fRes] = await Promise.all([
+            const [pkgRes, bRes, fRes, cfgRes] = await Promise.all([
                 axios.get('/api/egg-industrial/packaging'),
                 axios.get('/api/egg-industrial/batches'),
-                axios.get('/api/egg-industrial/blast-freezer')
+                axios.get('/api/egg-industrial/blast-freezer'),
+                axios.get('/api/egg-industrial/product-config')
             ]);
             setPackagingRecords(pkgRes.data);
             setBatches(bRes.data);
             setFreezerLogs(fRes.data);
+            setProductConfig(cfgRes.data);
         } catch (error) {
             console.error('Error fetching packaging data:', error);
             toast.error('Error al cargar datos de envasado.');
@@ -329,6 +334,12 @@ const EggPackaging = () => {
                     <Snowflake size={14} />
                     Blast Freezer
                 </button>
+                <button
+                    onClick={() => setIsConfigModalOpen(true)}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-700 flex items-center gap-1.5"
+                >
+                    <Settings size={14} />
+                </button>
             </div>
 
             {/* HISTORIAL DE LOTES EMPACADOS */}
@@ -438,7 +449,12 @@ const EggPackaging = () => {
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Pasteurizado Aprobado</label>
                             <select
                                 value={packagingForm.batch_id}
-                                onChange={(e) => setPackagingForm({ ...packagingForm, batch_id: e.target.value })}
+                                onChange={(e) => {
+                                    const bid = e.target.value;
+                                    const batch = batches.find(b => b.id === parseInt(bid));
+                                    const cfg = productConfig.find(c => c.product_type === batch?.product_type);
+                                    setPackagingForm({ ...packagingForm, batch_id: bid, weight_per_unit_lbs: cfg ? String(cfg.weight_per_unit_lbs) : '32.00' });
+                                }}
                                 className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                             >
                                 <option value="">Seleccione Lote Pasteurizado...</option>
@@ -761,6 +777,60 @@ const EggPackaging = () => {
                             ))}
                         </div>
                     </div>
+                </div>
+                </div>
+            )}
+
+            {isConfigModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-md w-full mx-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                            <Settings size={16} className="text-slate-400" />
+                            Ajuste Peso por Unidad
+                        </h3>
+                        <button onClick={() => setIsConfigModalOpen(false)} className="text-slate-500 hover:text-white">
+                            <XCircle size={18} />
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Configure el peso por unidad para cada tipo de producto. Este valor se usará por defecto al envasar pero siempre podrá modificarse.</p>
+                    <div className="space-y-2">
+                        {['huevo entero', 'clara', 'yema salada', 'yema azucarada', 'fórmula especial'].map(pt => {
+                            const cfg = productConfig.find(c => c.product_type === pt);
+                            return (
+                                <div key={pt} className="flex items-center gap-3 bg-slate-950 border border-slate-850 rounded-xl p-3">
+                                    <span className="text-[11px] font-bold text-white capitalize flex-1">{pt}</span>
+                                    <input
+                                        type="number"
+                                        value={cfg ? cfg.weight_per_unit_lbs : '32.00'}
+                                        onChange={(e) => {
+                                            setProductConfig(productConfig.map(c => 
+                                                c.product_type === pt ? { ...c, weight_per_unit_lbs: parseFloat(e.target.value) } : c
+                                            ));
+                                        }}
+                                        className="w-20 px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-semibold text-right focus:outline-none"
+                                        step="0.01"
+                                    />
+                                    <span className="text-[9px] text-slate-500">Lbs</span>
+                                    <button
+                                        onClick={async () => {
+                                            const val = productConfig.find(c => c.product_type === pt)?.weight_per_unit_lbs;
+                                            try {
+                                                await axios.put('/api/egg-industrial/product-config', { product_type: pt, weight_per_unit_lbs: val });
+                                                toast.success(`${pt}: ${val} Lbs`);
+                                            } catch(e) { toast.error('Error al guardar'); }
+                                        }}
+                                        className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold"
+                                    >
+                                        Guardar
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <button onClick={() => setIsConfigModalOpen(false)} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all">
+                        Cerrar
+                    </button>
                 </div>
                 </div>
             )}
