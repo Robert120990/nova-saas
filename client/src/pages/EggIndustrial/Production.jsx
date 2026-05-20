@@ -689,7 +689,7 @@ const EggProduction = () => {
                                 <b>ACCIÓN AUTOMÁTICA DEL SISTEMA:</b> El lote de producción ha sido BLOQUEADO para empaque comercial. La válvula de desvío del pasteurizador se ha activado y se ha inyectado un evento crítico en la bitácora de auditoría digital.
                             </p>
                             <button
-                                onClick={() => { setHaccpViolationAlert(null); setActiveTab('batches'); }}
+                                onClick={() => { setHaccpViolationAlert(null); setIsPasteurizeModalOpen(false); }}
                                 className="px-4 py-2 bg-rose-600 text-white border border-rose-500 rounded-xl text-[10px] font-extrabold hover:bg-rose-500 transition-all shadow-md"
                             >
                                 Volver al Historial y Ver Bloqueo
