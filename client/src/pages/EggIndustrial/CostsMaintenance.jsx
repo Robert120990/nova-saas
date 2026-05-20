@@ -336,7 +336,8 @@ const EggCostsMaintenance = () => {
                                         <th className="px-3 py-2 text-right">Rendimiento</th>
                                         <th className="px-3 py-2 text-right">Costo Total</th>
                                         <th className="px-3 py-2 text-right">Costo/Lb</th>
-                                        <th className="px-3 py-2 text-right">Precio Vta. Sug.</th>
+                                        <th className="px-3 py-2 text-right">Precio/Lb Sug.</th>
+                                        <th className="px-3 py-2 text-right">Total Vta.</th>
                                         <th className="px-3 py-2 text-center w-10"></th>
                                     </tr>
                                 </thead>
@@ -372,6 +373,9 @@ const EggCostsMaintenance = () => {
                                         </td>
                                         <td className="px-3 py-2.5 text-right">
                                             <span className="font-bold text-teal-400 text-[11px]">${(costPerLb / (1 - (profitMarginPercent / 100))).toFixed(4)}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right">
+                                            <span className="font-bold text-emerald-400 text-[11px]">${((costPerLb / (1 - (profitMarginPercent / 100))) * yieldLbs).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                         </td>
                                         <td className="px-3 py-2.5 text-center">
                                             <button
