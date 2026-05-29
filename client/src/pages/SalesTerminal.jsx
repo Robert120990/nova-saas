@@ -102,6 +102,7 @@ const SalesTerminal = () => {
     const [docType, setDocType] = useState('DUI');
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
+    const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
     const [manualCustomerName, setManualCustomerName] = useState('');
 
@@ -234,6 +235,12 @@ const SalesTerminal = () => {
         queryFn: async () => (await axios.get('/api/catalogs/actividades')).data
     });
 
+    const { data: distritos = [] } = useQuery({
+        queryKey: ['catalogs', 'distritos', selectedDept],
+        queryFn: async () => (await axios.get(`/api/catalogs/districts?dep_code=${selectedDept}`)).data,
+        enabled: !!selectedDept
+    });
+
     const { data: personTypes = [] } = useQuery({
         queryKey: ['catalogs', 'cat_029_tipo_persona'],
         queryFn: async () => (await axios.get('/api/catalogs/cat_029_tipo_persona')).data
@@ -322,6 +329,7 @@ const SalesTerminal = () => {
         setEditingCustomer(selectedCustomerData);
         setSelectedDept(selectedCustomerData.departamento || '');
         setSelectedMun(selectedCustomerData.municipio || '');
+        setSelectedDistrito(selectedCustomerData.distrito || '');
         setSelectedActivity(selectedCustomerData.codigo_actividad || '');
         setDocType(selectedCustomerData.tipo_documento || 'DUI');
         setNitValue(selectedCustomerData.nit || '');
@@ -477,11 +485,13 @@ const SalesTerminal = () => {
             if (!customer.codigo_actividad) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
+            if (!customer.distrito) missing.push('Distrito');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '01') { // Factura
             if (!customer.numero_documento && !customer.nit) missing.push('DUI o NIT');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
+            if (!customer.distrito) missing.push('Distrito');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '11') { // FEX
             if (!customer.numero_documento) missing.push('Doc. Identidad');
@@ -491,6 +501,7 @@ const SalesTerminal = () => {
             if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
+            if (!customer.distrito) missing.push('Distrito');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '07') { // Comprobante de Retención
             if (!customer.tipo_documento || (customer.tipo_documento !== 'NIT' && customer.tipo_documento !== '36')) {
@@ -501,6 +512,7 @@ const SalesTerminal = () => {
             if (!customer.codigo_actividad) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
+            if (!customer.distrito) missing.push('Distrito');
             if (!customer.direccion) missing.push('Dirección');
             if (!customer.telefono) missing.push('Teléfono');
             if (!customer.correo) missing.push('Correo');
@@ -1248,6 +1260,7 @@ const SalesTerminal = () => {
                                             setDocType('DUI');
                                             setSelectedDept('');
                                             setSelectedMun('');
+                                            setSelectedDistrito('');
                                             setSelectedActivity('');
                                             setIsCustomerModalOpen(true);
                                         }}
@@ -1319,7 +1332,7 @@ const SalesTerminal = () => {
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Ubicación</span>
                                             <span className="text-[10px] font-bold text-slate-600 truncate uppercase">
-                                                {selectedCustomerData.municipio_nombre || 'MUNIC.'}, {selectedCustomerData.departamento_nombre || 'DEPTO.'}
+                                                Dist. {selectedCustomerData.distrito || '01'}, {selectedCustomerData.municipio_nombre || 'MUNIC.'}, {selectedCustomerData.departamento_nombre || 'DEPTO.'}
                                             </span>
                                         </div>
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1 text-right">
@@ -1342,7 +1355,7 @@ const SalesTerminal = () => {
                                         <option value="">Principal</option>
                                         {customerBranches.map(b => (
                                             <option key={b.id} value={b.id}>
-                                                {b.nombre} — {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                                {b.nombre} — Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
                                             </option>
                                         ))}
                                     </select>
@@ -2257,7 +2270,7 @@ const SalesTerminal = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Departamento</label>
-                            <select name="departamento" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)} required>
+                            <select name="departamento" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
                                 <option value="">Seleccionar</option>
                                 {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
@@ -2267,6 +2280,13 @@ const SalesTerminal = () => {
                             <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1">Distrito</label>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
+                                <option value="">Seleccionar</option>
+                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                     </div>

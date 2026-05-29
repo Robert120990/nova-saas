@@ -14,6 +14,7 @@ const Branches = () => {
     const [selectedBranch, setSelectedBranch] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
+    const [selectedDistrito, setSelectedDistrito] = useState('');
     const [previewUrl, setPreviewUrl] = useState(null);
 
     const { data: branches = [] } = useQuery({
@@ -29,6 +30,12 @@ const Branches = () => {
     const { data: municipalities = [] } = useQuery({
         queryKey: ['catalogs', 'municipalities', selectedDept],
         queryFn: async () => (await axios.get(`/api/catalogs/municipalities?dep_code=${selectedDept}`)).data,
+        enabled: !!selectedDept
+    });
+
+    const { data: distritos = [] } = useQuery({
+        queryKey: ['catalogs', 'distritos', selectedDept],
+        queryFn: async () => (await axios.get(`/api/catalogs/districts?dep_code=${selectedDept}`)).data,
         enabled: !!selectedDept
     });
 
@@ -81,6 +88,7 @@ const Branches = () => {
         setSelectedBranch(branch);
         setSelectedDept(branch.departamento);
         setSelectedMun(branch.municipio);
+        setSelectedDistrito(branch.distrito);
         setPreviewUrl(null);
         setIsModalOpen(true);
     };
@@ -128,7 +136,7 @@ const Branches = () => {
                                 {b.codigo_mh && <div className="text-[10px] text-slate-400 mt-0.5">MH: {b.codigo_mh}</div>}
                             </td>
                             <td className="px-6 py-4">
-                                <div className="text-xs text-slate-500 font-medium">{b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}</div>
+                                <div className="text-xs text-slate-500 font-medium">Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}</div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[200px]">{b.direccion}</div>
                             </td>
                             <td className="px-6 py-4">
@@ -191,7 +199,7 @@ const Branches = () => {
                                 name="departamento"
                                 className={fieldCls}
                                 value={selectedDept}
-                                onChange={(e) => setSelectedDept(e.target.value)}
+                                 onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }}
                                 required
                             >
                                 <option value="">Seleccionar</option>
@@ -203,6 +211,13 @@ const Branches = () => {
                             <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls} required>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelCls}>Distrito</label>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls} required>
+                                <option value="">Seleccionar</option>
+                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                     </div>

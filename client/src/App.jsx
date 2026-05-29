@@ -38,6 +38,8 @@ import YearOpening from './pages/YearOpening';
 import AccountingSettings from './pages/AccountingSettings';
 import DailySalesReport from './pages/DailySalesReport';
 import Contingency from './pages/Contingency';
+import Eret from './pages/Eret';
+import AuditLog from './pages/AuditLog';
 import CashClosing from './pages/CashClosing';
 import Combos from './pages/Combos';
 import CustomerStatement from './pages/CustomerStatement';
@@ -153,13 +155,10 @@ function App() {
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
                         <Route path="/ventas/reglas-descuento" element={<DiscountRules />} />
                         <Route path="/ventas/contingencia" element={<Contingency />} />
-                        <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
-                        <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
-                        <Route path="/contabilidad/cierre" element={<YearClosing />} />
-                        <Route path="/contabilidad/apertura" element={<YearOpening />} />
-                        <Route path="/contabilidad/ajustes" element={<AccountingSettings />} />
+                        <Route path="/ventas/retorno" element={<Eret />} />
                         <Route path="/ventas" element={<SalesHistory />} />
-                        
+                        <Route path="/seguridad/bitacora" element={<AuditLog />} />
+
                         {/* Accounts Receivable (CXC) */}
                         <Route path="/cxc/estado-cuenta" element={<CustomerStatement />} />
                         <Route path="/cxc/abonos" element={<AddPayment />} />
@@ -171,6 +170,13 @@ function App() {
                         <Route path="/cxp/abonos" element={<AddProviderPayment />} />
                         <Route path="/cxp/reportes/saldos" element={<ProviderBalancesReport />} />
                         <Route path="/cxp/reportes/documentos-pendientes" element={<ProviderPendingDocumentsDetailedReport />} />
+                        
+                        {/* Contabilidad */}
+                        <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
+                        <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
+                        <Route path="/contabilidad/cierre" element={<YearClosing />} />
+                        <Route path="/contabilidad/apertura" element={<YearOpening />} />
+                        <Route path="/contabilidad/ajustes" element={<AccountingSettings />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

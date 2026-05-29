@@ -7,6 +7,7 @@ const { generateControlNumber } = require('./dte/controlNumberService');
 const { calculateItem, calculateTotals, round, round4, round6, getAmountInWords } = require('../utils/calculations');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
 const { validateDTE } = require('../validators/schemaValidator');
+const { getSchemaVersion } = require('../utils/versionMap');
 const pool = require('../../config/db');
 
 /**
@@ -94,16 +95,23 @@ async function generateDTE(payload) {
 
     // 2. Generate Identificacion
     const codigoGeneracion = uuidv4().toUpperCase();
-    const branchCode = String(branch.codigo || '1').padStart(3, '0');
-    const controlResult = await generateControlNumber(tipoDte, companyId, branchId, branchCode);
+    const emisorAdic = payload.emisor_adicional || {};
+    const codPuntoVentaMH = emisorAdic.codPuntoVentaMH || '001';
+    const controlResult = await generateControlNumber(
+        tipoDte,
+        companyId,
+        branch.tipo_establecimiento || '01',
+        branch.codigo_mh || String(branch.codigo || '1'),
+        codPuntoVentaMH
+    );
     const numeroControl = controlResult.numero_control;
     const now = new Date();
     // Force El Salvador timezone for Hacienda compliance
     const fecEmi = now.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
     const horEmi = now.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador' }).substring(0, 8);
 
-    // Versioning: Factura (01), FEX (11), y CR (07) usan version 1; CCF (03) y otros usan 3
-    const version = (tipoDte === '01' || tipoDte === '11' || tipoDte === '07') ? 1 : 3;
+    // Versioning according to Normativa V2.0 (2026)
+    const version = getSchemaVersion(tipoDte);
 
     const identificacion = {
         version: version,
@@ -132,30 +140,23 @@ async function generateDTE(payload) {
         delete identificacion.motivoContin;
     }
 
-    // 3. Emisor - Validating and padding address codes
-    const deptCode = String(branch.departamento || '06').padStart(2, '0');
-    let munCode = String(branch.municipio || '01').padStart(2, '0');
-
-    // Validation map for max municipios per dept (Hacienda Catalog)
-    const munLimitMap = {
-        '01': 19, '02': 13, '03': 16, '04': 22, '05': 33, '06': 16,
-        '07': 16, '08': 9, '09': 13, '10': 23, '11': 23, '12': 20,
-        '13': 26, '14': 18
-    };
-
-    const maxMun = munLimitMap[deptCode] || 99;
-    if (parseInt(munCode) > maxMun) {
-        const isTest = company.ambiente !== 'produccion';
-        console.warn(`[DTE-API] Municipio inválido ${munCode} para departamento ${deptCode}.`);
-        if (isTest) {
-            console.warn(`[DTE-API] Aplicando fallback a municipio '01' para ambiente de pruebas.`);
-            munCode = '01';
-        } else {
-            throw new Error(`Código de municipio ${munCode} no es válido para el departamento ${deptCode} según Hacienda.`);
-        }
+    // NC (05): fusion requerida por schema v4
+    if (tipoDte === '05') {
+        identificacion.fusion = null;
     }
 
-    const emisorAdic = payload.emisor_adicional || {};
+    // 3. Emisor - Validating and padding address codes
+    const deptCode = String(branch.departamento || '06').padStart(2, '0');
+    const munCode = String(branch.municipio || '01').padStart(2, '0');
+
+    const distritoEmisor = emisorAdic.distrito || branch.distrito;
+    if (!distritoEmisor) {
+        throw new Error(`La sucursal "${branch.nombre || branch.codigo}" no tiene un distrito asignado. Asigne un distrito antes de emitir el DTE.`);
+    }
+    if (!/^\d+$/.test(distritoEmisor)) {
+        throw new Error(`La sucursal "${branch.nombre || branch.codigo}" tiene un distrito inválido: "${distritoEmisor}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
+    }
+
     const emisor = {
         nit: cleanNumbers(company.nit),
         nrc: cleanNumbers(company.nrc),
@@ -163,10 +164,10 @@ async function generateDTE(payload) {
         codActividad: company.codigo_actividad || '47300',
         descActividad: sanitizeText(emisorAdic.descActividad || company.actividad_economica || 'Actividad no definida'),
         nombreComercial: sanitizeText(company.nombre_comercial || company.razon_social),
-        tipoEstablecimiento: branch.tipo_establecimiento || '01',
         direccion: {
             departamento: deptCode,
             municipio: munCode,
+            distrito: String(distritoEmisor).padStart(2, '0'),
             complemento: sanitizeText(branch.direccion || 'Direccion no definida').substring(0, 200)
         },
         telefono: cleanNumbers(branch.telefono || '22222222').substring(0, 30),
@@ -175,9 +176,7 @@ async function generateDTE(payload) {
 
     // Estos campos NO van en Nota de Crédito (05) ni en CR (07)
     if (tipoDte !== '05' && tipoDte !== '07') {
-        emisor.codEstableMH = branch.codigo_mh || null;
         emisor.codEstable = String(branch.codigo || '1').padStart(4, '0');
-        emisor.codPuntoVentaMH = emisorAdic.codPuntoVentaMH || null;
         emisor.codPuntoVenta = '0001';
     }
 
@@ -194,6 +193,7 @@ async function generateDTE(payload) {
         const expData = payload.exportacion || {};
         emisor.tipoItemExpor = expData.tipoItemExpor || 3;
         emisor.recintoFiscal = expData.recintoFiscal || null;
+        emisor.tipoRegimen = expData.tipoRegimen || null;
         emisor.regimen = expData.regimen || null;
     }
 
@@ -362,6 +362,7 @@ async function generateDTE(payload) {
             descuGravada: 0,
             porcentajeDescuento: 0,
             totalDescu: totals.totalDescu,
+            observaciones: 'Ninguna',
             tributos: (() => {
                 const isFactura = type === '01';
                 const isFex = type === '11';
@@ -392,8 +393,6 @@ async function generateDTE(payload) {
                 return taxes;
             })(),
             subTotal: round(totals.subtotal || totals.subTotal || 0),
-            ivaRete1: 0,
-            reteRenta: 0,
             montoTotalOperacion: round(totals.totalPagar),
             totalNoGravado: 0,
             totalPagar: round(totals.totalPagar),
@@ -419,23 +418,19 @@ async function generateDTE(payload) {
 
         if (type === '01') {
             base.totalIva = totals.montoPorIVA;
+            base.ivaRete = 0;
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '03') {
-            base.ivaPerci1 = 0;
-            base.ivaRete1 = 0;
+            base.ivaPerci = 0;
+            base.ivaRete = 0;
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '05') {
-            // Nota de Crédito es muy estricta, remover campos no permitidos
-            delete base.porcentajeDescuento;
-            delete base.totalNoGravado;
-            delete base.totalPagar;
-            delete base.saldoFavor;
-            delete base.pagos;
-            delete base.numPagoElectronico;
-            base.ivaPerci1 = 0;
-            base.ivaRete1 = 0;
+            base.ivaPerci = 0;
+            base.ivaRete = 0;
+            base.codigoRetencionMH = '22';
+            base.totalPagar = round(totals.totalPagar);
         } else if (type === '04') {
             // Nota de Remisión es muy básica
             delete base.pagos;
@@ -443,7 +438,7 @@ async function generateDTE(payload) {
             delete base.saldoFavor;
             delete base.totalPagar;
             delete base.totalNoGravado;
-            delete base.ivaRete1;
+            delete base.ivaRete;
             delete base.reteRenta;
             delete base.condicionOperacion;
             base.totalLetras = getAmountInWords(totals.totalPagar);
@@ -455,28 +450,29 @@ async function generateDTE(payload) {
             delete base.descuNoSuj;
             delete base.descuExenta;
             delete base.descuGravada;
-            delete base.tributos;
             delete base.subTotal;
-            delete base.ivaRete1;
+            delete base.ivaRete;
             delete base.reteRenta;
-            delete base.saldoFavor;
             // Campos que sí van en FEX
             base.descuento = round(base.totalDescu || 0);
             base.totalNoGravado = 0;
+            base.totalNoOnerosas = 0;
             base.condicionOperacion = parseInt(payload.condicionOperacion || 1);
             base.pagos = pagos;
             base.codIncoterms = (payload.exportacion && payload.exportacion.incoterms) || '01';
             base.descIncoterms = (payload.exportacion && payload.exportacion.descIncoterms) || 'EXW- En fabrica';
             base.flete = round((payload.exportacion && payload.exportacion.flete) || 0);
             base.seguro = round((payload.exportacion && payload.exportacion.seguro) || 0);
-            base.observaciones = sanitizeText((payload.exportacion && payload.exportacion.observaciones) || '');
+            base.observaciones = sanitizeText((payload.exportacion && payload.exportacion.observaciones) || 'Ninguna').substring(0, 3000);
             base.numPagoElectronico = null;
         } else if (type === '07') {
-            // CR: estructura completamente diferente
+            // CR: estructura del schema v2
             return {
                 totalSujetoRetencion: totals.totalSujetoRetencion,
-                totalIVAretenido: totals.totalIVAretenido,
-                totalIVAretenidoLetras: totals.totalIVAretenidoLetras
+                totalIva: totals.totalIVAretenido,
+                totalIvaRetenido: totals.totalIVAretenido,
+                totalLetras: totals.totalIVAretenidoLetras,
+                observaciones: 'Ninguna'
             };
         }
         return base;
@@ -505,6 +501,14 @@ async function generateDTE(payload) {
     if (rawDepto === '00' || parseInt(rawDepto) > 14) rawDepto = '06';
     if (rawMuni === '00') rawMuni = '01';
 
+    if (!receptor.direccion?.distrito) {
+        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" no tiene un distrito asignado en su dirección. Asigne un distrito antes de emitir el DTE.`);
+    }
+    if (!/^\d+$/.test(receptor.direccion.distrito)) {
+        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
+    }
+    let distritoReceptor = String(receptor.direccion.distrito).padStart(2, '0');
+
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
         codActividad: receptor.codActividad || '10005',
@@ -512,6 +516,7 @@ async function generateDTE(payload) {
         direccion: {
             departamento: rawDepto,
             municipio: rawMuni,
+            distrito: distritoReceptor,
             complemento: sanitizeText(receptor.direccion?.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
         },
         telefono: cleanNumbers(receptor.telefono || '00000000').substring(0, 30),
@@ -601,7 +606,6 @@ async function generateDTE(payload) {
         receptor: finalReceptor,
         cuerpoDocumento: corpoItems,
         resumen,
-        extension: tipoDte === '07' ? null : undefined,
         apendice: null
     };
 
@@ -610,19 +614,16 @@ async function generateDTE(payload) {
         dte.ventaTercero = null;
     }
 
+    if (tipoDte === '11') {
+        dte.compraTercero = null;
+    }
+
     if (tipoDte !== '11' && tipoDte !== '07') {
         dte.documentoRelacionado = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) ? payload.documentoRelacionado : null;
     }
 
-    if (tipoDte !== '11' && tipoDte !== '07') {
-        dte.extension = tipoDte === '04' ? {
-            nombEntrega: 'EMISOR-01',
-            docuEntrega: '00000000-0',
-            nombRecibe: 'RECEPTOR-01',
-            docuRecibe: '00000000-0',
-            observaciones: sanitizeText(payload.transporter_name ? `Transporte: ${payload.transporter_name} / Placa: ${payload.vehicle_plate}` : '---'),
-            placaVehiculo: payload.vehicle_plate || ""
-        } : null;
+    if (tipoDte === '11') {
+        dte.documentoRelacionado = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) ? payload.documentoRelacionado : null;
     }
 
     // Sección de Transporte para Nota de Remisión (04)

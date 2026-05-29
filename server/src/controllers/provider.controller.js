@@ -51,7 +51,7 @@ const getProviders = async (req, res) => {
 const validColumns = [
     'company_id', 'tipo_persona', 'pais', 'nombre', 'nombre_comercial', 
     'tipo_documento', 'numero_documento', 'nit', 'nrc', 
-    'codigo_actividad', 'departamento', 'municipio', 'direccion', 
+    'codigo_actividad', 'departamento', 'municipio', 'distrito', 'direccion', 
     'telefono', 'correo', 'tipo_contribuyente', 'es_gran_contribuyente', 'exento_iva'
 ];
 

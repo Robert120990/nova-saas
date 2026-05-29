@@ -34,29 +34,32 @@ async function invalidateDTE(payload, companyId, user) {
     const dteJson = dte.json_original;
     const [companyRows] = await pool.query('SELECT * FROM companies WHERE id = ?', [companyId]);
     const company = companyRows[0];
+    const [branchRows] = await pool.query('SELECT codigo, codigo_mh FROM branches WHERE id = ? AND company_id = ?', [dte.branch_id, companyId]);
+    const branch = branchRows.length > 0 ? branchRows[0] : { codigo: '1', codigo_mh: null };
+    const [posRows] = await pool.query('SELECT codigo FROM points_of_sale WHERE id = ?', [dte.pos_id]);
+    const pos = posRows.length > 0 ? posRows[0] : { codigo: null };
 
     // 2. Generate Invalidation JSON (using local time for El Salvador UTC-6)
-    // We use a manual offset or just rely on the server timezone if it's set correctly.
-    // Given the previous logs, we'll use a more robust local date/time generation.
     const localNow = new Date(new Date().toLocaleString("en-US", {timeZone: "America/El_Salvador"}));
-    const fecAnula = localNow.toISOString().split('T')[0];
-    const horAnula = localNow.toTimeString().split(' ')[0];
+    const fecEmi = localNow.toISOString().split('T')[0];
+    const horEmi = localNow.toTimeString().split(' ')[0];
 
     const invalidacionJson = {
         identificacion: {
-            version: 2,
+            version: 3,
             ambiente: dte.ambiente,
             codigoGeneracion: uuidv4().toUpperCase(),
-            fecAnula: fecAnula,
-            horAnula: horAnula
+            fecEmi: fecEmi,
+            horEmi: horEmi,
+            fusion: null
         },
         emisor: {
             nit: company.nit.replace(/-/g, ''),
             nombre: company.razon_social,
-            tipoEstablecimiento: dteJson.emisor.tipoEstablecimiento || '01',
-            nomEstablecimiento: company.nombre_comercial || company.razon_social,
-            codEstable: dteJson.emisor.codEstable || '001',
-            codPuntoVenta: dteJson.emisor.codPuntoVenta || '001',
+            codEstableMH: branch.codigo_mh || null,
+            codEstable: String(branch.codigo || '1').padStart(4, '0'),
+            codPuntoVentaMH: pos.codigo ? String(pos.codigo).padStart(4, '0') : null,
+            codPuntoVenta: '0001',
             telefono: company.telefono || '00000000',
             correo: company.correo || 'emisor@example.com'
         },
@@ -66,11 +69,12 @@ async function invalidateDTE(payload, companyId, user) {
             selloRecibido: dte.sello_recepcion,
             numeroControl: dte.numero_control,
             fecEmi: dteJson.identificacion.fecEmi,
-            montoIva: dteJson.resumen.totalIva || 0,
-            codigoGeneracionR: null, // As specified in the else check of schema if type is not replacing
+            codigoGeneracionR: null,
             tipoDocumento: dteJson.receptor.tipoDocumento || '36',
             numDocumento: dteJson.receptor.numDocumento || null,
-            nombre: dteJson.receptor.nombre
+            nombre: dteJson.receptor.nombre,
+            telefono: dteJson.receptor.telefono || null,
+            correo: dteJson.receptor.correo || null
         },
         motivo: {
             tipoAnulacion: parseInt(motivo), // CAT-024: 1 (Error en datos), 2 (Anulación por falta de pago), etc.
@@ -110,7 +114,7 @@ async function invalidateDTE(payload, companyId, user) {
         const response = await axios.post(invalidationUrl, {
             ambiente: dte.ambiente,
             idEnvio: Math.floor(Date.now() / 1000), // Unique ID for transmission
-            version: 2,
+            version: 3,
             tipoDte: dte.tipo_dte,
             documento: signResult.jws
         }, {

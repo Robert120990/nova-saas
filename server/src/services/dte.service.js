@@ -268,6 +268,7 @@ class DteService {
         const c = rows[0];
         let departamento = c.departamento || '06';
         let municipio = c.municipio || '14';
+        let distrito = c.distrito || '01';
         let complemento = c.direccion || 'San Salvador';
 
         if (customerBranchId) {
@@ -276,6 +277,7 @@ class DteService {
                 const b = branches[0];
                 departamento = b.departamento || departamento;
                 municipio = b.municipio || municipio;
+                distrito = b.distrito || distrito;
                 complemento = b.direccion || complemento;
             }
         }
@@ -296,6 +298,7 @@ class DteService {
             direccion: {
                 departamento,
                 municipio,
+                distrito,
                 complemento
             }
         };

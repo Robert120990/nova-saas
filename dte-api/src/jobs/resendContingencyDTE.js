@@ -5,6 +5,7 @@
 
 const pool = require('../../config/db');
 const { authenticate, transmitDTE } = require('../transmission/transmissionService');
+const { getSchemaVersion } = require('../utils/versionMap');
 
 const MAX_RETRIES = 5;
 
@@ -33,7 +34,7 @@ async function processContingencyQueue() {
             if (!auth.success) throw new Error(auth.message);
 
             // 3. Transmit
-            const version = (task.tipo_documento === '01' || task.tipo_documento === '11' || task.tipo_documento === '07') ? 1 : 3;
+            const version = getSchemaVersion(task.tipo_documento);
             const ambiente = (task.ambiente === 'produccion' || task.ambiente === '01') ? '01' : '00';
             const result = await transmitDTE(auth.token, task.json_firmado, {
                 ambiente: ambiente,

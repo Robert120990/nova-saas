@@ -88,7 +88,7 @@ async function sendContingencyReport(contingencyId) {
 
     const report = {
         identificacion: {
-            version: 3,
+            version: 4,
             ambiente: con.ambiente || '00',
             codigoGeneracion: uuidv4().toUpperCase(),
             fTransmision: fin.toISOString().split('T')[0],

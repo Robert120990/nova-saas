@@ -6,6 +6,7 @@ const dteGenerator = require('../services/dteGenerator');
 const schemaValidator = require('../validators/schemaValidator');
 const signatureService = require('../services/signature/signatureService');
 const transmissionService = require('../transmission/transmissionService');
+const { getSchemaVersion } = require('../utils/versionMap');
 const queue = require('../queue/transmissionQueue');
 const pool = require('../../config/db');
 
@@ -72,7 +73,7 @@ async function emit(req, res) {
             ambiente: company[0].ambiente === 'produccion' ? '01' : '00',
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
-            version: (tipoDte === '01' || tipoDte === '11' || tipoDte === '07') ? 1 : 3
+            version: getSchemaVersion(tipoDte)
         });
 
         // 6. Store in Database

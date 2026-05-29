@@ -25,16 +25,16 @@ const getBranches = async (req, res) => {
 };
 
 const createBranch = async (req, res) => {
-    const { customer_id, nombre, departamento, municipio, direccion, telefono } = req.body;
+    const { customer_id, nombre, departamento, municipio, distrito, direccion, telefono } = req.body;
     if (!customer_id || !nombre) {
         return res.status(400).json({ message: 'customer_id y nombre son requeridos' });
     }
     try {
         const [result] = await pool.query(
-            'INSERT INTO customer_branches (customer_id, company_id, nombre, departamento, municipio, direccion, telefono) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [customer_id, req.company_id, nombre, departamento || null, municipio || null, direccion || null, telefono || null]
+            'INSERT INTO customer_branches (customer_id, company_id, nombre, departamento, municipio, distrito, direccion, telefono) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [customer_id, req.company_id, nombre, departamento || null, municipio || null, distrito || null, direccion || null, telefono || null]
         );
-        res.status(201).json({ id: result.insertId, customer_id, nombre, departamento, municipio, direccion, telefono });
+        res.status(201).json({ id: result.insertId, customer_id, nombre, departamento, municipio, distrito, direccion, telefono });
     } catch (error) {
         console.error('Error al crear sucursal:', error);
         res.status(500).json({ message: 'Error al crear sucursal' });
@@ -43,11 +43,11 @@ const createBranch = async (req, res) => {
 
 const updateBranch = async (req, res) => {
     const { id } = req.params;
-    const { nombre, departamento, municipio, direccion, telefono } = req.body;
+    const { nombre, departamento, municipio, distrito, direccion, telefono } = req.body;
     try {
         await pool.query(
-            'UPDATE customer_branches SET nombre = ?, departamento = ?, municipio = ?, direccion = ?, telefono = ? WHERE id = ? AND company_id = ?',
-            [nombre, departamento || null, municipio || null, direccion || null, telefono || null, id, req.company_id]
+            'UPDATE customer_branches SET nombre = ?, departamento = ?, municipio = ?, distrito = ?, direccion = ?, telefono = ? WHERE id = ? AND company_id = ?',
+            [nombre, departamento || null, municipio || null, distrito || null, direccion || null, telefono || null, id, req.company_id]
         );
         res.json({ message: 'Sucursal actualizada' });
     } catch (error) {

@@ -35,6 +35,7 @@ const accountingController = require('../controllers/accounting.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
+const auditController = require('../controllers/audit.controller');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -59,6 +60,7 @@ router.get('/test-db', async (req, res) => {
 router.get('/catalogs/departments', catalogController.getDepartments);
 router.get('/catalogs/municipalities', catalogController.getMunicipalities);
 router.get('/catalogs/actividades', catalogController.getActividades);
+router.get('/catalogs/districts', catalogController.getDistritos);
 router.get('/catalogs/:table', catalogController.getGenericCatalog);
 
 // New Global User Access Routes (After verifyToken but before tenantMiddleware)
@@ -79,6 +81,7 @@ router.delete('/users/:id', userController.deleteUser);
 
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
+router.use(require('../middlewares/audit'));
 
 // Security (Roles & Users)
 router.get('/roles', roleController.getRoles);
@@ -86,6 +89,10 @@ router.post('/roles', roleController.createRole);
 router.put('/roles/:id', roleController.updateRole);
 router.delete('/roles/:id', roleController.deleteRole);
 
+// Audit Log (Bitácora del Sistema)
+router.get('/audit-log', auditController.getLogs);
+router.get('/audit-log/types', auditController.getEntityTypes);
+router.get('/audit-log/:id', auditController.getLogById);
 
 // Branches
 router.get('/branches', branchController.getBranches);
@@ -219,6 +226,14 @@ router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
 router.get('/contingency/status', salesController.getContingencyStatus);
 router.post('/contingency/start', salesController.startContingency);
 router.post('/contingency/stop/:id', salesController.stopContingency);
+
+// Retorno / ERET (proxy to dte-api)
+router.get('/retorno', salesController.listRetornos);
+router.post('/retorno/emit', salesController.emitRetorno);
+router.get('/retorno/status/:codigoGeneracion', salesController.getRetornoStatus);
+
+// DTE lookup by codigo generacion (for ERET and general use)
+router.get('/dte/:codigoGeneracion', salesController.getDTEByCodigoGeneracion);
 
 // POS Shifts (Corte de Caja)
 router.get('/shifts', shiftController.getShiftsHistory);

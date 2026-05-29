@@ -25,7 +25,9 @@ import {
     BookOpen,
     Lock,
     Unlock,
-    Sparkles
+    Sparkles,
+    Undo2,
+    ScrollText
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -55,6 +57,7 @@ export const menuConfig = [
             { id: 'ventas-descuentos', label: 'Descuentos por Cliente', path: '/ventas/descuentos', icon: Tag, permission: 'manage_sales' },
             { id: 'ventas-reglas-descuento', label: 'Reglas de Descuento', path: '/ventas/reglas-descuento', icon: Tag, permission: 'manage_sales' },
             { id: 'ventas-contingencia', label: 'Contingencia DTE', path: '/ventas/contingencia', icon: AlertTriangle, permission: 'manage_sales' },
+            { id: 'ventas-retorno', label: 'Retorno / ERET', path: '/ventas/retorno', icon: Undo2, permission: 'manage_sales' },
             { id: 'pos-cierre', label: 'Corte de Caja', path: '/ventas/cierre', icon: Calculator, permission: 'manage_sales' },
             { 
                 id: 'ventas-reportes-parent', 
@@ -202,6 +205,7 @@ export const menuConfig = [
             { id: 'users', label: 'Usuarios', path: '/users', icon: UserCircle, permission: 'manage_users' },
             { id: 'user-access', label: 'Accesos de Usuario', path: '/user-access', icon: GitBranch, permission: 'manage_user_access' },
             { id: 'roles', label: 'Roles', path: '/roles', icon: Shield, permission: 'manage_roles' },
+            { id: 'audit-log', label: 'Bitácora del Sistema', path: '/seguridad/bitacora', icon: ScrollText, permission: 'manage_system' },
         ]
     },
     {

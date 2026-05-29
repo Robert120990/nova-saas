@@ -16,6 +16,7 @@ const Providers = () => {
     const [selectedProvider, setSelectedProvider] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
+    const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -62,6 +63,12 @@ const Providers = () => {
     const { data: activities = [] } = useQuery({
         queryKey: ['catalogs', 'activities'],
         queryFn: async () => (await axios.get('/api/catalogs/actividades')).data
+    });
+
+    const { data: distritos = [] } = useQuery({
+        queryKey: ['catalogs', 'distritos', selectedDept],
+        queryFn: async () => (await axios.get(`/api/catalogs/districts?dep_code=${selectedDept}`)).data,
+        enabled: !!selectedDept
     });
 
     const { data: personTypes = [] } = useQuery({
@@ -130,6 +137,7 @@ const Providers = () => {
         setSelectedProvider(provider);
         setSelectedDept(provider.departamento);
         setSelectedMun(provider.municipio);
+        setSelectedDistrito(provider.distrito);
         setSelectedActivity(provider.codigo_actividad);
         setNitValue(provider.nit || '');
         setIsModalOpen(true);
@@ -150,6 +158,7 @@ const Providers = () => {
                         setSelectedProvider(null); 
                         setSelectedDept(''); 
                         setSelectedMun('');
+                        setSelectedDistrito('');
                         setSelectedActivity('');
                         setNitValue('');
                         setIsModalOpen(true); 
@@ -189,7 +198,7 @@ const Providers = () => {
                                 )}
                             </td>
                             <td className="px-6 py-4">
-                                <div className="text-xs text-slate-600 font-medium">{p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
+                                <div className="text-xs text-slate-600 font-medium">Dist. {p.distrito || '01'}, {p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[150px]">{p.direccion}</div>
                             </td>
                             <td className="px-6 py-4">
@@ -332,7 +341,7 @@ const Providers = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Departamento</label>
-                            <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)} required>
+                            <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
                                 <option value="">Seleccionar</option>
                                 {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
@@ -342,6 +351,13 @@ const Providers = () => {
                             <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls} required>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelCls}>Distrito</label>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls} required>
+                                <option value="">Seleccionar</option>
+                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                     </div>

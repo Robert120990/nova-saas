@@ -7,6 +7,7 @@
 const dteGenerator = require('../services/dteGenerator');
 const signatureService = require('../services/signature/signatureService');
 const transmissionService = require('../transmission/transmissionService');
+const { getSchemaVersion } = require('../utils/versionMap');
 const pool = require('../../config/db');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
 
@@ -81,6 +82,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         direccion: customer?.direccion ? {
             departamento: customer.departamento || '06',
             municipio: customer.municipio || '01',
+            distrito: customer.distrito || '01',
             complemento: customer.direccion || 'Direccion de entrega'
         } : (newReceptor?.direccion || null)
     };
@@ -231,7 +233,7 @@ async function retransmit(req, res) {
         jwsString = jwsString.replace(/^"|"$/g, '').trim();
 
         const tipoDte = dteJson.identificacion?.tipoDte || dteRecord.tipo_dte;
-        const version = (tipoDte === '01' || tipoDte === '11' || tipoDte === '07') ? 1 : 3;
+        const version = getSchemaVersion(tipoDte);
 
         const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
             ambiente: company[0].ambiente === 'produccion' ? '01' : '00',

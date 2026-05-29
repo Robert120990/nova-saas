@@ -64,7 +64,7 @@ const handleFileUploads = (req, data) => {
 const createCompany = async (req, res) => {
     const validColumns = [
         'nit', 'nrc', 'razon_social', 'nombre_comercial', 'codigo_actividad', 
-        'direccion', 'departamento', 'municipio', 'correo', 'telefono', 
+        'direccion', 'departamento', 'municipio', 'distrito', 'correo', 'telefono', 
         'tipo_persona', 'tipo_contribuyente', 'api_user', 'api_password', 
         'ambiente', 'logo_url', 'certificate_path', 'certificate_password', 
         'clave_privada', 'certificate_crt_path', 'dte_active'
@@ -135,7 +135,7 @@ const updateCompany = async (req, res) => {
     const { id } = req.params;
     const validColumns = [
         'nit', 'nrc', 'razon_social', 'nombre_comercial', 'codigo_actividad', 
-        'direccion', 'departamento', 'municipio', 'correo', 'telefono', 
+        'direccion', 'departamento', 'municipio', 'distrito', 'correo', 'telefono', 
         'tipo_persona', 'tipo_contribuyente', 'api_user', 'api_password', 
         'ambiente', 'logo_url', 'certificate_path', 'certificate_password', 
         'clave_privada', 'certificate_crt_path', 'dte_active'

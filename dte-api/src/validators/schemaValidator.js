@@ -12,21 +12,24 @@ const ajv = new Ajv({
 });
 addFormats(ajv);
 
-const schemasDir = path.resolve(__dirname, process.env.SCHEMAS_PATH || '../../../cumplientoDTE/svfe-json-schemas');
+const schemasDir = path.resolve(__dirname, process.env.SCHEMAS_PATH || '../../../cumplientoDTE/2026/svfe-json-schemas/svfe-json-schemas');
 
-// Mapping of DTE type to schema filename
+// Mapping of DTE type to schema filename (versioned 2026)
 const schemaMap = {
-    '01': 'fe-fc-v1.json',   // Factura
-    '03': 'fe-ccf-v3.json',  // Comprobante de Crédito Fiscal
-    '04': 'fe-nr-v3.json',   // Nota de Remisión
-    '05': 'fe-nc-v3.json',   // Nota de Crédito
-    '06': 'fe-nd-v3.json',   // Nota de Débito
-    '07': 'fe-cr-v1.json',   // Comprobante de Retención
-    '08': 'fe-cl-v1.json',   // Comprobante de Liquidación
-    '09': 'fe-dcl-v1.json',  // Documento Contable de Liquidación
-    '11': 'fe-fex-v1.json',  // Factura de Exportación
-    '14': 'fe-fse-v1.json',  // Sujeto Excluido
-    '15': 'fe-cd-v1.json'    // Comprobante de Donación
+    '01': 'v2/fe-f-v2.json',         // Factura
+    '03': 'v4/fe-ccf-v4.json',       // Comprobante de Crédito Fiscal
+    '04': 'v4/fe-nr-v4.json',        // Nota de Remisión
+    '05': 'v4/fe-nc-v4.json',        // Nota de Crédito
+    '06': 'v4/fe-nd-v4.json',        // Nota de Débito
+    '07': 'v2/fe-cr-v2.json',        // Comprobante de Retención
+    '08': 'v2/fe-cl-v2.json',        // Comprobante de Liquidación
+    '09': 'v2/fe-dcl-v2.json',       // Documento Contable de Liquidación
+    '11': 'v3/fe-fex-v3.json',       // Factura de Exportación
+    '14': 'v2/fe-fse-v2.json',       // Sujeto Excluido
+    '15': 'v2/fe-cd-v2.json',        // Comprobante de Donación
+    '16': 'v3/invalidacion-schema-v3.json',  // Invalidación
+    '17': 'v1/fe-eop-v1.json',       // Evento de Operaciones Especiales
+    '18': 'v1/fe-eret-v1.json'       // Evento de Retorno
 };
 
 const validators = {};

@@ -1453,6 +1453,20 @@ const getDTEJson = async (req, res) => {
     }
 };
 
+const getDTEByCodigoGeneracion = async (req, res) => {
+    const { codigoGeneracion } = req.params;
+    try {
+        const [rows] = await pool.query('SELECT * FROM dtes WHERE codigo_generacion = ? AND company_id = ?', [codigoGeneracion, req.company_id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'DTE no encontrado' });
+        }
+        res.json({ success: true, data: rows[0] });
+    } catch (error) {
+        console.error('[GetDTEByCodigoGeneracion] Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 const resendDTEEmail = async (req, res) => {
     const { id } = req.params;
     try {
@@ -1497,21 +1511,17 @@ const voidSale = async (req, res) => {
             return res.status(400).json({ message: 'La venta ya se encuentra anulada' });
         }
 
-        // 2. Validación de Tiempo para DTE (Normativa Hacienda SV: 24 horas)
+        // 2. Validación de Tiempo para DTE (Normativa V2.0: 90 días para todos los DTEs)
         if (sale.dte_active && sale.codigo_generacion) {
-            // Formatear fecha de emisión correctamente para comparación
             const emissionDateStr = sale.fecha_emision.toISOString().split('T')[0];
             const emissionDateTime = new Date(`${emissionDateStr}T${sale.hora_emision}`);
             const now = new Date();
             const diffHours = (now - emissionDateTime) / (1000 * 60 * 60);
-
-            const isFactura = sale.tipo_documento === '01' || (sale.tipo_documento_name && sale.tipo_documento_name.toLowerCase().includes('factura'));
-            const limitHours = isFactura ? (90 * 24) : 24;
+            const limitHours = 90 * 24;
 
             if (diffHours > limitHours) {
-                const limitText = isFactura ? '90 días' : '24 horas';
                 return res.status(400).json({ 
-                    message: `No se puede invalidar este documento porque han transcurrido más de ${limitText} desde su emisión. Según la normativa, debe proceder mediante una Nota de Crédito.` 
+                    message: `No se puede invalidar este documento porque han transcurrido más de 90 días desde su emisión. Según la normativa, debe proceder mediante una Nota de Crédito.` 
                 });
             }
 
@@ -1759,6 +1769,49 @@ const stopContingency = async (req, res) => {
     }
 };
 
+// ERET / Retorno proxy endpoints
+const listRetornos = async (req, res) => {
+    try {
+        const token = jwt.sign({ id: 0, username: 'system', company_id: req.company_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
+        const params = new URLSearchParams({ search: req.query.search || '', page: req.query.page || '1', limit: req.query.limit || '10' });
+        const response = await fetch(`${DTE_API_URL}/retorno?${params}`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id }
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const emitRetorno = async (req, res) => {
+    try {
+        const token = jwt.sign({ id: req.user.id, username: req.user.username, company_id: req.company_id, branch_id: req.user.branch_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
+        const response = await fetch(`${DTE_API_URL}/retorno/emit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id },
+            body: JSON.stringify(req.body)
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const getRetornoStatus = async (req, res) => {
+    try {
+        const token = jwt.sign({ id: 0, username: 'system', company_id: req.company_id }, DTE_JWT_SECRET, { expiresIn: '1m' });
+        const response = await fetch(`${DTE_API_URL}/retorno/status/${req.params.codigoGeneracion}`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id }
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -1779,5 +1832,9 @@ module.exports = {
     getDTEJson,
     resendDTEEmail,
     voidSale,
-    retransmitSaleDTE
+    retransmitSaleDTE,
+    listRetornos,
+    emitRetorno,
+    getRetornoStatus,
+    getDTEByCodigoGeneracion
 };

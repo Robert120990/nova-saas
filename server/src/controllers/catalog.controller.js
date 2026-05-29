@@ -35,6 +35,23 @@ const getActividades = async (req, res) => {
     }
 };
 
+const getDistritos = async (req, res) => {
+    const { dep_code } = req.query;
+    try {
+        let query = 'SELECT * FROM cat_008_distrito';
+        let params = [];
+        if (dep_code) {
+            query += ' WHERE dep_code = ?';
+            params.push(dep_code);
+        }
+        query += ' ORDER BY code';
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: 'Error al obtener distritos' });
+    }
+};
+
 const getGenericCatalog = async (req, res) => {
     const { table } = req.params;
     // Allow any table starting with cat_ to avoid maintaining a whitelist for 30+ tables
@@ -49,4 +66,4 @@ const getGenericCatalog = async (req, res) => {
     }
 };
 
-module.exports = { getDepartments, getMunicipalities, getActividades, getGenericCatalog };
+module.exports = { getDepartments, getMunicipalities, getActividades, getDistritos, getGenericCatalog };

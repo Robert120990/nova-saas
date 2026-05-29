@@ -16,6 +16,7 @@ const Customers = () => {
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
+    const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
     const [condicionFiscal, setCondicionFiscal] = useState('contribuyente');
     const [exentoIva, setExentoIva] = useState(false);
@@ -26,6 +27,7 @@ const Customers = () => {
     const [editingBranch, setEditingBranch] = useState(null);
     const [branchDept, setBranchDept] = useState('');
     const [branchMun, setBranchMun] = useState('');
+    const [branchDistrito, setBranchDistrito] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -80,6 +82,12 @@ const Customers = () => {
     const { data: activities = [] } = useQuery({
         queryKey: ['catalogs', 'actividades'],
         queryFn: async () => (await axios.get('/api/catalogs/actividades')).data
+    });
+
+    const { data: distritos = [] } = useQuery({
+        queryKey: ['catalogs', 'distritos', selectedDept],
+        queryFn: async () => (await axios.get(`/api/catalogs/districts?dep_code=${selectedDept}`)).data,
+        enabled: !!selectedDept
     });
 
     const { data: personTypes = [] } = useQuery({
@@ -156,11 +164,18 @@ const Customers = () => {
         enabled: !!branchDept
     });
 
+    const { data: branchDistritos = [] } = useQuery({
+        queryKey: ['catalogs', 'distritos', branchDept],
+        queryFn: async () => (await axios.get(`/api/catalogs/districts?dep_code=${branchDept}`)).data,
+        enabled: !!branchDept
+    });
+
     const handleOpenBranches = (customer) => {
         setBranchCustomer(customer);
         setEditingBranch(null);
         setBranchDept('');
         setBranchMun('');
+        setBranchDistrito('');
         setIsBranchModalOpen(true);
     };
 
@@ -168,6 +183,7 @@ const Customers = () => {
         setEditingBranch(branch);
         setBranchDept(branch.departamento || '');
         setBranchMun(branch.municipio || '');
+        setBranchDistrito(branch.distrito || '');
     };
 
     const handleBranchSubmit = (e) => {
@@ -221,6 +237,7 @@ const Customers = () => {
         setSelectedCustomer(customer);
         setSelectedDept(customer.departamento);
         setSelectedMun(customer.municipio);
+        setSelectedDistrito(customer.distrito);
         setSelectedActivity(customer.codigo_actividad);
         setCondicionFiscal(customer.condicion_fiscal || 'contribuyente');
         setExentoIva(customer.exento_iva || false);
@@ -244,6 +261,7 @@ const Customers = () => {
                         setSelectedCustomer(null); 
                         setSelectedDept(''); 
                         setSelectedMun('');
+                        setSelectedDistrito('');
                         setSelectedActivity('');
                         setCondicionFiscal('contribuyente');
                         setExentoIva(false);
@@ -283,7 +301,7 @@ const Customers = () => {
                                 <div className="text-xs text-slate-500 font-medium">{c.nombre_comercial}</div>
                             </td>
                             <td className="px-4 py-2.5">
-                                <div className="text-xs text-slate-600 font-medium">{c.municipio_nombre || c.municipio}, {c.departamento_nombre || c.departamento}</div>
+                                <div className="text-xs text-slate-600 font-medium">Dist. {c.distrito || '01'}, {c.municipio_nombre || c.municipio}, {c.departamento_nombre || c.departamento}</div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[150px]">{c.direccion}</div>
                             </td>
                             <td className="px-4 py-2.5">
@@ -435,7 +453,7 @@ const Customers = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Departamento</label>
-                            <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)} required>
+                            <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
                                 <option value="">Seleccionar</option>
                                 {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
@@ -445,6 +463,13 @@ const Customers = () => {
                             <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls} required>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelCls}>Distrito</label>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls} required>
+                                <option value="">Seleccionar</option>
+                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                     </div>
@@ -500,7 +525,7 @@ const Customers = () => {
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className={labelCls}>Departamento</label>
-                                <select name="departamento" className={fieldCls} value={branchDept} onChange={(e) => { setBranchDept(e.target.value); setBranchMun(''); }} required>
+                                <select name="departamento" className={fieldCls} value={branchDept} onChange={(e) => { setBranchDept(e.target.value); setBranchMun(''); setBranchDistrito(''); }} required>
                                     <option value="">Seleccionar</option>
                                     {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                 </select>
@@ -510,6 +535,13 @@ const Customers = () => {
                                 <select name="municipio" value={branchMun} onChange={(e) => setBranchMun(e.target.value)} className={fieldCls} required>
                                     <option value="">Seleccionar</option>
                                     {branchMunicipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className={labelCls}>Distrito</label>
+                                <select name="distrito" value={branchDistrito} onChange={(e) => setBranchDistrito(e.target.value)} className={fieldCls} required>
+                                    <option value="">Seleccionar</option>
+                                    {branchDistritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -541,7 +573,7 @@ const Customers = () => {
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-bold text-slate-800">{b.nombre}</div>
                                         <div className="text-xs text-slate-500">
-                                            {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                            Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
                                             {b.direccion && ` — ${b.direccion}`}
                                         </div>
                                         {b.telefono && <div className="text-xs text-slate-400">{b.telefono}</div>}

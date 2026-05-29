@@ -54,7 +54,7 @@ const validColumns = [
     'company_id', 'tipo_persona', 'tipo_contribuyente', 'nombre', 'nombre_comercial', 
     'tipo_documento', 'numero_documento', 'nit', 'nrc', 
     'codigo_actividad', 'condicion_fiscal', 'pais', 'departamento', 
-    'municipio', 'direccion', 'telefono', 'correo', 
+    'municipio', 'distrito', 'direccion', 'telefono', 'correo', 
     'exento_iva', 'aplica_fovial', 'aplica_cotrans'
 ];
 

@@ -28,6 +28,7 @@ startContingencyWorker(300000); // Process contingency every 5m
 
 // Routes
 const router = express.Router();
+router.use(require('./middlewares/audit'));
 
 // Health check
 router.get('/health', (req, res) => res.json({ status: 'UP' }));
@@ -48,6 +49,7 @@ router.use('/signature', require('./routes/signature.routes'));
 router.use('/invalidation', require('./routes/invalidation.routes'));
 router.use('/contingency', require('./routes/contingency.routes'));
 router.use('/retransmission', require('./routes/retransmission.routes'));
+router.use('/retorno', require('./routes/retorno.routes'));
 
 app.use('/api', router);
 

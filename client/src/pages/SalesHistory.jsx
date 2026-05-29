@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { printTicket } from '../utils/qzPrint';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
@@ -212,6 +213,108 @@ const SalesHistory = () => {
         }
     };
 
+    const handlePrintTicket = async (sale) => {
+        try {
+            const { data: detail } = await axios.get(`/api/sales/${sale.id}`);
+            const itemsHtml = (detail.items || []).map(item => `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <div style="flex: 1;">${item.descripcion || item.nombre}</div>
+                </div>
+                <div style="text-align: right; font-size: 11px;">
+                    ${item.cantidad} x $${parseFloat(item.precio_unitario).toFixed(2)}
+                    ${item.monto_descuento > 0 ? ` (-$${parseFloat(item.monto_descuento).toFixed(2)})` : ''}
+                    = $${((parseFloat(item.cantidad) * parseFloat(item.precio_unitario)) - parseFloat(item.monto_descuento || 0)).toFixed(2)}
+                </div>
+            `).join('');
+
+            const qrUrl = sale.dte_control || sale.codigo_generacion
+                ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(sale.codigo_generacion || sale.dte_control)}`
+                : '';
+
+            const html = `
+                <html>
+                    <head>
+                        <title>Ticket de Venta</title>
+                        <style>
+                            body { width: 72mm; font-family: 'Courier New', monospace; font-size: 10px; margin: 0; padding: 5px; }
+                            .center { text-align: center; }
+                            .bold { font-weight: bold; }
+                            .dashed { border-top: 1px dashed #000; margin: 4px 0; }
+                            .flex-between { display: flex; justify-content: space-between; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="center bold" style="font-size: 14px;">${detail.branch_name || 'NOVA SAAS'}</div>
+                        <div class="dashed"></div>
+                        <div class="center bold">${detail.tipo_documento_name || 'DOCUMENTO'}</div>
+                        <div class="center" style="font-size: 11px; margin: 3px 0;">${detail.numero_control || '---'}</div>
+                        <div class="dashed"></div>
+                        <div><span class="bold">CLIENTE:</span> ${detail.customer_name || 'CONSUMIDOR FINAL'}</div>
+                        ${detail.customer_nit ? `<div><span class="bold">NIT:</span> ${detail.customer_nit}</div>` : ''}
+                        <div class="dashed"></div>
+                        <div class="flex-between bold">
+                            <div style="width: 50%;">DESCRIPCION</div>
+                            <div>CANT.</div>
+                            <div>PRECIO</div>
+                            <div>SUBTOTAL</div>
+                        </div>
+                        <div class="dashed"></div>
+                        ${itemsHtml}
+                        <div class="dashed"></div>
+                        <div class="flex-between"><div>TOTAL GRAVADAS</div><div>$${parseFloat(detail.total_gravado || 0).toFixed(2)}</div></div>
+                        <div class="flex-between"><div>TOTAL IVA</div><div>$${parseFloat(detail.total_iva || 0).toFixed(2)}</div></div>
+                        ${parseFloat(detail.total_exento || 0) > 0 ? `<div class="flex-between"><div>TOTAL EXENTAS</div><div>$${parseFloat(detail.total_exento).toFixed(2)}</div></div>` : ''}
+                        ${parseFloat(detail.total_no_sujeto || 0) > 0 ? `<div class="flex-between"><div>NO SUJETAS</div><div>$${parseFloat(detail.total_no_sujeto).toFixed(2)}</div></div>` : ''}
+                        ${parseFloat(detail.fovial || 0) > 0 ? `<div class="flex-between"><div>FOVIAL</div><div>$${parseFloat(detail.fovial).toFixed(2)}</div></div>` : ''}
+                        ${parseFloat(detail.cotrans || 0) > 0 ? `<div class="flex-between"><div>COTRANS</div><div>$${parseFloat(detail.cotrans).toFixed(2)}</div></div>` : ''}
+                        <div class="flex-between bold" style="font-size: 1.2em; margin-top: 5px;">
+                            <div>TOTAL A PAGAR</div>
+                            <div>$${parseFloat(detail.total_pagar || 0).toFixed(2)}</div>
+                        </div>
+                        <div class="dashed"></div>
+                        <div class="center">ATENDIDO POR : ${detail.seller_name || 'SISTEMA'}</div>
+                        <div class="center">GRACIAS POR SU COMPRA</div>
+                        ${qrUrl ? `<div class="dashed"></div>
+                        <div class="center" style="margin-top: 10px;">
+                            <div style="margin-bottom: 5px;">DESCARGUE SU DTE</div>
+                            <img src="${qrUrl}" style="width: 120px; height: 120px;"
+                                 onload="setTimeout(() => { window.print(); window.close(); }, 200);"
+                                 onerror="setTimeout(() => { window.print(); window.close(); }, 200);" />
+                        </div>` : ''}
+                        <div style="height: 30px;"></div>
+                    </body>
+                </html>
+            `;
+
+            const fullHtml = html;
+
+            let qzSuccess = false;
+            try {
+                if (detail.pos_id) {
+                    const { data: posList } = await axios.get('/api/pos');
+                    const pos = Array.isArray(posList) ? posList.find(p => p.id == detail.pos_id) : null;
+                    if (pos?.auto_print && pos?.printer_name) {
+                        const qzResult = await printTicket(fullHtml, pos.printer_name);
+                        qzSuccess = qzResult?.success;
+                    }
+                }
+            } catch (e) {}
+
+            if (!qzSuccess) {
+                const pw = window.open('', '_blank', 'width=400,height=600');
+                if (pw) {
+                    pw.document.write(fullHtml);
+                    pw.document.close();
+                    pw.focus();
+                } else {
+                    toast.error('Permita ventanas emergentes para imprimir');
+                }
+            }
+        } catch (error) {
+            toast.error('Error al reimprimir ticket');
+        }
+    };
+
     const getStatusBadge = (status) => {
         switch (status) {
             case 'ACCEPTED':
@@ -408,9 +511,9 @@ const SalesHistory = () => {
                                                         <span className="text-xs font-bold">Anular Operación</span>
                                                     </button>
 
-                                                    <button className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                        <div className="p-1.5 bg-slate-100 text-slate-400 rounded-lg group-hover:scale-110 transition-transform"><Printer size={14} /></div>
-                                                        <span className="text-xs font-bold text-slate-400">Imprimir Tiket</span>
+                                                    <button onClick={() => { handlePrintTicket(sale); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Printer size={14} /></div>
+                                                        <span className="text-xs font-bold text-slate-600">Reimprimir Ticket</span>
                                                     </button>
                                                 </div>
                                             </div>
