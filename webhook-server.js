@@ -99,9 +99,10 @@ function deploy() {
       env: envWithoutProd
     });
 
-    const VITE_API_URL = process.env.VITE_API_URL || 'http://localhost:4000';
+    // Empty = same origin (server serves both API and frontend on port 4000)
+    const VITE_API_URL = process.env.VITE_API_URL || '';
     const buildEnv = { ...envWithoutProd, VITE_API_URL };
-    console.log(`[webhook] Building client with VITE_API_URL=${VITE_API_URL}...`);
+    console.log(`[webhook] Building client with VITE_API_URL=${VITE_API_URL || '(same origin)'}...`);
     execSync('npm run build', {
       cwd: path.join(PROJECT_DIR, 'client'),
       timeout: 180000,
