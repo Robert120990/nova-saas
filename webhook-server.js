@@ -9,6 +9,11 @@ const SECRET = process.env.WEBHOOK_SECRET || 'mi-secreto-cambiame';
 const BRANCH = process.env.AUTO_UPDATE_BRANCH || 'main';
 const PROJECT_DIR = __dirname;
 
+function getPathVar() {
+  // Windows may use PATH or Path
+  return process.env.PATH || process.env.Path || '';
+}
+
 function getEnv() {
   // Find node/npm via fnm on Windows
   const fnmPaths = [];
@@ -24,21 +29,22 @@ function getEnv() {
     }
   }
   // Also try common fnm node version path
-  const versionDir = path.join(
-    process.env.LOCALAPPDATA || process.env.USERPROFILE || '',
-    'fnm', 'node-versions', 'v20.18.0', 'installation'
-  );
+  const userDir = process.env.LOCALAPPDATA || process.env.USERPROFILE || '';
+  const versionDir = path.join(userDir, 'fnm', 'node-versions', 'v20.18.0', 'installation');
   if (fs.existsSync(path.join(versionDir, 'node.exe'))) {
     fnmPaths.push(versionDir);
     fnmPaths.push(path.join(versionDir, 'node_modules', '.bin'));
   }
 
   const env = { ...process.env };
+  let currentPath = getPathVar();
   for (const p of fnmPaths) {
-    if (!env.PATH.includes(p)) {
-      env.PATH = `${p};${env.PATH}`;
+    if (!currentPath.includes(p)) {
+      currentPath = `${p};${currentPath}`;
     }
   }
+  env.PATH = currentPath;
+  env.Path = currentPath;
   return env;
 }
 
