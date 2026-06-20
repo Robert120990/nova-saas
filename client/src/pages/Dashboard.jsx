@@ -64,7 +64,7 @@ const Dashboard = () => {
         <div className="space-y-8 animate-in fade-in duration-500 pb-10">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Panel de Control</h2>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Panel Administrativo</h2>
                     <p className="text-slate-500 font-medium font-spanish">Resumen de operaciones en tiempo real</p>
                 </div>
                 <div className="bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 flex items-center gap-2">
