@@ -36,6 +36,17 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date() });
 });
 
+// Serve client built files in production
+const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
+if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads') && !req.path.startsWith('/ws')) {
+            res.sendFile(path.join(clientDist, 'index.html'));
+        }
+    });
+}
+
 // Error handler
 app.use((err, req, res, next) => {
     console.error('GLOBAL ERROR:', err);

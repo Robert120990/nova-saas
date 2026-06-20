@@ -37,23 +37,6 @@ module.exports = {
       time: true
     },
     {
-      name: 'client',
-      cwd: './client',
-      script: 'node_modules/serve/build/main.js',
-      args: ['-s', 'dist', '-l', '3000', '--cors'],
-      instances: 1,
-      exec_mode: 'fork',
-      env: {
-        NODE_ENV: 'production'
-      },
-      max_restarts: 10,
-      restart_delay: 3000,
-      error_file: './client/logs/error.log',
-      out_file: './client/logs/out.log',
-      merge_logs: true,
-      time: true
-    },
-    {
       name: 'webhook',
       cwd: '.',
       script: 'webhook-server.js',
