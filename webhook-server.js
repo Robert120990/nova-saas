@@ -83,10 +83,25 @@ function deploy() {
     npmInstall(path.join(PROJECT_DIR, 'dte-api'));
 
     console.log('[webhook] Installing & building client...');
-    npmInstall(path.join(PROJECT_DIR, 'client'));
+    // Unset NODE_ENV so devDependencies (vite, etc.) are installed
+    const envWithoutProd = { ...getEnv() };
+    delete envWithoutProd.NODE_ENV;
+    execSync('npm install --include=dev --prefer-offline', {
+      cwd: path.join(PROJECT_DIR, 'client'),
+      timeout: 180000,
+      encoding: 'utf8',
+      env: envWithoutProd
+    });
 
     const VITE_API_URL = process.env.VITE_API_URL || 'http://localhost:4000';
-    npmRunBuild(path.join(PROJECT_DIR, 'client'), { VITE_API_URL });
+    const buildEnv = { ...envWithoutProd, VITE_API_URL };
+    console.log(`[webhook] Building client with VITE_API_URL=${VITE_API_URL}...`);
+    execSync('npm run build', {
+      cwd: path.join(PROJECT_DIR, 'client'),
+      timeout: 180000,
+      encoding: 'utf8',
+      env: buildEnv
+    });
 
     console.log('[webhook] Restarting PM2 processes...');
     run('npx pm2 restart server');
