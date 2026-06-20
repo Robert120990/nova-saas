@@ -32,6 +32,9 @@ database/data/
 .idea/
 *.swp
 *.bak
+
+# Logs
+logs/
 .claude/
 .gemini/
 antigravity/
