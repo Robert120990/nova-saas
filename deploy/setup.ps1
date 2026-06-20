@@ -28,23 +28,39 @@ function Test-Command {
 }
 
 # ============================================
-# 1. Install Node.js via fnm (Fast Node Manager)
+# 1. Install Node.js
 # ============================================
 Write-Step "1. Installing Node.js $NodeVersion"
 
-if (-not (Test-Command "fnm")) {
-    Write-Host "Installing fnm (Fast Node Manager)..."
-    $fnmZip = "$env:TEMP\fnm.zip"
-    Invoke-WebRequest -Uri "https://github.com/Schniz/fnm/releases/latest/download/fnz-windows.zip" -OutFile $fnmZip
-    Expand-Archive -Path $fnmZip -DestinationPath "$env:ProgramFiles\fnm" -Force
-    [Environment]::SetEnvironmentVariable("Path", "$env:Path;$env:ProgramFiles\fnm", "Machine")
-    $env:Path += ";$env:ProgramFiles\fnm"
-    Remove-Item $fnmZip -Force
-}
+if (-not (Test-Command "node")) {
+    # Try winget first (available on Windows Server 2022)
+    if (Test-Command "winget") {
+        Write-Host "Installing fnm via winget..."
+        winget install -e --id Schniz.fnm --accept-source-agreements
+        $fnmPath = "$env:LOCALAPPDATA\fnm"
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -notlike "*$fnmPath*") {
+            [Environment]::SetEnvironmentVariable("Path", "$userPath;$fnmPath", "User")
+        }
+        $env:Path += ";$fnmPath"
+    } else {
+        Write-Host "Downloading fnm..."
+        $fnmZip = "$env:TEMP\fnm.zip"
+        $fnmDir = "$env:LOCALAPPDATA\fnm"
+        New-Item -ItemType Directory -Path $fnmDir -Force | Out-Null
+        Invoke-WebRequest -Uri "https://github.com/Schniz/fnm/releases/latest/download/fnm-windows.zip" -OutFile $fnmZip
+        Expand-Archive -Path $fnmZip -DestinationPath $fnmDir -Force
+        Remove-Item $fnmZip -Force
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        [Environment]::SetEnvironmentVariable("Path", "$userPath;$fnmDir", "User")
+        $env:Path += ";$fnmDir"
+    }
 
-fnm install $NodeVersion
-fnm use $NodeVersion
-fnm default $NodeVersion
+    # Refresh PATH and init fnm
+    fnm env --use-on-cd | Out-String | Invoke-Expression
+    fnm install $NodeVersion
+    fnm default $NodeVersion
+}
 
 node -v
 npm -v
