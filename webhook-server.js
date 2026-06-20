@@ -9,22 +9,62 @@ const SECRET = process.env.WEBHOOK_SECRET || 'mi-secreto-cambiame';
 const BRANCH = process.env.AUTO_UPDATE_BRANCH || 'main';
 const PROJECT_DIR = __dirname;
 
-function verifySignature(payload, signature) {
-  if (!SECRET || SECRET === 'mi-secreto-cambiame') return true;
-  const sig = 'sha256=' + crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(signature));
+function getEnv() {
+  // Find node/npm via fnm on Windows
+  const fnmPaths = [];
+  const candidates = [
+    process.env.LOCALAPPDATA,
+    process.env.USERPROFILE,
+  ].filter(Boolean);
+  for (const base of candidates) {
+    const p = path.join(base, 'fnm');
+    if (fs.existsSync(path.join(p, 'fnm.exe'))) {
+      fnmPaths.push(p);
+      break;
+    }
+  }
+  // Also try common fnm node version path
+  const versionDir = path.join(
+    process.env.LOCALAPPDATA || process.env.USERPROFILE || '',
+    'fnm', 'node-versions', 'v20.18.0', 'installation'
+  );
+  if (fs.existsSync(path.join(versionDir, 'node.exe'))) {
+    fnmPaths.push(versionDir);
+    fnmPaths.push(path.join(versionDir, 'node_modules', '.bin'));
+  }
+
+  const env = { ...process.env };
+  for (const p of fnmPaths) {
+    if (!env.PATH.includes(p)) {
+      env.PATH = `${p};${env.PATH}`;
+    }
+  }
+  return env;
 }
 
 function run(cmd, cwd = PROJECT_DIR) {
   console.log(`[webhook] Exec: ${cmd}`);
   try {
-    const out = execSync(cmd, { cwd, timeout: 120000, encoding: 'utf8' });
+    const out = execSync(cmd, { cwd, timeout: 180000, encoding: 'utf8', env: getEnv() });
     console.log(out);
     return out;
   } catch (err) {
-    console.error(`[webhook] Error: ${err.stderr || err.message}`);
+    if (err.stderr) console.error(`[webhook] stderr: ${err.stderr}`);
+    console.error(`[webhook] Error: ${err.message}`);
     throw err;
   }
+}
+
+function npmInstall(dir) {
+  run('npm install --prefer-offline', dir);
+}
+
+function npmRunBuild(dir, envVars = {}) {
+  const env = getEnv();
+  Object.assign(env, envVars);
+  console.log(`[webhook] Building client with VITE_API_URL=${env.VITE_API_URL}...`);
+  const out = execSync('npm run build', { cwd: dir, timeout: 180000, encoding: 'utf8', env });
+  console.log(out);
 }
 
 function deploy() {
@@ -37,26 +77,31 @@ function deploy() {
     run(`git pull origin ${BRANCH} --ff-only`);
 
     console.log('[webhook] Installing server dependencies...');
-    run('npm install', path.join(PROJECT_DIR, 'server'));
+    npmInstall(path.join(PROJECT_DIR, 'server'));
 
     console.log('[webhook] Installing dte-api dependencies...');
-    run('npm install', path.join(PROJECT_DIR, 'dte-api'));
+    npmInstall(path.join(PROJECT_DIR, 'dte-api'));
 
     console.log('[webhook] Installing & building client...');
-    run('npm install', path.join(PROJECT_DIR, 'client'));
+    npmInstall(path.join(PROJECT_DIR, 'client'));
 
     const VITE_API_URL = process.env.VITE_API_URL || 'http://localhost:4000';
-    run(`set "VITE_API_URL=${VITE_API_URL}" && npm run build`, path.join(PROJECT_DIR, 'client'));
+    npmRunBuild(path.join(PROJECT_DIR, 'client'), { VITE_API_URL });
 
     console.log('[webhook] Restarting PM2 processes...');
     run('npx pm2 restart server');
     run('npx pm2 restart dte-api');
-    run('npx pm2 restart client');
 
     console.log('[webhook] Deploy complete.');
   } else {
     console.log(`[webhook] No changes on ${BRANCH}.`);
   }
+}
+
+function verifySignature(payload, signature) {
+  if (!SECRET || SECRET === 'mi-secreto-cambiame') return true;
+  const sig = 'sha256=' + crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(signature));
 }
 
 const server = http.createServer((req, res) => {
@@ -82,7 +127,11 @@ const server = http.createServer((req, res) => {
       if (ref === `refs/heads/${BRANCH}`) {
         res.writeHead(202, { 'Content-Type': 'text/plain' });
         res.end('Deploy started\n');
-        deploy();
+        try {
+          deploy();
+        } catch (e) {
+          console.error('[webhook] Deploy failed:', e.message);
+        }
       } else {
         console.log(`[webhook] Ignored push to ${ref}`);
         res.writeHead(200);
