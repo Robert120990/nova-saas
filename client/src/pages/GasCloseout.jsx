@@ -93,7 +93,12 @@ const GasCloseout = () => {
     });
 
     const saveExpensesMutation = useMutation({
-        mutationFn: (expenses) => axios.post(`/api/gas-station/closeouts/${closeoutId}/expenses`, { expenses }),
+        mutationFn: (expenses) => axios.post(`/api/gas-station/closeouts/${closeoutId}/expenses`, {
+            expenses: expenses.map(e => ({
+                ...e,
+                provider_id: e.provider_id || null
+            }))
+        }),
         onSuccess: (res) => {
             setGastos(res.data);
             toast.success('Gastos guardados');
@@ -115,6 +120,12 @@ const GasCloseout = () => {
         if (existingExpenses) setGastos(existingExpenses);
     }, [existingExpenses]);
 
+    const { data: providersData } = useQuery({
+        queryKey: ['providers-all'],
+        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 500 } })).data?.data || [],
+    });
+    const providers = providersData || [];
+
     const loadExpenseCategories = async () => {
         try {
             const res = await axios.get('/api/gas-station/expense-categories');
@@ -134,6 +145,7 @@ const GasCloseout = () => {
             fecha: new Date().toISOString().split('T')[0],
             documento: '',
             tipo: 'ccf',
+            provider_id: '',
             proveedor: '',
             valor: 0
         }]);
@@ -684,14 +696,22 @@ const GasCloseout = () => {
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1">
-                                                    <input
-                                                        type="text"
-                                                        value={g.proveedor}
-                                                        onChange={(e) => handleGastoChange(g.id, 'proveedor', e.target.value)}
+                                                    <select
+                                                        value={g.provider_id}
+                                                        onChange={(e) => {
+                                                            const id = e.target.value;
+                                                            const prov = providers.find(p => p.id === parseInt(id));
+                                                            handleGastoChange(g.id, 'provider_id', id);
+                                                            handleGastoChange(g.id, 'proveedor', prov ? prov.nombre : '');
+                                                        }}
                                                         disabled={estado === 'cerrado'}
-                                                        placeholder="Proveedor"
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
+                                                    >
+                                                        <option value="">Seleccionar...</option>
+                                                        {providers.map(p => (
+                                                            <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                        ))}
+                                                    </select>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
                                                     <input

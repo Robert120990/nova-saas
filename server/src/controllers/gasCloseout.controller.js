@@ -278,11 +278,18 @@ exports.deleteExpenseCategory = async (req, res) => {
 exports.getExpenses = async (req, res) => {
     try {
         const { id } = req.params;
-        const [rows] = await pool.query(
-            `SELECT * FROM gas_station_closeout_expenses WHERE closeout_id = ? ORDER BY id ASC`,
-            [id]
-        );
-        res.json(rows);
+        const [rows] = await pool.query(`
+            SELECT e.*, p.nombre as proveedor_nombre
+            FROM gas_station_closeout_expenses e
+            LEFT JOIN providers p ON e.provider_id = p.id
+            WHERE e.closeout_id = ?
+            ORDER BY e.id ASC
+        `, [id]);
+        const mapped = rows.map(e => ({
+            ...e,
+            proveedor: e.proveedor_nombre || e.proveedor
+        }));
+        res.json(mapped);
     } catch (error) {
         console.error('Error getExpenses:', error);
         res.status(500).json({ message: 'Error al obtener gastos' });
@@ -306,27 +313,50 @@ exports.saveExpenses = async (req, res) => {
         await pool.query(`DELETE FROM gas_station_closeout_expenses WHERE closeout_id = ?`, [id]);
 
         if (expenses && expenses.length > 0) {
-            const values = expenses.map(e => [
-                parseInt(id),
-                e.rubro || '',
-                e.fecha || null,
-                e.documento || '',
-                e.tipo || 'ccf',
-                e.proveedor || '',
-                parseFloat(e.valor) || 0
-            ]);
+            const providerIds = expenses.filter(e => e.provider_id).map(e => parseInt(e.provider_id));
+            const providerMap = {};
+            if (providerIds.length > 0) {
+                const [providers] = await pool.query(
+                    `SELECT id, nombre FROM providers WHERE id IN (?) AND company_id = ?`,
+                    [providerIds, req.company_id]
+                );
+                providers.forEach(p => { providerMap[p.id] = p.nombre; });
+            }
+
+            const values = expenses.map(e => {
+                const providerId = e.provider_id ? parseInt(e.provider_id) : null;
+                const proveedor = providerId ? (providerMap[providerId] || '') : (e.proveedor || '');
+                return [
+                    parseInt(id),
+                    e.rubro || '',
+                    e.fecha || null,
+                    e.documento || '',
+                    e.tipo || 'ccf',
+                    providerId,
+                    proveedor,
+                    parseFloat(e.valor) || 0
+                ];
+            });
             await pool.query(
-                `INSERT INTO gas_station_closeout_expenses (closeout_id, rubro, fecha, documento, tipo, proveedor, valor) VALUES ?`,
+                `INSERT INTO gas_station_closeout_expenses (closeout_id, rubro, fecha, documento, tipo, provider_id, proveedor, valor) VALUES ?`,
                 [values]
             );
         }
 
-        const [remaining] = await pool.query(
-            `SELECT * FROM gas_station_closeout_expenses WHERE closeout_id = ? ORDER BY id ASC`,
-            [id]
-        );
+        const [remaining] = await pool.query(`
+            SELECT e.*, p.nombre as proveedor_nombre
+            FROM gas_station_closeout_expenses e
+            LEFT JOIN providers p ON e.provider_id = p.id
+            WHERE e.closeout_id = ?
+            ORDER BY e.id ASC
+        `, [id]);
 
-        res.json(remaining);
+        const mapped = remaining.map(e => ({
+            ...e,
+            proveedor: e.proveedor_nombre || e.proveedor
+        }));
+
+        res.json(mapped);
     } catch (error) {
         console.error('Error saveExpenses:', error);
         res.status(500).json({ message: 'Error al guardar gastos' });
