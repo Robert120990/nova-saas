@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import SearchableSelect from '../components/ui/SearchableSelect';
 
 const GasCloseout = () => {
     const queryClient = useQueryClient();
@@ -696,7 +697,8 @@ const GasCloseout = () => {
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1">
-                                                    <select
+                                                    <SearchableSelect
+                                                        options={providers}
                                                         value={g.provider_id}
                                                         onChange={(e) => {
                                                             const id = e.target.value;
@@ -704,14 +706,11 @@ const GasCloseout = () => {
                                                             handleGastoChange(g.id, 'provider_id', id);
                                                             handleGastoChange(g.id, 'proveedor', prov ? prov.nombre : '');
                                                         }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="">Seleccionar...</option>
-                                                        {providers.map(p => (
-                                                            <option key={p.id} value={p.id}>{p.nombre}</option>
-                                                        ))}
-                                                    </select>
+                                                        placeholder="Buscar proveedor..."
+                                                        valueKey="id"
+                                                        labelKey="nombre"
+                                                        displayKey="nombre"
+                                                    />
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
                                                     <input
