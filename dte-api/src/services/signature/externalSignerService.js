@@ -6,7 +6,8 @@ const axios = require('axios');
 require('dotenv').config();
 
 async function signWithExternalSigner(dteJson, nit, certificatePassword) {
-    const signerUrl = process.env.SIGNER_URL || 'http://localhost:8113/firmardocumento/';
+    const isTest = (process.env.HACIENDA_ENV || 'test') === 'test';
+    const signerUrl = process.env.SIGNER_URL || (isTest ? 'http://localhost:8114/firmardocumento/' : 'http://localhost:8113/firmardocumento/');
     
     try {
         console.log('Signing with EXTERNAL signer...');
