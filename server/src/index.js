@@ -4,14 +4,8 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
 const authRoutes = require('./routes/auth.routes');
 const apiRoutes = require('./routes/api.routes');
-
-let gitCommit = 'unknown';
-try {
-    gitCommit = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
-} catch (e) {}
 
 const app = express();
 
@@ -39,7 +33,11 @@ app.use('/api', apiRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', version: gitCommit, environment: process.env.NODE_ENV, timestamp: new Date() });
+    let version = 'unknown';
+    try {
+        version = require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+    } catch (e) {}
+    res.json({ status: 'OK', version, environment: process.env.NODE_ENV, timestamp: new Date() });
 });
 
 // Serve client built files in production
