@@ -8,13 +8,21 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 
 const GasCloseout = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const { user } = useAuth();
     const editId = searchParams.get('editId');
+
+    const toDateStr = (v) => {
+        if (!v) return '';
+        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+        try { return new Date(v).toISOString().slice(0, 10); } catch { return ''; }
+    };
 
     const [closeoutId, setCloseoutId] = useState(null);
     const [estado, setEstado] = useState(null);
@@ -30,8 +38,11 @@ const GasCloseout = () => {
     const [expenseCategories, setExpenseCategories] = useState([]);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+    const [tankReadings, setTankReadings] = useState([]);
+    const [showTankReadingsModal, setShowTankReadingsModal] = useState(false);
 
     const inputRefs = useRef({});
+    const tankInputRefs = useRef({});
 
     useEffect(() => {
         const handler = (e) => {
@@ -59,6 +70,7 @@ const GasCloseout = () => {
             setSellerName(editData.seller_name);
             setFechaTurno(editData.fecha_turno?.split('T')[0] || editData.fecha_turno);
             setNumeroTurno(editData.numero_turno);
+            setTankReadings(editData.tankReadings || []);
         }
     }, [editData]);
 
@@ -72,6 +84,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setCloseoutId(res.data.id);
             setReadings(res.data.readings.map(r => ({ ...r, lectura_actual: r.lectura_anterior })));
+            setTankReadings(res.data.tankReadings?.map(r => ({ ...r, lectura_actual: r.lectura_anterior })) || []);
             setEstado('abierto');
             toast.success('Cierre de lecturas iniciado');
         },
@@ -93,6 +106,12 @@ const GasCloseout = () => {
         onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
     });
 
+    const updateTankMutation = useMutation({
+        mutationFn: ({ readingId, data }) =>
+            axios.patch(`/api/gas-station/closeouts/${closeoutId}/tank-readings/${readingId}`, data),
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lectura de tanque')
+    });
+
     const saveExpensesMutation = useMutation({
         mutationFn: (expenses) => axios.post(`/api/gas-station/closeouts/${closeoutId}/expenses`, {
             expenses: expenses.map(e => ({
@@ -101,7 +120,9 @@ const GasCloseout = () => {
             }))
         }),
         onSuccess: (res) => {
-            setGastos(res.data);
+            setGastos(res.data.map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-expenses', closeoutId] });
+            setShowGastosModal(false);
             toast.success('Gastos guardados');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar gastos')
@@ -118,7 +139,7 @@ const GasCloseout = () => {
     });
 
     useEffect(() => {
-        if (existingExpenses) setGastos(existingExpenses);
+        if (existingExpenses) setGastos(existingExpenses.map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
     }, [existingExpenses]);
 
     const { data: providersData } = useQuery({
@@ -207,7 +228,7 @@ const GasCloseout = () => {
         }
         const name = sellers.find(s => s.id === parseInt(sellerId))?.nombre || '';
         setSellerName(name);
-        initMutation.mutate({ seller_id: parseInt(sellerId), seller_name: name, fecha_turno: fechaTurno, numero_turno: numeroTurno });
+        initMutation.mutate({ seller_id: parseInt(sellerId), seller_name: name, fecha_turno: fechaTurno, numero_turno: numeroTurno, branch_id: user?.branch_id });
     };
 
     const handleReadingChange = (nozzleId, field, value) => {
@@ -255,6 +276,62 @@ const GasCloseout = () => {
         }
     };
 
+    const handleTankReadingChange = (tankId, field, value) => {
+        if (estado === 'cerrado') return;
+        setTankReadings(prev => prev.map(r =>
+            r.tank_id === tankId ? { ...r, [field]: parseFloat(value) || 0 } : r
+        ));
+    };
+
+    const handleTankReadingBlur = (readingId, tankId) => {
+        const r = tankReadings.find(x => x.tank_id === tankId);
+        if (!r) return;
+        updateTankMutation.mutate({
+            readingId,
+            data: { lectura_actual: r.lectura_actual, recarga: r.recarga, lectura_anterior: r.lectura_anterior }
+        });
+    };
+
+    const handleTankKeyDown = (e, index, field) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const currentReading = tankReadings[index];
+            if (!currentReading) return;
+
+            if (field === 'lectura_anterior') {
+                const recargaKey = `recarga-${currentReading.tank_id}`;
+                const recargaEl = tankInputRefs.current[recargaKey];
+                if (recargaEl) { recargaEl.focus(); return; }
+            }
+
+            if (field === 'recarga') {
+                const actualKey = `lectura_actual-${currentReading.tank_id}`;
+                const actualEl = tankInputRefs.current[actualKey];
+                if (actualEl) { actualEl.focus(); return; }
+            }
+
+            if (field === 'lectura_actual') {
+                const nextReading = tankReadings[index + 1];
+                if (nextReading) {
+                    const nextKey = editAnterior ? `anterior-${nextReading.tank_id}` : `recarga-${nextReading.tank_id}`;
+                    const nextEl = tankInputRefs.current[nextKey];
+                    if (nextEl) nextEl.focus();
+                }
+            }
+        }
+    };
+
+    const handleOpenTanques = async () => {
+        if (tankReadings.length === 0 && closeoutId) {
+            try {
+                const res = await axios.post(`/api/gas-station/closeouts/${closeoutId}/tank-readings/init`);
+                setTankReadings(res.data.map(r => ({ ...r, lectura_actual: r.lectura_anterior })));
+            } catch { }
+        }
+        setShowTankReadingsModal(true);
+        setEditAnterior(false);
+    };
+
     const actionButtons = [
         { label: 'Lecturas', icon: Fuel, key: 'lecturas', enabled: true },
         { label: 'Gastos', icon: Receipt, key: 'gastos', enabled: true },
@@ -265,7 +342,7 @@ const GasCloseout = () => {
         { label: 'Anticipos Desp.', icon: Truck, key: 'anticipos' },
         { label: 'Remesas', icon: Banknote, key: 'remesas' },
         { label: 'Lubricantes', icon: Droplets, key: 'lubricantes' },
-        { label: 'Tanques', icon: FlaskConical, key: 'tanques' },
+        { label: 'Tanques', icon: FlaskConical, key: 'tanques', enabled: true },
         { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas' },
         { label: 'Adelantos', icon: Banknote, key: 'adelantos' },
     ];
@@ -462,6 +539,7 @@ const GasCloseout = () => {
                                                 onClick={() => {
                                                     if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); }
                                                     if (isGastos) handleOpenGastos();
+                                                    if (btn.key === 'tanques') handleOpenTanques();
                                                 }}
                                                 disabled={!canClick}
                                                 className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
@@ -587,7 +665,7 @@ const GasCloseout = () => {
                 {showGastosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
                         <div className="fixed inset-0 bg-black/40" onClick={() => setShowGastosModal(false)} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl max-h-[90vh] flex flex-col">
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[65vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Receipt size={16} className="text-indigo-600" />
@@ -710,6 +788,8 @@ const GasCloseout = () => {
                                                         valueKey="id"
                                                         labelKey="nombre"
                                                         displayKey="nombre"
+                                                        codeKey="nrc"
+                                                        codeLabel="NRC"
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
@@ -762,6 +842,112 @@ const GasCloseout = () => {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showTankReadingsModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowTankReadingsModal(false); setEditAnterior(false); }} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[50vh] max-h-[90vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <FlaskConical size={16} className="text-indigo-600" />
+                                    Lecturas por Tanque
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button onClick={() => { setShowTankReadingsModal(false); setEditAnterior(false); }}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1 relative">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-14">Tanque</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 min-w-[120px]">Descripción</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Capacidad</th>
+                                            <th className={`px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-32 ${editAnterior ? 'text-amber-600' : ''}`}>
+                                                Lect. Ant{editAnterior && '*'}
+                                            </th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Recarga</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Lect. Actual</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Difer</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {tankReadings.map((r, idx) => {
+                                            const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
+                                            return (
+                                                <tr key={r.tank_id} className="hover:bg-slate-50 transition-colors text-[11px]">
+                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap">{r.codigo_tanque}</td>
+                                                    <td className="px-1.5 py-0.5 truncate">
+                                                        <span className="font-medium text-slate-800">{r.descripcion_tanque}</span>
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap">{parseFloat(r.capacidad || 0).toFixed(2)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right">
+                                                        {editAnterior ? (
+                                                            <input
+                                                                ref={el => { tankInputRefs.current[`anterior-${r.tank_id}`] = el; }}
+                                                                type="number"
+                                                                step="0.00001"
+                                                                value={r.lectura_anterior || ''}
+                                                                onChange={(e) => handleTankReadingChange(r.tank_id, 'lectura_anterior', e.target.value)}
+                                                                onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
+                                                                onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_anterior')}
+                                                                onFocus={(e) => e.target.select()}
+                                                                disabled={estado === 'cerrado'}
+                                                                className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
+                                                            />
+                                                        ) : (
+                                                            <span className="font-mono text-slate-500 whitespace-nowrap">{(r.lectura_anterior || 0).toFixed(5)}</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right">
+                                                        <input
+                                                            ref={el => { tankInputRefs.current[`recarga-${r.tank_id}`] = el; }}
+                                                            type="number"
+                                                            step="0.00001"
+                                                            value={r.recarga || ''}
+                                                            onChange={(e) => handleTankReadingChange(r.tank_id, 'recarga', e.target.value)}
+                                                            onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
+                                                            onKeyDown={(e) => handleTankKeyDown(e, idx, 'recarga')}
+                                                            onFocus={(e) => e.target.select()}
+                                                            disabled={estado === 'cerrado'}
+                                                            className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right">
+                                                        <input
+                                                            ref={el => { tankInputRefs.current[`lectura_actual-${r.tank_id}`] = el; }}
+                                                            type="number"
+                                                            step="0.00001"
+                                                            value={r.lectura_actual || ''}
+                                                            onChange={(e) => handleTankReadingChange(r.tank_id, 'lectura_actual', e.target.value)}
+                                                            onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
+                                                            onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_actual')}
+                                                            onFocus={(e) => e.target.select()}
+                                                            disabled={estado === 'cerrado'}
+                                                            className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap">{diferencia.toFixed(5)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {tankReadings.length === 0 && (
+                                            <tr>
+                                                <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay tanques registrados.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

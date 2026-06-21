@@ -8,8 +8,8 @@ exports.initCloseout = async (req, res) => {
         }
 
         const [result] = await pool.query(
-            `INSERT INTO gas_station_closeouts (company_id, seller_id, seller_name, fecha_turno, numero_turno) VALUES (?, ?, ?, ?, ?)`,
-            [req.company_id, seller_id, seller_name || '', fecha_turno, numero_turno]
+            `INSERT INTO gas_station_closeouts (company_id, branch_id, seller_id, seller_name, fecha_turno, numero_turno) VALUES (?, ?, ?, ?, ?, ?)`,
+            [req.company_id, req.user.branch_id || null, seller_id, seller_name || '', fecha_turno, numero_turno]
         );
         const closeoutId = result.insertId;
 
@@ -35,13 +35,14 @@ exports.initCloseout = async (req, res) => {
 
             const lectura_anterior = lastReading.length > 0 ? parseFloat(lastReading[0].lectura_actual) : 0;
 
-            await pool.query(`
+            const [insertResult] = await pool.query(`
                 INSERT INTO gas_station_closeout_readings
                 (closeout_id, nozzle_id, product_id, codigo_pistola, codigo_producto, descripcion_producto, precio, lectura_anterior, lectura_actual, calibracion, diferencia, monto)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0)
             `, [closeoutId, n.nozzle_id, n.product_id, n.codigo_pistola, n.codigo_producto, n.descripcion_producto, n.precio_unitario, lectura_anterior]);
 
             readings.push({
+                id: insertResult.insertId,
                 nozzle_id: n.nozzle_id,
                 codigo_pistola: n.codigo_pistola,
                 codigo_producto: n.codigo_producto,
@@ -55,10 +56,119 @@ exports.initCloseout = async (req, res) => {
             });
         }
 
-        res.status(201).json({ id: closeoutId, readings });
+        const [tanks] = await pool.query(
+            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ?`,
+            [req.company_id]
+        );
+
+        const tankReadings = [];
+        for (const t of tanks) {
+            const [lastTankReading] = await pool.query(`
+                SELECT r.lectura_actual
+                FROM gas_station_closeout_tank_readings r
+                JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                WHERE r.tank_id = ? AND c.company_id = ? AND c.estado = 'cerrado'
+                ORDER BY c.created_at DESC
+                LIMIT 1
+            `, [t.tank_id, req.company_id]);
+
+            const lectura_anterior = lastTankReading.length > 0 ? parseFloat(lastTankReading[0].lectura_actual) : 0;
+
+            const [tankInsertResult] = await pool.query(`
+                INSERT INTO gas_station_closeout_tank_readings
+                (closeout_id, tank_id, codigo_tanque, descripcion_tanque, lectura_anterior, recarga, lectura_actual, diferencia)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            `, [closeoutId, t.tank_id, t.codigo, t.descripcion, lectura_anterior]);
+
+            tankReadings.push({
+                id: tankInsertResult.insertId,
+                tank_id: t.tank_id,
+                codigo_tanque: t.codigo,
+                descripcion_tanque: t.descripcion,
+                capacidad: parseFloat(t.capacidad),
+                lectura_anterior,
+                recarga: 0,
+                lectura_actual: 0,
+                diferencia: 0
+            });
+        }
+
+        res.status(201).json({ id: closeoutId, readings, tankReadings });
     } catch (error) {
         console.error('Error initCloseout:', error);
         res.status(500).json({ message: 'Error al iniciar cierre de lecturas' });
+    }
+};
+
+exports.initTankReadings = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [existing] = await pool.query(
+            `SELECT COUNT(*) as cnt FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`,
+            [id]
+        );
+        if (existing[0].cnt > 0) {
+            const [rows] = await pool.query(`
+                SELECT tr.*, t.capacidad
+                FROM gas_station_closeout_tank_readings tr
+                JOIN gas_station_tanks t ON tr.tank_id = t.id
+                WHERE tr.closeout_id = ?
+                ORDER BY tr.codigo_tanque ASC
+            `, [id]);
+            return res.json(rows);
+        }
+
+        const [tanks] = await pool.query(
+            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ?`,
+            [req.company_id]
+        );
+
+        const tankReadings = [];
+        for (const t of tanks) {
+            const [lastTankReading] = await pool.query(`
+                SELECT r.lectura_actual
+                FROM gas_station_closeout_tank_readings r
+                JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                WHERE r.tank_id = ? AND c.company_id = ? AND c.estado = 'cerrado'
+                ORDER BY c.created_at DESC
+                LIMIT 1
+            `, [t.tank_id, req.company_id]);
+
+            const lectura_anterior = lastTankReading.length > 0 ? parseFloat(lastTankReading[0].lectura_actual) : 0;
+
+            const [tankInsertResult] = await pool.query(`
+                INSERT INTO gas_station_closeout_tank_readings
+                (closeout_id, tank_id, codigo_tanque, descripcion_tanque, lectura_anterior, recarga, lectura_actual, diferencia)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            `, [id, t.tank_id, t.codigo, t.descripcion, lectura_anterior]);
+
+            tankReadings.push({
+                id: tankInsertResult.insertId,
+                tank_id: t.tank_id,
+                codigo_tanque: t.codigo,
+                descripcion_tanque: t.descripcion,
+                capacidad: parseFloat(t.capacidad),
+                lectura_anterior,
+                recarga: 0,
+                lectura_actual: 0,
+                diferencia: 0
+            });
+        }
+
+        res.status(201).json(tankReadings);
+    } catch (error) {
+        console.error('Error initTankReadings:', error);
+        res.status(500).json({ message: 'Error al iniciar lecturas de tanque' });
     }
 };
 
@@ -68,6 +178,11 @@ exports.getCloseouts = async (req, res) => {
         const offset = (page - 1) * limit;
         let where = 'WHERE c.company_id = ?';
         let params = [req.company_id];
+
+        if (req.user.branch_id) {
+            where += ' AND c.branch_id = ?';
+            params.push(req.user.branch_id);
+        }
 
         if (search) {
             where += ' AND (c.numero_turno LIKE ? OR c.seller_name LIKE ?)';
@@ -106,6 +221,9 @@ exports.getCloseout = async (req, res) => {
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
 
         const [readings] = await pool.query(`
             SELECT * FROM gas_station_closeout_readings
@@ -113,7 +231,18 @@ exports.getCloseout = async (req, res) => {
             ORDER BY codigo_pistola ASC
         `, [id]);
 
-        res.json({ ...closeouts[0], readings });
+        let tankReadings = [];
+        try {
+            [tankReadings] = await pool.query(`
+                SELECT tr.*, t.capacidad
+                FROM gas_station_closeout_tank_readings tr
+                JOIN gas_station_tanks t ON tr.tank_id = t.id
+                WHERE tr.closeout_id = ?
+                ORDER BY tr.codigo_tanque ASC
+            `, [id]);
+        } catch { }
+
+        res.json({ ...closeouts[0], readings, tankReadings });
     } catch (error) {
         console.error('Error getCloseout:', error);
         res.status(500).json({ message: 'Error al obtener cierre de lecturas' });
@@ -126,12 +255,15 @@ exports.updateReading = async (req, res) => {
         const { lectura_actual, calibracion, lectura_anterior: newAnterior } = req.body;
 
         const [closeouts] = await pool.query(
-            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
-            [closeoutId, req.company_id]
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
         if (closeouts[0].estado === 'cerrado') {
             return res.status(400).json({ message: 'El cierre ya está cerrado, no se puede modificar' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
         const [current] = await pool.query(
@@ -163,19 +295,67 @@ exports.updateReading = async (req, res) => {
     }
 };
 
+exports.updateTankReading = async (req, res) => {
+    try {
+        const { closeoutId, id } = req.params;
+        const { lectura_actual, recarga, lectura_anterior: newAnterior } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [closeoutId, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado, no se puede modificar' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [current] = await pool.query(
+            `SELECT lectura_anterior FROM gas_station_closeout_tank_readings WHERE id = ? AND closeout_id = ?`,
+            [id, closeoutId]
+        );
+        if (current.length === 0) return res.status(404).json({ message: 'Lectura de tanque no encontrada' });
+
+        const lectura_anterior = newAnterior !== undefined ? parseFloat(newAnterior) : parseFloat(current[0].lectura_anterior);
+        const newLectura = lectura_actual !== undefined ? parseFloat(lectura_actual) : undefined;
+        const newRecarga = recarga !== undefined ? parseFloat(recarga) : undefined;
+
+        const finalLectura = newLectura !== undefined ? newLectura : parseFloat(current[0].lectura_actual);
+        const finalRecarga = newRecarga !== undefined ? newRecarga : parseFloat(current[0].recarga);
+        const diferencia = lectura_anterior + finalRecarga - finalLectura;
+
+        await pool.query(`
+            UPDATE gas_station_closeout_tank_readings
+            SET lectura_actual = ?, recarga = ?, lectura_anterior = ?, diferencia = ?
+            WHERE id = ? AND closeout_id = ?
+        `, [finalLectura, finalRecarga, lectura_anterior, diferencia, id, closeoutId]);
+
+        res.json({ id: parseInt(id), lectura_actual: finalLectura, recarga: finalRecarga, lectura_anterior, diferencia });
+    } catch (error) {
+        console.error('Error updateTankReading:', error);
+        res.status(500).json({ message: 'Error al actualizar lectura de tanque' });
+    }
+};
+
 exports.deleteCloseout = async (req, res) => {
     try {
         const { id } = req.params;
 
         const [closeouts] = await pool.query(
-            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
         if (closeouts[0].estado === 'cerrado') {
             return res.status(400).json({ message: 'No se puede eliminar un cierre cerrado' });
         }
 
+        await pool.query(`DELETE FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`, [id]);
         await pool.query(`DELETE FROM gas_station_closeout_readings WHERE closeout_id = ?`, [id]);
         await pool.query(`DELETE FROM gas_station_closeouts WHERE id = ?`, [id]);
 
@@ -191,12 +371,15 @@ exports.closeCloseout = async (req, res) => {
         const { id } = req.params;
 
         const [closeouts] = await pool.query(
-            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
         if (closeouts[0].estado === 'cerrado') {
             return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
         await pool.query(
@@ -302,12 +485,15 @@ exports.saveExpenses = async (req, res) => {
         const { expenses } = req.body;
 
         const [closeouts] = await pool.query(
-            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
         if (closeouts[0].estado === 'cerrado') {
             return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
         await pool.query(`DELETE FROM gas_station_closeout_expenses WHERE closeout_id = ?`, [id]);
@@ -368,12 +554,15 @@ exports.deleteExpense = async (req, res) => {
         const { id, expenseId } = req.params;
 
         const [closeouts] = await pool.query(
-            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
         if (closeouts[0].estado === 'cerrado') {
             return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
         const [result] = await pool.query(

@@ -7,10 +7,12 @@ import Pagination from '../components/ui/Pagination';
 import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const GasReadingHistory = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -27,8 +29,8 @@ const GasReadingHistory = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['gas-closeouts', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/gas-station/closeouts', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['gas-closeouts', debouncedSearch, page, user?.branch_id],
+        queryFn: async () => (await axios.get('/api/gas-station/closeouts', { params: { search: debouncedSearch, page, branch_id: user?.branch_id } })).data
     });
 
     const { data: detailData, isLoading: detailLoading } = useQuery({
