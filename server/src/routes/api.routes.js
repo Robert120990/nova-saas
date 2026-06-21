@@ -37,6 +37,13 @@ const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
 const auditController = require('../controllers/audit.controller');
 
+// Gas Station Controllers
+const gasDistributorController = require('../controllers/gasDistributor.controller');
+const islandController = require('../controllers/island.controller');
+const nozzleController = require('../controllers/nozzle.controller');
+const tankController = require('../controllers/tank.controller');
+const gasCloseoutController = require('../controllers/gasCloseout.controller');
+
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
 router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
@@ -372,5 +379,37 @@ router.use('/ai', aiRoutes);
 // Industrial Egg Processing Module
 const eggIndustrialRoutes = require('./eggIndustrial.routes');
 router.use('/egg-industrial', eggIndustrialRoutes);
+
+// Gas Station - Distributors
+router.get('/gas-station/distributors', gasDistributorController.getDistributors);
+router.post('/gas-station/distributors', gasDistributorController.createDistributor);
+router.put('/gas-station/distributors/:id', gasDistributorController.updateDistributor);
+router.delete('/gas-station/distributors/:id', gasDistributorController.deleteDistributor);
+
+// Gas Station - Islands
+router.get('/gas-station/islands', islandController.getIslands);
+router.post('/gas-station/islands', islandController.createIsland);
+router.put('/gas-station/islands/:id', islandController.updateIsland);
+router.delete('/gas-station/islands/:id', islandController.deleteIsland);
+
+// Gas Station - Nozzles
+router.get('/gas-station/nozzles', nozzleController.getNozzles);
+router.post('/gas-station/nozzles', nozzleController.createNozzle);
+router.put('/gas-station/nozzles/:id', nozzleController.updateNozzle);
+router.delete('/gas-station/nozzles/:id', nozzleController.deleteNozzle);
+
+// Gas Station - Tanks
+router.get('/gas-station/tanks', tankController.getTanks);
+router.post('/gas-station/tanks', tankController.createTank);
+router.put('/gas-station/tanks/:id', tankController.updateTank);
+router.delete('/gas-station/tanks/:id', tankController.deleteTank);
+
+// Gas Station - Closeouts (Cierre de Lecturas)
+router.post('/gas-station/closeouts/init', gasCloseoutController.initCloseout);
+router.get('/gas-station/closeouts', gasCloseoutController.getCloseouts);
+router.get('/gas-station/closeouts/:id', gasCloseoutController.getCloseout);
+router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutController.updateReading);
+router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
+router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 
 module.exports = router;

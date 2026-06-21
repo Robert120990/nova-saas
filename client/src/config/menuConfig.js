@@ -27,7 +27,9 @@ import {
     Unlock,
     Sparkles,
     Undo2,
-    ScrollText
+    ScrollText,
+    Fuel,
+    Droplets
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -195,6 +197,28 @@ export const menuConfig = [
             { id: 'industrial-costs', label: 'Costeo y Mantenimiento', path: '/industrial/costos-mantenimiento', icon: Banknote, permission: 'manage_purchases' },
             { id: 'industrial-traceability', label: 'Trazabilidad 360°', path: '/industrial/trazabilidad', icon: History, permission: 'manage_kardex' },
             { id: 'industrial-config', label: 'Ajustes', path: '/industrial/configuracion', icon: Settings, permission: 'manage_system' }
+        ]
+    },
+    {
+        id: 'gasolinera',
+        label: 'Gasolinera',
+        icon: Fuel,
+        children: [
+            { 
+                id: 'gas-catalogos', 
+                label: 'Catálogos', 
+                icon: Package,
+                children: [
+                    { id: 'gas-distributors', label: 'Distribuidores', path: '/gas-station/distributors', icon: Truck, permission: 'manage_gas_station' },
+                    { id: 'gas-islands', label: 'Islas', path: '/gas-station/islands', icon: Monitor, permission: 'manage_gas_station' },
+                    { id: 'gas-nozzles', label: 'Mangueras', path: '/gas-station/nozzles', icon: Fuel, permission: 'manage_gas_station' },
+                    { id: 'gas-tanks', label: 'Tanques', path: '/gas-station/tanks', icon: Droplets, permission: 'manage_gas_station' },
+                ]
+            },
+            { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_station' },
+            { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'manage_gas_station' },
+            { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_station' },
+            { id: 'gas-reportes', label: 'Reportes', path: '/gas-station/reportes', icon: BarChart3, permission: 'manage_gas_station' },
         ]
     },
     {

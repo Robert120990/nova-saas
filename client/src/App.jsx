@@ -60,6 +60,14 @@ import Expenses from './pages/Expenses';
 import ExpenseReport from './pages/ExpenseReport';
 import PurchaseReport from './pages/PurchaseReport';
 
+// Gas Station Pages
+import GasDistributors from './pages/GasDistributors';
+import Islands from './pages/Islands';
+import Nozzles from './pages/Nozzles';
+import Tanks from './pages/Tanks';
+import GasCloseout from './pages/GasCloseout';
+import GasReadingHistory from './pages/GasReadingHistory';
+
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
 import VatBookSalesConsumers from './pages/VatBooks/VatBookSalesConsumers';
@@ -171,6 +179,14 @@ function App() {
                         <Route path="/cxp/reportes/saldos" element={<ProviderBalancesReport />} />
                         <Route path="/cxp/reportes/documentos-pendientes" element={<ProviderPendingDocumentsDetailedReport />} />
                         
+                        {/* Gas Station */}
+                        <Route path="/gas-station/distributors" element={<GasDistributors />} />
+                        <Route path="/gas-station/islands" element={<Islands />} />
+                        <Route path="/gas-station/nozzles" element={<Nozzles />} />
+                        <Route path="/gas-station/tanks" element={<Tanks />} />
+                        <Route path="/gas-station/cierre-lecturas" element={<GasCloseout />} />
+                        <Route path="/gas-station/historial-lecturas" element={<GasReadingHistory />} />
+
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
                         <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
