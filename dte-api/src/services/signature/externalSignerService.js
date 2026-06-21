@@ -12,7 +12,7 @@ async function signWithExternalSigner(dteJson, nit, certificatePassword) {
         : (process.env.SIGNER_URL_PROD || 'http://localhost:8113/firmardocumento/');
     
     try {
-        console.log('Signing with EXTERNAL signer...');
+        console.log('[Signature] Using signer URL:', signerUrl);
         
         const requestBody = {
             nit: nit.replace(/-/g, ''), // Back to digits only to avoid 809 format error
