@@ -8,7 +8,8 @@ export default defineConfig({
     host: 'localhost',
     proxy: {
       '/api': 'http://127.0.0.1:4000',
-      '/uploads': 'http://127.0.0.1:4000'
+      '/uploads': 'http://127.0.0.1:4000',
+      '/health': 'http://127.0.0.1:4000'
     }
   }
 })
