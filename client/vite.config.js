@@ -1,9 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { execSync } from 'child_process'
 
-// https://vitejs.dev/config/
+const gitCommit = execSync('git rev-parse --short HEAD').toString().trim()
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __GIT_COMMIT__: JSON.stringify(gitCommit)
+  },
   server: {
     port: 3000,
     host: 'localhost',
