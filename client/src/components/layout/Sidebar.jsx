@@ -136,6 +136,15 @@ const Sidebar = () => {
         );
     };
 
+    const [version, setVersion] = useState('...');
+
+    useEffect(() => {
+        fetch('/health')
+            .then(r => r.json())
+            .then(d => setVersion(d.version || '?'))
+            .catch(() => setVersion('?'));
+    }, []);
+
     return (
         <aside 
             onMouseLeave={handleMouseLeave}
@@ -166,6 +175,14 @@ const Sidebar = () => {
                     {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
                 </button>
             </div>
+
+            {!isCollapsed && (
+                <div className="px-6 py-3 border-b border-slate-800/30">
+                    <p className="text-[11px] font-mono text-indigo-400/70 font-semibold tracking-wide">
+                        Versión: {version}
+                    </p>
+                </div>
+            )}
 
             <nav className="flex-1 px-4 space-y-1 mt-6 overflow-y-auto pb-4 custom-scrollbar">
                 {/* Top-level items (e.g. Dashboard) */}
