@@ -501,13 +501,13 @@ async function generateDTE(payload) {
     if (rawDepto === '00' || parseInt(rawDepto) > 14) rawDepto = '06';
     if (rawMuni === '00') rawMuni = '01';
 
-    if (!receptor.direccion?.distrito) {
-        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" no tiene un distrito asignado en su dirección. Asigne un distrito antes de emitir el DTE.`);
+    let distritoReceptor = '01';
+    if (receptor.direccion?.distrito) {
+        if (!/^\d+$/.test(receptor.direccion.distrito)) {
+            throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
+        }
+        distritoReceptor = String(receptor.direccion.distrito).padStart(2, '0');
     }
-    if (!/^\d+$/.test(receptor.direccion.distrito)) {
-        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
-    }
-    let distritoReceptor = String(receptor.direccion.distrito).padStart(2, '0');
 
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
