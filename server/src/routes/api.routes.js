@@ -412,4 +412,15 @@ router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutContr
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 
+// Gas Station - Expense Categories
+router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);
+router.post('/gas-station/expense-categories', gasCloseoutController.createExpenseCategory);
+router.put('/gas-station/expense-categories/:id', gasCloseoutController.updateExpenseCategory);
+router.delete('/gas-station/expense-categories/:id', gasCloseoutController.deleteExpenseCategory);
+
+// Gas Station - Closeout Expenses
+router.get('/gas-station/closeouts/:id/expenses', gasCloseoutController.getExpenses);
+router.post('/gas-station/closeouts/:id/expenses', gasCloseoutController.saveExpenses);
+router.delete('/gas-station/closeouts/:id/expenses/:expenseId', gasCloseoutController.deleteExpense);
+
 module.exports = router;

@@ -210,3 +210,150 @@ exports.closeCloseout = async (req, res) => {
         res.status(500).json({ message: 'Error al cerrar cierre de lecturas' });
     }
 };
+
+// === Expense Categories ===
+
+exports.getExpenseCategories = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT id, name FROM gas_station_expense_categories WHERE company_id = ? ORDER BY name`,
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getExpenseCategories:', error);
+        res.status(500).json({ message: 'Error al obtener rubros' });
+    }
+};
+
+exports.createExpenseCategory = async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ message: 'Nombre es requerido' });
+        const [result] = await pool.query(
+            `INSERT INTO gas_station_expense_categories (company_id, name) VALUES (?, ?)`,
+            [req.company_id, name]
+        );
+        res.status(201).json({ id: result.insertId, name });
+    } catch (error) {
+        console.error('Error createExpenseCategory:', error);
+        res.status(500).json({ message: 'Error al crear rubro' });
+    }
+};
+
+exports.updateExpenseCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ message: 'Nombre es requerido' });
+        const [result] = await pool.query(
+            `UPDATE gas_station_expense_categories SET name = ? WHERE id = ? AND company_id = ?`,
+            [name, id, req.company_id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Rubro no encontrado' });
+        res.json({ id: parseInt(id), name });
+    } catch (error) {
+        console.error('Error updateExpenseCategory:', error);
+        res.status(500).json({ message: 'Error al actualizar rubro' });
+    }
+};
+
+exports.deleteExpenseCategory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [result] = await pool.query(
+            `DELETE FROM gas_station_expense_categories WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Rubro no encontrado' });
+        res.json({ message: 'Rubro eliminado' });
+    } catch (error) {
+        console.error('Error deleteExpenseCategory:', error);
+        res.status(500).json({ message: 'Error al eliminar rubro' });
+    }
+};
+
+// === Closeout Expenses ===
+
+exports.getExpenses = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_expenses WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getExpenses:', error);
+        res.status(500).json({ message: 'Error al obtener gastos' });
+    }
+};
+
+exports.saveExpenses = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { expenses } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_expenses WHERE closeout_id = ?`, [id]);
+
+        if (expenses && expenses.length > 0) {
+            const values = expenses.map(e => [
+                parseInt(id),
+                e.rubro || '',
+                e.fecha || null,
+                e.documento || '',
+                e.tipo || 'ccf',
+                e.proveedor || '',
+                parseFloat(e.valor) || 0
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_expenses (closeout_id, rubro, fecha, documento, tipo, proveedor, valor) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(
+            `SELECT * FROM gas_station_closeout_expenses WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveExpenses:', error);
+        res.status(500).json({ message: 'Error al guardar gastos' });
+    }
+};
+
+exports.deleteExpense = async (req, res) => {
+    try {
+        const { id, expenseId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+
+        const [result] = await pool.query(
+            `DELETE FROM gas_station_closeout_expenses WHERE id = ? AND closeout_id = ?`,
+            [expenseId, id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Gasto no encontrado' });
+        res.json({ message: 'Gasto eliminado' });
+    } catch (error) {
+        console.error('Error deleteExpense:', error);
+        res.status(500).json({ message: 'Error al eliminar gasto' });
+    }
+};

@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft
+    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -24,6 +24,11 @@ const GasCloseout = () => {
     const [numeroTurno, setNumeroTurno] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
     const [editAnterior, setEditAnterior] = useState(false);
+    const [showGastosModal, setShowGastosModal] = useState(false);
+    const [gastos, setGastos] = useState([]);
+    const [expenseCategories, setExpenseCategories] = useState([]);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
 
     const inputRefs = useRef({});
 
@@ -86,6 +91,74 @@ const GasCloseout = () => {
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
     });
+
+    const saveExpensesMutation = useMutation({
+        mutationFn: (expenses) => axios.post(`/api/gas-station/closeouts/${closeoutId}/expenses`, { expenses }),
+        onSuccess: (res) => {
+            setGastos(res.data);
+            toast.success('Gastos guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar gastos')
+    });
+
+    const gastosTotal = useMemo(() =>
+        gastos.reduce((s, e) => s + (parseFloat(e.valor) || 0), 0),
+    [gastos]);
+
+    const { data: existingExpenses } = useQuery({
+        queryKey: ['gas-closeout-expenses', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/expenses`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingExpenses) setGastos(existingExpenses);
+    }, [existingExpenses]);
+
+    const loadExpenseCategories = async () => {
+        try {
+            const res = await axios.get('/api/gas-station/expense-categories');
+            setExpenseCategories(res.data);
+        } catch { }
+    };
+
+    const handleOpenGastos = () => {
+        loadExpenseCategories();
+        setShowGastosModal(true);
+    };
+
+    const handleAddGastoRow = () => {
+        setGastos(prev => [...prev, {
+            id: Date.now(),
+            rubro: '',
+            fecha: new Date().toISOString().split('T')[0],
+            documento: '',
+            tipo: 'ccf',
+            proveedor: '',
+            valor: 0
+        }]);
+    };
+
+    const handleGastoChange = (id, field, value) => {
+        setGastos(prev => prev.map(g => g.id === id ? { ...g, [field]: value } : g));
+    };
+
+    const handleRemoveGasto = (id) => {
+        setGastos(prev => prev.filter(g => g.id !== id));
+    };
+
+    const handleCreateCategory = async () => {
+        if (!newCategoryName.trim()) return;
+        try {
+            const res = await axios.post('/api/gas-station/expense-categories', { name: newCategoryName.trim() });
+            setExpenseCategories(prev => [...prev, res.data]);
+            setNewCategoryName('');
+            setShowNewCategoryInput(false);
+            toast.success('Rubro creado');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al crear rubro');
+        }
+    };
 
     const summaryByProduct = useMemo(() => {
         const map = {};
@@ -171,7 +244,7 @@ const GasCloseout = () => {
 
     const actionButtons = [
         { label: 'Lecturas', icon: Fuel, key: 'lecturas', enabled: true },
-        { label: 'Gastos', icon: Receipt, key: 'gastos' },
+        { label: 'Gastos', icon: Receipt, key: 'gastos', enabled: true },
         { label: 'Cupones', icon: CreditCard, key: 'cupones' },
         { label: 'Créditos', icon: CreditCard, key: 'creditos' },
         { label: 'Vales', icon: Gift, key: 'vales' },
@@ -327,7 +400,7 @@ const GasCloseout = () => {
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 text-xs">
                                             {[
-                                                'Gastos', 'Cupones', 'Créditos', 'Vales', 'Descuentos',
+                                                'Cupones', 'Créditos', 'Vales', 'Descuentos',
                                                 'Anticipos Desp.', 'Remesas', 'Tarjetas', 'Adelantos'
                                             ].map(label => (
                                                 <tr key={label} className="hover:bg-slate-50 transition-colors">
@@ -335,11 +408,15 @@ const GasCloseout = () => {
                                                     <td className="px-3 py-1.5 text-right font-mono text-slate-400">$0.00</td>
                                                 </tr>
                                             ))}
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Gastos</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${gastosTotal.toFixed(2)}</td>
+                                            </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Egresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">$0.00</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">${gastosTotal.toFixed(2)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -351,8 +428,8 @@ const GasCloseout = () => {
                                 </div>
                                 <div className="px-4 py-3 flex items-center justify-between">
                                     <span className="text-xs font-medium text-slate-500">Ingresos - Egresos</span>
-                                    <span className={`text-lg font-black font-mono ${totals.totalMonto >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        ${totals.totalMonto.toFixed(2)}
+                                    <span className={`text-lg font-black font-mono ${(totals.totalMonto - gastosTotal) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        ${(totals.totalMonto - gastosTotal).toFixed(2)}
                                     </span>
                                 </div>
                             </div>
@@ -364,12 +441,14 @@ const GasCloseout = () => {
                                     {actionButtons.map(btn => {
                                         const Icon = btn.icon;
                                         const isLectura = btn.key === 'lecturas';
-                                        const canClick = isLectura || (btn.enabled && estado === 'abierto');
+                                        const isGastos = btn.key === 'gastos';
+                                        const canClick = isLectura || isGastos || (btn.enabled && estado === 'abierto');
                                         return (
                                             <button
                                                 key={btn.key}
                                                 onClick={() => {
                                                     if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); }
+                                                    if (isGastos) handleOpenGastos();
                                                 }}
                                                 disabled={!canClick}
                                                 className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
@@ -487,6 +566,183 @@ const GasCloseout = () => {
                                         })}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showGastosModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowGastosModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl max-h-[90vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Receipt size={16} className="text-indigo-600" />
+                                    Gastos del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowGastosModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Rubro</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Fecha</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Tipo</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Proveedor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Valor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {gastos.length === 0 && (
+                                            <tr>
+                                                <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay gastos registrados. Agregue un gasto para comenzar.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {gastos.map(g => (
+                                            <tr key={g.id} className="text-[11px] hover:bg-slate-50 transition-colors">
+                                                <td className="px-1.5 py-1">
+                                                    {showNewCategoryInput ? (
+                                                        <div className="flex gap-1">
+                                                            <input
+                                                                type="text"
+                                                                value={newCategoryName}
+                                                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                                                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateCategory(); if (e.key === 'Escape') setShowNewCategoryInput(false); }}
+                                                                placeholder="Nuevo rubro..."
+                                                                className="w-full px-1.5 py-0.5 bg-white border border-indigo-300 rounded text-[11px] outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                                autoFocus
+                                                            />
+                                                            <button onClick={handleCreateCategory} className="p-0.5 text-indigo-600 hover:text-indigo-800">
+                                                                <Plus size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <select
+                                                            value={g.rubro}
+                                                            onChange={(e) => {
+                                                                if (e.target.value === '__new__') {
+                                                                    setShowNewCategoryInput(true);
+                                                                    setNewCategoryName('');
+                                                                } else {
+                                                                    handleGastoChange(g.id, 'rubro', e.target.value);
+                                                                }
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Seleccionar...</option>
+                                                            {expenseCategories.map(c => (
+                                                                <option key={c.id} value={c.name}>{c.name}</option>
+                                                            ))}
+                                                            <option value="__new__">+ Nuevo rubro...</option>
+                                                        </select>
+                                                    )}
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="date"
+                                                        value={g.fecha}
+                                                        onChange={(e) => handleGastoChange(g.id, 'fecha', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={g.documento}
+                                                        onChange={(e) => handleGastoChange(g.id, 'documento', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="N° documento"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={g.tipo}
+                                                        onChange={(e) => handleGastoChange(g.id, 'tipo', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="ccf">CCF</option>
+                                                        <option value="cmp">CMP</option>
+                                                        <option value="fac">FAC</option>
+                                                        <option value="tic">TIC</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={g.proveedor}
+                                                        onChange={(e) => handleGastoChange(g.id, 'proveedor', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="Proveedor"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={g.valor || ''}
+                                                        onChange={(e) => handleGastoChange(g.id, 'valor', parseFloat(e.target.value) || 0)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="0.00"
+                                                        className="w-20 text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-center">
+                                                    {estado !== 'cerrado' && (
+                                                        <button
+                                                            onClick={() => handleRemoveGasto(g.id)}
+                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {estado !== 'cerrado' && (
+                                    <div className="flex items-center justify-between mt-3">
+                                        <button
+                                            onClick={handleAddGastoRow}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Agregar Gasto
+                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-xs text-slate-500">
+                                                Total Gastos: <strong className="text-red-600 font-mono text-sm">${gastosTotal.toFixed(2)}</strong>
+                                            </span>
+                                            <button
+                                                onClick={() => saveExpensesMutation.mutate(gastos)}
+                                                disabled={saveExpensesMutation.isPending}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                            >
+                                                {saveExpensesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {saveExpensesMutation.isPending ? 'Guardando...' : 'Guardar Gastos'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
