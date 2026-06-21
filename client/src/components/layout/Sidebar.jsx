@@ -139,8 +139,7 @@ const Sidebar = () => {
     const [version, setVersion] = useState('...');
 
     useEffect(() => {
-        const serverUrl = import.meta.env.VITE_SERVER_URL || '';
-        fetch(`${serverUrl}/health`)
+        fetch('/health')
             .then(r => r.json())
             .then(d => setVersion(d.version || '?'))
             .catch(() => setVersion('?'));
