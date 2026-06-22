@@ -202,4 +202,54 @@ const updateFuelPrices = async (req, res) => {
     }
 };
 
-module.exports = { getProducts, createProduct, updateProduct, deleteProduct, getFuelProducts, updateFuelPrices };
+const getLubricantProducts = async (req, res) => {
+    try {
+        const [settings] = await pool.query(
+            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND setting_key = 'lubricant_category_id'`,
+            [req.company_id]
+        );
+        const categoryId = settings[0]?.setting_value;
+        if (!categoryId) {
+            return res.json([]);
+        }
+
+        const [products] = await pool.query(`
+            SELECT p.id, p.codigo, p.descripcion, p.precio_unitario
+            FROM products p
+            WHERE p.company_id = ? AND p.category_id = ?
+            ORDER BY p.codigo ASC
+        `, [req.company_id, categoryId]);
+
+        if (products.length === 0) return res.json([]);
+
+        const [lastReadings] = await pool.query(`
+            SELECT lr.producto_id, lr.lectura_final
+            FROM gas_station_closeout_lubricant_readings lr
+            JOIN gas_station_closeouts c ON c.id = lr.closeout_id
+            WHERE c.company_id = ? AND c.id < (
+                SELECT COALESCE(MAX(c2.id), 0) FROM gas_station_closeouts c2
+                WHERE c2.company_id = ? AND c2.estado = 'cerrado'
+            )
+            ORDER BY lr.id DESC
+        `, [req.company_id, req.company_id]);
+
+        const lastReadingMap = {};
+        lastReadings.forEach(r => {
+            if (!lastReadingMap[r.producto_id]) {
+                lastReadingMap[r.producto_id] = parseFloat(r.lectura_final) || 0;
+            }
+        });
+
+        const result = products.map(p => ({
+            ...p,
+            lectura_inicial: lastReadingMap[p.id] || 0,
+        }));
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error in getLubricantProducts:', error);
+        res.status(500).json({ message: 'Error al obtener lubricantes' });
+    }
+};
+
+module.exports = { getProducts, createProduct, updateProduct, deleteProduct, getFuelProducts, updateFuelPrices, getLubricantProducts };

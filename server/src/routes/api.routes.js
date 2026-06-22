@@ -43,6 +43,7 @@ const islandController = require('../controllers/island.controller');
 const nozzleController = require('../controllers/nozzle.controller');
 const tankController = require('../controllers/tank.controller');
 const gasCloseoutController = require('../controllers/gasCloseout.controller');
+const gasConfigController = require('../controllers/gasConfig.controller');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -424,5 +425,36 @@ router.delete('/gas-station/expense-categories/:id', gasCloseoutController.delet
 router.get('/gas-station/closeouts/:id/expenses', gasCloseoutController.getExpenses);
 router.post('/gas-station/closeouts/:id/expenses', gasCloseoutController.saveExpenses);
 router.delete('/gas-station/closeouts/:id/expenses/:expenseId', gasCloseoutController.deleteExpense);
+
+// Gas Station - Closeout Remesas
+router.get('/gas-station/closeouts/:id/remesas', gasCloseoutController.getRemesas);
+router.post('/gas-station/closeouts/:id/remesas', gasCloseoutController.saveRemesas);
+router.delete('/gas-station/closeouts/:id/remesas/:remesaId', gasCloseoutController.deleteRemesa);
+
+// Gas Station - Closeout Cupones
+router.get('/gas-station/closeouts/:id/cupones', gasCloseoutController.getCupones);
+router.post('/gas-station/closeouts/:id/cupones', gasCloseoutController.saveCupones);
+router.delete('/gas-station/closeouts/:id/cupones/:cuponId', gasCloseoutController.deleteCupon);
+
+// Gas Station - Closeout Descuentos
+router.get('/gas-station/closeouts/:id/descuentos', gasCloseoutController.getDescuentos);
+router.post('/gas-station/closeouts/:id/descuentos', gasCloseoutController.saveDescuentos);
+router.delete('/gas-station/closeouts/:id/descuentos/:descuentoId', gasCloseoutController.deleteDescuento);
+
+// Gas Station - Closeout Adelantos
+router.get('/gas-station/closeouts/:id/adelantos', gasCloseoutController.getAdelantos);
+router.post('/gas-station/closeouts/:id/adelantos', gasCloseoutController.saveAdelantos);
+router.delete('/gas-station/closeouts/:id/adelantos/:adelantoId', gasCloseoutController.deleteAdelanto);
+
+// Gas Station - Settings
+router.get('/gas-station/settings', gasConfigController.getSettings);
+router.put('/gas-station/settings', gasConfigController.updateSettings);
+
+// Gas Station - Lubricant Products
+router.get('/products/lubricants', productController.getLubricantProducts);
+
+// Gas Station - Closeout Lubricant Readings
+router.get('/gas-station/closeouts/:id/lubricantes', gasCloseoutController.getLubricantReadings);
+router.post('/gas-station/closeouts/:id/lubricantes', gasCloseoutController.saveLubricantReadings);
 
 module.exports = router;

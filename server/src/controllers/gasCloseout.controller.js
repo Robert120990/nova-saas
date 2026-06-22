@@ -355,6 +355,8 @@ exports.deleteCloseout = async (req, res) => {
             return res.status(400).json({ message: 'No se puede eliminar un cierre cerrado' });
         }
 
+        await pool.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
+        await pool.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
         await pool.query(`DELETE FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`, [id]);
         await pool.query(`DELETE FROM gas_station_closeout_readings WHERE closeout_id = ?`, [id]);
         await pool.query(`DELETE FROM gas_station_closeouts WHERE id = ?`, [id]);
@@ -380,6 +382,52 @@ exports.closeCloseout = async (req, res) => {
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const branchId = req.user?.branch_id || null;
+        const [settingsRows] = await pool.query(
+            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'variacion_permitida'`,
+            [req.company_id, branchId, branchId]
+        );
+        const variacionPermitida = parseFloat(settingsRows[0]?.setting_value) || 0;
+
+        if (variacionPermitida > 0) {
+            const [[{ totalMonto }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as totalMonto FROM gas_station_closeout_readings WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ lubricantTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(total), 0) as lubricantTotal FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ gastosTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(valor), 0) as gastosTotal FROM gas_station_closeout_expenses WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ remesasTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as remesasTotal FROM gas_station_closeout_remesas WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ cuponesTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as cuponesTotal FROM gas_station_closeout_cupones WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ descuentosTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(total), 0) as descuentosTotal FROM gas_station_closeout_descuentos WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ adelantosTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as adelantosTotal FROM gas_station_closeout_adelantos WHERE closeout_id = ?`,
+                [id]
+            );
+
+            const diferencia = (parseFloat(totalMonto) + parseFloat(lubricantTotal)) - (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal));
+
+            if (Math.abs(diferencia) > variacionPermitida) {
+                return res.status(400).json({
+                    message: `La diferencia de $${Math.abs(diferencia).toFixed(2)} excede la variación permitida de $${variacionPermitida.toFixed(2)}. Revise los datos antes de cerrar.`
+                });
+            }
         }
 
         await pool.query(
@@ -574,5 +622,462 @@ exports.deleteExpense = async (req, res) => {
     } catch (error) {
         console.error('Error deleteExpense:', error);
         res.status(500).json({ message: 'Error al eliminar gasto' });
+    }
+};
+
+// === Closeout Remesas ===
+
+exports.getRemesas = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_remesas WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getRemesas:', error);
+        res.status(500).json({ message: 'Error al obtener remesas' });
+    }
+};
+
+exports.saveRemesas = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { remesas } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        // REPLACE-ALL STRATEGY
+        await pool.query(`DELETE FROM gas_station_closeout_remesas WHERE closeout_id = ?`, [id]);
+
+        if (remesas && remesas.length > 0) {
+            const values = remesas.map(r => [
+                parseInt(id),
+                r.documento || '',
+                r.descripcion || '',
+                r.tipo_operacion || 'venta_combustible',
+                parseFloat(r.monto) || 0
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_remesas (closeout_id, documento, descripcion, tipo_operacion, monto) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(
+            `SELECT * FROM gas_station_closeout_remesas WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveRemesas:', error);
+        res.status(500).json({ message: 'Error al guardar remesas' });
+    }
+};
+
+exports.deleteRemesa = async (req, res) => {
+    try {
+        const { id, remesaId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [result] = await pool.query(
+            `DELETE FROM gas_station_closeout_remesas WHERE id = ? AND closeout_id = ?`,
+            [remesaId, id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Remesa no encontrada' });
+        res.json({ message: 'Remesa eliminada' });
+    } catch (error) {
+        console.error('Error deleteRemesa:', error);
+        res.status(500).json({ message: 'Error al eliminar remesa' });
+    }
+};
+
+// === Closeout Cupones ===
+
+exports.getCupones = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_cupones WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getCupones:', error);
+        res.status(500).json({ message: 'Error al obtener cupones' });
+    }
+};
+
+exports.saveCupones = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { cupones } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        // REPLACE-ALL STRATEGY
+        await pool.query(`DELETE FROM gas_station_closeout_cupones WHERE closeout_id = ?`, [id]);
+
+        if (cupones && cupones.length > 0) {
+            const distributorIds = cupones.filter(c => c.distribuidora_id).map(c => parseInt(c.distribuidora_id));
+            const distributorMap = {};
+            if (distributorIds.length > 0) {
+                const [distributors] = await pool.query(
+                    `SELECT id, descripcion FROM gas_station_distributors WHERE id IN (?) AND company_id = ?`,
+                    [distributorIds, req.company_id]
+                );
+                distributors.forEach(d => { distributorMap[d.id] = d.descripcion; });
+            }
+
+            const values = cupones.map(c => {
+                const distribuidoraId = c.distribuidora_id ? parseInt(c.distribuidora_id) : null;
+                const distribuidoraNombre = distribuidoraId ? (distributorMap[distribuidoraId] || '') : '';
+                return [
+                    parseInt(id),
+                    c.cupon || '',
+                    distribuidoraId,
+                    distribuidoraNombre,
+                    c.producto_codigo || '',
+                    c.producto_descripcion || '',
+                    parseFloat(c.monto) || 0
+                ];
+            });
+            await pool.query(
+                `INSERT INTO gas_station_closeout_cupones (closeout_id, cupon, distribuidora_id, distribuidora_nombre, producto_codigo, producto_descripcion, monto) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(
+            `SELECT * FROM gas_station_closeout_cupones WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveCupones:', error);
+        res.status(500).json({ message: 'Error al guardar cupones' });
+    }
+};
+
+exports.deleteCupon = async (req, res) => {
+    try {
+        const { id, cuponId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [result] = await pool.query(
+            `DELETE FROM gas_station_closeout_cupones WHERE id = ? AND closeout_id = ?`,
+            [cuponId, id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Cupón no encontrado' });
+        res.json({ message: 'Cupón eliminado' });
+    } catch (error) {
+        console.error('Error deleteCupon:', error);
+        res.status(500).json({ message: 'Error al eliminar cupón' });
+    }
+};
+
+// === Closeout Descuentos ===
+
+exports.getDescuentos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_descuentos WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getDescuentos:', error);
+        res.status(500).json({ message: 'Error al obtener descuentos' });
+    }
+};
+
+exports.saveDescuentos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { descuentos } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_descuentos WHERE closeout_id = ?`, [id]);
+
+        if (descuentos && descuentos.length > 0) {
+            const clienteIds = descuentos.filter(d => d.cliente_id).map(d => parseInt(d.cliente_id));
+            const clienteMap = {};
+            if (clienteIds.length > 0) {
+                const [clientes] = await pool.query(
+                    `SELECT id, nombre FROM customers WHERE id IN (?) AND company_id = ?`,
+                    [clienteIds, req.company_id]
+                );
+                clientes.forEach(c => { clienteMap[c.id] = c.nombre; });
+            }
+
+            const values = descuentos.map(d => {
+                const clienteId = d.cliente_id ? parseInt(d.cliente_id) : null;
+                const clienteNombre = clienteId ? (clienteMap[clienteId] || '') : '';
+                const cantidad = parseFloat(d.cantidad) || 0;
+                const valor = parseFloat(d.valor) || 0;
+                const total = cantidad * valor;
+                return [
+                    parseInt(id),
+                    d.documento || '',
+                    clienteId,
+                    clienteNombre,
+                    d.producto_codigo || '',
+                    d.producto_descripcion || '',
+                    cantidad,
+                    valor,
+                    total
+                ];
+            });
+            await pool.query(
+                `INSERT INTO gas_station_closeout_descuentos (closeout_id, documento, cliente_id, cliente_nombre, producto_codigo, producto_descripcion, cantidad, valor, total) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(
+            `SELECT * FROM gas_station_closeout_descuentos WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveDescuentos:', error);
+        res.status(500).json({ message: 'Error al guardar descuentos' });
+    }
+};
+
+exports.deleteDescuento = async (req, res) => {
+    try {
+        const { id, descuentoId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [result] = await pool.query(
+            `DELETE FROM gas_station_closeout_descuentos WHERE id = ? AND closeout_id = ?`,
+            [descuentoId, id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Descuento no encontrado' });
+        res.json({ message: 'Descuento eliminado' });
+    } catch (error) {
+        console.error('Error deleteDescuento:', error);
+        res.status(500).json({ message: 'Error al eliminar descuento' });
+    }
+};
+
+// === Closeout Adelantos ===
+
+exports.getAdelantos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_adelantos WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getAdelantos:', error);
+        res.status(500).json({ message: 'Error al obtener adelantos' });
+    }
+};
+
+exports.saveAdelantos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { adelantos } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
+
+        if (adelantos && adelantos.length > 0) {
+            const values = adelantos.map(a => [
+                parseInt(id),
+                a.empleado || '',
+                parseFloat(a.monto) || 0
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_adelantos (closeout_id, empleado, monto) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(
+            `SELECT * FROM gas_station_closeout_adelantos WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveAdelantos:', error);
+        res.status(500).json({ message: 'Error al guardar adelantos' });
+    }
+};
+
+exports.deleteAdelanto = async (req, res) => {
+    try {
+        const { id, adelantoId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [result] = await pool.query(
+            `DELETE FROM gas_station_closeout_adelantos WHERE id = ? AND closeout_id = ?`,
+            [adelantoId, id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Adelanto no encontrado' });
+        res.json({ message: 'Adelanto eliminado' });
+    } catch (error) {
+        console.error('Error deleteAdelanto:', error);
+        res.status(500).json({ message: 'Error al eliminar adelanto' });
+    }
+};
+
+exports.getLubricantReadings = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getLubricantReadings:', error);
+        res.status(500).json({ message: 'Error al obtener lecturas de lubricantes' });
+    }
+};
+
+exports.saveLubricantReadings = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { readings } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
+
+        if (readings && readings.length > 0) {
+            const values = readings.map(r => [
+                parseInt(id),
+                r.producto_id || null,
+                r.producto_codigo || '',
+                r.producto_descripcion || '',
+                parseFloat(r.lectura_inicial) || 0,
+                parseFloat(r.recarga) || 0,
+                parseFloat(r.lectura_final) || 0,
+                parseFloat(r.ventas) || 0,
+                parseFloat(r.precio) || 0,
+                parseFloat(r.total) || 0
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_lubricant_readings 
+                 (closeout_id, producto_id, producto_codigo, producto_descripcion, lectura_inicial, recarga, lectura_final, ventas, precio, total) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(
+            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`,
+            [id]
+        );
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveLubricantReadings:', error);
+        res.status(500).json({ message: 'Error al guardar lecturas de lubricantes' });
     }
 };

@@ -9,6 +9,7 @@ import {
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 
 const GasCloseout = () => {
@@ -16,6 +17,7 @@ const GasCloseout = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const { user } = useAuth();
+    const confirm = useConfirm();
     const editId = searchParams.get('editId');
 
     const toDateStr = (v) => {
@@ -40,9 +42,20 @@ const GasCloseout = () => {
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
     const [tankReadings, setTankReadings] = useState([]);
     const [showTankReadingsModal, setShowTankReadingsModal] = useState(false);
+    const [showRemesasModal, setShowRemesasModal] = useState(false);
+    const [remesas, setRemesas] = useState([]);
+    const [showCuponesModal, setShowCuponesModal] = useState(false);
+    const [cupones, setCupones] = useState([]);
+    const [showDescuentosModal, setShowDescuentosModal] = useState(false);
+    const [descuentos, setDescuentos] = useState([]);
+    const [showAdelantosModal, setShowAdelantosModal] = useState(false);
+    const [adelantos, setAdelantos] = useState([]);
+    const [showLubricantesModal, setShowLubricantesModal] = useState(false);
+    const [lubricantReadings, setLubricantReadings] = useState([]);
 
     const inputRefs = useRef({});
     const tankInputRefs = useRef({});
+    const lubricantInputRefs = useRef({});
 
     useEffect(() => {
         const handler = (e) => {
@@ -128,9 +141,73 @@ const GasCloseout = () => {
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar gastos')
     });
 
+    const saveRemesasMutation = useMutation({
+        mutationFn: (remesas) => axios.post(`/api/gas-station/closeouts/${closeoutId}/remesas`, { remesas }),
+        onSuccess: (res) => {
+            setRemesas(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-remesas', closeoutId] });
+            setShowRemesasModal(false);
+            toast.success('Remesas guardadas');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar remesas')
+    });
+
     const gastosTotal = useMemo(() =>
         gastos.reduce((s, e) => s + (parseFloat(e.valor) || 0), 0),
     [gastos]);
+
+    const remesasTotal = useMemo(() =>
+        remesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0),
+    [remesas]);
+
+    const saveCuponesMutation = useMutation({
+        mutationFn: (cupones) => axios.post(`/api/gas-station/closeouts/${closeoutId}/cupones`, { cupones }),
+        onSuccess: (res) => {
+            setCupones(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-cupones', closeoutId] });
+            setShowCuponesModal(false);
+            toast.success('Cupones guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar cupones')
+    });
+
+    const cuponesTotal = useMemo(() =>
+        cupones.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0),
+    [cupones]);
+
+    const saveDescuentosMutation = useMutation({
+        mutationFn: (descuentos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/descuentos`, { descuentos }),
+        onSuccess: (res) => {
+            setDescuentos(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-descuentos', closeoutId] });
+            setShowDescuentosModal(false);
+            toast.success('Descuentos guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar descuentos')
+    });
+
+    const descuentosTotal = useMemo(() =>
+        descuentos.reduce((s, d) => s + (parseFloat(d.total) || 0), 0),
+    [descuentos]);
+
+    const saveAdelantosMutation = useMutation({
+        mutationFn: (adelantos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/adelantos`, { adelantos }),
+        onSuccess: (res) => {
+            setAdelantos(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-adelantos', closeoutId] });
+            setShowAdelantosModal(false);
+            toast.success('Adelantos guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar adelantos')
+    });
+
+    const adelantosTotal = useMemo(() =>
+        adelantos.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0),
+    [adelantos]);
+
+    const lubricantTotal = useMemo(() =>
+        lubricantReadings.reduce((s, r) => s + (parseFloat(r.total) || 0), 0),
+    [lubricantReadings]);
 
     const { data: existingExpenses } = useQuery({
         queryKey: ['gas-closeout-expenses', closeoutId],
@@ -142,11 +219,76 @@ const GasCloseout = () => {
         if (existingExpenses) setGastos(existingExpenses.map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
     }, [existingExpenses]);
 
+    const { data: existingRemesas } = useQuery({
+        queryKey: ['gas-closeout-remesas', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/remesas`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingRemesas) setRemesas(existingRemesas);
+    }, [existingRemesas]);
+
+    const { data: existingCupones } = useQuery({
+        queryKey: ['gas-closeout-cupones', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/cupones`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingCupones) setCupones(existingCupones);
+    }, [existingCupones]);
+
+    const { data: existingDescuentos } = useQuery({
+        queryKey: ['gas-closeout-descuentos', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/descuentos`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingDescuentos) setDescuentos(existingDescuentos);
+    }, [existingDescuentos]);
+
+    const { data: existingAdelantos } = useQuery({
+        queryKey: ['gas-closeout-adelantos', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/adelantos`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingAdelantos) setAdelantos(existingAdelantos);
+    }, [existingAdelantos]);
+
+    const saveLubricantesMutation = useMutation({
+        mutationFn: (readings) => axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings }),
+        onSuccess: (res) => {
+            setLubricantReadings(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-lubricantes', closeoutId] });
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lubricantes')
+    });
+
+    const { data: existingLubricantes } = useQuery({
+        queryKey: ['gas-closeout-lubricantes', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/lubricantes`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingLubricantes) setLubricantReadings(existingLubricantes);
+    }, [existingLubricantes]);
+
     const { data: providersData } = useQuery({
         queryKey: ['providers-all'],
         queryFn: async () => (await axios.get('/api/providers', { params: { limit: 500 } })).data?.data || [],
     });
     const providers = providersData || [];
+
+    const { data: customersData } = useQuery({
+        queryKey: ['customers-all'],
+        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000 } })).data?.data || [],
+    });
+    const customers = customersData || [];
 
     const loadExpenseCategories = async () => {
         try {
@@ -193,6 +335,130 @@ const GasCloseout = () => {
             toast.error(error.response?.data?.message || 'Error al crear rubro');
         }
     };
+
+    const handleOpenRemesas = () => {
+        setShowRemesasModal(true);
+    };
+
+    const handleAddRemesaRow = () => {
+        setRemesas(prev => [...prev, {
+            id: Date.now(),
+            documento: '',
+            descripcion: '',
+            tipo_operacion: 'venta_combustible',
+            monto: 0
+        }]);
+    };
+
+    const handleRemesaChange = (id, field, value) => {
+        setRemesas(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    };
+
+    const handleRemoveRemesa = (id) => {
+        setRemesas(prev => prev.filter(r => r.id !== id));
+    };
+
+    const handleOpenCupones = () => {
+        setShowCuponesModal(true);
+    };
+
+    const handleAddCuponRow = () => {
+        setCupones(prev => [...prev, {
+            id: Date.now(),
+            cupon: '',
+            distribuidora_id: '',
+            distribuidora_nombre: '',
+            producto_codigo: '',
+            producto_descripcion: '',
+            monto: 0
+        }]);
+    };
+
+    const handleCuponChange = (id, field, value) => {
+        setCupones(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+    };
+
+    const handleRemoveCupon = (id) => {
+        setCupones(prev => prev.filter(c => c.id !== id));
+    };
+
+    const handleOpenDescuentos = () => {
+        setShowDescuentosModal(true);
+    };
+
+    const handleAddDescuentoRow = () => {
+        setDescuentos(prev => [...prev, {
+            id: Date.now(),
+            documento: '',
+            cliente_id: '',
+            cliente_nombre: '',
+            producto_codigo: '',
+            producto_descripcion: '',
+            cantidad: 0,
+            valor: 0,
+            total: 0
+        }]);
+    };
+
+    const handleDescuentoChange = (id, field, value) => {
+        setDescuentos(prev => prev.map(d => {
+            if (d.id !== id) return d;
+            const updated = { ...d, [field]: value };
+            if (field === 'cantidad' || field === 'valor') {
+                updated.total = (parseFloat(updated.cantidad) || 0) * (parseFloat(updated.valor) || 0);
+            }
+            return updated;
+        }));
+    };
+
+    const toFloat = (v) => { const f = parseFloat(v); return isNaN(f) ? '' : f; };
+
+    const handleRemoveDescuento = (id) => {
+        setDescuentos(prev => prev.filter(d => d.id !== id));
+    };
+
+    const handleOpenAdelantos = () => {
+        setShowAdelantosModal(true);
+    };
+
+    const handleAddAdelantoRow = () => {
+        setAdelantos(prev => [...prev, {
+            id: Date.now(),
+            empleado: '',
+            monto: 0
+        }]);
+    };
+
+    const handleAdelantoChange = (id, field, value) => {
+        setAdelantos(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
+    };
+
+    const handleRemoveAdelanto = (id) => {
+        setAdelantos(prev => prev.filter(a => a.id !== id));
+    };
+
+    const { data: distributorsData } = useQuery({
+        queryKey: ['gas-distributors-all'],
+        queryFn: async () => (await axios.get('/api/gas-station/distributors', { params: { limit: 999 } })).data?.data || [],
+    });
+    const distributors = distributorsData || [];
+
+    const { data: nozzlesRes } = useQuery({
+        queryKey: ['gas-nozzles-all'],
+        queryFn: async () => (await axios.get('/api/gas-station/nozzles', { params: { limit: 999 } })).data,
+    });
+    const nozzlesData = nozzlesRes?.data || [];
+
+    const fuelProducts = useMemo(() => {
+        const map = {};
+        nozzlesData.forEach(n => {
+            const key = n.product_codigo;
+            if (!map[key]) {
+                map[key] = { codigo: n.product_codigo, descripcion: n.product_nombre };
+            }
+        });
+        return Object.values(map);
+    }, [nozzlesData]);
 
     const summaryByProduct = useMemo(() => {
         const map = {};
@@ -321,6 +587,44 @@ const GasCloseout = () => {
         }
     };
 
+    const handleLubricantKeyDown = (e, index, field) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const currentReading = lubricantReadings[index];
+            if (!currentReading) return;
+
+            if (field === 'recarga') {
+                const finalKey = `lub-final-${currentReading.producto_id}`;
+                const finalEl = lubricantInputRefs.current[finalKey];
+                if (finalEl) { finalEl.focus(); return; }
+            }
+
+            if (field === 'lectura_final') {
+                const nextReading = lubricantReadings[index + 1];
+                if (nextReading) {
+                    const nextKey = `lub-recarga-${nextReading.producto_id}`;
+                    const nextEl = lubricantInputRefs.current[nextKey];
+                    if (nextEl) nextEl.focus();
+                }
+            }
+        }
+    };
+
+    const handleLubricantBlur = () => {
+        const updated = lubricantReadings.map(r => {
+            const ventas = parseFloat(r.lectura_inicial || 0) + parseFloat(r.recarga || 0) - parseFloat(r.lectura_final || 0);
+            const total = ventas * parseFloat(r.precio || 0);
+            return {
+                ...r,
+                recarga: parseFloat(r.recarga) || 0,
+                lectura_final: parseFloat(r.lectura_final) || 0,
+                ventas: parseFloat(ventas.toFixed(5)),
+                total: parseFloat(total.toFixed(2)),
+            };
+        });
+        saveLubricantesMutation.mutate(updated);
+    };
+
     const handleOpenTanques = async () => {
         if (tankReadings.length === 0 && closeoutId) {
             try {
@@ -332,19 +636,47 @@ const GasCloseout = () => {
         setEditAnterior(false);
     };
 
+    const handleOpenLubricantes = async () => {
+        if (lubricantReadings.length === 0 && closeoutId) {
+            try {
+                const res = await axios.get(`/api/products/lubricants`);
+                const products = res.data;
+                if (products.length > 0) {
+                    const mapped = products.map(p => {
+                        const inicial = parseFloat(p.lectura_inicial) || 0;
+                        return {
+                            producto_id: p.id,
+                            producto_codigo: p.codigo,
+                            producto_descripcion: p.descripcion,
+                            lectura_inicial: inicial,
+                            recarga: 0,
+                            lectura_final: inicial,
+                            ventas: 0,
+                            precio: parseFloat(p.precio_unitario) || 0,
+                            total: 0,
+                        };
+                    });
+                    setLubricantReadings(mapped);
+                }
+            } catch { }
+        }
+        setShowLubricantesModal(true);
+        setEditAnterior(false);
+    };
+
     const actionButtons = [
         { label: 'Lecturas', icon: Fuel, key: 'lecturas', enabled: true },
         { label: 'Gastos', icon: Receipt, key: 'gastos', enabled: true },
-        { label: 'Cupones', icon: CreditCard, key: 'cupones' },
+        { label: 'Cupones', icon: CreditCard, key: 'cupones', enabled: true },
         { label: 'Créditos', icon: CreditCard, key: 'creditos' },
         { label: 'Vales', icon: Gift, key: 'vales' },
-        { label: 'Descuentos', icon: Percent, key: 'descuentos' },
+        { label: 'Descuentos', icon: Percent, key: 'descuentos', enabled: true },
         { label: 'Anticipos Desp.', icon: Truck, key: 'anticipos' },
-        { label: 'Remesas', icon: Banknote, key: 'remesas' },
-        { label: 'Lubricantes', icon: Droplets, key: 'lubricantes' },
+        { label: 'Remesas', icon: Banknote, key: 'remesas', enabled: true },
+        { label: 'Lubricantes', icon: Droplets, key: 'lubricantes', enabled: true },
         { label: 'Tanques', icon: FlaskConical, key: 'tanques', enabled: true },
         { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas' },
-        { label: 'Adelantos', icon: Banknote, key: 'adelantos' },
+        { label: 'Adelantos', icon: Banknote, key: 'adelantos', enabled: true },
     ];
 
     const inputCls = "w-28 px-1.5 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] text-right font-mono";
@@ -398,7 +730,16 @@ const GasCloseout = () => {
                             </span>
                             {estado === 'abierto' && (
                                 <button
-                                    onClick={() => closeMutation.mutate()}
+                                    onClick={async () => {
+                                        const ok = await confirm({
+                                            title: '¿Cerrar Turno?',
+                                            message: 'Una vez cerrado no podrá modificar las lecturas ni los egresos del turno.',
+                                            confirmLabel: 'Sí, cerrar turno',
+                                            cancelLabel: 'Cancelar',
+                                            variant: 'warning',
+                                        });
+                                        if (ok) closeMutation.mutate();
+                                    }}
                                     disabled={closeMutation.isPending}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg disabled:opacity-50"
                                 >
@@ -466,13 +807,15 @@ const GasCloseout = () => {
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-3 py-1.5 text-slate-600">Lubricantes</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-slate-400">$0.00</td>
+                                                <td className={`px-3 py-1.5 text-right font-mono ${lubricantTotal > 0 ? 'font-bold text-emerald-600' : 'text-slate-400'}`}>
+                                                    ${lubricantTotal.toFixed(2)}
+                                                </td>
                                             </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Ingresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-emerald-600">${totals.totalMonto.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-emerald-600">${(totals.totalMonto + lubricantTotal).toFixed(2)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -490,8 +833,8 @@ const GasCloseout = () => {
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 text-xs">
                                             {[
-                                                'Cupones', 'Créditos', 'Vales', 'Descuentos',
-                                                'Anticipos Desp.', 'Remesas', 'Tarjetas', 'Adelantos'
+                                                'Créditos', 'Vales',
+                                                'Anticipos Desp.', 'Tarjetas'
                                             ].map(label => (
                                                 <tr key={label} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-3 py-1.5 text-slate-600">{label}</td>
@@ -502,11 +845,77 @@ const GasCloseout = () => {
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Gastos</td>
                                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${gastosTotal.toFixed(2)}</td>
                                             </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Remesas</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${remesasTotal.toFixed(2)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Cupones</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${cuponesTotal.toFixed(2)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Descuentos</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${descuentosTotal.toFixed(2)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Adelantos</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${adelantosTotal.toFixed(2)}</td>
+                                            </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Egresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">${gastosTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">${(gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal).toFixed(2)}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-4 py-2 border-b border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Lecturas de Tanques</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50">
+                                                <th className="px-3 py-1.5">Tanque</th>
+                                                <th className="px-3 py-1.5 text-right w-28">Lect. Ant.</th>
+                                                <th className="px-3 py-1.5 text-right w-24">Recarga</th>
+                                                <th className="px-3 py-1.5 text-right w-28">Lect. Actual</th>
+                                                <th className="px-3 py-1.5 text-right w-28">Venta (Difer.)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50 text-xs">
+                                            {tankReadings.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                        No hay lecturas de tanques registradas.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {tankReadings.map(r => {
+                                                const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
+                                                return (
+                                                    <tr key={r.tank_id || r.id} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="px-3 py-1.5">
+                                                            <span className="font-medium text-slate-800">{r.codigo_tanque}</span>
+                                                            <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_tanque}</span>
+                                                        </td>
+                                                        <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.lectura_anterior || 0).toFixed(5)}</td>
+                                                        <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.recarga || 0).toFixed(5)}</td>
+                                                        <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.lectura_actual || 0).toFixed(5)}</td>
+                                                        <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-600">{diferencia.toFixed(5)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
+                                            <tr>
+                                                <td colSpan={2} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-slate-600">{tankReadings.reduce((s, r) => s + (r.recarga || 0), 0).toFixed(5)}</td>
+                                                <td></td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{tankReadings.reduce((s, r) => s + ((r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0)), 0).toFixed(5)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -517,9 +926,9 @@ const GasCloseout = () => {
                                     <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Diferencia</h3>
                                 </div>
                                 <div className="px-4 py-3 flex items-center justify-between">
-                                    <span className="text-xs font-medium text-slate-500">Ingresos - Egresos</span>
-                                    <span className={`text-lg font-black font-mono ${(totals.totalMonto - gastosTotal) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        ${(totals.totalMonto - gastosTotal).toFixed(2)}
+                                    <span className="text-xs font-medium text-slate-500">Faltante / Sobrante del turno</span>
+                                    <span className={`text-lg font-black font-mono ${(totals.totalMonto + lubricantTotal - gastosTotal - remesasTotal - cuponesTotal - descuentosTotal - adelantosTotal) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        ${(totals.totalMonto + lubricantTotal - gastosTotal - remesasTotal - cuponesTotal - descuentosTotal - adelantosTotal).toFixed(2)}
                                     </span>
                                 </div>
                             </div>
@@ -532,7 +941,12 @@ const GasCloseout = () => {
                                         const Icon = btn.icon;
                                         const isLectura = btn.key === 'lecturas';
                                         const isGastos = btn.key === 'gastos';
-                                        const canClick = isLectura || isGastos || (btn.enabled && estado === 'abierto');
+                                        const isRemesas = btn.key === 'remesas';
+                                        const isCupones = btn.key === 'cupones';
+                                        const isDescuentos = btn.key === 'descuentos';
+                                        const isAdelantos = btn.key === 'adelantos';
+                                        const isLubricantes = btn.key === 'lubricantes';
+                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || (btn.enabled && estado === 'abierto');
                                         return (
                                             <button
                                                 key={btn.key}
@@ -540,6 +954,11 @@ const GasCloseout = () => {
                                                     if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); }
                                                     if (isGastos) handleOpenGastos();
                                                     if (btn.key === 'tanques') handleOpenTanques();
+                                                    if (isRemesas) handleOpenRemesas();
+                                                    if (isCupones) handleOpenCupones();
+                                                    if (isDescuentos) handleOpenDescuentos();
+                                                    if (isAdelantos) handleOpenAdelantos();
+                                                    if (isLubricantes) handleOpenLubricantes();
                                                 }}
                                                 disabled={!canClick}
                                                 className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
@@ -842,6 +1261,645 @@ const GasCloseout = () => {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showRemesasModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowRemesasModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-3xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Banknote size={16} className="text-indigo-600" />
+                                    Remesas del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowRemesasModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Descripción</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Tipo de Operación</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {remesas.length === 0 && (
+                                            <tr>
+                                                <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay remesas registradas. Agregue una remesa para comenzar.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {remesas.map(r => (
+                                            <tr key={r.id} className="text-[11px] hover:bg-slate-50 transition-colors">
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={r.documento}
+                                                        onChange={(e) => handleRemesaChange(r.id, 'documento', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="N° documento"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={r.descripcion}
+                                                        onChange={(e) => handleRemesaChange(r.id, 'descripcion', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="Descripción"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={r.tipo_operacion}
+                                                        onChange={(e) => handleRemesaChange(r.id, 'tipo_operacion', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="venta_combustible">Venta de Combustible</option>
+                                                        <option value="recuperacion_credito">Recuperación de Crédito</option>
+                                                        <option value="pago_anticipado">Pago Anticipado</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={r.monto || ''}
+                                                        onChange={(e) => handleRemesaChange(r.id, 'monto', parseFloat(e.target.value) || 0)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="0.00"
+                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-center">
+                                                    {estado !== 'cerrado' && (
+                                                        <button
+                                                            onClick={() => handleRemoveRemesa(r.id)}
+                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {estado !== 'cerrado' && (
+                                    <div className="flex items-center justify-between mt-3">
+                                        <button
+                                            onClick={handleAddRemesaRow}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Agregar Remesa
+                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-xs text-slate-500">
+                                                Total Remesas: <strong className="text-red-600 font-mono text-sm">${remesasTotal.toFixed(2)}</strong>
+                                            </span>
+                                            <button
+                                                onClick={() => saveRemesasMutation.mutate(remesas)}
+                                                disabled={saveRemesasMutation.isPending}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                            >
+                                                {saveRemesasMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {saveRemesasMutation.isPending ? 'Guardando...' : 'Guardar Remesas'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showCuponesModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowCuponesModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <CreditCard size={16} className="text-indigo-600" />
+                                    Cupones del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowCuponesModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cupón</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Distribuidora</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {cupones.length === 0 && (
+                                            <tr>
+                                                <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay cupones registrados. Agregue un cupón para comenzar.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {cupones.map(c => (
+                                            <tr key={c.id} className="text-[11px] hover:bg-slate-50 transition-colors">
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={c.cupon}
+                                                        onChange={(e) => handleCuponChange(c.id, 'cupon', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="N° cupón"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={c.distribuidora_id}
+                                                        onChange={(e) => {
+                                                            const id = e.target.value;
+                                                            const dist = distributors.find(d => d.id === parseInt(id));
+                                                            handleCuponChange(c.id, 'distribuidora_id', id);
+                                                            handleCuponChange(c.id, 'distribuidora_nombre', dist ? dist.descripcion : '');
+                                                        }}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Seleccionar...</option>
+                                                        {distributors.map(d => (
+                                                            <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={c.producto_codigo}
+                                                        onChange={(e) => {
+                                                            const cod = e.target.value;
+                                                            const prod = fuelProducts.find(p => p.codigo === cod);
+                                                            handleCuponChange(c.id, 'producto_codigo', cod);
+                                                            handleCuponChange(c.id, 'producto_descripcion', prod ? prod.descripcion : '');
+                                                        }}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Seleccionar...</option>
+                                                        {fuelProducts.map(p => (
+                                                            <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={c.monto || ''}
+                                                        onChange={(e) => handleCuponChange(c.id, 'monto', parseFloat(e.target.value) || 0)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="0.00"
+                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-center">
+                                                    {estado !== 'cerrado' && (
+                                                        <button
+                                                            onClick={() => handleRemoveCupon(c.id)}
+                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {estado !== 'cerrado' && (
+                                    <div className="flex items-center justify-between mt-3">
+                                        <button
+                                            onClick={handleAddCuponRow}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Agregar Cupón
+                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-xs text-slate-500">
+                                                Total Cupones: <strong className="text-red-600 font-mono text-sm">${cuponesTotal.toFixed(2)}</strong>
+                                            </span>
+                                            <button
+                                                onClick={() => saveCuponesMutation.mutate(cupones)}
+                                                disabled={saveCuponesMutation.isPending}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                            >
+                                                {saveCuponesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {saveCuponesMutation.isPending ? 'Guardando...' : 'Guardar Cupones'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showDescuentosModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowDescuentosModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Percent size={16} className="text-indigo-600" />
+                                    Descuentos del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowDescuentosModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Cliente</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Cantidad</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Valor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Total</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {descuentos.length === 0 && (
+                                            <tr>
+                                                <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay descuentos registrados. Agregue un descuento para comenzar.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {descuentos.map(d => (
+                                            <tr key={d.id} className="text-[11px] hover:bg-slate-50 transition-colors">
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={d.documento}
+                                                        onChange={(e) => handleDescuentoChange(d.id, 'documento', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="N° documento"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <SearchableSelect
+                                                        options={customers}
+                                                        value={d.cliente_id}
+                                                        onChange={(e) => {
+                                                            const id = e.target.value;
+                                                            const cli = customers.find(c => c.id === parseInt(id));
+                                                            handleDescuentoChange(d.id, 'cliente_id', id);
+                                                            handleDescuentoChange(d.id, 'cliente_nombre', cli ? cli.nombre : '');
+                                                        }}
+                                                        placeholder="Buscar cliente..."
+                                                        valueKey="id"
+                                                        labelKey="nombre"
+                                                        displayKey="nombre"
+                                                        codeKey="nit"
+                                                        codeLabel="NIT/DOC"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={d.producto_codigo}
+                                                        onChange={(e) => {
+                                                            const cod = e.target.value;
+                                                            const prod = fuelProducts.find(p => p.codigo === cod);
+                                                            handleDescuentoChange(d.id, 'producto_codigo', cod);
+                                                            handleDescuentoChange(d.id, 'producto_descripcion', prod ? prod.descripcion : '');
+                                                        }}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Seleccionar...</option>
+                                                        {fuelProducts.map(p => (
+                                                            <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={d.cantidad || ''}
+                                                        onChange={(e) => handleDescuentoChange(d.id, 'cantidad', e.target.value)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="0"
+                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={d.valor ?? ''}
+                                                        onChange={(e) => handleDescuentoChange(d.id, 'valor', e.target.value)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="0.00"
+                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <span className="font-mono font-bold text-slate-900">${((parseFloat(d.cantidad) || 0) * (parseFloat(d.valor) || 0)).toFixed(2)}</span>
+                                                </td>
+                                                <td className="px-1.5 py-1 text-center">
+                                                    {estado !== 'cerrado' && (
+                                                        <button
+                                                            onClick={() => handleRemoveDescuento(d.id)}
+                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {estado !== 'cerrado' && (
+                                    <div className="flex items-center justify-between mt-3">
+                                        <button
+                                            onClick={handleAddDescuentoRow}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Agregar Descuento
+                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-xs text-slate-500">
+                                                Total Descuentos: <strong className="text-red-600 font-mono text-sm">${descuentosTotal.toFixed(2)}</strong>
+                                            </span>
+                                            <button
+                                                onClick={() => saveDescuentosMutation.mutate(descuentos)}
+                                                disabled={saveDescuentosMutation.isPending}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                            >
+                                                {saveDescuentosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {saveDescuentosMutation.isPending ? 'Guardando...' : 'Guardar Descuentos'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showAdelantosModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowAdelantosModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl min-h-[40vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Banknote size={16} className="text-indigo-600" />
+                                    Adelantos del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowAdelantosModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Empleado</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {adelantos.length === 0 && (
+                                            <tr>
+                                                <td colSpan={3} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay adelantos registrados. Agregue un adelanto para comenzar.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {adelantos.map(a => (
+                                            <tr key={a.id} className="text-[11px] hover:bg-slate-50 transition-colors">
+                                                <td className="px-1.5 py-1">
+                                                    <input
+                                                        type="text"
+                                                        value={a.empleado}
+                                                        onChange={(e) => handleAdelantoChange(a.id, 'empleado', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="Nombre del empleado"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-right">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={a.monto ?? ''}
+                                                        onChange={(e) => handleAdelantoChange(a.id, 'monto', e.target.value)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="0.00"
+                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1 text-center">
+                                                    {estado !== 'cerrado' && (
+                                                        <button
+                                                            onClick={() => handleRemoveAdelanto(a.id)}
+                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {estado !== 'cerrado' && (
+                                    <div className="flex items-center justify-between mt-3">
+                                        <button
+                                            onClick={handleAddAdelantoRow}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Agregar Adelanto
+                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-xs text-slate-500">
+                                                Total Adelantos: <strong className="text-red-600 font-mono text-sm">${adelantosTotal.toFixed(2)}</strong>
+                                            </span>
+                                            <button
+                                                onClick={() => saveAdelantosMutation.mutate(adelantos)}
+                                                disabled={saveAdelantosMutation.isPending}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                            >
+                                                {saveAdelantosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {saveAdelantosMutation.isPending ? 'Guardando...' : 'Guardar Adelantos'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showLubricantesModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[90vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Droplets size={16} className="text-indigo-600" />
+                                    Lecturas de Lubricantes
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1 relative">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Código</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 max-w-[140px]">Descripción</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Inicial</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Recarga</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Final</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Ventas</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Precio</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {lubricantReadings.length === 0 && (
+                                            <tr>
+                                                <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                    No hay productos de lubricantes configurados.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {lubricantReadings.map((r, idx) => {
+                                            const ventas = parseFloat(r.lectura_inicial || 0) + parseFloat(r.recarga || 0) - parseFloat(r.lectura_final || 0);
+                                            const total = ventas * parseFloat(r.precio || 0);
+                                            return (
+                                                <tr key={r.producto_id} className="hover:bg-slate-50 transition-colors text-[11px]">
+                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900">{r.producto_codigo}</td>
+                                                    <td className="px-1.5 py-0.5 max-w-[140px] truncate">
+                                                        <span className="font-medium text-slate-800">{r.producto_descripcion}</span>
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-600">{parseFloat(r.lectura_inicial || 0).toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right">
+                                                        <input type="number" step="0.00001"
+                                                            ref={(el) => { lubricantInputRefs.current[`lub-recarga-${r.producto_id}`] = el; }}
+                                                            value={r.recarga ?? ''}
+                                                            onChange={(e) => {
+                                                                setLubricantReadings(prev => prev.map(x =>
+                                                                    x.producto_id === r.producto_id
+                                                                        ? { ...x, recarga: e.target.value }
+                                                                        : x
+                                                                ));
+                                                            }}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onBlur={handleLubricantBlur}
+                                                            onKeyDown={(e) => handleLubricantKeyDown(e, idx, 'recarga')}
+                                                            disabled={estado === 'cerrado'}
+                                                            className={estado === 'cerrado' ? inputDisabledCls : inputCls}
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right">
+                                                        <input type="number" step="0.00001"
+                                                            ref={(el) => { lubricantInputRefs.current[`lub-final-${r.producto_id}`] = el; }}
+                                                            value={r.lectura_final ?? ''}
+                                                            onChange={(e) => {
+                                                                setLubricantReadings(prev => prev.map(x =>
+                                                                    x.producto_id === r.producto_id
+                                                                        ? { ...x, lectura_final: e.target.value }
+                                                                        : x
+                                                                ));
+                                                            }}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onBlur={handleLubricantBlur}
+                                                            onKeyDown={(e) => handleLubricantKeyDown(e, idx, 'lectura_final')}
+                                                            disabled={estado === 'cerrado'}
+                                                            className={estado === 'cerrado' ? inputDisabledCls : inputCls}
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-800">{ventas.toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700">${parseFloat(r.precio || 0).toFixed(2)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900">
+                                                        ${total.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
+                                        <tr>
+                                            <td colSpan={7} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Lubricantes</td>
+                                            <td className="px-3 py-1.5 text-right font-mono text-indigo-600">
+                                                ${lubricantTotal.toFixed(2)}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
                             </div>
                         </div>
                     </div>

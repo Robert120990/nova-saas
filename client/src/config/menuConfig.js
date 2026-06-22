@@ -23,6 +23,7 @@ import {
     AlertTriangle,
     CreditCard,
     BookOpen,
+    Receipt,
     Lock,
     Unlock,
     Sparkles,
@@ -213,6 +214,7 @@ export const menuConfig = [
                     { id: 'gas-islands', label: 'Islas', path: '/gas-station/islands', icon: Monitor, permission: 'manage_gas_station' },
                     { id: 'gas-nozzles', label: 'Mangueras', path: '/gas-station/nozzles', icon: Fuel, permission: 'manage_gas_station' },
                     { id: 'gas-tanks', label: 'Tanques', path: '/gas-station/tanks', icon: Droplets, permission: 'manage_gas_station' },
+                    { id: 'gas-expense-categories', label: 'Rubros Gastos', path: '/gas-station/expense-categories', icon: Receipt, permission: 'manage_gas_station' },
                 ]
             },
             { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_station' },
