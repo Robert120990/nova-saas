@@ -4,7 +4,8 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save
+    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save,
+    Users, UserCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -33,6 +34,8 @@ const GasCloseout = () => {
     const [sellerName, setSellerName] = useState('');
     const [fechaTurno, setFechaTurno] = useState(new Date().toISOString().split('T')[0]);
     const [numeroTurno, setNumeroTurno] = useState('');
+    const [closeoutDespachadores, setCloseoutDespachadores] = useState([]);
+    const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
     const [editAnterior, setEditAnterior] = useState(false);
     const [showGastosModal, setShowGastosModal] = useState(false);
@@ -84,6 +87,7 @@ const GasCloseout = () => {
             setFechaTurno(editData.fecha_turno?.split('T')[0] || editData.fecha_turno);
             setNumeroTurno(editData.numero_turno);
             setTankReadings(editData.tankReadings || []);
+            setCloseoutDespachadores(editData.despachadores || []);
         }
     }, [editData]);
 
@@ -92,6 +96,57 @@ const GasCloseout = () => {
         queryFn: async () => (await axios.get('/api/sellers', { params: { limit: 200 } })).data?.data || []
     });
 
+    const { data: allDespachadores = [] } = useQuery({
+        queryKey: ['gas-despachadores-all'],
+        queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } })).data?.data || []
+    });
+
+    const { data: despachadorNozzleAssignments = [] } = useQuery({
+        queryKey: ['gas-despachador-nozzles-all'],
+        queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data || []
+    });
+
+    const despachadorVentas = useMemo(() => {
+        if (!despachadorNozzleAssignments.length || !readings.length) return {};
+        const map = {};
+        for (const d of closeoutDespachadores) {
+            const assignedNozzles = despachadorNozzleAssignments
+                .filter(a => a.despachador_id === d.despachador_id)
+                .map(a => a.nozzle_id);
+            let total = 0;
+            for (const r of readings) {
+                if (assignedNozzles.includes(r.nozzle_id)) {
+                    total += (r.lectura_actual - r.lectura_anterior - (r.calibracion || 0)) * r.precio;
+                }
+            }
+            map[d.despachador_id] = total;
+        }
+        return map;
+    }, [despachadorNozzleAssignments, readings, closeoutDespachadores]);
+
+    const despachadorNoPercibido = useMemo(() => {
+        const map = {};
+        for (const d of closeoutDespachadores) {
+            const did = d.despachador_id;
+            const gastosSum = gastos.filter(g => parseInt(g.despachador_id) === did).reduce((s, g) => s + (parseFloat(g.valor) || 0), 0);
+            const cuponesSum = cupones.filter(c => parseInt(c.despachador_id) === did).reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+            const descuentosSum = descuentos.filter(dd => parseInt(dd.despachador_id) === did).reduce((s, dd) => s + (parseFloat(dd.total) || 0), 0);
+            const adelantosSum = adelantos.filter(a => parseInt(a.despachador_id) === did).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
+            map[did] = gastosSum + cuponesSum + descuentosSum + adelantosSum;
+        }
+        return map;
+    }, [closeoutDespachadores, gastos, cupones, descuentos, adelantos]);
+
+    const despachadorEntregado = useMemo(() => {
+        const map = {};
+        for (const d of closeoutDespachadores) {
+            const did = d.despachador_id;
+            const remesasSum = remesas.filter(r => parseInt(r.despachador_id) === did).reduce((s, r) => s + (parseFloat(r.monto) || 0), 0);
+            map[did] = remesasSum;
+        }
+        return map;
+    }, [closeoutDespachadores, remesas]);
+
     const initMutation = useMutation({
         mutationFn: (data) => axios.post('/api/gas-station/closeouts/init', data),
         onSuccess: (res) => {
@@ -99,6 +154,7 @@ const GasCloseout = () => {
             setReadings(res.data.readings.map(r => ({ ...r, lectura_actual: r.lectura_anterior })));
             setTankReadings(res.data.tankReadings?.map(r => ({ ...r, lectura_actual: r.lectura_anterior })) || []);
             setEstado('abierto');
+            if (res.data.despachadores) setCloseoutDespachadores(res.data.despachadores);
             toast.success('Cierre de lecturas iniciado');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al iniciar')
@@ -117,6 +173,11 @@ const GasCloseout = () => {
             toast.success('Cierre cerrado exitosamente');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
+    });
+
+    const updateDespachadoresMutation = useMutation({
+        mutationFn: (despachadores) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachadores`, { despachadores }),
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachadores')
     });
 
     const updateTankMutation = useMutation({
@@ -311,7 +372,8 @@ const GasCloseout = () => {
             tipo: 'ccf',
             provider_id: '',
             proveedor: '',
-            valor: 0
+            valor: 0,
+            despachador_id: ''
         }]);
     };
 
@@ -345,6 +407,7 @@ const GasCloseout = () => {
             id: Date.now(),
             documento: '',
             descripcion: '',
+            despachador_id: '',
             tipo_operacion: 'venta_combustible',
             monto: 0
         }]);
@@ -370,7 +433,8 @@ const GasCloseout = () => {
             distribuidora_nombre: '',
             producto_codigo: '',
             producto_descripcion: '',
-            monto: 0
+            monto: 0,
+            despachador_id: ''
         }]);
     };
 
@@ -396,7 +460,8 @@ const GasCloseout = () => {
             producto_descripcion: '',
             cantidad: 0,
             valor: 0,
-            total: 0
+            total: 0,
+            despachador_id: ''
         }]);
     };
 
@@ -425,7 +490,8 @@ const GasCloseout = () => {
         setAdelantos(prev => [...prev, {
             id: Date.now(),
             empleado: '',
-            monto: 0
+            monto: 0,
+            despachador_id: ''
         }]);
     };
 
@@ -494,7 +560,14 @@ const GasCloseout = () => {
         }
         const name = sellers.find(s => s.id === parseInt(sellerId))?.nombre || '';
         setSellerName(name);
-        initMutation.mutate({ seller_id: parseInt(sellerId), seller_name: name, fecha_turno: fechaTurno, numero_turno: numeroTurno, branch_id: user?.branch_id });
+        initMutation.mutate({
+            seller_id: parseInt(sellerId),
+            seller_name: name,
+            fecha_turno: fechaTurno,
+            numero_turno: numeroTurno,
+            branch_id: user?.branch_id,
+            despachadores: closeoutDespachadores
+        });
     };
 
     const handleReadingChange = (nozzleId, field, value) => {
@@ -932,6 +1005,118 @@ const GasCloseout = () => {
                                     </span>
                                 </div>
                             </div>
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-3 py-2 border-b border-slate-100">
+                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                                        <UserCheck size={12} className="text-indigo-500" />
+                                        Despachadores del Turno
+                                    </h4>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50">
+                                                <th className="px-2 py-1 w-14">Código</th>
+                                                <th className="px-2 py-1">Nombre</th>
+                                                <th className="px-2 py-1 text-right w-28">Venta</th>
+                                                <th className="px-2 py-1 text-right w-28 text-red-600">No Percibido</th>
+                                                <th className="px-2 py-1 text-right w-28 text-amber-600">Entregado</th>
+                                                <th className="px-2 py-1 text-right w-28">Diferencia</th>
+                                                {estado === 'abierto' && <th className="px-1.5 py-1 w-6"></th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50 text-[11px]">
+                                            {closeoutDespachadores.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={estado === 'abierto' ? 7 : 6} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                        Sin despachadores asignados
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {closeoutDespachadores.map((d, i) => {
+                                                const desp = allDespachadores.find(a => a.id === d.despachador_id);
+                                                const venta = despachadorVentas[d.despachador_id] || 0;
+                                                const noPercibido = despachadorNoPercibido[d.despachador_id] || 0;
+                                                const entregado = despachadorEntregado[d.despachador_id] || 0;
+                                                const diferencia = venta - noPercibido - entregado;
+                                                return (
+                                                    <tr key={d.despachador_id} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="px-1.5 py-1 font-bold text-slate-700">{desp?.codigo || ''}</td>
+                                                        <td className="px-1.5 py-1">
+                                                            {estado === 'abierto' ? (
+                                                                <input
+                                                                    type="text"
+                                                                    value={d.nombre}
+                                                                    onChange={(e) => {
+                                                                        const updated = [...closeoutDespachadores];
+                                                                        updated[i] = { ...updated[i], nombre: e.target.value };
+                                                                        setCloseoutDespachadores(updated);
+                                                                    }}
+                                                                    onBlur={() => updateDespachadoresMutation.mutate(closeoutDespachadores)}
+                                                                    placeholder="Nombre"
+                                                                    className="w-full px-1 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] font-medium"
+                                                                />
+                                                            ) : (
+                                                                <span className="text-slate-600">{d.nombre}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-600">${venta.toFixed(2)}</td>
+                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-red-600">${noPercibido.toFixed(2)}</td>
+                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-amber-600">${entregado.toFixed(2)}</td>
+                                                        <td className={`px-1.5 py-1 text-right font-mono font-bold ${diferencia >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>${diferencia.toFixed(2)}</td>
+                                                        {estado === 'abierto' && (
+                                                            <td className="px-1.5 py-1 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const updated = closeoutDespachadores.filter((_, idx) => idx !== i);
+                                                                        setCloseoutDespachadores(updated);
+                                                                        updateDespachadoresMutation.mutate(updated);
+                                                                    }}
+                                                                    className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                    title="Quitar despachador"
+                                                                >
+                                                                    <X size={11} />
+                                                                </button>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        {estado === 'abierto' && (
+                                            <tfoot className="bg-slate-50 border-t border-slate-100">
+                                                <tr>
+                                                    <td colSpan={7} className="px-2 py-1">
+                                                        <select
+                                                            value={despachadorSelectValue}
+                                                            onChange={(e) => {
+                                                                const id = parseInt(e.target.value);
+                                                                if (!id) return;
+                                                                const desp = allDespachadores.find(a => a.id === id);
+                                                                if (desp && !closeoutDespachadores.find(d => d.despachador_id === id)) {
+                                                                    const updated = [...closeoutDespachadores, { despachador_id: id, nombre: desp.descripcion || desp.codigo || '' }];
+                                                                    setCloseoutDespachadores(updated);
+                                                                    updateDespachadoresMutation.mutate(updated);
+                                                                }
+                                                                setDespachadorSelectValue('');
+                                                            }}
+                                                            className="w-full px-1.5 py-1 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] font-medium appearance-none cursor-pointer"
+                                                        >
+                                                            <option value="">+ Agregar despachador...</option>
+                                                            {allDespachadores
+                                                                .filter(a => !closeoutDespachadores.find(d => d.despachador_id === a.id))
+                                                                .map(a => (
+                                                                    <option key={a.id} value={a.id}>{a.codigo} — {a.descripcion}</option>
+                                                                ))}
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        )}
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                         <div className="w-72 shrink-0">
                             <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Opciones del Turno</h3>
@@ -1104,19 +1289,20 @@ const GasCloseout = () => {
                                 <table className="w-full text-left border-separate border-spacing-0">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Rubro</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Fecha</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Tipo</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Proveedor</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Valor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Rubro</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Fecha</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Proveedor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Valor</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {gastos.length === 0 && (
                                             <tr>
-                                                <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
                                                     No hay gastos registrados. Agregue un gasto para comenzar.
                                                 </td>
                                             </tr>
@@ -1211,6 +1397,19 @@ const GasCloseout = () => {
                                                         codeLabel="NRC"
                                                     />
                                                 </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={g.despachador_id || ''}
+                                                        onChange={(e) => handleGastoChange(g.id, 'despachador_id', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.map(d => (
+                                                            <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
                                                 <td className="px-1.5 py-1 text-right">
                                                     <input
                                                         type="number"
@@ -1290,7 +1489,7 @@ const GasCloseout = () => {
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Descripción</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Tipo de Operación</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
@@ -1317,14 +1516,17 @@ const GasCloseout = () => {
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1">
-                                                    <input
-                                                        type="text"
-                                                        value={r.descripcion}
-                                                        onChange={(e) => handleRemesaChange(r.id, 'descripcion', e.target.value)}
+                                                    <select
+                                                        value={r.despachador_id || ''}
+                                                        onChange={(e) => handleRemesaChange(r.id, 'despachador_id', e.target.value)}
                                                         disabled={estado === 'cerrado'}
-                                                        placeholder="Descripción"
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
+                                                    >
+                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.map(disp => (
+                                                            <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
+                                                        ))}
+                                                    </select>
                                                 </td>
                                                 <td className="px-1.5 py-1">
                                                     <select
@@ -1417,16 +1619,17 @@ const GasCloseout = () => {
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cupón</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Distribuidora</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Distribuidora</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {cupones.length === 0 && (
                                             <tr>
-                                                <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">
                                                     No hay cupones registrados. Agregue un cupón para comenzar.
                                                 </td>
                                             </tr>
@@ -1476,6 +1679,19 @@ const GasCloseout = () => {
                                                         <option value="">Seleccionar...</option>
                                                         {fuelProducts.map(p => (
                                                             <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={c.despachador_id || ''}
+                                                        onChange={(e) => handleCuponChange(c.id, 'despachador_id', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.map(d => (
+                                                            <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -1558,18 +1774,19 @@ const GasCloseout = () => {
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Cantidad</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Valor</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Total</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Cliente</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Cantidad</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Valor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Total</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {descuentos.length === 0 && (
                                             <tr>
-                                                <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
                                                     No hay descuentos registrados. Agregue un descuento para comenzar.
                                                 </td>
                                             </tr>
@@ -1619,6 +1836,19 @@ const GasCloseout = () => {
                                                         <option value="">Seleccionar...</option>
                                                         {fuelProducts.map(p => (
                                                             <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={d.despachador_id || ''}
+                                                        onChange={(e) => handleDescuentoChange(d.id, 'despachador_id', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.map(disp => (
+                                                            <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -1716,14 +1946,15 @@ const GasCloseout = () => {
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Empleado</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {adelantos.length === 0 && (
                                             <tr>
-                                                <td colSpan={3} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                <td colSpan={4} className="px-3 py-8 text-center text-xs text-slate-400">
                                                     No hay adelantos registrados. Agregue un adelanto para comenzar.
                                                 </td>
                                             </tr>
@@ -1739,6 +1970,19 @@ const GasCloseout = () => {
                                                         placeholder="Nombre del empleado"
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
+                                                </td>
+                                                <td className="px-1.5 py-1">
+                                                    <select
+                                                        value={a.despachador_id || ''}
+                                                        onChange={(e) => handleAdelantoChange(a.id, 'despachador_id', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.map(disp => (
+                                                            <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
+                                                        ))}
+                                                    </select>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
                                                     <input
@@ -2070,6 +2314,57 @@ const GasCloseout = () => {
                             className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium"
                         />
                     </div>
+                </div>
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Despachadores del Turno</label>
+                    <div className="space-y-1.5 mb-2">
+                        {closeoutDespachadores.map((d, i) => {
+                            const desp = allDespachadores.find(a => a.id === d.despachador_id);
+                            return (
+                                <div key={d.despachador_id} className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-lg min-w-[60px]">{desp?.codigo || ''}</span>
+                                    <input
+                                        type="text"
+                                        value={d.nombre}
+                                        onChange={(e) => {
+                                            const updated = [...closeoutDespachadores];
+                                            updated[i] = { ...updated[i], nombre: e.target.value };
+                                            setCloseoutDespachadores(updated);
+                                        }}
+                                        placeholder="Nombre del despachador"
+                                        className="flex-1 px-2.5 py-1 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setCloseoutDespachadores(prev => prev.filter((_, idx) => idx !== i))}
+                                        className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <select
+                        value={despachadorSelectValue}
+                        onChange={(e) => {
+                            const id = parseInt(e.target.value);
+                            if (!id) return;
+                            const desp = allDespachadores.find(a => a.id === id);
+                            if (desp && !closeoutDespachadores.find(d => d.despachador_id === id)) {
+                                setCloseoutDespachadores(prev => [...prev, { despachador_id: id, nombre: desp.descripcion || desp.codigo || '' }]);
+                            }
+                            setDespachadorSelectValue('');
+                        }}
+                        className="w-full pl-3 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium appearance-none cursor-pointer"
+                    >
+                        <option value="">+ Agregar despachador...</option>
+                        {allDespachadores
+                            .filter(a => !closeoutDespachadores.find(d => d.despachador_id === a.id))
+                            .map(a => (
+                                <option key={a.id} value={a.id}>{a.codigo} — {a.descripcion}</option>
+                            ))}
+                    </select>
                 </div>
                 <button
                     type="submit"

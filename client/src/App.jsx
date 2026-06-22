@@ -69,6 +69,8 @@ import GasCloseout from './pages/GasCloseout';
 import GasReadingHistory from './pages/GasReadingHistory';
 import GasExpenseCategories from './pages/GasExpenseCategories';
 import GasStationConfig from './pages/GasStationConfig';
+import GasDespachadores from './pages/GasDespachadores';
+import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -190,6 +192,8 @@ function App() {
                         <Route path="/gas-station/historial-lecturas" element={<GasReadingHistory />} />
                         <Route path="/gas-station/expense-categories" element={<GasExpenseCategories />} />
                         <Route path="/gas-station/configuracion" element={<GasStationConfig />} />
+                        <Route path="/gas-station/despachadores" element={<GasDespachadores />} />
+                        <Route path="/gas-station/despachador-nozzles" element={<GasDespachadorNozzles />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

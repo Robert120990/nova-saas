@@ -44,6 +44,7 @@ const nozzleController = require('../controllers/nozzle.controller');
 const tankController = require('../controllers/tank.controller');
 const gasCloseoutController = require('../controllers/gasCloseout.controller');
 const gasConfigController = require('../controllers/gasConfig.controller');
+const gasDespachadorController = require('../controllers/gasDespachador.controller');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -414,6 +415,7 @@ router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutContr
 router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', gasCloseoutController.updateTankReading);
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
+router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.updateCloseoutDespachadores);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);
@@ -456,5 +458,16 @@ router.get('/products/lubricants', productController.getLubricantProducts);
 // Gas Station - Closeout Lubricant Readings
 router.get('/gas-station/closeouts/:id/lubricantes', gasCloseoutController.getLubricantReadings);
 router.post('/gas-station/closeouts/:id/lubricantes', gasCloseoutController.saveLubricantReadings);
+
+// Gas Station - Despachadores
+router.get('/gas-station/despachadores', gasDespachadorController.getDespachadores);
+router.post('/gas-station/despachadores', gasDespachadorController.createDespachador);
+router.put('/gas-station/despachadores/:id', gasDespachadorController.updateDespachador);
+router.delete('/gas-station/despachadores/:id', gasDespachadorController.deleteDespachador);
+
+// Gas Station - Despachador Nozzle Assignments
+router.get('/gas-station/despachadores/:id/nozzles', gasDespachadorController.getDespachadorNozzles);
+router.put('/gas-station/despachadores/:id/nozzles', gasDespachadorController.updateDespachadorNozzles);
+router.get('/gas-station/despachador-nozzles/all', gasDespachadorController.getAllAssignments);
 
 module.exports = router;
