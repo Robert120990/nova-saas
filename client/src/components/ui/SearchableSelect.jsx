@@ -15,7 +15,8 @@ const SearchableSelect = ({
     labelKey = 'description',
     displayKey = null, 
     codeKey = null,
-    codeLabel = "CÓDIGO"
+    codeLabel = "CÓDIGO",
+    disabled = false
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -100,13 +101,15 @@ const SearchableSelect = ({
     return (
         <div className="relative" ref={containerRef}>
             <div 
-                tabIndex={0}
+                tabIndex={disabled ? -1 : 0}
                 role="button"
-                onClick={() => setIsOpen(!isOpen)}
-                onKeyDown={handleKeyDown}
-                className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 ${
-                    isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200 hover:border-slate-300'
-                }`}
+                onClick={() => { if (!disabled) setIsOpen(!isOpen); }}
+                onKeyDown={disabled ? undefined : handleKeyDown}
+                className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase outline-none ${
+                    disabled
+                    ? 'border-slate-100 text-slate-300 cursor-not-allowed'
+                    : 'cursor-pointer focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 hover:border-slate-300'
+                } ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200'}`}
             >
                 <div className="truncate pr-2">
                     {selectedOption ? (

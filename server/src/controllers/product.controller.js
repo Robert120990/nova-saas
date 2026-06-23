@@ -225,13 +225,12 @@ const getLubricantProducts = async (req, res) => {
         const [lastReadings] = await pool.query(`
             SELECT lr.producto_id, lr.lectura_final
             FROM gas_station_closeout_lubricant_readings lr
-            JOIN gas_station_closeouts c ON c.id = lr.closeout_id
-            WHERE c.company_id = ? AND c.id < (
-                SELECT COALESCE(MAX(c2.id), 0) FROM gas_station_closeouts c2
+            WHERE lr.closeout_id = (
+                SELECT c2.id FROM gas_station_closeouts c2
                 WHERE c2.company_id = ? AND c2.estado = 'cerrado'
+                ORDER BY c2.id DESC LIMIT 1
             )
-            ORDER BY lr.id DESC
-        `, [req.company_id, req.company_id]);
+        `, [req.company_id]);
 
         const lastReadingMap = {};
         lastReadings.forEach(r => {

@@ -411,6 +411,7 @@ router.delete('/gas-station/tanks/:id', tankController.deleteTank);
 // Gas Station - Closeouts (Cierre de Lecturas)
 router.post('/gas-station/closeouts/init', gasCloseoutController.initCloseout);
 router.post('/gas-station/closeouts/:id/tank-readings/init', gasCloseoutController.initTankReadings);
+router.get('/gas-station/closeouts/last-turno', gasCloseoutController.getLastTurno);
 router.get('/gas-station/closeouts', gasCloseoutController.getCloseouts);
 router.get('/gas-station/closeouts/:id', gasCloseoutController.getCloseout);
 router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutController.updateReading);
@@ -504,5 +505,8 @@ router.get('/gas-station/advances/available/:cliente_id', gasAdvanceController.g
 router.get('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.getAnticiposDesp);
 router.post('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.saveAnticiposDesp);
 router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseoutController.deleteAnticipoDesp);
+
+// Print full closeout data
+router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getCloseoutPrintData);
 
 module.exports = router;

@@ -7,6 +7,33 @@ exports.initCloseout = async (req, res) => {
             return res.status(400).json({ message: 'seller_id, fecha_turno y numero_turno son requeridos' });
         }
 
+        const [openCloseout] = await pool.query(
+            `SELECT id FROM gas_station_closeouts
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND estado = 'abierto'
+             LIMIT 1`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
+        );
+        if (openCloseout.length > 0) {
+            return res.status(400).json({ message: 'Ya existe un turno abierto en esta sucursal. Debe cerrarlo antes de iniciar uno nuevo.' });
+        }
+
+        const [lastTurno] = await pool.query(
+            `SELECT DATE_FORMAT(fecha_turno, '%d/%m/%Y') as fecha_turno, numero_turno FROM gas_station_closeouts
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             ORDER BY created_at DESC LIMIT 1`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
+        );
+
+        if (lastTurno.length > 0) {
+            const last = lastTurno[0];
+            if (fecha_turno < last.fecha_turno) {
+                return res.status(400).json({ message: `La fecha del turno no puede ser menor al último turno (${last.fecha_turno})` });
+            }
+            if (parseInt(numero_turno) <= parseInt(last.numero_turno)) {
+                return res.status(400).json({ message: `El número de turno debe ser mayor al último turno (${last.numero_turno})` });
+            }
+        }
+
         const [result] = await pool.query(
             `INSERT INTO gas_station_closeouts (company_id, branch_id, seller_id, seller_name, fecha_turno, numero_turno) VALUES (?, ?, ?, ?, ?, ?)`,
             [req.company_id, req.user.branch_id || null, seller_id, seller_name || '', fecha_turno, numero_turno]
@@ -27,6 +54,18 @@ exports.initCloseout = async (req, res) => {
                     );
                     savedDespachadores.push({ despachador_id: d.despachador_id, nombre: d.nombre || '' });
                 }
+            }
+        } else {
+            const [allDespachadores] = await pool.query(
+                `SELECT id, codigo, descripcion FROM gas_station_despachadores WHERE company_id = ? ORDER BY id ASC`,
+                [req.company_id]
+            );
+            for (const d of allDespachadores) {
+                await pool.query(
+                    `INSERT INTO gas_station_closeout_despachadores (closeout_id, despachador_id, nombre) VALUES (?, ?, ?)`,
+                    [closeoutId, d.id, d.descripcion || d.codigo || '']
+                );
+                savedDespachadores.push({ despachador_id: d.id, nombre: d.descripcion || d.codigo || '' });
             }
         }
 
@@ -55,8 +94,8 @@ exports.initCloseout = async (req, res) => {
             const [insertResult] = await pool.query(`
                 INSERT INTO gas_station_closeout_readings
                 (closeout_id, nozzle_id, product_id, codigo_pistola, codigo_producto, descripcion_producto, precio, lectura_anterior, lectura_actual, calibracion, diferencia, monto)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0)
-            `, [closeoutId, n.nozzle_id, n.product_id, n.codigo_pistola, n.codigo_producto, n.descripcion_producto, n.precio_unitario, lectura_anterior]);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+            `, [closeoutId, n.nozzle_id, n.product_id, n.codigo_pistola, n.codigo_producto, n.descripcion_producto, n.precio_unitario, lectura_anterior, lectura_anterior]);
 
             readings.push({
                 id: insertResult.insertId,
@@ -66,7 +105,7 @@ exports.initCloseout = async (req, res) => {
                 descripcion_producto: n.descripcion_producto,
                 precio: n.precio_unitario,
                 lectura_anterior,
-                lectura_actual: 0,
+                lectura_actual: lectura_anterior,
                 calibracion: 0,
                 diferencia: 0,
                 monto: 0
@@ -94,8 +133,8 @@ exports.initCloseout = async (req, res) => {
             const [tankInsertResult] = await pool.query(`
                 INSERT INTO gas_station_closeout_tank_readings
                 (closeout_id, tank_id, codigo_tanque, descripcion_tanque, lectura_anterior, recarga, lectura_actual, diferencia)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
-            `, [closeoutId, t.tank_id, t.codigo, t.descripcion, lectura_anterior]);
+                VALUES (?, ?, ?, ?, ?, 0, ?, 0)
+            `, [closeoutId, t.tank_id, t.codigo, t.descripcion, lectura_anterior, lectura_anterior]);
 
             tankReadings.push({
                 id: tankInsertResult.insertId,
@@ -105,7 +144,7 @@ exports.initCloseout = async (req, res) => {
                 capacidad: parseFloat(t.capacidad),
                 lectura_anterior,
                 recarga: 0,
-                lectura_actual: 0,
+                lectura_actual: lectura_anterior,
                 diferencia: 0
             });
         }
@@ -212,11 +251,32 @@ exports.getCloseouts = async (req, res) => {
         const total = countResult[0].total;
 
         const [rows] = await pool.query(`
-            SELECT c.*,
-                   (SELECT COUNT(*) FROM gas_station_closeout_readings WHERE closeout_id = c.id) as total_lecturas,
-                   (SELECT COALESCE(SUM(monto), 0) FROM gas_station_closeout_readings WHERE closeout_id = c.id) as total_monto,
-                   (SELECT COALESCE(SUM(diferencia), 0) FROM gas_station_closeout_readings WHERE closeout_id = c.id) as total_diferencia
+            SELECT
+              c.*,
+              COALESCE(rd.total_lecturas, 0) as total_lecturas,
+              COALESCE(rd.total_monto, 0) as total_monto,
+              COALESCE(rd.total_diferencia, 0) as total_diferencia,
+              ROUND(
+                (COALESCE(eg.total_gastos, 0) + COALESCE(re.total_remesas, 0) +
+                 COALESCE(cu.total_cupones, 0) + COALESCE(dc.total_descuentos, 0) +
+                 COALESCE(ad.total_adelantos, 0) + COALESCE(tj.total_tarjetas, 0) +
+                 COALESCE(cr.total_creditos, 0) + COALESCE(vl.total_vales, 0) +
+                 COALESCE(ad2.total_anticipos_desp, 0)) -
+                (COALESCE(rd.total_monto, 0) + COALESCE(lb.total_lubricantes, 0)),
+                2
+              ) as total_diferencia_efectivo
             FROM gas_station_closeouts c
+            LEFT JOIN (SELECT closeout_id, SUM(monto) as total_monto, SUM(diferencia) as total_diferencia, COUNT(*) as total_lecturas FROM gas_station_closeout_readings GROUP BY closeout_id) rd ON rd.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(valor), 0) as total_gastos FROM gas_station_closeout_expenses GROUP BY closeout_id) eg ON eg.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_remesas FROM gas_station_closeout_remesas GROUP BY closeout_id) re ON re.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_cupones FROM gas_station_closeout_cupones GROUP BY closeout_id) cu ON cu.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(total), 0) as total_descuentos FROM gas_station_closeout_descuentos GROUP BY closeout_id) dc ON dc.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_adelantos FROM gas_station_closeout_adelantos GROUP BY closeout_id) ad ON ad.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_tarjetas FROM gas_station_closeout_tarjetas GROUP BY closeout_id) tj ON tj.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_creditos FROM gas_station_closeout_creditos GROUP BY closeout_id) cr ON cr.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_vales FROM gas_station_closeout_vales GROUP BY closeout_id) vl ON vl.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_anticipos_desp FROM gas_station_closeout_anticipos_despachados GROUP BY closeout_id) ad2 ON ad2.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(total), 0) as total_lubricantes FROM gas_station_closeout_lubricant_readings GROUP BY closeout_id) lb ON lb.closeout_id = c.id
             ${where}
             ORDER BY c.created_at DESC
             LIMIT ? OFFSET ?
@@ -1713,5 +1773,136 @@ exports.deleteAnticipoDesp = async (req, res) => {
     } catch (error) {
         console.error('Error deleteAnticipoDesp:', error);
         res.status(500).json({ message: 'Error al eliminar anticipo despachado' });
+    }
+};
+
+// === Get Last Turno ===
+
+exports.getLastTurno = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT DATE_FORMAT(fecha_turno, '%d/%m/%Y') as fecha_turno, numero_turno FROM gas_station_closeouts
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             ORDER BY created_at DESC LIMIT 1`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
+        );
+        res.json(rows.length > 0 ? rows[0] : null);
+    } catch (error) {
+        console.error('Error getLastTurno:', error);
+        res.status(500).json({ message: 'Error al obtener último turno' });
+    }
+};
+
+// === Print Full Closeout Data ===
+
+exports.getCloseoutPrintData = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [closeouts] = await pool.query(`
+            SELECT co.*, c.razon_social as company_name, c.nit as company_nit,
+                   c.nombre_comercial as company_commercial_name,
+                   b.nombre as branch_name, b.direccion as branch_address,
+                   b.telefono as branch_phone
+            FROM gas_station_closeouts co
+            JOIN companies c ON c.id = co.company_id
+            JOIN branches b ON b.id = co.branch_id
+            WHERE co.id = ? AND co.company_id = ?
+        `, [id, req.company_id]);
+
+        if (closeouts.length === 0) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [readings] = await pool.query(
+            `SELECT * FROM gas_station_closeout_readings WHERE closeout_id = ? ORDER BY codigo_pistola ASC`, [id]
+        );
+
+        let tankReadings = [];
+        try {
+            [tankReadings] = await pool.query(`
+                SELECT tr.*, t.capacidad
+                FROM gas_station_closeout_tank_readings tr
+                JOIN gas_station_tanks t ON tr.tank_id = t.id
+                WHERE tr.closeout_id = ?
+                ORDER BY tr.codigo_tanque ASC
+            `, [id]);
+        } catch (e) { /* table may not exist */ }
+
+        const [despachadores] = await pool.query(
+            `SELECT cd.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+             FROM gas_station_closeout_despachadores cd
+             JOIN gas_station_despachadores d ON d.id = cd.despachador_id
+             WHERE cd.closeout_id = ?`, [id]
+        );
+
+        const [gastos] = await pool.query(
+            `SELECT e.*, p.nombre as proveedor_nombre FROM gas_station_closeout_expenses e
+             LEFT JOIN providers p ON e.provider_id = p.id
+             WHERE e.closeout_id = ? ORDER BY e.id ASC`, [id]
+        );
+
+        const [remesas] = await pool.query(
+            `SELECT * FROM gas_station_closeout_remesas WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [cupones] = await pool.query(
+            `SELECT * FROM gas_station_closeout_cupones WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [descuentos] = await pool.query(
+            `SELECT * FROM gas_station_closeout_descuentos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [adelantos] = await pool.query(
+            `SELECT * FROM gas_station_closeout_adelantos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [lubricantes] = await pool.query(
+            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [tarjetas] = await pool.query(
+            `SELECT * FROM gas_station_closeout_tarjetas WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [creditos] = await pool.query(
+            `SELECT * FROM gas_station_closeout_creditos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [vales] = await pool.query(
+            `SELECT * FROM gas_station_closeout_vales WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [anticiposDesp] = await pool.query(
+            `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [nozzleAssignments] = await pool.query(
+            `SELECT dn.* FROM gas_station_despachador_nozzles dn
+             JOIN gas_station_closeout_despachadores cd ON cd.despachador_id = dn.despachador_id
+             WHERE cd.closeout_id = ?`, [id]
+        );
+
+        res.json({
+            closeout: closeouts[0],
+            readings,
+            tankReadings,
+            despachadores,
+            despachadorNozzleAssignments: nozzleAssignments,
+            gastos: gastos.map(e => ({ ...e, proveedor: e.proveedor_nombre || e.proveedor })),
+            remesas,
+            cupones,
+            descuentos,
+            adelantos,
+            lubricantes,
+            tarjetas,
+            creditos,
+            vales,
+            anticiposDesp
+        });
+    } catch (error) {
+        console.error('Error getCloseoutPrintData:', error);
+        res.status(500).json({ message: 'Error al obtener datos de impresión' });
     }
 };

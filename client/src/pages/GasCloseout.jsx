@@ -5,13 +5,14 @@ import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
     FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save,
-    Users, UserCheck
+    Users, UserCheck, Printer
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { downloadCloseoutPdf } from '../utils/closeoutPdf';
 
 const GasCloseout = () => {
     const queryClient = useQueryClient();
@@ -109,6 +110,11 @@ const GasCloseout = () => {
         queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } })).data?.data || []
     });
 
+    const { data: lastTurno } = useQuery({
+        queryKey: ['gas-last-turno'],
+        queryFn: async () => (await axios.get('/api/gas-station/closeouts/last-turno')).data
+    });
+
     const { data: posTypesList = [] } = useQuery({
         queryKey: ['gas-pos-types'],
         queryFn: async () => (await axios.get('/api/gas-station/pos-types')).data,
@@ -173,6 +179,8 @@ const GasCloseout = () => {
             setTankReadings(res.data.tankReadings?.map(r => ({ ...r, lectura_actual: r.lectura_anterior })) || []);
             setEstado('abierto');
             if (res.data.despachadores) setCloseoutDespachadores(res.data.despachadores);
+            queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Cierre de lecturas iniciado');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al iniciar')
@@ -188,10 +196,21 @@ const GasCloseout = () => {
         mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/close`),
         onSuccess: () => {
             setEstado('cerrado');
+            queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Cierre cerrado exitosamente');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
     });
+
+    const handlePdf = async () => {
+        try {
+            const { data } = await axios.get(`/api/gas-station/closeouts/${closeoutId}/print-full`);
+            await downloadCloseoutPdf(data);
+        } catch (error) {
+            toast.error('Error al generar PDF');
+        }
+    };
 
     const updateDespachadoresMutation = useMutation({
         mutationFn: (despachadores) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachadores`, { despachadores }),
@@ -1051,6 +1070,13 @@ const GasCloseout = () => {
                                 {estado === 'cerrado' ? <Lock size={12} /> : <Unlock size={12} />}
                                 {estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
                             </span>
+                            <button
+                                onClick={handlePdf}
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                title="Descargar PDF"
+                            >
+                                <Printer size={16} />
+                            </button>
                             {estado === 'abierto' && (
                                 <button
                                     onClick={async () => {
@@ -1348,7 +1374,9 @@ const GasCloseout = () => {
                                         const isTarjetas = btn.key === 'tarjetas';
                                         const isCreditos = btn.key === 'creditos';
                                         const isVales = btn.key === 'vales';
-                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || (btn.enabled && estado === 'abierto');
+                                        const isAnticipos = btn.key === 'anticipos';
+                                        const isTanques = btn.key === 'tanques';
+                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTanques || (btn.enabled && estado === 'abierto');
                                         return (
                                             <button
                                                 key={btn.key}
@@ -1610,6 +1638,7 @@ const GasCloseout = () => {
                                                             handleGastoChange(g.id, 'provider_id', id);
                                                             handleGastoChange(g.id, 'proveedor', prov ? prov.nombre : '');
                                                         }}
+                                                        disabled={estado === 'cerrado'}
                                                         placeholder="Buscar proveedor..."
                                                         valueKey="id"
                                                         labelKey="nombre"
@@ -2034,6 +2063,7 @@ const GasCloseout = () => {
                                                             handleDescuentoChange(d.id, 'cliente_id', id);
                                                             handleDescuentoChange(d.id, 'cliente_nombre', cli ? cli.nombre : '');
                                                         }}
+                                                        disabled={estado === 'cerrado'}
                                                         placeholder="Buscar cliente..."
                                                         valueKey="id"
                                                         labelKey="nombre"
@@ -2728,6 +2758,7 @@ const GasCloseout = () => {
                                                                 handleCreditoChange(c.id, 'cliente_id', id);
                                                                 handleCreditoChange(c.id, 'cliente_nombre', cli ? cli.nombre : '');
                                                             }}
+                                                            disabled={estado === 'cerrado'}
                                                             placeholder="Buscar cliente..."
                                                             valueKey="id"
                                                             labelKey="nombre"
@@ -2953,6 +2984,7 @@ const GasCloseout = () => {
                                                                 handleValeChange(v.id, 'cliente_id', id);
                                                                 handleValeChange(v.id, 'cliente_nombre', cli ? cli.nombre : '');
                                                             }}
+                                                            disabled={estado === 'cerrado'}
                                                             placeholder="Buscar cliente..."
                                                             valueKey="id"
                                                             labelKey="nombre"
@@ -3159,6 +3191,7 @@ const GasCloseout = () => {
                                                                 handleAnticipoClienteChange(a.id, id);
                                                                 if (cli) handleAnticipoChange(a.id, 'cliente_nombre', cli.nombre);
                                                             }}
+                                                            disabled={estado === 'cerrado'}
                                                             placeholder="Buscar cliente..."
                                                             valueKey="id"
                                                             labelKey="nombre"
@@ -3349,6 +3382,12 @@ const GasCloseout = () => {
             </div>
 
             <form onSubmit={handleInit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                {lastTurno && (
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 flex items-center gap-3 text-xs">
+                        <span className="font-bold text-indigo-700 uppercase tracking-wider">Último Turno:</span>
+                        <span className="text-indigo-600">{(lastTurno.fecha_turno instanceof Date ? lastTurno.fecha_turno.toLocaleDateString('es-SV') : lastTurno.fecha_turno)} — #{lastTurno.numero_turno}</span>
+                    </div>
+                )}
                 <div>
                     <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Vendedor</label>
                     <div className="relative">

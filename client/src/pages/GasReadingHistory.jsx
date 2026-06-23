@@ -4,10 +4,11 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { downloadCloseoutPdf } from '../utils/closeoutPdf';
 
 const GasReadingHistory = () => {
     const queryClient = useQueryClient();
@@ -16,8 +17,6 @@ const GasReadingHistory = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [debouncedSearch, setDebouncedSearch] = useState('');
-    const [selectedCloseout, setSelectedCloseout] = useState(null);
-    const [detailOpen, setDetailOpen] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
 
     React.useEffect(() => {
@@ -33,29 +32,32 @@ const GasReadingHistory = () => {
         queryFn: async () => (await axios.get('/api/gas-station/closeouts', { params: { search: debouncedSearch, page, branch_id: user?.branch_id } })).data
     });
 
-    const { data: detailData, isLoading: detailLoading } = useQuery({
-        queryKey: ['gas-closeout-detail', selectedCloseout?.id],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${selectedCloseout.id}`)).data,
-        enabled: !!selectedCloseout
-    });
-
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/gas-station/closeouts/${id}`),
         onSuccess: () => {
             toast.success('Cierre eliminado');
             setDeleteConfirm(null);
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al eliminar')
     });
 
     const handleView = (item) => {
-        setSelectedCloseout(item);
-        setDetailOpen(true);
+        navigate(`/gas-station/cierre-lecturas?editId=${item.id}`);
     };
 
     const handleEdit = (item) => {
         navigate(`/gas-station/cierre-lecturas?editId=${item.id}`);
+    };
+
+    const handlePdf = async (item) => {
+        try {
+            const { data } = await axios.get(`/api/gas-station/closeouts/${item.id}/print-full`);
+            await downloadCloseoutPdf(data);
+        } catch (error) {
+            toast.error('Error al generar PDF');
+        }
     };
 
     return (
@@ -83,14 +85,14 @@ const GasReadingHistory = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Fecha', 'Turno #', 'Vendedor', 'Estado', 'Lecturas', 'Total Diferencia', 'Total Monto', 'Acciones']}
+                    headers={['Fecha', 'Turno #', 'Vendedor', 'Estado', 'Galones Vendidos', 'Total Monto', 'Diferencia', 'Acciones']}
                     data={response.data}
                     isLoading={isLoading}
                     renderRow={(c) => (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
                             <td className="px-3 py-1">
                                 <span className="text-xs font-bold text-slate-700">
-                                    {new Date(c.fecha_turno).toLocaleDateString('es-SV')}
+                                    {new Date(c.fecha_turno).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                 </span>
                             </td>
                             <td className="px-3 py-1">
@@ -107,9 +109,18 @@ const GasReadingHistory = () => {
                                     {c.estado}
                                 </span>
                             </td>
-                            <td className="px-3 py-1 text-xs font-mono text-slate-500">{c.total_lecturas}</td>
                             <td className="px-3 py-1 text-xs font-mono font-bold text-indigo-600">{parseFloat(c.total_diferencia).toFixed(5)}</td>
                             <td className="px-3 py-1 text-xs font-mono font-bold text-slate-900">${parseFloat(c.total_monto).toFixed(2)}</td>
+                            <td className="px-3 py-1">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold font-mono ${
+                                    parseFloat(c.total_diferencia_efectivo) >= 0
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-red-50 text-red-700'
+                                }`}>
+                                    {parseFloat(c.total_diferencia_efectivo) >= 0 ? '+' : ''}
+                                    ${parseFloat(c.total_diferencia_efectivo).toFixed(2)}
+                                </span>
+                            </td>
                             <td className="px-3 py-1">
                                 <div className="flex items-center gap-1">
                                     {c.estado === 'cerrado' ? (
@@ -138,6 +149,13 @@ const GasReadingHistory = () => {
                                             </button>
                                         </>
                                     )}
+                                    <button
+                                        onClick={() => handlePdf(c)}
+                                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="Descargar PDF"
+                                    >
+                                        <Printer size={15} />
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -186,56 +204,7 @@ const GasReadingHistory = () => {
                 </div>
             </Modal>
 
-            {/* Read-only detail modal */}
-            <Modal
-                isOpen={detailOpen}
-                onClose={() => { setDetailOpen(false); setSelectedCloseout(null); }}
-                title={`Lecturas — Turno #${selectedCloseout?.numero_turno || ''} (${selectedCloseout?.fecha_turno || ''})`}
-                maxWidth="max-w-5xl"
-            >
-                {detailLoading ? (
-                    <div className="py-8 text-center text-xs text-slate-400">Cargando detalle...</div>
-                ) : detailData?.readings ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-50 border-b border-slate-100">
-                                <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="px-3 py-1.5">Pistola</th>
-                                    <th className="px-3 py-1.5">Producto</th>
-                                    <th className="px-3 py-1.5 text-right">Precio</th>
-                                    <th className="px-3 py-1.5 text-right">Lect. Anterior</th>
-                                    <th className="px-3 py-1.5 text-right">Lect. Actual</th>
-                                    <th className="px-3 py-1.5 text-right">Calibración</th>
-                                    <th className="px-3 py-1.5 text-right">Diferencia</th>
-                                    <th className="px-3 py-1.5 text-right">Monto</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {detailData.readings.map((r) => (
-                                    <tr key={r.id} className="hover:bg-slate-50 transition-colors text-xs">
-                                        <td className="px-3 py-1 font-bold text-slate-900">{r.codigo_pistola}</td>
-                                        <td className="px-3 py-1">
-                                            <div className="font-medium text-slate-800">{r.codigo_producto}</div>
-                                            <div className="text-[10px] text-slate-400">{r.descripcion_producto}</div>
-                                        </td>
-                                        <td className="px-3 py-1 text-right font-mono text-slate-700">${parseFloat(r.precio).toFixed(2)}</td>
-                                        <td className="px-3 py-1 text-right font-mono text-slate-500">{parseFloat(r.lectura_anterior).toFixed(5)}</td>
-                                        <td className="px-3 py-1 text-right font-mono font-bold text-slate-900">{parseFloat(r.lectura_actual).toFixed(5)}</td>
-                                        <td className="px-3 py-1 text-right font-mono text-slate-500">{parseFloat(r.calibracion).toFixed(5)}</td>
-                                        <td className="px-3 py-1 text-right font-mono font-bold text-indigo-600">{parseFloat(r.diferencia).toFixed(5)}</td>
-                                        <td className="px-3 py-1 text-right font-mono font-bold text-slate-900">${parseFloat(r.monto).toFixed(2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        <div className="pt-4 text-right text-xs font-bold text-slate-700 border-t border-slate-100">
-                            Total Monto: ${detailData.readings.reduce((s, r) => s + parseFloat(r.monto), 0).toFixed(2)}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="py-8 text-center text-xs text-slate-400">Sin datos</div>
-                )}
-            </Modal>
+
         </div>
     );
 };
