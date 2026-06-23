@@ -19,6 +19,7 @@ const SearchableSelect = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [focusIdx, setFocusIdx] = useState(-1);
     const containerRef = useRef(null);
 
     // Ensure options is always an array
@@ -48,6 +49,42 @@ const SearchableSelect = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        if (!isOpen) setFocusIdx(-1);
+    }, [isOpen]);
+
+    const handleKeyDown = (e) => {
+        if (!isOpen) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsOpen(true);
+            }
+            return;
+        }
+        switch (e.key) {
+            case 'Escape':
+                setIsOpen(false);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                setFocusIdx(prev => Math.min(prev + 1, filteredOptions.length - 1));
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setFocusIdx(prev => Math.max(prev - 1, 0));
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (focusIdx >= 0 && focusIdx < filteredOptions.length) {
+                    handleSelect(filteredOptions[focusIdx]);
+                }
+                break;
+            case 'Tab':
+                setIsOpen(false);
+                break;
+        }
+    };
+
     const handleSelect = (option) => {
         if (!option) return;
         onChange({ target: { name, value: option[valueKey] } });
@@ -63,8 +100,11 @@ const SearchableSelect = ({
     return (
         <div className="relative" ref={containerRef}>
             <div 
+                tabIndex={0}
+                role="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase cursor-pointer ${
+                onKeyDown={handleKeyDown}
+                className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 ${
                     isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200 hover:border-slate-300'
                 }`}
             >
@@ -108,8 +148,11 @@ const SearchableSelect = ({
                                 <div 
                                     key={opt[valueKey] || i}
                                     onClick={() => handleSelect(opt)}
+                                    onMouseEnter={() => setFocusIdx(i)}
                                     className={`px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 transition-colors ${
-                                        isSelected(opt) ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600'
+                                        focusIdx === i ? 'bg-indigo-50' : ''
+                                    } ${
+                                        isSelected(opt) ? 'text-indigo-700 font-bold' : 'text-slate-600'
                                     }`}
                                 >
                                     <div className="flex flex-col">

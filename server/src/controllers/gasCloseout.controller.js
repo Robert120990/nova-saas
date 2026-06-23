@@ -376,17 +376,50 @@ exports.deleteCloseout = async (req, res) => {
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
-        if (closeouts[0].estado === 'cerrado') {
-            return res.status(400).json({ message: 'No se puede eliminar un cierre cerrado' });
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            const [anticiposDesp] = await connection.query(
+                `SELECT cliente_id, monto FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`,
+                [id]
+            );
+
+            for (const ad of anticiposDesp) {
+                const cid = ad.cliente_id;
+                const monto = parseFloat(ad.monto);
+                if (!cid || monto <= 0) continue;
+                const [availableAdvances] = await connection.query(
+                    `SELECT id, monto_disponible FROM gas_station_advances WHERE company_id = ? AND cliente_id = ? AND monto_disponible > 0 ORDER BY fecha ASC, id ASC`,
+                    [req.company_id, cid]
+                );
+                let remaining = monto;
+                for (const adv of availableAdvances) {
+                    if (remaining <= 0) break;
+                    const restore = Math.min(remaining, parseFloat(adv.monto_disponible));
+                    await connection.query(
+                        `UPDATE gas_station_advances SET monto_disponible = monto_disponible + ? WHERE id = ?`,
+                        [restore, adv.id]
+                    );
+                    remaining -= restore;
+                }
+            }
+
+            await connection.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
+            await connection.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
+            await connection.query(`DELETE FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`, [id]);
+            await connection.query(`DELETE FROM gas_station_closeout_readings WHERE closeout_id = ?`, [id]);
+            await connection.query(`DELETE FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`, [id]);
+            await connection.query(`DELETE FROM gas_station_closeouts WHERE id = ?`, [id]);
+
+            await connection.commit();
+            res.json({ message: 'Cierre eliminado exitosamente' });
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
         }
-
-        await pool.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
-        await pool.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
-        await pool.query(`DELETE FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`, [id]);
-        await pool.query(`DELETE FROM gas_station_closeout_readings WHERE closeout_id = ?`, [id]);
-        await pool.query(`DELETE FROM gas_station_closeouts WHERE id = ?`, [id]);
-
-        res.json({ message: 'Cierre eliminado exitosamente' });
     } catch (error) {
         console.error('Error deleteCloseout:', error);
         res.status(500).json({ message: 'Error al eliminar cierre de lecturas' });
@@ -445,8 +478,24 @@ exports.closeCloseout = async (req, res) => {
                 `SELECT COALESCE(SUM(monto), 0) as adelantosTotal FROM gas_station_closeout_adelantos WHERE closeout_id = ?`,
                 [id]
             );
+            const [[{ tarjetasTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as tarjetasTotal FROM gas_station_closeout_tarjetas WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ creditosTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as creditosTotal FROM gas_station_closeout_creditos WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ valesTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as valesTotal FROM gas_station_closeout_vales WHERE closeout_id = ?`,
+                [id]
+            );
+            const [[{ anticiposDespTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as anticiposDespTotal FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`,
+                [id]
+            );
 
-            const diferencia = (parseFloat(totalMonto) + parseFloat(lubricantTotal)) - (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal));
+            const diferencia = (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal) + parseFloat(tarjetasTotal) + parseFloat(creditosTotal) + parseFloat(valesTotal) + parseFloat(anticiposDespTotal)) - (parseFloat(totalMonto) + parseFloat(lubricantTotal));
 
             if (Math.abs(diferencia) > variacionPermitida) {
                 return res.status(400).json({
@@ -1181,5 +1230,488 @@ exports.updateCloseoutDespachadores = async (req, res) => {
     } catch (error) {
         console.error('Error updateCloseoutDespachadores:', error);
         res.status(500).json({ message: 'Error al actualizar despachadores' });
+    }
+};
+
+// === Closeout Tarjetas ===
+
+exports.getTarjetas = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(`
+            SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_tarjetas t
+            LEFT JOIN gas_station_pos_types p ON t.pos_type_id = p.id
+            LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
+            WHERE t.closeout_id = ?
+            ORDER BY t.id ASC
+        `, [id]);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getTarjetas:', error);
+        res.status(500).json({ message: 'Error al obtener tarjetas' });
+    }
+};
+
+exports.saveTarjetas = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tarjetas } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_tarjetas WHERE closeout_id = ?`, [id]);
+
+        if (tarjetas && tarjetas.length > 0) {
+            const values = tarjetas.map(t => [
+                parseInt(id),
+                t.num_tarjeta || '',
+                t.num_autorizacion || '',
+                t.pos_type_id ? parseInt(t.pos_type_id) : null,
+                t.despachador_id ? parseInt(t.despachador_id) : null,
+                t.tipo_operacion || 'venta_combustible',
+                parseFloat(t.monto) || 0
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_tarjetas (closeout_id, num_tarjeta, num_autorizacion, pos_type_id, despachador_id, tipo_operacion, monto) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(`
+            SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_tarjetas t
+            LEFT JOIN gas_station_pos_types p ON t.pos_type_id = p.id
+            LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
+            WHERE t.closeout_id = ?
+            ORDER BY t.id ASC
+        `, [id]);
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveTarjetas:', error);
+        res.status(500).json({ message: 'Error al guardar tarjetas' });
+    }
+};
+
+exports.deleteTarjeta = async (req, res) => {
+    try {
+        const { id, tarjetaId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_tarjetas WHERE id = ? AND closeout_id = ?`, [tarjetaId, id]);
+        res.json({ message: 'Tarjeta eliminada' });
+    } catch (error) {
+        console.error('Error deleteTarjeta:', error);
+        res.status(500).json({ message: 'Error al eliminar tarjeta' });
+    }
+};
+
+// === Closeout Creditos ===
+
+exports.getCreditos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(`
+            SELECT c.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_creditos c
+            LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+            WHERE c.closeout_id = ?
+            ORDER BY c.id ASC
+        `, [id]);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getCreditos:', error);
+        res.status(500).json({ message: 'Error al obtener créditos' });
+    }
+};
+
+exports.saveCreditos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { creditos } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE closeout_id = ?`, [id]);
+
+        if (creditos && creditos.length > 0) {
+            const values = creditos.map(c => [
+                parseInt(id),
+                c.documento || '',
+                c.tipo_documento || 'FAC',
+                c.cliente_id ? parseInt(c.cliente_id) : null,
+                c.cliente_nombre || '',
+                c.producto_codigo || '',
+                c.producto_descripcion || '',
+                c.despachador_id ? parseInt(c.despachador_id) : null,
+                parseFloat(c.cantidad) || 0,
+                parseFloat(c.precio) || 0,
+                parseFloat(c.monto) || 0,
+                c.placa || '',
+                c.kilometraje || ''
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_creditos (closeout_id, documento, tipo_documento, cliente_id, cliente_nombre, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(`
+            SELECT c.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_creditos c
+            LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+            WHERE c.closeout_id = ?
+            ORDER BY c.id ASC
+        `, [id]);
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveCreditos:', error);
+        res.status(500).json({ message: 'Error al guardar créditos' });
+    }
+};
+
+exports.deleteCredito = async (req, res) => {
+    try {
+        const { id, creditoId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE id = ? AND closeout_id = ?`, [creditoId, id]);
+        res.json({ message: 'Crédito eliminado' });
+    } catch (error) {
+        console.error('Error deleteCredito:', error);
+        res.status(500).json({ message: 'Error al eliminar crédito' });
+    }
+};
+
+// === Closeout Vales ===
+
+exports.getVales = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(`
+            SELECT v.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_vales v
+            LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
+            WHERE v.closeout_id = ?
+            ORDER BY v.id ASC
+        `, [id]);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getVales:', error);
+        res.status(500).json({ message: 'Error al obtener vales' });
+    }
+};
+
+exports.saveVales = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { vales } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_vales WHERE closeout_id = ?`, [id]);
+
+        if (vales && vales.length > 0) {
+            const values = vales.map(v => [
+                parseInt(id),
+                v.documento || '',
+                v.tipo_documento || 'FAC',
+                v.cliente_id ? parseInt(v.cliente_id) : null,
+                v.cliente_nombre || '',
+                v.producto_codigo || '',
+                v.producto_descripcion || '',
+                v.despachador_id ? parseInt(v.despachador_id) : null,
+                parseFloat(v.cantidad) || 0,
+                parseFloat(v.precio) || 0,
+                parseFloat(v.monto) || 0,
+                v.placa || '',
+                v.kilometraje || ''
+            ]);
+            await pool.query(
+                `INSERT INTO gas_station_closeout_vales (closeout_id, documento, tipo_documento, cliente_id, cliente_nombre, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje) VALUES ?`,
+                [values]
+            );
+        }
+
+        const [remaining] = await pool.query(`
+            SELECT v.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_vales v
+            LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
+            WHERE v.closeout_id = ?
+            ORDER BY v.id ASC
+        `, [id]);
+
+        res.json(remaining);
+    } catch (error) {
+        console.error('Error saveVales:', error);
+        res.status(500).json({ message: 'Error al guardar vales' });
+    }
+};
+
+exports.deleteVale = async (req, res) => {
+    try {
+        const { id, valeId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(`DELETE FROM gas_station_closeout_vales WHERE id = ? AND closeout_id = ?`, [valeId, id]);
+        res.json({ message: 'Vale eliminado' });
+    } catch (error) {
+        console.error('Error deleteVale:', error);
+        res.status(500).json({ message: 'Error al eliminar vale' });
+    }
+};
+
+async function deductAdvanceByFIFO(pool, companyId, clienteId, monto) {
+    const [advances] = await pool.query(
+        `SELECT id, monto_disponible FROM gas_station_advances WHERE company_id = ? AND cliente_id = ? AND monto_disponible > 0 ORDER BY fecha ASC, id ASC`,
+        [companyId, clienteId]
+    );
+    let remaining = parseFloat(monto);
+    for (const adv of advances) {
+        if (remaining <= 0) break;
+        const deduct = Math.min(remaining, parseFloat(adv.monto_disponible));
+        await pool.query(
+            `UPDATE gas_station_advances SET monto_disponible = monto_disponible - ? WHERE id = ?`,
+            [deduct, adv.id]
+        );
+        remaining -= deduct;
+    }
+}
+
+async function restoreAdvanceByFIFO(pool, companyId, clienteId, monto) {
+    const [advances] = await pool.query(
+        `SELECT id, monto_disponible FROM gas_station_advances WHERE company_id = ? AND cliente_id = ? ORDER BY fecha DESC, id DESC`,
+        [companyId, clienteId]
+    );
+    let remaining = parseFloat(monto);
+    for (const adv of advances) {
+        if (remaining <= 0) break;
+        const restore = Math.min(remaining, parseFloat(adv.monto_disponible));
+        await pool.query(
+            `UPDATE gas_station_advances SET monto_disponible = monto_disponible + ? WHERE id = ?`,
+            [restore, adv.id]
+        );
+        remaining -= restore;
+    }
+}
+
+// === Closeout Anticipos Despachados ===
+
+exports.getAnticiposDesp = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(`
+            SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_anticipos_despachados ad
+            LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+            WHERE ad.closeout_id = ?
+            ORDER BY ad.id ASC
+        `, [id]);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getAnticiposDesp:', error);
+        res.status(500).json({ message: 'Error al obtener anticipos despachados' });
+    }
+};
+
+exports.saveAnticiposDesp = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { anticipos } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            const [oldAnticipos] = await connection.query(
+                `SELECT cliente_id, monto FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`,
+                [id]
+            );
+
+            for (const old of oldAnticipos) {
+                if (old.cliente_id && parseFloat(old.monto) > 0) {
+                    await restoreAdvanceByFIFO(connection, req.company_id, old.cliente_id, old.monto);
+                }
+            }
+
+            await connection.query(`DELETE FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`, [id]);
+
+            if (anticipos && anticipos.length > 0) {
+                for (const a of anticipos) {
+                    if (a.cliente_id && parseFloat(a.monto) > 0) {
+                        const [available] = await connection.query(
+                            `SELECT COALESCE(SUM(monto_disponible), 0) as total FROM gas_station_advances WHERE company_id = ? AND cliente_id = ?`,
+                            [req.company_id, a.cliente_id]
+                        );
+                        if (parseFloat(available[0].total) < parseFloat(a.monto)) {
+                            throw new Error(`El cliente no tiene suficiente saldo disponible. Se requiere $${parseFloat(a.monto).toFixed(2)}, disponible: $${parseFloat(available[0].total).toFixed(2)}`);
+                        }
+                        await deductAdvanceByFIFO(connection, req.company_id, a.cliente_id, a.monto);
+                    }
+
+                    await connection.query(
+                        `INSERT INTO gas_station_closeout_anticipos_despachados (closeout_id, cliente_id, cliente_nombre, documento, tipo_documento, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            parseInt(id),
+                            a.cliente_id ? parseInt(a.cliente_id) : null,
+                            a.cliente_nombre || '',
+                            a.documento || '',
+                            a.tipo_documento || 'FAC',
+                            a.producto_codigo || '',
+                            a.producto_descripcion || '',
+                            a.despachador_id ? parseInt(a.despachador_id) : null,
+                            parseFloat(a.cantidad) || 0,
+                            parseFloat(a.precio) || 0,
+                            parseFloat(a.monto) || 0,
+                            a.placa || '',
+                            a.kilometraje || ''
+                        ]
+                    );
+                }
+            }
+
+            const [remaining] = await connection.query(`
+                SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+                FROM gas_station_closeout_anticipos_despachados ad
+                LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+                WHERE ad.closeout_id = ?
+                ORDER BY ad.id ASC
+            `, [id]);
+
+            await connection.commit();
+            res.json(remaining);
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Error saveAnticiposDesp:', error);
+        res.status(500).json({ message: error.message || 'Error al guardar anticipos despachados' });
+    }
+};
+
+exports.deleteAnticipoDesp = async (req, res) => {
+    try {
+        const { id, anticipoId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [anticipo] = await pool.query(
+            `SELECT cliente_id, monto FROM gas_station_closeout_anticipos_despachados WHERE id = ? AND closeout_id = ?`,
+            [anticipoId, id]
+        );
+        if (anticipo.length === 0) return res.status(404).json({ message: 'Anticipo despachado no encontrado' });
+
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            if (anticipo[0].cliente_id && parseFloat(anticipo[0].monto) > 0) {
+                await restoreAdvanceByFIFO(connection, req.company_id, anticipo[0].cliente_id, anticipo[0].monto);
+            }
+
+            await connection.query(`DELETE FROM gas_station_closeout_anticipos_despachados WHERE id = ? AND closeout_id = ?`, [anticipoId, id]);
+
+            await connection.commit();
+            res.json({ message: 'Anticipo despachado eliminado' });
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Error deleteAnticipoDesp:', error);
+        res.status(500).json({ message: 'Error al eliminar anticipo despachado' });
     }
 };

@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 10, es_credito, es_anticipado } = req.query;
         const offset = (page - 1) * limit;
 
         console.log(`[DEBUG] getCustomers: company_id=${req.company_id}, search=${search}, page=${page}`);
@@ -25,6 +25,13 @@ const getCustomers = async (req, res) => {
             query += ` AND (c.nombre LIKE ? OR c.nombre_comercial LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ?) `;
             const searchTerm = `%${search}%`;
             params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        if (es_credito === '1') {
+            query += ` AND c.es_credito = 1 `;
+        }
+        if (es_anticipado === '1') {
+            query += ` AND c.es_anticipado = 1 `;
         }
 
         // Count total for pagination
@@ -55,7 +62,8 @@ const validColumns = [
     'tipo_documento', 'numero_documento', 'nit', 'nrc', 
     'codigo_actividad', 'condicion_fiscal', 'pais', 'departamento', 
     'municipio', 'distrito', 'direccion', 'telefono', 'correo', 
-    'exento_iva', 'aplica_fovial', 'aplica_cotrans'
+    'exento_iva', 'aplica_fovial', 'aplica_cotrans',
+    'es_credito', 'es_anticipado'
 ];
 
 const createCustomer = async (req, res) => {

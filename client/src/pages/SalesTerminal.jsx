@@ -1697,11 +1697,11 @@ const SalesTerminal = () => {
                                     className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all"
                                 >
                                     {condiciones.length > 0 ? condiciones.map(c => (
-                                        <option key={c.code} value={c.code}>{c.description.toUpperCase()}</option>
+                                        <option key={c.code} value={c.code} disabled={c.code === '2' && !selectedCustomerData?.es_credito}>{c.description.toUpperCase()}</option>
                                     )) : (
                                         <>
                                             <option value="1">CONTADO</option>
-                                            <option value="2">CRÉDITO</option>
+                                            <option value="2" disabled={!selectedCustomerData?.es_credito}>CRÉDITO</option>
                                         </>
                                     )}
                                 </select>

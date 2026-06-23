@@ -38,7 +38,7 @@ const CustomerStatement = () => {
 
     const { data: customers = [] } = useQuery({
         queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000, es_credito: 1 } })).data?.data || []
     });
 
     // Pestaña 1: Estado de Cuenta (Movimientos)

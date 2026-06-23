@@ -55,6 +55,14 @@ const GasCloseout = () => {
     const [adelantos, setAdelantos] = useState([]);
     const [showLubricantesModal, setShowLubricantesModal] = useState(false);
     const [lubricantReadings, setLubricantReadings] = useState([]);
+    const [showTarjetasModal, setShowTarjetasModal] = useState(false);
+    const [tarjetas, setTarjetas] = useState([]);
+    const [showCreditosModal, setShowCreditosModal] = useState(false);
+    const [creditos, setCreditos] = useState([]);
+    const [showValesModal, setShowValesModal] = useState(false);
+    const [vales, setVales] = useState([]);
+    const [showAnticiposModal, setShowAnticiposModal] = useState(false);
+    const [anticiposDesp, setAnticiposDesp] = useState([]);
 
     const inputRefs = useRef({});
     const tankInputRefs = useRef({});
@@ -101,6 +109,12 @@ const GasCloseout = () => {
         queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } })).data?.data || []
     });
 
+    const { data: posTypesList = [] } = useQuery({
+        queryKey: ['gas-pos-types'],
+        queryFn: async () => (await axios.get('/api/gas-station/pos-types')).data,
+        enabled: !!(closeoutId || editId)
+    });
+
     const { data: despachadorNozzleAssignments = [] } = useQuery({
         queryKey: ['gas-despachador-nozzles-all'],
         queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data || []
@@ -132,10 +146,14 @@ const GasCloseout = () => {
             const cuponesSum = cupones.filter(c => parseInt(c.despachador_id) === did).reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
             const descuentosSum = descuentos.filter(dd => parseInt(dd.despachador_id) === did).reduce((s, dd) => s + (parseFloat(dd.total) || 0), 0);
             const adelantosSum = adelantos.filter(a => parseInt(a.despachador_id) === did).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
-            map[did] = gastosSum + cuponesSum + descuentosSum + adelantosSum;
+            const tarjetasSum = tarjetas.filter(t => parseInt(t.despachador_id) === did).reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
+            const creditosSum = creditos.filter(c => parseInt(c.despachador_id) === did).reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+            const valesSum = vales.filter(v => parseInt(v.despachador_id) === did).reduce((s, v) => s + (parseFloat(v.monto) || 0), 0);
+            const anticiposDespSum = anticiposDesp.filter(a => parseInt(a.despachador_id) === did).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
+            map[did] = gastosSum + cuponesSum + descuentosSum + adelantosSum + tarjetasSum + creditosSum + valesSum + anticiposDespSum;
         }
         return map;
-    }, [closeoutDespachadores, gastos, cupones, descuentos, adelantos]);
+    }, [closeoutDespachadores, gastos, cupones, descuentos, adelantos, tarjetas, creditos, vales, anticiposDesp]);
 
     const despachadorEntregado = useMemo(() => {
         const map = {};
@@ -266,6 +284,66 @@ const GasCloseout = () => {
         adelantos.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0),
     [adelantos]);
 
+    const tarjetasTotal = useMemo(() =>
+        tarjetas.reduce((s, t) => s + (parseFloat(t.monto) || 0), 0),
+    [tarjetas]);
+
+    const creditosTotal = useMemo(() =>
+        creditos.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0),
+    [creditos]);
+
+    const valesTotal = useMemo(() =>
+        vales.reduce((s, v) => s + (parseFloat(v.monto) || 0), 0),
+    [vales]);
+
+    const anticiposDespTotal = useMemo(() =>
+        anticiposDesp.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0),
+    [anticiposDesp]);
+
+    const saveTarjetasMutation = useMutation({
+        mutationFn: (tarjetas) => axios.post(`/api/gas-station/closeouts/${closeoutId}/tarjetas`, { tarjetas }),
+        onSuccess: (res) => {
+            setTarjetas(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-tarjetas', closeoutId] });
+            setShowTarjetasModal(false);
+            toast.success('Tarjetas guardadas');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar tarjetas')
+    });
+
+    const saveCreditosMutation = useMutation({
+        mutationFn: (creditos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/creditos`, { creditos }),
+        onSuccess: (res) => {
+            setCreditos(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-creditos', closeoutId] });
+            setShowCreditosModal(false);
+            toast.success('Créditos guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar créditos')
+    });
+
+    const saveValesMutation = useMutation({
+        mutationFn: (vales) => axios.post(`/api/gas-station/closeouts/${closeoutId}/vales`, { vales }),
+        onSuccess: (res) => {
+            setVales(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-vales', closeoutId] });
+            setShowValesModal(false);
+            toast.success('Vales guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar vales')
+    });
+
+    const saveAnticiposDespMutation = useMutation({
+        mutationFn: (anticipos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/anticipos-desp`, { anticipos }),
+        onSuccess: (res) => {
+            setAnticiposDesp(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-anticipos-desp', closeoutId] });
+            setShowAnticiposModal(false);
+            toast.success('Anticipos despachados guardados');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar anticipos despachados')
+    });
+
     const lubricantTotal = useMemo(() =>
         lubricantReadings.reduce((s, r) => s + (parseFloat(r.total) || 0), 0),
     [lubricantReadings]);
@@ -320,6 +398,46 @@ const GasCloseout = () => {
         if (existingAdelantos) setAdelantos(existingAdelantos);
     }, [existingAdelantos]);
 
+    const { data: existingTarjetas } = useQuery({
+        queryKey: ['gas-closeout-tarjetas', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/tarjetas`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingTarjetas) setTarjetas(existingTarjetas);
+    }, [existingTarjetas]);
+
+    const { data: existingCreditos } = useQuery({
+        queryKey: ['gas-closeout-creditos', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/creditos`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingCreditos) setCreditos(existingCreditos);
+    }, [existingCreditos]);
+
+    const { data: existingVales } = useQuery({
+        queryKey: ['gas-closeout-vales', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/vales`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingVales) setVales(existingVales);
+    }, [existingVales]);
+
+    const { data: existingAnticiposDesp } = useQuery({
+        queryKey: ['gas-closeout-anticipos-desp', closeoutId],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/anticipos-desp`)).data,
+        enabled: !!closeoutId
+    });
+
+    useEffect(() => {
+        if (existingAnticiposDesp) setAnticiposDesp(existingAnticiposDesp);
+    }, [existingAnticiposDesp]);
+
     const saveLubricantesMutation = useMutation({
         mutationFn: (readings) => axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings }),
         onSuccess: (res) => {
@@ -350,6 +468,8 @@ const GasCloseout = () => {
         queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000 } })).data?.data || [],
     });
     const customers = customersData || [];
+    const creditCustomers = customers.filter(c => c.es_credito);
+    const anticipadoCustomers = customers.filter(c => c.es_anticipado);
 
     const loadExpenseCategories = async () => {
         try {
@@ -501,6 +621,135 @@ const GasCloseout = () => {
 
     const handleRemoveAdelanto = (id) => {
         setAdelantos(prev => prev.filter(a => a.id !== id));
+    };
+
+    const handleOpenTarjetas = () => {
+        setShowTarjetasModal(true);
+    };
+
+    const handleAddTarjetaRow = () => {
+        setTarjetas(prev => [...prev, {
+            id: Date.now(),
+            num_tarjeta: '',
+            num_autorizacion: '',
+            pos_type_id: '',
+            despachador_id: '',
+            tipo_operacion: 'venta_combustible',
+            monto: 0
+        }]);
+    };
+
+    const handleTarjetaChange = (id, field, value) => {
+        setTarjetas(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+    };
+
+    const handleRemoveTarjeta = (id) => {
+        setTarjetas(prev => prev.filter(t => t.id !== id));
+    };
+
+    const handleOpenCreditos = () => {
+        setShowCreditosModal(true);
+    };
+
+    const handleAddCreditoRow = () => {
+        setCreditos(prev => [...prev, {
+            id: Date.now(),
+            documento: '',
+            tipo_documento: 'FAC',
+            cliente_id: '',
+            cliente_nombre: '',
+            producto_codigo: '',
+            producto_descripcion: '',
+            despachador_id: '',
+            cantidad: 0,
+            precio: 0,
+            monto: 0,
+            placa: '',
+            kilometraje: ''
+        }]);
+    };
+
+    const handleCreditoChange = (id, field, value) => {
+        setCreditos(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+    };
+
+    const handleRemoveCredito = (id) => {
+        setCreditos(prev => prev.filter(c => c.id !== id));
+    };
+
+    const handleOpenVales = () => {
+        setShowValesModal(true);
+    };
+
+    const handleAddValeRow = () => {
+        setVales(prev => [...prev, {
+            id: Date.now(),
+            documento: '',
+            tipo_documento: 'FAC',
+            cliente_id: '',
+            cliente_nombre: '',
+            producto_codigo: '',
+            producto_descripcion: '',
+            despachador_id: '',
+            cantidad: 0,
+            precio: 0,
+            monto: 0,
+            placa: '',
+            kilometraje: ''
+        }]);
+    };
+
+    const handleValeChange = (id, field, value) => {
+        setVales(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
+    };
+
+    const handleRemoveVale = (id) => {
+        setVales(prev => prev.filter(v => v.id !== id));
+    };
+
+    const handleOpenAnticipos = () => {
+        setShowAnticiposModal(true);
+    };
+
+    const handleAddAnticipoRow = () => {
+        setAnticiposDesp(prev => [...prev, {
+            id: Date.now(),
+            cliente_id: '',
+            cliente_nombre: '',
+            saldo_disponible: null,
+            documento: '',
+            tipo_documento: 'FAC',
+            producto_codigo: '',
+            producto_descripcion: '',
+            despachador_id: '',
+            cantidad: 0,
+            precio: 0,
+            monto: 0,
+            placa: '',
+            kilometraje: ''
+        }]);
+    };
+
+    const handleAnticipoChange = (id, field, value) => {
+        setAnticiposDesp(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
+    };
+
+    const handleAnticipoClienteChange = async (id, clienteId) => {
+        setAnticiposDesp(prev => prev.map(a => a.id === id ? { ...a, cliente_id: clienteId, saldo_disponible: null } : a));
+        if (clienteId) {
+            try {
+                const res = await axios.get(`/api/gas-station/advances/available/${clienteId}`);
+                const balance = parseFloat(res.data.total_disponible) || 0;
+                setAnticiposDesp(prev => prev.map(a => a.id === id ? { ...a, saldo_disponible: balance } : a));
+            } catch (e) {
+                console.error('Error fetching available balance:', e);
+                setAnticiposDesp(prev => prev.map(a => a.id === id ? { ...a, saldo_disponible: 0 } : a));
+            }
+        }
+    };
+
+    const handleRemoveAnticipo = (id) => {
+        setAnticiposDesp(prev => prev.filter(a => a.id !== id));
     };
 
     const { data: distributorsData } = useQuery({
@@ -741,14 +990,14 @@ const GasCloseout = () => {
         { label: 'Lecturas', icon: Fuel, key: 'lecturas', enabled: true },
         { label: 'Gastos', icon: Receipt, key: 'gastos', enabled: true },
         { label: 'Cupones', icon: CreditCard, key: 'cupones', enabled: true },
-        { label: 'Créditos', icon: CreditCard, key: 'creditos' },
-        { label: 'Vales', icon: Gift, key: 'vales' },
+        { label: 'Créditos', icon: CreditCard, key: 'creditos', enabled: true },
+        { label: 'Vales', icon: Gift, key: 'vales', enabled: true },
         { label: 'Descuentos', icon: Percent, key: 'descuentos', enabled: true },
-        { label: 'Anticipos Desp.', icon: Truck, key: 'anticipos' },
+        { label: 'Anticipos Desp.', icon: Truck, key: 'anticipos', enabled: true },
         { label: 'Remesas', icon: Banknote, key: 'remesas', enabled: true },
         { label: 'Lubricantes', icon: Droplets, key: 'lubricantes', enabled: true },
         { label: 'Tanques', icon: FlaskConical, key: 'tanques', enabled: true },
-        { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas' },
+        { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas', enabled: true },
         { label: 'Adelantos', icon: Banknote, key: 'adelantos', enabled: true },
     ];
 
@@ -767,6 +1016,7 @@ const GasCloseout = () => {
     }
 
     if (closeoutId && readings.length > 0) {
+        const diferenciaTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal - totals.totalMonto - lubricantTotal;
         return (
             <>
                 <div className="space-y-3">
@@ -905,15 +1155,18 @@ const GasCloseout = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 text-xs">
-                                            {[
-                                                'Créditos', 'Vales',
-                                                'Anticipos Desp.', 'Tarjetas'
-                                            ].map(label => (
-                                                <tr key={label} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-3 py-1.5 text-slate-600">{label}</td>
-                                                    <td className="px-3 py-1.5 text-right font-mono text-slate-400">$0.00</td>
-                                                </tr>
-                                            ))}
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Créditos</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${creditosTotal.toFixed(2)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Vales</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${valesTotal.toFixed(2)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Anticipos Desp.</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: anticiposDespTotal > 0 ? '#dc2626' : '#94a3b8' }}>${anticiposDespTotal.toFixed(2)}</td>
+                                            </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Gastos</td>
                                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${gastosTotal.toFixed(2)}</td>
@@ -934,11 +1187,15 @@ const GasCloseout = () => {
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Adelantos</td>
                                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${adelantosTotal.toFixed(2)}</td>
                                             </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Tarjetas</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${tarjetasTotal.toFixed(2)}</td>
+                                            </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Egresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">${(gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal).toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">${(gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal).toFixed(2)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -1000,8 +1257,8 @@ const GasCloseout = () => {
                                 </div>
                                 <div className="px-4 py-3 flex items-center justify-between">
                                     <span className="text-xs font-medium text-slate-500">Faltante / Sobrante del turno</span>
-                                    <span className={`text-lg font-black font-mono ${(totals.totalMonto + lubricantTotal - gastosTotal - remesasTotal - cuponesTotal - descuentosTotal - adelantosTotal) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        ${(totals.totalMonto + lubricantTotal - gastosTotal - remesasTotal - cuponesTotal - descuentosTotal - adelantosTotal).toFixed(2)}
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black font-mono shadow-sm ${diferenciaTotal >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
+                                        ${diferenciaTotal.toFixed(2)}
                                     </span>
                                 </div>
                             </div>
@@ -1022,13 +1279,12 @@ const GasCloseout = () => {
                                                 <th className="px-2 py-1 text-right w-28 text-red-600">No Percibido</th>
                                                 <th className="px-2 py-1 text-right w-28 text-amber-600">Entregado</th>
                                                 <th className="px-2 py-1 text-right w-28">Diferencia</th>
-                                                {estado === 'abierto' && <th className="px-1.5 py-1 w-6"></th>}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 text-[11px]">
                                             {closeoutDespachadores.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={estado === 'abierto' ? 7 : 6} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                    <td colSpan={6} className="px-2 py-3 text-center text-[10px] text-slate-400">
                                                         Sin despachadores asignados
                                                     </td>
                                                 </tr>
@@ -1038,7 +1294,7 @@ const GasCloseout = () => {
                                                 const venta = despachadorVentas[d.despachador_id] || 0;
                                                 const noPercibido = despachadorNoPercibido[d.despachador_id] || 0;
                                                 const entregado = despachadorEntregado[d.despachador_id] || 0;
-                                                const diferencia = venta - noPercibido - entregado;
+                                                const diferencia = (noPercibido + entregado) - venta;
                                                 return (
                                                     <tr key={d.despachador_id} className="hover:bg-slate-50 transition-colors">
                                                         <td className="px-1.5 py-1 font-bold text-slate-700">{desp?.codigo || ''}</td>
@@ -1063,57 +1319,15 @@ const GasCloseout = () => {
                                                         <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-600">${venta.toFixed(2)}</td>
                                                         <td className="px-1.5 py-1 text-right font-mono font-bold text-red-600">${noPercibido.toFixed(2)}</td>
                                                         <td className="px-1.5 py-1 text-right font-mono font-bold text-amber-600">${entregado.toFixed(2)}</td>
-                                                        <td className={`px-1.5 py-1 text-right font-mono font-bold ${diferencia >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>${diferencia.toFixed(2)}</td>
-                                                        {estado === 'abierto' && (
-                                                            <td className="px-1.5 py-1 text-center">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const updated = closeoutDespachadores.filter((_, idx) => idx !== i);
-                                                                        setCloseoutDespachadores(updated);
-                                                                        updateDespachadoresMutation.mutate(updated);
-                                                                    }}
-                                                                    className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
-                                                                    title="Quitar despachador"
-                                                                >
-                                                                    <X size={11} />
-                                                                </button>
-                                                            </td>
-                                                        )}
+                                                        <td className="px-1.5 py-1 text-right">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black font-mono shadow-sm ${diferencia >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
+                                                                ${diferencia.toFixed(2)}
+                                                            </span>
+                                                        </td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
-                                        {estado === 'abierto' && (
-                                            <tfoot className="bg-slate-50 border-t border-slate-100">
-                                                <tr>
-                                                    <td colSpan={7} className="px-2 py-1">
-                                                        <select
-                                                            value={despachadorSelectValue}
-                                                            onChange={(e) => {
-                                                                const id = parseInt(e.target.value);
-                                                                if (!id) return;
-                                                                const desp = allDespachadores.find(a => a.id === id);
-                                                                if (desp && !closeoutDespachadores.find(d => d.despachador_id === id)) {
-                                                                    const updated = [...closeoutDespachadores, { despachador_id: id, nombre: desp.descripcion || desp.codigo || '' }];
-                                                                    setCloseoutDespachadores(updated);
-                                                                    updateDespachadoresMutation.mutate(updated);
-                                                                }
-                                                                setDespachadorSelectValue('');
-                                                            }}
-                                                            className="w-full px-1.5 py-1 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] font-medium appearance-none cursor-pointer"
-                                                        >
-                                                            <option value="">+ Agregar despachador...</option>
-                                                            {allDespachadores
-                                                                .filter(a => !closeoutDespachadores.find(d => d.despachador_id === a.id))
-                                                                .map(a => (
-                                                                    <option key={a.id} value={a.id}>{a.codigo} — {a.descripcion}</option>
-                                                                ))}
-                                                        </select>
-                                                    </td>
-                                                </tr>
-                                            </tfoot>
-                                        )}
                                     </table>
                                 </div>
                             </div>
@@ -1131,7 +1345,10 @@ const GasCloseout = () => {
                                         const isDescuentos = btn.key === 'descuentos';
                                         const isAdelantos = btn.key === 'adelantos';
                                         const isLubricantes = btn.key === 'lubricantes';
-                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || (btn.enabled && estado === 'abierto');
+                                        const isTarjetas = btn.key === 'tarjetas';
+                                        const isCreditos = btn.key === 'creditos';
+                                        const isVales = btn.key === 'vales';
+                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || (btn.enabled && estado === 'abierto');
                                         return (
                                             <button
                                                 key={btn.key}
@@ -1144,6 +1361,10 @@ const GasCloseout = () => {
                                                     if (isDescuentos) handleOpenDescuentos();
                                                     if (isAdelantos) handleOpenAdelantos();
                                                     if (isLubricantes) handleOpenLubricantes();
+                                                    if (isTarjetas) handleOpenTarjetas();
+                                                    if (isCreditos) handleOpenCreditos();
+                                                    if (isVales) handleOpenVales();
+                                                    if (btn.key === 'anticipos') handleOpenAnticipos();
                                                 }}
                                                 disabled={!canClick}
                                                 className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
@@ -2039,6 +2260,179 @@ const GasCloseout = () => {
                     </div>
                 )}
 
+                {showTarjetasModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowTarjetasModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <CreditCard size={16} className="text-indigo-600" />
+                                    Tarjetas del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowTarjetasModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Tarjeta</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Autorización</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Tipo POS</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Tipo Operación</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Monto</th>
+                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 text-[11px]">
+                                        {tarjetas.length === 0 && (
+                                            <tr>
+                                                <td colSpan={estado === 'abierto' ? 7 : 6} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                    Sin registros de tarjetas
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {tarjetas.map(t => {
+                                            const posType = posTypesList.find(p => p.id === parseInt(t.pos_type_id));
+                                            return (
+                                                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={t.num_tarjeta}
+                                                            placeholder="-0000"
+                                                            onChange={(e) => {
+                                                                const raw = e.target.value.replace(/[^\d]/g, '').slice(0, 4);
+                                                                handleTarjetaChange(t.id, 'num_tarjeta', raw);
+                                                            }}
+                                                            onBlur={(e) => {
+                                                                const raw = e.target.value.replace(/[^\d]/g, '').slice(0, 4);
+                                                                const formatted = raw ? '-' + raw.padStart(4, '0') : '';
+                                                                handleTarjetaChange(t.id, 'num_tarjeta', formatted);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={t.num_autorizacion}
+                                                            placeholder="Autorización"
+                                                            onChange={(e) => handleTarjetaChange(t.id, 'num_autorizacion', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={t.pos_type_id || ''}
+                                                            onChange={(e) => handleTarjetaChange(t.id, 'pos_type_id', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Seleccionar...</option>
+                                                            {posTypesList.map(p => (
+                                                                <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={t.despachador_id || ''}
+                                                            onChange={(e) => handleTarjetaChange(t.id, 'despachador_id', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={t.tipo_operacion || 'venta_combustible'}
+                                                            onChange={(e) => handleTarjetaChange(t.id, 'tipo_operacion', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="venta_combustible">Venta de Combustible</option>
+                                                            <option value="recuperacion_credito">Recuperación de Crédito</option>
+                                                            <option value="pago_anticipado">Pago Anticipado</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={t.monto}
+                                                            onChange={(e) => handleTarjetaChange(t.id, 'monto', parseFloat(e.target.value) || 0)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                        />
+                                                    </td>
+                                                    {estado === 'abierto' && (
+                                                        <td className="px-1.5 py-1 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveTarjeta(t.id)}
+                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                title="Eliminar"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    {estado === 'abierto' && (
+                                        <tfoot className="bg-slate-50 border-t border-slate-100">
+                                            <tr>
+                                                <td colSpan={7} className="px-2 py-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <button
+                                                            onClick={handleAddTarjetaRow}
+                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                                                        >
+                                                            <Plus size={14} />
+                                                            Agregar Tarjeta
+                                                        </button>
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-xs text-slate-500">
+                                                                Total Tarjetas: <strong className="text-red-600 font-mono text-sm">${tarjetasTotal.toFixed(2)}</strong>
+                                                            </span>
+                                                            <button
+                                                                onClick={() => saveTarjetasMutation.mutate(tarjetas)}
+                                                                disabled={saveTarjetasMutation.isPending}
+                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                            >
+                                                                {saveTarjetasMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                                {saveTarjetasMutation.isPending ? 'Guardando...' : 'Guardar Tarjetas'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {showLubricantesModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
                         <div className="fixed inset-0 bg-black/40" onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }} />
@@ -2249,6 +2643,692 @@ const GasCloseout = () => {
                                             </tr>
                                         )}
                                     </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showCreditosModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowCreditosModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <CreditCard size={16} className="text-indigo-600" />
+                                    Créditos del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowCreditosModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Cliente</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
+                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 text-[11px]">
+                                        {creditos.length === 0 && (
+                                            <tr>
+                                                <td colSpan={estado === 'abierto' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                    Sin registros de créditos
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {creditos.map(c => {
+                                            const itemPrecio = parseFloat(c.cantidad) > 0 ? (parseFloat(c.monto) / parseFloat(c.cantidad)).toFixed(2) : '0.00';
+                                            return (
+                                                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={c.documento}
+                                                            placeholder="Documento"
+                                                            onChange={(e) => handleCreditoChange(c.id, 'documento', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={c.tipo_documento || 'FAC'}
+                                                            onChange={(e) => handleCreditoChange(c.id, 'tipo_documento', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="FAC">FAC</option>
+                                                            <option value="CCF">CCF</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <SearchableSelect
+                                                            options={creditCustomers}
+                                                            value={c.cliente_id}
+                                                            onChange={(e) => {
+                                                                const id = e.target.value;
+                                                                const cli = customers.find(cust => cust.id === parseInt(id));
+                                                                handleCreditoChange(c.id, 'cliente_id', id);
+                                                                handleCreditoChange(c.id, 'cliente_nombre', cli ? cli.nombre : '');
+                                                            }}
+                                                            placeholder="Buscar cliente..."
+                                                            valueKey="id"
+                                                            labelKey="nombre"
+                                                            displayKey="nombre"
+                                                            codeKey="nrc"
+                                                            codeLabel="NRC"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={c.producto_codigo}
+                                                            onChange={(e) => {
+                                                                const cod = e.target.value;
+                                                                const prod = fuelProducts.find(p => p.codigo === cod);
+                                                                handleCreditoChange(c.id, 'producto_codigo', cod);
+                                                                handleCreditoChange(c.id, 'producto_descripcion', prod ? prod.descripcion : '');
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Seleccionar...</option>
+                                                            {fuelProducts.map(p => (
+                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={c.despachador_id || ''}
+                                                            onChange={(e) => handleCreditoChange(c.id, 'despachador_id', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.00001"
+                                                            min="0"
+                                                            value={c.cantidad}
+                                                            onChange={(e) => {
+                                                                const cant = parseFloat(e.target.value) || 0;
+                                                                handleCreditoChange(c.id, 'cantidad', cant);
+                                                                const monto = parseFloat(c.monto) || 0;
+                                                                handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
+                                                        ${itemPrecio}
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={c.monto}
+                                                            onChange={(e) => {
+                                                                const monto = parseFloat(e.target.value) || 0;
+                                                                handleCreditoChange(c.id, 'monto', monto);
+                                                                const cant = parseFloat(c.cantidad) || 0;
+                                                                handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={c.placa}
+                                                            placeholder="Placa"
+                                                            onChange={(e) => handleCreditoChange(c.id, 'placa', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={c.kilometraje}
+                                                            placeholder="KM"
+                                                            onChange={(e) => handleCreditoChange(c.id, 'kilometraje', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    {estado === 'abierto' && (
+                                                        <td className="px-1.5 py-1 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveCredito(c.id)}
+                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                title="Eliminar"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    {estado === 'abierto' && (
+                                        <tfoot className="bg-slate-50 border-t border-slate-100">
+                                            <tr>
+                                                <td colSpan={12} className="px-2 py-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <button
+                                                            onClick={handleAddCreditoRow}
+                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                                                        >
+                                                            <Plus size={14} />
+                                                            Agregar Crédito
+                                                        </button>
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-xs text-slate-500">
+                                                                Total Créditos: <strong className="text-red-600 font-mono text-sm">${creditosTotal.toFixed(2)}</strong>
+                                                            </span>
+                                                            <button
+                                                                onClick={() => saveCreditosMutation.mutate(creditos)}
+                                                                disabled={saveCreditosMutation.isPending}
+                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                            >
+                                                                {saveCreditosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                                {saveCreditosMutation.isPending ? 'Guardando...' : 'Guardar Créditos'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showValesModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowValesModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Gift size={16} className="text-indigo-600" />
+                                    Vales del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowValesModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Cliente</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
+                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 text-[11px]">
+                                        {vales.length === 0 && (
+                                            <tr>
+                                                <td colSpan={estado === 'abierto' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                    Sin registros de vales
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {vales.map(v => {
+                                            const itemPrecio = parseFloat(v.cantidad) > 0 ? (parseFloat(v.monto) / parseFloat(v.cantidad)).toFixed(2) : '0.00';
+                                            return (
+                                                <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={v.documento}
+                                                            placeholder="Documento"
+                                                            onChange={(e) => handleValeChange(v.id, 'documento', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={v.tipo_documento || 'FAC'}
+                                                            onChange={(e) => handleValeChange(v.id, 'tipo_documento', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="FAC">FAC</option>
+                                                            <option value="CCF">CCF</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <SearchableSelect
+                                                            options={creditCustomers}
+                                                            value={v.cliente_id}
+                                                            onChange={(e) => {
+                                                                const id = e.target.value;
+                                                                const cli = customers.find(cust => cust.id === parseInt(id));
+                                                                handleValeChange(v.id, 'cliente_id', id);
+                                                                handleValeChange(v.id, 'cliente_nombre', cli ? cli.nombre : '');
+                                                            }}
+                                                            placeholder="Buscar cliente..."
+                                                            valueKey="id"
+                                                            labelKey="nombre"
+                                                            displayKey="nombre"
+                                                            codeKey="nrc"
+                                                            codeLabel="NRC"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={v.producto_codigo}
+                                                            onChange={(e) => {
+                                                                const cod = e.target.value;
+                                                                const prod = fuelProducts.find(p => p.codigo === cod);
+                                                                handleValeChange(v.id, 'producto_codigo', cod);
+                                                                handleValeChange(v.id, 'producto_descripcion', prod ? prod.descripcion : '');
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Seleccionar...</option>
+                                                            {fuelProducts.map(p => (
+                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={v.despachador_id || ''}
+                                                            onChange={(e) => handleValeChange(v.id, 'despachador_id', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.00001"
+                                                            min="0"
+                                                            value={v.cantidad}
+                                                            onChange={(e) => {
+                                                                const cant = parseFloat(e.target.value) || 0;
+                                                                handleValeChange(v.id, 'cantidad', cant);
+                                                                const monto = parseFloat(v.monto) || 0;
+                                                                handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
+                                                        ${itemPrecio}
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={v.monto}
+                                                            onChange={(e) => {
+                                                                const monto = parseFloat(e.target.value) || 0;
+                                                                handleValeChange(v.id, 'monto', monto);
+                                                                const cant = parseFloat(v.cantidad) || 0;
+                                                                handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={v.placa}
+                                                            placeholder="Placa"
+                                                            onChange={(e) => handleValeChange(v.id, 'placa', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={v.kilometraje}
+                                                            placeholder="KM"
+                                                            onChange={(e) => handleValeChange(v.id, 'kilometraje', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    {estado === 'abierto' && (
+                                                        <td className="px-1.5 py-1 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveVale(v.id)}
+                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                title="Eliminar"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    {estado === 'abierto' && (
+                                        <tfoot className="bg-slate-50 border-t border-slate-100">
+                                            <tr>
+                                                <td colSpan={12} className="px-2 py-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <button
+                                                            onClick={handleAddValeRow}
+                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                                                        >
+                                                            <Plus size={14} />
+                                                            Agregar Vale
+                                                        </button>
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-xs text-slate-500">
+                                                                Total Vales: <strong className="text-red-600 font-mono text-sm">${valesTotal.toFixed(2)}</strong>
+                                                            </span>
+                                                            <button
+                                                                onClick={() => saveValesMutation.mutate(vales)}
+                                                                disabled={saveValesMutation.isPending}
+                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                            >
+                                                                {saveValesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                                {saveValesMutation.isPending ? 'Guardando...' : 'Guardar Vales'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showAnticiposModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowAnticiposModal(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Truck size={16} className="text-indigo-600" />
+                                    Anticipos Despachados del Turno
+                                    {estado === 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={() => setShowAnticiposModal(false)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cliente</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Saldo Disp.</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
+                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 text-[11px]">
+                                        {anticiposDesp.length === 0 && (
+                                            <tr>
+                                                <td colSpan={estado === 'abierto' ? 13 : 12} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                    Sin registros de anticipos despachados
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {anticiposDesp.map(a => {
+                                            const itemPrecio = parseFloat(a.cantidad) > 0 ? (parseFloat(a.monto) / parseFloat(a.cantidad)).toFixed(2) : '0.00';
+                                            const excedeSaldo = parseFloat(a.monto) > 0 && parseFloat(a.saldo_disponible) > 0 && parseFloat(a.monto) > parseFloat(a.saldo_disponible);
+                                            return (
+                                                <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
+                                                    <td className="px-1.5 py-1">
+                                                        <SearchableSelect
+                                                            options={anticipadoCustomers}
+                                                            value={a.cliente_id}
+                                                            onChange={(e) => {
+                                                                const id = e.target.value;
+                                                                const cli = customers.find(cust => cust.id === parseInt(id));
+                                                                handleAnticipoClienteChange(a.id, id);
+                                                                if (cli) handleAnticipoChange(a.id, 'cliente_nombre', cli.nombre);
+                                                            }}
+                                                            placeholder="Buscar cliente..."
+                                                            valueKey="id"
+                                                            labelKey="nombre"
+                                                            displayKey="nombre"
+                                                            codeKey="nrc"
+                                                            codeLabel="NRC"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1 text-center font-mono font-bold text-xs">
+                                                        {a.cliente_id ? (
+                                                            <span className={`${parseFloat(a.saldo_disponible) && parseFloat(a.monto) > parseFloat(a.saldo_disponible) ? 'text-red-600' : 'text-indigo-600'}`}>
+                                                                ${parseFloat(a.saldo_disponible || 0).toFixed(2)}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-300">---</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={a.documento}
+                                                            placeholder="Documento"
+                                                            onChange={(e) => handleAnticipoChange(a.id, 'documento', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={a.tipo_documento || 'FAC'}
+                                                            onChange={(e) => handleAnticipoChange(a.id, 'tipo_documento', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="FAC">FAC</option>
+                                                            <option value="CCF">CCF</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={a.producto_codigo}
+                                                            onChange={(e) => {
+                                                                const cod = e.target.value;
+                                                                const prod = fuelProducts.find(p => p.codigo === cod);
+                                                                handleAnticipoChange(a.id, 'producto_codigo', cod);
+                                                                handleAnticipoChange(a.id, 'producto_descripcion', prod ? prod.descripcion : '');
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Seleccionar...</option>
+                                                            {fuelProducts.map(p => (
+                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <select
+                                                            value={a.despachador_id || ''}
+                                                            onChange={(e) => handleAnticipoChange(a.id, 'despachador_id', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.00001"
+                                                            min="0"
+                                                            value={a.cantidad}
+                                                            onChange={(e) => {
+                                                                const cant = parseFloat(e.target.value) || 0;
+                                                                handleAnticipoChange(a.id, 'cantidad', cant);
+                                                                const monto = parseFloat(a.monto) || 0;
+                                                                handleAnticipoChange(a.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
+                                                        ${itemPrecio}
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={a.monto}
+                                                            onChange={(e) => {
+                                                                const monto = parseFloat(e.target.value) || 0;
+                                                                handleAnticipoChange(a.id, 'monto', monto);
+                                                                const cant = parseFloat(a.cantidad) || 0;
+                                                                handleAnticipoChange(a.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                            }}
+                                                            disabled={estado === 'cerrado'}
+                                                            className={`w-full bg-white border rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono ${excedeSaldo ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={a.placa}
+                                                            placeholder="Placa"
+                                                            onChange={(e) => handleAnticipoChange(a.id, 'placa', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    <td className="px-1.5 py-1">
+                                                        <input
+                                                            type="text"
+                                                            value={a.kilometraje}
+                                                            placeholder="KM"
+                                                            onChange={(e) => handleAnticipoChange(a.id, 'kilometraje', e.target.value)}
+                                                            disabled={estado === 'cerrado'}
+                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </td>
+                                                    {estado === 'abierto' && (
+                                                        <td className="px-1.5 py-1 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveAnticipo(a.id)}
+                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                title="Eliminar"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    {estado === 'abierto' && (
+                                        <tfoot className="bg-slate-50 border-t border-slate-100">
+                                            <tr>
+                                                <td colSpan={13} className="px-2 py-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <button
+                                                            onClick={handleAddAnticipoRow}
+                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                                                        >
+                                                            <Plus size={14} />
+                                                            Agregar Anticipo Despachado
+                                                        </button>
+                                                        <div className="flex items-center gap-4">
+                                                            <span className="text-xs text-slate-500">
+                                                                Total Anticipos: <strong className="text-red-600 font-mono text-sm">${anticiposDespTotal.toFixed(2)}</strong>
+                                                            </span>
+                                                            <button
+                                                                onClick={() => saveAnticiposDespMutation.mutate(anticiposDesp)}
+                                                                disabled={saveAnticiposDespMutation.isPending}
+                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                            >
+                                                                {saveAnticiposDespMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                                {saveAnticiposDespMutation.isPending ? 'Guardando...' : 'Guardar Anticipos'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
                                 </table>
                             </div>
                         </div>

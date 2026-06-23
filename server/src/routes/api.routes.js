@@ -45,6 +45,8 @@ const tankController = require('../controllers/tank.controller');
 const gasCloseoutController = require('../controllers/gasCloseout.controller');
 const gasConfigController = require('../controllers/gasConfig.controller');
 const gasDespachadorController = require('../controllers/gasDespachador.controller');
+const gasPosTypeController = require('../controllers/gasPosType.controller');
+const gasAdvanceController = require('../controllers/gasAdvance.controller');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -469,5 +471,38 @@ router.delete('/gas-station/despachadores/:id', gasDespachadorController.deleteD
 router.get('/gas-station/despachadores/:id/nozzles', gasDespachadorController.getDespachadorNozzles);
 router.put('/gas-station/despachadores/:id/nozzles', gasDespachadorController.updateDespachadorNozzles);
 router.get('/gas-station/despachador-nozzles/all', gasDespachadorController.getAllAssignments);
+
+// Gas Station - POS Types
+router.get('/gas-station/pos-types', gasPosTypeController.getPosTypes);
+router.post('/gas-station/pos-types', gasPosTypeController.createPosType);
+router.put('/gas-station/pos-types/:id', gasPosTypeController.updatePosType);
+router.delete('/gas-station/pos-types/:id', gasPosTypeController.deletePosType);
+
+// Gas Station - Closeout Tarjetas
+router.get('/gas-station/closeouts/:id/tarjetas', gasCloseoutController.getTarjetas);
+router.post('/gas-station/closeouts/:id/tarjetas', gasCloseoutController.saveTarjetas);
+router.delete('/gas-station/closeouts/:id/tarjetas/:tarjetaId', gasCloseoutController.deleteTarjeta);
+
+// Gas Station - Closeout Creditos
+router.get('/gas-station/closeouts/:id/creditos', gasCloseoutController.getCreditos);
+router.post('/gas-station/closeouts/:id/creditos', gasCloseoutController.saveCreditos);
+router.delete('/gas-station/closeouts/:id/creditos/:creditoId', gasCloseoutController.deleteCredito);
+
+// Gas Station - Closeout Vales
+router.get('/gas-station/closeouts/:id/vales', gasCloseoutController.getVales);
+router.post('/gas-station/closeouts/:id/vales', gasCloseoutController.saveVales);
+router.delete('/gas-station/closeouts/:id/vales/:valeId', gasCloseoutController.deleteVale);
+
+// Gas Station - Advances
+router.get('/gas-station/advances', gasAdvanceController.getAdvances);
+router.post('/gas-station/advances', gasAdvanceController.createAdvance);
+router.put('/gas-station/advances/:id', gasAdvanceController.updateAdvance);
+router.delete('/gas-station/advances/:id', gasAdvanceController.deleteAdvance);
+router.get('/gas-station/advances/available/:cliente_id', gasAdvanceController.getAvailableAdvancesByClient);
+
+// Gas Station - Closeout Anticipos Despachados
+router.get('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.getAnticiposDesp);
+router.post('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.saveAnticiposDesp);
+router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseoutController.deleteAnticipoDesp);
 
 module.exports = router;

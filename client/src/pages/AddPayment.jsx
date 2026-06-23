@@ -157,7 +157,7 @@ const AddPayment = () => {
 
     const { data: customers = [] } = useQuery({
         queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 5000 } })).data?.data || [],
+        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 5000, es_credito: 1 } })).data?.data || [],
     });
 
     const { data: statementData } = useQuery({

@@ -71,6 +71,8 @@ import GasExpenseCategories from './pages/GasExpenseCategories';
 import GasStationConfig from './pages/GasStationConfig';
 import GasDespachadores from './pages/GasDespachadores';
 import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
+import GasPosTypes from './pages/GasPosTypes';
+import GasAdvances from './pages/GasAdvances';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -194,6 +196,8 @@ function App() {
                         <Route path="/gas-station/configuracion" element={<GasStationConfig />} />
                         <Route path="/gas-station/despachadores" element={<GasDespachadores />} />
                         <Route path="/gas-station/despachador-nozzles" element={<GasDespachadorNozzles />} />
+                        <Route path="/gas-station/pos-tipos" element={<GasPosTypes />} />
+                        <Route path="/gas-station/anticipos" element={<GasAdvances />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

@@ -218,9 +218,11 @@ export const menuConfig = [
                     { id: 'gas-expense-categories', label: 'Rubros Gastos', path: '/gas-station/expense-categories', icon: Receipt, permission: 'manage_gas_station' },
                     { id: 'gas-despachadores', label: 'Despachadores', path: '/gas-station/despachadores', icon: UserCheck, permission: 'manage_gas_station' },
                     { id: 'gas-desp-nozzles', label: 'Mangueras x Despachador', path: '/gas-station/despachador-nozzles', icon: Fuel, permission: 'manage_gas_station' },
+                    { id: 'gas-pos-types', label: 'Tipos de POS', path: '/gas-station/pos-tipos', icon: Monitor, permission: 'manage_gas_station' },
                 ]
             },
             { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_station' },
+            { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_station' },
             { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'manage_gas_station' },
             { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_station' },
             { id: 'gas-reportes', label: 'Reportes', path: '/gas-station/reportes', icon: BarChart3, permission: 'manage_gas_station' },
