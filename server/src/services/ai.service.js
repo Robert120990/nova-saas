@@ -2,50 +2,38 @@ const { OpenAI } = require('openai');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
-/**
- * AI Service
- * Manages multiple AI providers (OpenAI, Gemini) with automatic fallback.
- */
 class AIService {
     constructor() {
-        this.openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+        this.deepseek = process.env.DEEPSEEK_API_KEY
+            ? new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY })
+            : null;
         this.gemini = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
     }
 
-    /**
-     * Get a completion from the best available provider
-     */
     async getChatCompletion({ messages, tools, systemPrompt }) {
         let lastError = null;
 
-        // 1. Try OpenAI first (if configured)
-        if (this.openai && !process.env.FORCE_GEMINI) {
+        if (this.deepseek) {
             try {
-                console.log('[AI Service] Attempting completion with OpenAI...');
-                const response = await this.openai.chat.completions.create({
-                    model: "gpt-4o-mini",
+                console.log('[AI Service] Attempting completion with DeepSeek...');
+                const response = await this.deepseek.chat.completions.create({
+                    model: "deepseek-chat",
                     messages: [{ role: "system", content: systemPrompt }, ...messages],
                     tools: tools.map(t => ({ type: "function", function: t })),
                     tool_choice: "auto"
                 });
-                return { provider: 'openai', data: response.choices[0].message };
+                return { provider: 'deepseek', data: response.choices[0].message };
             } catch (error) {
                 lastError = error;
-                console.error('[AI Service] OpenAI failed:', error.status, error.message);
-                
-                // If it's a quota or billing error, definitely fallback.
-                if (error.status === 429 || error.status === 401) {
-                    console.log('[AI Service] Quota/Auth issue detected. Proceeding to Gemini fallback.');
-                }
+                console.error('[AI Service] DeepSeek failed:', error.status, error.message);
             }
         }
 
-        // 2. Fallback to Gemini
         if (this.gemini) {
             try {
-                console.log('[AI Service] Falling back to Gemini (using gemini-2.5-flash-lite)...');
-                const model = this.gemini.getGenerativeModel({ 
-                    model: "gemini-2.5-flash-lite",
+                console.log('[AI Service] Falling back to Gemini (using gemini-2.0-flash)...');
+                const model = this.gemini.getGenerativeModel({
+                    model: "gemini-2.0-flash",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -70,8 +58,7 @@ class AIService {
                 const lastMsg = messages[messages.length - 1].content;
                 const result = await chat.sendMessage(lastMsg);
                 const response = result.response;
-                
-                // Extraer llamadas a funciones
+
                 const candidate = response.candidates?.[0];
                 const parts = candidate?.content?.parts || [];
                 const calls = parts.filter(p => p.functionCall);
@@ -84,9 +71,9 @@ class AIService {
                             content: null,
                             tool_calls: calls.map((c, i) => ({
                                 id: `call_${Date.now()}_${i}`,
-                                function: { 
-                                    name: c.functionCall.name, 
-                                    arguments: JSON.stringify(c.functionCall.args) 
+                                function: {
+                                    name: c.functionCall.name,
+                                    arguments: JSON.stringify(c.functionCall.args)
                                 }
                             }))
                         }
@@ -99,8 +86,7 @@ class AIService {
                 };
             } catch (error) {
                 console.error('[AI Service] Gemini also failed:', error.message);
-                
-                // Friendly error for rate limits (429)
+
                 if (error.message.includes('429') || error.message.includes('Quota')) {
                     throw new Error('Novas AI está un poco saturado por ahora. Por favor, espera unos 30 segundos e intenta de nuevo.');
                 }
@@ -113,24 +99,22 @@ class AIService {
         throw lastError || new Error('No hay motores de búsqueda configurados.');
     }
 
-    /**
-     * Specialized call for Gemini when tools are already executed (final response)
-     */
     async getFinalResponse(provider, { messages, systemPrompt, toolResults }) {
         try {
-            if (provider === 'openai') {
-                const response = await this.openai.chat.completions.create({
-                    model: "gpt-4o-mini",
+            const client = provider === 'deepseek' ? this.deepseek : this.gemini;
+            if (provider === 'deepseek') {
+                const response = await client.chat.completions.create({
+                    model: "deepseek-chat",
                     messages: [{ role: "system", content: systemPrompt }, ...messages, ...toolResults]
                 });
                 return response.choices[0].message;
             } else {
                 console.log('[AI Service] Generating final Gemini response...');
-                const model = this.gemini.getGenerativeModel({ 
-                    model: "gemini-2.5-flash-lite", 
+                const model = this.gemini.getGenerativeModel({
+                    model: "gemini-2.0-flash",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
-                
+
                 const findings = toolResults.map(t => {
                     const parsed = JSON.parse(t.content);
                     return `=== RESULTADO DE CONSULTA SQL ===\n${JSON.stringify(parsed, null, 2)}`;

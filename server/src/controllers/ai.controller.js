@@ -119,7 +119,7 @@ INSTRUCCIONES CRÍTICAS:
 4. Si necesitas calcular montos monetarios, formatea los resultados con símbolo $, separadores de miles y 2 decimales.
 5. Solo genera consultas SELECT. NUNCA generes INSERT, UPDATE, DELETE, DROP u otras instrucciones.
 6. Si no hay datos disponibles, responde amablemente que no hay información.
-7. Sé conciso, claro y usa formato estructurado cuando haya múltiples resultados (listas, tablas simples).
+7. Siempre que sea posible, formatea los datos en una tabla Markdown para mejor legibilidad. Usa encabezados claros y alineación en columnas numéricas (moneda a la derecha, texto a la izquierda).
 8. No mentions el SQL generado en tu respuesta al usuario.
 
 ${DB_SCHEMA}`;

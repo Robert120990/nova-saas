@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, Sparkles, TrendingUp, Package, Users, DollarSign, MessageSquare } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -92,13 +94,39 @@ const AIAssistant = () => {
                     {/* Messages Area */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
                         {messages.map((m, i) => (
-                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[85%] px-4 py-3 rounded-3xl text-[13px] leading-relaxed shadow-sm ${
                                     m.role === 'user' 
                                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                                         : 'bg-slate-100 text-slate-700 rounded-tl-none border border-slate-200'
                                 }`}>
-                                    {m.content}
+                                    {m.role === 'user' ? (
+                                        m.content
+                                    ) : (
+                                        <ReactMarkdown
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                table: ({ children }) => (
+                                                    <div className="overflow-x-auto my-2">
+                                                        <table className="w-full text-[11px] border-collapse">{children}</table>
+                                                    </div>
+                                                ),
+                                                thead: ({ children }) => (
+                                                    <thead className="bg-slate-200/70">{children}</thead>
+                                                ),
+                                                th: ({ children }) => (
+                                                    <th className="px-2 py-1.5 text-left font-bold text-slate-600 uppercase text-[10px] border-b border-slate-300">{children}</th>
+                                                ),
+                                                td: ({ children }) => (
+                                                    <td className="px-2 py-1 border-b border-slate-100 text-slate-700">{children}</td>
+                                                ),
+                                                p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                                                strong: ({ children }) => <strong className="font-bold text-slate-800">{children}</strong>,
+                                            }}
+                                        >
+                                            {m.content}
+                                        </ReactMarkdown>
+                                    )}
                                 </div>
                             </div>
                         ))}
