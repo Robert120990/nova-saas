@@ -103,32 +103,30 @@ const Sellers = () => {
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-3">
+            <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Catálogo de Vendedores</h2>
-                    <p className="text-slate-500 font-medium font-spanish">Gestiona el personal de ventas y sus accesos al POS</p>
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Catálogo de Vendedores</h2>
+                    <p className="text-slate-500 text-[11px] font-medium">Gestiona el personal de ventas y sus accesos al POS</p>
                 </div>
                 <button
                     onClick={() => { setSelectedSeller(null); setSelectedBranchId(''); setSelectedPosId(''); setIsModalOpen(true); }}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
                     <UserPlus size={20}/>
                     <span>Nuevo Vendedor</span>
                 </button>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-center">
-                <div className="relative flex-1 w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por nombre..." 
-                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all outline-none"
-                        value={search}
-                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    />
-                </div>
+            <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all outline-none font-medium shadow-sm"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                />
             </div>
 
             <Table 
@@ -137,26 +135,24 @@ const Sellers = () => {
                 isLoading={isLoading}
                 renderRow={(seller) => (
                     <tr key={seller.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                        <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold uppercase">
+                        <td className="px-3 py-1">
+                            <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-[10px] uppercase">
                                     {seller.nombre.charAt(0)}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-bold text-slate-900">{seller.nombre}</span>
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">PIN: ****</span>
+                                    <span className="text-xs font-bold text-slate-900">{seller.nombre}</span>
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">PIN: ****</span>
                                 </div>
                             </div>
                         </td>
-                        <td className="px-6 py-4">
-                            <div className="flex flex-col">
-                                <span className="text-sm font-medium text-slate-700">{seller.branch_name || 'Sin sucursal'}</span>
-                            </div>
+                        <td className="px-3 py-1">
+                            <span className="text-xs font-medium text-slate-700">{seller.branch_name || 'Sin sucursal'}</span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-1">
                             <button
                                 onClick={() => toggleStatusMutation.mutate({ id: seller.id, status: seller.status })}
-                                className={`group flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all border ${
+                                className={`group flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase transition-all border ${
                                     seller.status === 'activo' 
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100' 
                                     : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -164,13 +160,13 @@ const Sellers = () => {
                             >
                                 <div className={`w-1.5 h-1.5 rounded-full ${seller.status === 'activo' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></div>
                                 {seller.status}
-                                <Power size={12} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+                                <Power size={10} className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
                             </button>
                         </td>
-                        <td className="px-6 py-4">
-                            <div className="flex items-center gap-2 justify-end">
-                                <button onClick={() => handleEdit(seller)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Editar"><Edit size={18}/></button>
-                                <button onClick={() => setSellerToDelete(seller)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Eliminar"><Trash2 size={18}/></button>
+                        <td className="px-3 py-1">
+                            <div className="flex items-center gap-1 justify-end">
+                                <button onClick={() => handleEdit(seller)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Editar"><Edit size={15}/></button>
+                                <button onClick={() => setSellerToDelete(seller)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Eliminar"><Trash2 size={15}/></button>
                             </div>
                         </td>
                     </tr>

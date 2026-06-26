@@ -102,61 +102,61 @@ const AuditLog = () => {
                     <table className="w-full text-left">
                         <thead className="bg-slate-50 border-b border-slate-100">
                             <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="px-4 py-3 w-16">Hora</th>
-                                <th className="px-4 py-3">Usuario</th>
-                                <th className="px-4 py-3 w-24">Acción</th>
-                                <th className="px-4 py-3">Entidad</th>
-                                <th className="px-4 py-3">Descripción</th>
-                                <th className="px-4 py-3 w-20 text-right">Duración</th>
-                                <th className="px-4 py-3 w-28">IP</th>
+                                <th className="px-3 py-1.5 w-36">Fecha/Hora</th>
+                                <th className="px-3 py-1.5">Usuario</th>
+                                <th className="px-3 py-1.5 w-24">Acción</th>
+                                <th className="px-3 py-1.5">Entidad</th>
+                                <th className="px-3 py-1.5">Descripción</th>
+                                <th className="px-3 py-1.5 w-20 text-right">Duración</th>
+                                <th className="px-3 py-1.5 w-28">IP</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {logData.data.map((row) => (
                                 <React.Fragment key={row.id}>
                                     <tr
-                                        className="hover:bg-slate-50/50 transition-colors cursor-pointer text-sm"
+                                        className="hover:bg-slate-50/50 transition-colors cursor-pointer text-xs"
                                         onClick={() => setExpandedRow(expandedRow === row.id ? null : row.id)}
                                     >
-                                        <td className="px-4 py-2.5">
-                                            <span className="text-[11px] font-bold text-slate-600" title={formatDateTime(row.created_at)}>
-                                                {new Date(row.created_at).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}
+                                        <td className="px-3 py-1">
+                                            <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
+                                                {new Date(row.created_at).toLocaleString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-2.5">
-                                            <span className="text-xs font-bold text-slate-800">{row.username || '—'}</span>
+                                        <td className="px-3 py-1">
+                                            <span className="text-[11px] font-bold text-slate-800">{row.username || '—'}</span>
                                         </td>
-                                        <td className="px-4 py-2.5">
-                                            <span className={`inline-block px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${getActionColor(row.action)}`}>
+                                        <td className="px-3 py-1">
+                                            <span className={`inline-block px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider ${getActionColor(row.action)}`}>
                                                 {row.action?.split(' ')[0] || row.action}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-2.5">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
+                                        <td className="px-3 py-1">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
                                                 {row.entity_type}
                                             </span>
                                             {row.entity_id && (
-                                                <span className="text-[9px] text-slate-400 font-mono ml-1">#{row.entity_id}</span>
+                                                <span className="text-[8px] text-slate-400 font-mono ml-1">#{row.entity_id}</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2.5 max-w-xs">
-                                            <span className="text-xs text-slate-600 truncate block">{row.description || '—'}</span>
+                                        <td className="px-3 py-1 max-w-xs">
+                                            <span className="text-[11px] text-slate-600 truncate block">{row.description || '—'}</span>
                                         </td>
-                                        <td className="px-4 py-2.5 text-right">
+                                        <td className="px-3 py-1 text-right">
                                             {row.duration_ms != null && (
-                                                <span className={`text-[10px] font-bold ${row.duration_ms > 1000 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                                <span className={`text-[9px] font-bold ${row.duration_ms > 1000 ? 'text-rose-500' : 'text-slate-400'}`}>
                                                     {row.duration_ms}ms
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2.5">
-                                            <span className="text-[10px] font-mono text-slate-400">{row.ip_address || '—'}</span>
+                                        <td className="px-3 py-1">
+                                            <span className="text-[9px] font-mono text-slate-400">{row.ip_address || '—'}</span>
                                         </td>
                                     </tr>
                                     {expandedRow === row.id && (
                                         <tr className="bg-slate-50/50">
-                                            <td colSpan={7} className="px-8 py-4">
-                                                <div className="grid grid-cols-2 gap-4 text-xs">
+                                            <td colSpan={7} className="px-6 py-3">
+                                                <div className="grid grid-cols-2 gap-3 text-[11px]">
                                                     <div>
                                                         <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">ID</span>
                                                         <p className="font-bold text-slate-700">{row.id}</p>
@@ -184,10 +184,10 @@ const AuditLog = () => {
                                 </React.Fragment>
                             ))}
                             {!isLoading && logData.data.length === 0 && (
-                                <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400 italic">No se encontraron registros</td></tr>
+                                <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400 italic">No se encontraron registros</td></tr>
                             )}
                             {isLoading && (
-                                <tr><td colSpan={7} className="px-4 py-12 text-center">
+                                <tr><td colSpan={7} className="px-3 py-6 text-center">
                                     <div className="flex items-center justify-center gap-3"><Clock size={18} className="animate-spin text-indigo-500" /><span className="text-xs font-bold text-slate-400">Cargando...</span></div>
                                 </td></tr>
                             )}

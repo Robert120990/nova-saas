@@ -6,16 +6,18 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Receipt, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 
 const GasExpenseCategories = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
     const { data: items = [], isLoading } = useQuery({
-        queryKey: ['gas-expense-categories'],
+        queryKey: ['gas-expense-categories', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/expense-categories')).data
     });
 

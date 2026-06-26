@@ -581,8 +581,8 @@ exports.closeCloseout = async (req, res) => {
 exports.getExpenseCategories = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT id, name FROM gas_station_expense_categories WHERE company_id = ? ORDER BY name`,
-            [req.company_id]
+            `SELECT id, name FROM gas_station_expense_categories WHERE company_id = ? AND branch_id = ? ORDER BY name`,
+            [req.company_id, req.user.branch_id]
         );
         res.json(rows);
     } catch (error) {
@@ -596,8 +596,8 @@ exports.createExpenseCategory = async (req, res) => {
         const { name } = req.body;
         if (!name) return res.status(400).json({ message: 'Nombre es requerido' });
         const [result] = await pool.query(
-            `INSERT INTO gas_station_expense_categories (company_id, name) VALUES (?, ?)`,
-            [req.company_id, name]
+            `INSERT INTO gas_station_expense_categories (company_id, branch_id, name) VALUES (?, ?, ?)`,
+            [req.company_id, req.user.branch_id, name]
         );
         res.status(201).json({ id: result.insertId, name });
     } catch (error) {
@@ -612,8 +612,8 @@ exports.updateExpenseCategory = async (req, res) => {
         const { name } = req.body;
         if (!name) return res.status(400).json({ message: 'Nombre es requerido' });
         const [result] = await pool.query(
-            `UPDATE gas_station_expense_categories SET name = ? WHERE id = ? AND company_id = ?`,
-            [name, id, req.company_id]
+            `UPDATE gas_station_expense_categories SET name = ? WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [name, id, req.company_id, req.user.branch_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Rubro no encontrado' });
         res.json({ id: parseInt(id), name });
@@ -627,8 +627,8 @@ exports.deleteExpenseCategory = async (req, res) => {
     try {
         const { id } = req.params;
         const [result] = await pool.query(
-            `DELETE FROM gas_station_expense_categories WHERE id = ? AND company_id = ?`,
-            [id, req.company_id]
+            `DELETE FROM gas_station_expense_categories WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Rubro no encontrado' });
         res.json({ message: 'Rubro eliminado' });

@@ -90,32 +90,30 @@ const Categories = () => {
     const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-3">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900">Categorías de Productos</h2>
-                    <p className="text-slate-500 mt-1 font-medium">Clasificación para tu inventario</p>
+                    <h2 className="text-xl font-bold text-slate-900">Categorías de Productos</h2>
+                    <p className="text-slate-500 text-[11px] font-medium">Clasificación para tu inventario</p>
                 </div>
                 <button 
                     onClick={() => { setSelectedCategory(null); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
                     <Plus size={20}/>
                     <span>Nueva Categoría</span>
                 </button>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por nombre o descripción..." 
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-sm font-medium shadow-sm"
-                    />
-                </div>
+            <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                />
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -125,16 +123,16 @@ const Categories = () => {
                     isLoading={isLoading}
                     renderRow={(c) => (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                            <td className="px-6 py-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Tag size={16}/></div>
-                                    <span className="font-bold text-slate-900">{c.name}</span>
+                            <td className="px-3 py-1">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1 bg-indigo-50 text-indigo-600 rounded-lg"><Tag size={12}/></div>
+                                    <span className="font-bold text-xs text-slate-900">{c.name}</span>
                                 </div>
                             </td>
-                            <td className="px-6 py-4 text-sm text-slate-500">{c.description || '-'}</td>
-                            <td className="px-6 py-4 flex gap-2">
-                                <button onClick={() => handleEdit(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => handleDeleteCategory(c.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                            <td className="px-3 py-1 text-xs text-slate-500">{c.description || '-'}</td>
+                            <td className="px-3 py-1 flex gap-1">
+                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteCategory(c.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}

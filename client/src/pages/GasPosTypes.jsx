@@ -6,16 +6,18 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Monitor, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 
 const GasPosTypes = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
     const { data: items = [], isLoading } = useQuery({
-        queryKey: ['gas-pos-types'],
+        queryKey: ['gas-pos-types', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/pos-types')).data
     });
 

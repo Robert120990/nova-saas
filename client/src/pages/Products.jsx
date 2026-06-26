@@ -186,33 +186,31 @@ const Products = () => {
     const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
 
     return (
-        <div className="space-y-6 text-slate-900">
+        <div className="space-y-3 text-slate-900">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Catálogo de Productos</h2>
-                    <p className="text-slate-500 mt-1 font-medium text-sm text-[Spanish]">Gestión de inventario y sección fiscal</p>
+                    <h2 className="text-xl font-bold tracking-tight">Catálogo de Productos</h2>
+                    <p className="text-slate-500 text-[11px] font-medium">Gestión de inventario y sección fiscal</p>
                 </div>
                 <button 
                     onClick={() => { setSelectedProduct(null); setActiveTab('general'); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
                     <Plus size={20}/>
                     <span>Nuevo Producto</span>
                 </button>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por código, nombre o descripción..." 
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-sm font-medium shadow-sm"
+            <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
                     />
                 </div>
-            </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
@@ -221,33 +219,33 @@ const Products = () => {
                     isLoading={isLoading}
                     renderRow={(p) => (
                         <tr key={p.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                            <td className="px-6 py-2">
-                                <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{p.codigo}</span>
-                                {p.codigo_barra && <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1"><Barcode size={10}/> {p.codigo_barra}</div>}
+                            <td className="px-3 py-1">
+                                <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{p.codigo}</span>
+                                {p.codigo_barra && <div className="text-[9px] text-slate-400 flex items-center gap-1"><Barcode size={9}/> {p.codigo_barra}</div>}
                             </td>
-                            <td className="px-6 py-2">
-                                <div className="text-sm font-bold text-slate-900">{p.nombre}</div>
-                                <div className="text-xs text-slate-500 truncate max-w-xs">{p.descripcion}</div>
+                            <td className="px-3 py-1">
+                                <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
+                                <div className="text-[10px] text-slate-500 truncate max-w-xs">{p.descripcion}</div>
                             </td>
-                            <td className="px-6 py-2">
-                                <div className="text-sm font-bold text-slate-900">${parseFloat(p.precio_unitario).toFixed(2)}</div>
-                                <div className="text-[10px] text-indigo-500 font-bold uppercase mt-0.5">
+                            <td className="px-3 py-1">
+                                <div className="text-xs font-bold text-slate-900">${parseFloat(p.precio_unitario).toFixed(2)}</div>
+                                <div className="text-[9px] text-indigo-500 font-bold uppercase">
                                     {p.category_name || 'Sin Categoría'}
                                 </div>
                             </td>
-                            <td className="px-6 py-2">
+                            <td className="px-3 py-1">
                                 <div className="flex flex-col gap-0.5">
-                                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md inline-block w-fit uppercase">
+                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md inline-block w-fit uppercase">
                                         {catUnidadMedida.find(um => um.code == p.unidad_medida)?.description || p.unidad_medida}
                                     </span>
-                                    <span className="text-[10px] text-indigo-500 font-bold uppercase">
+                                    <span className="text-[9px] text-indigo-500 font-bold uppercase">
                                         {catTipoItem.find(ti => ti.code == p.tipo_item)?.description || p.tipo_item}
                                     </span>
                                 </div>
                             </td>
-                            <td className="px-6 py-2 flex gap-2">
-                                <button onClick={() => handleEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                            <td className="px-3 py-1 flex gap-1">
+                                <button onClick={() => handleEdit(p)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteProduct(p.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}
@@ -390,6 +388,8 @@ const Products = () => {
                                         <option value={1}>Regular</option>
                                         <option value={2}>Especial</option>
                                         <option value={3}>Diesel</option>
+                                        <option value={4}>Ion Diesel</option>
+                                        <option value={5}>Master</option>
                                     </select>
                                 </div>
                             </div>

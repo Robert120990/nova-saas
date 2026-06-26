@@ -6,11 +6,13 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Fuel, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/ui/Pagination';
 
 const Nozzles = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -26,17 +28,17 @@ const Nozzles = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['gas-nozzles', debouncedSearch, page],
+        queryKey: ['gas-nozzles', debouncedSearch, page, user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/nozzles', { params: { search: debouncedSearch, page } })).data
     });
 
     const { data: islands = [] } = useQuery({
-        queryKey: ['gas-islands-all'],
+        queryKey: ['gas-islands-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/islands', { params: { limit: 100 } })).data?.data || []
     });
 
     const { data: fuelProducts = [] } = useQuery({
-        queryKey: ['fuel-products'],
+        queryKey: ['fuel-products', user?.branch_id],
         queryFn: async () => (await axios.get('/api/products/fuel')).data || []
     });
 

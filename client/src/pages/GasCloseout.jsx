@@ -106,7 +106,7 @@ const GasCloseout = () => {
     });
 
     const { data: allDespachadores = [] } = useQuery({
-        queryKey: ['gas-despachadores-all'],
+        queryKey: ['gas-despachadores-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } })).data?.data || []
     });
 
@@ -116,13 +116,13 @@ const GasCloseout = () => {
     });
 
     const { data: posTypesList = [] } = useQuery({
-        queryKey: ['gas-pos-types'],
+        queryKey: ['gas-pos-types', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/pos-types')).data,
         enabled: !!(closeoutId || editId)
     });
 
     const { data: despachadorNozzleAssignments = [] } = useQuery({
-        queryKey: ['gas-despachador-nozzles-all'],
+        queryKey: ['gas-despachador-nozzles-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data || []
     });
 
@@ -772,13 +772,13 @@ const GasCloseout = () => {
     };
 
     const { data: distributorsData } = useQuery({
-        queryKey: ['gas-distributors-all'],
+        queryKey: ['gas-distributors-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/distributors', { params: { limit: 999 } })).data?.data || [],
     });
     const distributors = distributorsData || [];
 
     const { data: nozzlesRes } = useQuery({
-        queryKey: ['gas-nozzles-all'],
+        queryKey: ['gas-nozzles-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/nozzles', { params: { limit: 999 } })).data,
     });
     const nozzlesData = nozzlesRes?.data || [];

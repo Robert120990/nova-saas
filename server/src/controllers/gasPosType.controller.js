@@ -5,8 +5,8 @@ const TABLE = 'gas_station_pos_types';
 exports.getPosTypes = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT id, nombre FROM ${TABLE} WHERE company_id = ? ORDER BY nombre`,
-            [req.company_id]
+            `SELECT id, nombre FROM ${TABLE} WHERE company_id = ? AND branch_id = ? ORDER BY nombre`,
+            [req.company_id, req.user.branch_id]
         );
         res.json(rows);
     } catch (error) {
@@ -20,8 +20,8 @@ exports.createPosType = async (req, res) => {
         const { nombre } = req.body;
         if (!nombre) return res.status(400).json({ message: 'El nombre es obligatorio' });
         const [result] = await pool.query(
-            `INSERT INTO ${TABLE} (company_id, nombre) VALUES (?, ?)`,
-            [req.company_id, nombre]
+            `INSERT INTO ${TABLE} (company_id, branch_id, nombre) VALUES (?, ?, ?)`,
+            [req.company_id, req.user.branch_id, nombre]
         );
         res.status(201).json({ id: result.insertId, nombre });
     } catch (error) {
@@ -37,8 +37,8 @@ exports.updatePosType = async (req, res) => {
         const { nombre } = req.body;
         if (!nombre) return res.status(400).json({ message: 'El nombre es obligatorio' });
         const [result] = await pool.query(
-            `UPDATE ${TABLE} SET nombre = ? WHERE id = ? AND company_id = ?`,
-            [nombre, id, req.company_id]
+            `UPDATE ${TABLE} SET nombre = ? WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [nombre, id, req.company_id, req.user.branch_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Tipo de POS no encontrado' });
         res.json({ id: parseInt(id), nombre });
@@ -53,8 +53,8 @@ exports.deletePosType = async (req, res) => {
     try {
         const { id } = req.params;
         const [result] = await pool.query(
-            `DELETE FROM ${TABLE} WHERE id = ? AND company_id = ?`,
-            [id, req.company_id]
+            `DELETE FROM ${TABLE} WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Tipo de POS no encontrado' });
         res.json({ message: 'Tipo de POS eliminado' });

@@ -3,29 +3,31 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Loader2, Fuel, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
 
 const GasDespachadorNozzles = () => {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
     const [selectedDespachadorId, setSelectedDespachadorId] = useState('');
 
     const { data: despachadores = [] } = useQuery({
-        queryKey: ['gas-despachadores'],
+        queryKey: ['gas-despachadores', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: nozzles = [] } = useQuery({
-        queryKey: ['gas-nozzles-all'],
+        queryKey: ['gas-nozzles-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/nozzles', { params: { limit: 5000 } })).data?.data || []
     });
 
     const { data: assignedNozzleIds = [] } = useQuery({
-        queryKey: ['gas-despachador-nozzles', selectedDespachadorId],
+        queryKey: ['gas-despachador-nozzles', selectedDespachadorId, user?.branch_id],
         queryFn: async () => (await axios.get(`/api/gas-station/despachadores/${selectedDespachadorId}/nozzles`)).data,
         enabled: !!selectedDespachadorId
     });
 
     const { data: allAssignments = [] } = useQuery({
-        queryKey: ['gas-despachador-nozzles-all'],
+        queryKey: ['gas-despachador-nozzles-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data
     });
 

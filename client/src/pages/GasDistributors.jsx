@@ -6,11 +6,13 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Truck, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/ui/Pagination';
 
 const GasDistributors = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -26,7 +28,7 @@ const GasDistributors = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['gas-distributors', debouncedSearch, page],
+        queryKey: ['gas-distributors', debouncedSearch, page, user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/distributors', { params: { search: debouncedSearch, page } })).data
     });
 

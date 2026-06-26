@@ -8,6 +8,10 @@ exports.getDespachadores = async (req, res) => {
         const offset = (page - 1) * limit;
         let where = 'WHERE company_id = ?';
         let params = [req.company_id];
+        if (req.user.branch_id) {
+            where += ' AND branch_id = ?';
+            params.push(req.user.branch_id);
+        }
         if (search) {
             where += ' AND (codigo LIKE ? OR descripcion LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
@@ -26,8 +30,8 @@ exports.createDespachador = async (req, res) => {
         const { codigo, descripcion } = req.body;
         if (!codigo) return res.status(400).json({ message: 'El código es obligatorio' });
         const [result] = await pool.query(
-            `INSERT INTO ${TABLE} (company_id, codigo, descripcion) VALUES (?, ?, ?)`,
-            [req.company_id, codigo, descripcion || '']
+            `INSERT INTO ${TABLE} (company_id, branch_id, codigo, descripcion) VALUES (?, ?, ?, ?)`,
+            [req.company_id, req.user.branch_id, codigo, descripcion || '']
         );
         res.status(201).json({ id: result.insertId, codigo, descripcion: descripcion || '' });
     } catch (error) {
@@ -42,8 +46,8 @@ exports.updateDespachador = async (req, res) => {
         const { codigo, descripcion } = req.body;
         if (!codigo) return res.status(400).json({ message: 'El código es obligatorio' });
         await pool.query(
-            `UPDATE ${TABLE} SET codigo = ?, descripcion = ? WHERE id = ? AND company_id = ?`,
-            [codigo, descripcion || '', id, req.company_id]
+            `UPDATE ${TABLE} SET codigo = ?, descripcion = ? WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [codigo, descripcion || '', id, req.company_id, req.user.branch_id]
         );
         res.json({ message: 'Despachador actualizado' });
     } catch (error) {
@@ -55,7 +59,7 @@ exports.updateDespachador = async (req, res) => {
 exports.deleteDespachador = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ?`, [id, req.company_id]);
+        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ? AND branch_id = ?`, [id, req.company_id, req.user.branch_id]);
         res.json({ message: 'Despachador eliminado' });
     } catch (error) {
         res.status(500).json({ message: 'Error al eliminar despachador' });
@@ -66,8 +70,8 @@ exports.getDespachadorNozzles = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(
-            `SELECT nozzle_id FROM gas_station_despachador_nozzles WHERE despachador_id = ? AND company_id = ?`,
-            [id, req.company_id]
+            `SELECT nozzle_id FROM gas_station_despachador_nozzles WHERE despachador_id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
         );
         res.json(rows.map(r => r.nozzle_id));
     } catch (error) {
@@ -83,12 +87,12 @@ exports.updateDespachadorNozzles = async (req, res) => {
             return res.status(400).json({ message: 'Se requiere una lista de IDs de mangueras' });
         }
 
-        await pool.query(`DELETE FROM gas_station_despachador_nozzles WHERE despachador_id = ? AND company_id = ?`, [id, req.company_id]);
+        await pool.query(`DELETE FROM gas_station_despachador_nozzles WHERE despachador_id = ? AND company_id = ? AND branch_id = ?`, [id, req.company_id, req.user.branch_id]);
 
         if (nozzle_ids.length > 0) {
-            const values = nozzle_ids.map(n => [req.company_id, parseInt(id), parseInt(n)]);
+            const values = nozzle_ids.map(n => [req.company_id, req.user.branch_id, parseInt(id), parseInt(n)]);
             await pool.query(
-                `INSERT INTO gas_station_despachador_nozzles (company_id, despachador_id, nozzle_id) VALUES ?`,
+                `INSERT INTO gas_station_despachador_nozzles (company_id, branch_id, despachador_id, nozzle_id) VALUES ?`,
                 [values]
             );
         }
@@ -105,8 +109,8 @@ exports.getAllAssignments = async (req, res) => {
             SELECT dn.nozzle_id, dn.despachador_id, d.codigo as despachador_codigo
             FROM gas_station_despachador_nozzles dn
             JOIN gas_station_despachadores d ON d.id = dn.despachador_id
-            WHERE dn.company_id = ?
-        `, [req.company_id]);
+            WHERE dn.company_id = ? AND dn.branch_id = ?
+        `, [req.company_id, req.user.branch_id]);
         res.json(rows);
     } catch (error) {
         res.status(500).json({ message: 'Error al obtener asignaciones' });

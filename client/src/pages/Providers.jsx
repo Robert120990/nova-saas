@@ -147,11 +147,11 @@ const Providers = () => {
     const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-3">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Proveedores</h2>
-                    <p className="text-slate-500 mt-1 font-medium">Gestión de abastecimiento y servicios externos</p>
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Proveedores</h2>
+                    <p className="text-slate-500 text-[11px] font-medium">Gestión de abastecimiento y servicios externos</p>
                 </div>
                 <button 
                     onClick={() => { 
@@ -163,24 +163,22 @@ const Providers = () => {
                         setNitValue('');
                         setIsModalOpen(true); 
                     }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
                     <Plus size={20}/>
                     <span>Nuevo Proveedor</span>
                 </button>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por nombre, NIT o documento..." 
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-sm font-medium shadow-sm"
-                    />
-                </div>
+            <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                />
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -190,34 +188,34 @@ const Providers = () => {
                     isLoading={isLoading}
                     renderRow={(p) => (
                         <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4">
-                                <div className="text-sm font-bold text-slate-900">{p.nombre}</div>
-                                <div className="text-xs text-slate-500 font-medium italic">{p.nombre_comercial}</div>
+                            <td className="px-3 py-1">
+                                <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
+                                <div className="text-[10px] text-slate-500 font-medium italic">{p.nombre_comercial}</div>
                                 {p.es_gran_contribuyente === 1 && (
-                                    <div className="mt-1 text-[9px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase tracking-tighter w-fit">Gran Contribuyente</div>
+                                    <div className="text-[8px] font-black bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full uppercase tracking-tighter w-fit">Gran Contribuyente</div>
                                 )}
                             </td>
-                            <td className="px-6 py-4">
-                                <div className="text-xs text-slate-600 font-medium">Dist. {p.distrito || '01'}, {p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
-                                <div className="text-[10px] text-slate-400 truncate max-w-[150px]">{p.direccion}</div>
+                            <td className="px-3 py-1">
+                                <div className="text-[10px] text-slate-600 font-medium">Dist. {p.distrito || '01'}, {p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
+                                <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{p.direccion}</div>
                             </td>
-                            <td className="px-6 py-4">
-                                <div className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block">{p.nit || p.numero_documento}</div>
-                                <div className="text-[10px] text-slate-400 mt-1 uppercase font-bold">{p.tipo_documento}</div>
+                            <td className="px-3 py-1">
+                                <div className="text-[10px] font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded inline-block">{p.nit || p.numero_documento}</div>
+                                <div className="text-[9px] text-slate-400 uppercase font-bold">{p.tipo_documento}</div>
                             </td>
-                            <td className="px-6 py-4 text-xs text-slate-500 font-medium">
-                                <div className="font-mono bg-slate-100 px-2 py-1 rounded inline-block">{p.nrc || 'N/A'}</div>
+                            <td className="px-3 py-1 text-[10px] text-slate-500 font-medium">
+                                <div className="font-mono bg-slate-100 px-1.5 py-0.5 rounded inline-block">{p.nrc || 'N/A'}</div>
                                 {p.exento_iva === 1 && (
-                                    <div className="mt-1 text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-tighter w-fit mx-auto">Exento IVA</div>
+                                    <div className="text-[8px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full uppercase tracking-tighter w-fit">Exento IVA</div>
                                 )}
                             </td>
-                            <td className="px-6 py-4">
-                                {p.telefono && <div className="text-xs text-slate-600 flex items-center gap-1"><Phone size={12} className="text-slate-400"/> {p.telefono}</div>}
-                                {p.correo && <div className="text-xs text-slate-600 flex items-center gap-1"><Mail size={12} className="text-slate-400"/> {p.correo}</div>}
+                            <td className="px-3 py-1">
+                                {p.telefono && <div className="text-[10px] text-slate-600 flex items-center gap-1"><Phone size={10} className="text-slate-400"/> {p.telefono}</div>}
+                                {p.correo && <div className="text-[10px] text-slate-600 flex items-center gap-1"><Mail size={10} className="text-slate-400"/> {p.correo}</div>}
                             </td>
-                            <td className="px-6 py-4 flex gap-2">
-                                <button onClick={() => handleEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => handleDeleteProvider(p.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                            <td className="px-3 py-1 flex gap-1">
+                                <button onClick={() => handleEdit(p)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteProvider(p.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}

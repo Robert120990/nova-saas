@@ -6,11 +6,13 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Droplets, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/ui/Pagination';
 
 const Tanks = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -26,7 +28,7 @@ const Tanks = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['gas-tanks', debouncedSearch, page],
+        queryKey: ['gas-tanks', debouncedSearch, page, user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/tanks', { params: { search: debouncedSearch, page } })).data
     });
 

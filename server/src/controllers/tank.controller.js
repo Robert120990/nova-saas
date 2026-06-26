@@ -8,6 +8,10 @@ exports.getTanks = async (req, res) => {
         const offset = (page - 1) * limit;
         let where = 'WHERE company_id = ?';
         let params = [req.company_id];
+        if (req.user.branch_id) {
+            where += ' AND branch_id = ?';
+            params.push(req.user.branch_id);
+        }
         if (search) {
             where += ' AND (codigo LIKE ? OR descripcion LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
@@ -23,7 +27,7 @@ exports.getTanks = async (req, res) => {
 
 exports.createTank = async (req, res) => {
     try {
-        const data = { ...req.body, company_id: req.company_id };
+        const data = { ...req.body, company_id: req.company_id, branch_id: req.user.branch_id };
         const [result] = await pool.query(`INSERT INTO ${TABLE} SET ?`, [data]);
         res.status(201).json({ id: result.insertId, ...data });
     } catch (error) {
@@ -35,7 +39,7 @@ exports.createTank = async (req, res) => {
 exports.updateTank = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`UPDATE ${TABLE} SET ? WHERE id = ? AND company_id = ?`, [req.body, id, req.company_id]);
+        await pool.query(`UPDATE ${TABLE} SET ? WHERE id = ? AND company_id = ? AND branch_id = ?`, [req.body, id, req.company_id, req.user.branch_id]);
         res.json({ message: 'Tanque actualizado' });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'Ya existe un tanque con ese código' });
@@ -46,7 +50,7 @@ exports.updateTank = async (req, res) => {
 exports.deleteTank = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ?`, [id, req.company_id]);
+        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ? AND branch_id = ?`, [id, req.company_id, req.user.branch_id]);
         res.json({ message: 'Tanque eliminado' });
     } catch (error) {
         res.status(500).json({ message: 'Error al eliminar tanque' });

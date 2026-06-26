@@ -8,6 +8,10 @@ exports.getNozzles = async (req, res) => {
         const offset = (page - 1) * limit;
         let where = 'WHERE n.company_id = ?';
         let params = [req.company_id];
+        if (req.user.branch_id) {
+            where += ' AND n.branch_id = ?';
+            params.push(req.user.branch_id);
+        }
         if (search) {
             where += ' AND (n.codigo LIKE ? OR n.descripcion LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
@@ -30,7 +34,7 @@ exports.getNozzles = async (req, res) => {
 
 exports.createNozzle = async (req, res) => {
     try {
-        const data = { ...req.body, company_id: req.company_id };
+        const data = { ...req.body, company_id: req.company_id, branch_id: req.user.branch_id };
         const [result] = await pool.query(`INSERT INTO ${TABLE} SET ?`, [data]);
         res.status(201).json({ id: result.insertId, ...data });
     } catch (error) {
@@ -42,7 +46,7 @@ exports.createNozzle = async (req, res) => {
 exports.updateNozzle = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`UPDATE ${TABLE} SET ? WHERE id = ? AND company_id = ?`, [req.body, id, req.company_id]);
+        await pool.query(`UPDATE ${TABLE} SET ? WHERE id = ? AND company_id = ? AND branch_id = ?`, [req.body, id, req.company_id, req.user.branch_id]);
         res.json({ message: 'Pistola actualizada' });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'Ya existe una pistola con ese código' });
@@ -53,7 +57,7 @@ exports.updateNozzle = async (req, res) => {
 exports.deleteNozzle = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ?`, [id, req.company_id]);
+        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ? AND branch_id = ?`, [id, req.company_id, req.user.branch_id]);
         res.json({ message: 'Pistola eliminada' });
     } catch (error) {
         res.status(500).json({ message: 'Error al eliminar pistola' });

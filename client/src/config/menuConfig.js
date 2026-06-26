@@ -54,24 +54,24 @@ export const menuConfig = [
         label: 'Ventas',
         icon: Monitor,
         children: [
-            { id: 'pos-terminal', label: 'Punto de Venta (POS)', path: '/ventas/nueva', icon: Monitor, permission: 'manage_sales' },
-            { id: 'ventas-historial', label: 'Historial de Ventas', path: '/ventas', icon: FileText, permission: 'view_sales' },
+            { id: 'pos-terminal', label: 'Punto de Venta (POS)', path: '/ventas/nueva', icon: Monitor, permission: 'manage_pos_terminal' },
+            { id: 'ventas-historial', label: 'Historial de Ventas', path: '/ventas', icon: FileText, permission: 'view_sales_history' },
             { id: 'ventas-combos', label: 'Combos de Productos', path: '/ventas/combos', icon: Package, permission: 'manage_combos' },
-            { id: 'ventas-combustibles', label: 'Precios de Combustible', path: '/ventas/combustibles', icon: Banknote, permission: 'manage_sales' },
-            { id: 'ventas-descuentos', label: 'Descuentos por Cliente', path: '/ventas/descuentos', icon: Tag, permission: 'manage_sales' },
-            { id: 'ventas-reglas-descuento', label: 'Reglas de Descuento', path: '/ventas/reglas-descuento', icon: Tag, permission: 'manage_sales' },
-            { id: 'ventas-contingencia', label: 'Contingencia DTE', path: '/ventas/contingencia', icon: AlertTriangle, permission: 'manage_sales' },
-            { id: 'ventas-retorno', label: 'Retorno / ERET', path: '/ventas/retorno', icon: Undo2, permission: 'manage_sales' },
-            { id: 'pos-cierre', label: 'Corte de Caja', path: '/ventas/cierre', icon: Calculator, permission: 'manage_sales' },
+            { id: 'ventas-combustibles', label: 'Precios de Combustible', path: '/ventas/combustibles', icon: Banknote, permission: 'manage_fuel_prices' },
+            { id: 'ventas-descuentos', label: 'Descuentos por Cliente', path: '/ventas/descuentos', icon: Tag, permission: 'manage_customer_discounts' },
+            { id: 'ventas-reglas-descuento', label: 'Reglas de Descuento', path: '/ventas/reglas-descuento', icon: Tag, permission: 'manage_discount_rules' },
+            { id: 'ventas-contingencia', label: 'Contingencia DTE', path: '/ventas/contingencia', icon: AlertTriangle, permission: 'manage_dte_contingency' },
+            { id: 'ventas-retorno', label: 'Retorno / ERET', path: '/ventas/retorno', icon: Undo2, permission: 'manage_dte_return' },
+            { id: 'pos-cierre', label: 'Corte de Caja', path: '/ventas/cierre', icon: Calculator, permission: 'manage_cash_closure' },
             { 
                 id: 'ventas-reportes-parent', 
                 label: 'Reportes', 
                 icon: BarChart3,
                 children: [
-                    { id: 'ventas-report-ventas', label: 'Reporte de Ventas', path: '/ventas/reportes/ventas', icon: FileText, permission: 'manage_sales' },
-                    { id: 'ventas-report-diarias', label: 'Reporte de Ventas Diarias', path: '/ventas/reportes/diarias', icon: FileText, permission: 'manage_sales' },
-                    { id: 'ventas-report-categoria', label: 'Ventas por Categoría', path: '/ventas/reportes/categoria', icon: FileText, permission: 'manage_sales' },
-                    { id: 'ventas-report-pos', label: 'Ventas por POS', path: '/ventas/reportes/pos', icon: FileText, permission: 'manage_sales' },
+                    { id: 'ventas-report-ventas', label: 'Reporte de Ventas', path: '/ventas/reportes/ventas', icon: FileText, permission: 'view_sales_report' },
+                    { id: 'ventas-report-diarias', label: 'Reporte de Ventas Diarias', path: '/ventas/reportes/diarias', icon: FileText, permission: 'view_daily_sales_report' },
+                    { id: 'ventas-report-categoria', label: 'Ventas por Categoría', path: '/ventas/reportes/categoria', icon: FileText, permission: 'view_sales_by_category' },
+                    { id: 'ventas-report-pos', label: 'Ventas por POS', path: '/ventas/reportes/pos', icon: FileText, permission: 'view_sales_by_pos' },
                 ]
             },
         ]
@@ -81,11 +81,11 @@ export const menuConfig = [
         label: 'Contabilidad',
         icon: BookOpen,
         children: [
-            { id: 'contabilidad-cuentas', label: 'Catálogo de Cuentas', path: '/contabilidad/cuentas', icon: BookOpen, permission: 'manage_sales' },
-            { id: 'contabilidad-partidas', label: 'Partidas Contables', path: '/contabilidad/partidas', icon: FileText, permission: 'manage_sales' },
-            { id: 'contabilidad-cierre', label: 'Cierre Anual', path: '/contabilidad/cierre', icon: Lock, permission: 'manage_sales' },
-            { id: 'contabilidad-apertura', label: 'Apertura de Ejercicio', path: '/contabilidad/apertura', icon: Unlock, permission: 'manage_sales' },
-            { id: 'contabilidad-ajustes', label: 'Ajustes', path: '/contabilidad/ajustes', icon: Settings, permission: 'manage_sales' },
+            { id: 'contabilidad-cuentas', label: 'Catálogo de Cuentas', path: '/contabilidad/cuentas', icon: BookOpen, permission: 'manage_account_chart' },
+            { id: 'contabilidad-partidas', label: 'Partidas Contables', path: '/contabilidad/partidas', icon: FileText, permission: 'manage_accounting_entries' },
+            { id: 'contabilidad-cierre', label: 'Cierre Anual', path: '/contabilidad/cierre', icon: Lock, permission: 'manage_annual_close' },
+            { id: 'contabilidad-apertura', label: 'Apertura de Ejercicio', path: '/contabilidad/apertura', icon: Unlock, permission: 'manage_fiscal_year_open' },
+            { id: 'contabilidad-ajustes', label: 'Ajustes', path: '/contabilidad/ajustes', icon: Settings, permission: 'manage_accounting_adjustments' },
         ]
     },
     {
@@ -93,15 +93,15 @@ export const menuConfig = [
         label: 'Cuentas por Cobrar',
         icon: CreditCard,
         children: [
-            { id: 'cxc-estado-cuenta', label: 'Consulta de Cliente', path: '/cxc/estado-cuenta', icon: FileText, permission: 'view_sales' },
-            { id: 'cxc-abonos', label: 'Abonos / Pagos', path: '/cxc/abonos', icon: Banknote, permission: 'manage_sales' },
+            { id: 'cxc-estado-cuenta', label: 'Consulta de Cliente', path: '/cxc/estado-cuenta', icon: FileText, permission: 'view_customer_statement' },
+            { id: 'cxc-abonos', label: 'Abonos / Pagos', path: '/cxc/abonos', icon: Banknote, permission: 'manage_cxc_payments' },
             { 
                 id: 'cxc-reports', 
                 label: 'Reportes', 
                 icon: BarChart3,
                 children: [
-                    { id: 'cxc-report-balances', label: 'Saldos de Clientes', path: '/cxc/reportes/saldos', icon: FileText, permission: 'view_sales' },
-                    { id: 'cxc-report-pending-detailed', label: 'Documentos Pendientes', path: '/cxc/reportes/documentos-pendientes', icon: FileText, permission: 'view_sales' },
+                    { id: 'cxc-report-balances', label: 'Saldos de Clientes', path: '/cxc/reportes/saldos', icon: FileText, permission: 'view_cxc_balances' },
+                    { id: 'cxc-report-pending-detailed', label: 'Documentos Pendientes', path: '/cxc/reportes/documentos-pendientes', icon: FileText, permission: 'view_cxc_pending_docs' },
                 ]
             },
 
@@ -112,15 +112,15 @@ export const menuConfig = [
         label: 'Cuentas por Pagar',
         icon: CreditCard,
         children: [
-            { id: 'cxp-estado-cuenta', label: 'Consulta de Proveedor', path: '/cxp/estado-cuenta', icon: FileText, permission: 'manage_purchases' },
-            { id: 'cxp-abonos', label: 'Abonos / Pagos', path: '/cxp/abonos', icon: Banknote, permission: 'manage_purchases' },
+            { id: 'cxp-estado-cuenta', label: 'Consulta de Proveedor', path: '/cxp/estado-cuenta', icon: FileText, permission: 'view_provider_statement' },
+            { id: 'cxp-abonos', label: 'Abonos / Pagos', path: '/cxp/abonos', icon: Banknote, permission: 'manage_cxp_payments' },
             { 
                 id: 'cxp-reports', 
                 label: 'Reportes', 
                 icon: BarChart3,
                 children: [
-                    { id: 'cxp-report-balances', label: 'Saldos de Proveedores', path: '/cxp/reportes/saldos', icon: FileText, permission: 'manage_purchases' },
-                    { id: 'cxp-report-pending-detailed', label: 'Documentos por Pagar', path: '/cxp/reportes/documentos-pendientes', icon: FileText, permission: 'manage_purchases' },
+                    { id: 'cxp-report-balances', label: 'Saldos de Proveedores', path: '/cxp/reportes/saldos', icon: FileText, permission: 'view_cxp_balances' },
+                    { id: 'cxp-report-pending-detailed', label: 'Documentos por Pagar', path: '/cxp/reportes/documentos-pendientes', icon: FileText, permission: 'view_cxp_pending_docs' },
                 ]
             },
 
@@ -143,16 +143,16 @@ export const menuConfig = [
         label: 'Compras',
         icon: ShoppingCart,
         children: [
-            { id: 'compras-lista', label: 'Gestión de Compras', path: '/compras', icon: FileText, permission: 'manage_purchases' },
-            { id: 'compras-gastos', label: 'Gastos', path: '/compras/gastos', icon: Banknote, permission: 'manage_purchases' },
+            { id: 'compras-lista', label: 'Gestión de Compras', path: '/compras', icon: FileText, permission: 'manage_purchases_list' },
+            { id: 'compras-gastos', label: 'Gastos', path: '/compras/gastos', icon: Banknote, permission: 'manage_expenses' },
             { id: 'purchase-period', label: 'Periodo de Compras', path: '/compras/periodo', icon: Calendar, permission: 'manage_purchase_period' },
             { 
                 id: 'compras-reports', 
                 label: 'Reportes', 
                 icon: BarChart3,
                 children: [
-                    { id: 'compras-report-compras', label: 'Reporte de Compras', path: '/compras/reportes/compras', icon: FileText, permission: 'manage_purchases' },
-                    { id: 'compras-report-gastos', label: 'Reporte de Gastos', path: '/compras/reportes/gastos', icon: FileText, permission: 'manage_purchases' },
+                    { id: 'compras-report-compras', label: 'Reporte de Compras', path: '/compras/reportes/compras', icon: FileText, permission: 'view_purchases_report' },
+                    { id: 'compras-report-gastos', label: 'Reporte de Gastos', path: '/compras/reportes/gastos', icon: FileText, permission: 'view_expenses_report' },
                 ]
             },
         ]
@@ -171,8 +171,8 @@ export const menuConfig = [
                 label: 'Reportes', 
                 icon: BarChart3,
                 children: [
-                    { id: 'inventory-report-stock', label: 'Reporte de Stock', path: '/inventario/reportes/stock', icon: FileText, permission: 'manage_kardex' },
-                    { id: 'inventory-report-movements', label: 'Reporte de Movimientos', path: '/inventario/reportes/movimientos', icon: History, permission: 'manage_kardex' },
+                    { id: 'inventory-report-stock', label: 'Reporte de Stock', path: '/inventario/reportes/stock', icon: FileText, permission: 'view_stock_report' },
+                    { id: 'inventory-report-movements', label: 'Reporte de Movimientos', path: '/inventario/reportes/movimientos', icon: History, permission: 'view_movement_report' },
                 ]
             },
         ]
@@ -182,9 +182,9 @@ export const menuConfig = [
         label: 'Libros de IVA',
         icon: Calculator,
         children: [
-            { id: 'iva-compras', label: 'Libro de Compras', path: '/iva/compras', icon: FileText, permission: 'manage_purchases' },
-            { id: 'iva-ventas-ccf', label: 'Ventas a Contribuyentes', path: '/iva/ventas-ccf', icon: FileText, permission: 'manage_sales' },
-            { id: 'iva-ventas-fac', label: 'Ventas a Consumidor', path: '/iva/ventas-fac', icon: FileText, permission: 'manage_sales' },
+            { id: 'iva-compras', label: 'Libro de Compras', path: '/iva/compras', icon: FileText, permission: 'view_purchase_ledger' },
+            { id: 'iva-ventas-ccf', label: 'Ventas a Contribuyentes', path: '/iva/ventas-ccf', icon: FileText, permission: 'view_ccf_sales_ledger' },
+            { id: 'iva-ventas-fac', label: 'Ventas a Consumidor', path: '/iva/ventas-fac', icon: FileText, permission: 'view_fac_sales_ledger' },
         ]
     },
     {
@@ -192,13 +192,13 @@ export const menuConfig = [
         label: 'Huevo Industrial',
         icon: Sparkles,
         children: [
-            { id: 'industrial-dashboard', label: 'Panel IoT / SCADA', path: '/industrial/planta', icon: Monitor, permission: 'view_dashboard' },
-            { id: 'industrial-reception', label: 'Recepción MP', path: '/industrial/recepcion', icon: Truck, permission: 'manage_purchases' },
-            { id: 'industrial-production', label: 'Producción y Pasteurización', path: '/industrial/produccion', icon: Box, permission: 'manage_transfers' },
-            { id: 'industrial-packaging', label: 'Empaque y Congelado', path: '/industrial/empaque', icon: Package, permission: 'manage_physical_inventory' },
-            { id: 'industrial-costs', label: 'Costeo y Mantenimiento', path: '/industrial/costos-mantenimiento', icon: Banknote, permission: 'manage_purchases' },
-            { id: 'industrial-traceability', label: 'Trazabilidad 360°', path: '/industrial/trazabilidad', icon: History, permission: 'manage_kardex' },
-            { id: 'industrial-config', label: 'Ajustes', path: '/industrial/configuracion', icon: Settings, permission: 'manage_system' }
+            { id: 'industrial-dashboard', label: 'Panel IoT / SCADA', path: '/industrial/planta', icon: Monitor, permission: 'view_industrial_dashboard' },
+            { id: 'industrial-reception', label: 'Recepción MP', path: '/industrial/recepcion', icon: Truck, permission: 'manage_mp_reception' },
+            { id: 'industrial-production', label: 'Producción y Pasteurización', path: '/industrial/produccion', icon: Box, permission: 'manage_production' },
+            { id: 'industrial-packaging', label: 'Empaque y Congelado', path: '/industrial/empaque', icon: Package, permission: 'manage_packaging' },
+            { id: 'industrial-costs', label: 'Costeo y Mantenimiento', path: '/industrial/costos-mantenimiento', icon: Banknote, permission: 'manage_industrial_costs' },
+            { id: 'industrial-traceability', label: 'Trazabilidad 360°', path: '/industrial/trazabilidad', icon: History, permission: 'manage_traceability' },
+            { id: 'industrial-config', label: 'Ajustes', path: '/industrial/configuracion', icon: Settings, permission: 'manage_industrial_settings' }
         ]
     },
     {
@@ -211,21 +211,21 @@ export const menuConfig = [
                 label: 'Catálogos', 
                 icon: Package,
                 children: [
-                    { id: 'gas-distributors', label: 'Distribuidores', path: '/gas-station/distributors', icon: Truck, permission: 'manage_gas_station' },
-                    { id: 'gas-islands', label: 'Islas', path: '/gas-station/islands', icon: Monitor, permission: 'manage_gas_station' },
-                    { id: 'gas-nozzles', label: 'Mangueras', path: '/gas-station/nozzles', icon: Fuel, permission: 'manage_gas_station' },
-                    { id: 'gas-tanks', label: 'Tanques', path: '/gas-station/tanks', icon: Droplets, permission: 'manage_gas_station' },
-                    { id: 'gas-expense-categories', label: 'Rubros Gastos', path: '/gas-station/expense-categories', icon: Receipt, permission: 'manage_gas_station' },
-                    { id: 'gas-despachadores', label: 'Despachadores', path: '/gas-station/despachadores', icon: UserCheck, permission: 'manage_gas_station' },
-                    { id: 'gas-desp-nozzles', label: 'Mangueras x Despachador', path: '/gas-station/despachador-nozzles', icon: Fuel, permission: 'manage_gas_station' },
-                    { id: 'gas-pos-types', label: 'Tipos de POS', path: '/gas-station/pos-tipos', icon: Monitor, permission: 'manage_gas_station' },
+                    { id: 'gas-distributors', label: 'Distribuidores', path: '/gas-station/distributors', icon: Truck, permission: 'manage_gas_distributors' },
+                    { id: 'gas-islands', label: 'Islas', path: '/gas-station/islands', icon: Monitor, permission: 'manage_gas_islands' },
+                    { id: 'gas-nozzles', label: 'Mangueras', path: '/gas-station/nozzles', icon: Fuel, permission: 'manage_gas_nozzles' },
+                    { id: 'gas-tanks', label: 'Tanques', path: '/gas-station/tanks', icon: Droplets, permission: 'manage_gas_tanks' },
+                    { id: 'gas-expense-categories', label: 'Rubros Gastos', path: '/gas-station/expense-categories', icon: Receipt, permission: 'manage_gas_expense_categories' },
+                    { id: 'gas-despachadores', label: 'Despachadores', path: '/gas-station/despachadores', icon: UserCheck, permission: 'manage_gas_attendants' },
+                    { id: 'gas-desp-nozzles', label: 'Mangueras x Despachador', path: '/gas-station/despachador-nozzles', icon: Fuel, permission: 'manage_gas_attendant_nozzles' },
+                    { id: 'gas-pos-types', label: 'Tipos de POS', path: '/gas-station/pos-tipos', icon: Monitor, permission: 'manage_gas_pos_types' },
                 ]
             },
-            { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_station' },
-            { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'manage_gas_station' },
-            { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_station' },
-            { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_station' },
-            { id: 'gas-reportes', label: 'Reportes', path: '/gas-station/reportes', icon: BarChart3, permission: 'manage_gas_station' },
+            { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_readings_closure' },
+            { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'view_gas_readings_history' },
+            { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_advances' },
+            { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_settings' },
+            { id: 'gas-reportes', label: 'Reportes', path: '/gas-station/reportes', icon: BarChart3, permission: 'view_gas_reports' },
         ]
     },
     {
@@ -269,17 +269,10 @@ export const getAllPermissions = () => {
             items.forEach(item => {
                 if (item.permission) {
                     const fullLabel = prefix ? `${prefix} - ${item.label}` : item.label;
-                    
-                    // Solo evitar duplicados exactos (mismo ID y misma Etiqueta)
-                    const isDuplicate = perms.some(p => p.id === item.permission && p.label === fullLabel);
-                    
-                    if (!isDuplicate) {
-                        perms.push({ id: item.permission, label: fullLabel });
-                    }
+                    perms.push({ id: item.permission, label: fullLabel });
                 }
                 
                 if (item.children) {
-                    // Si el item se llama "Reportes", pasamos el prefijo a los hijos
                     const nextPrefix = item.label === 'Reportes' ? 'Reportes' : '';
                     extractPermissions(item.children, nextPrefix);
                 }
