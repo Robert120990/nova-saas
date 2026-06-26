@@ -46,6 +46,12 @@ const createBranch = async (req, res) => {
         res.status(201).json({ id: result.insertId, ...data });
     } catch (error) {
         console.error('CREATE ERROR:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            const msg = error.sqlMessage?.includes('codigo_mh')
+                ? 'El código MH ya existe en esta empresa'
+                : 'El código de sucursal ya existe en esta empresa';
+            return res.status(409).json({ message: msg });
+        }
         res.status(500).json({ message: 'Error al crear establecimiento', error: error.message });
     }
 };
@@ -66,9 +72,16 @@ const updateBranch = async (req, res) => {
     try {
         const [result] = await pool.query('UPDATE branches SET ? WHERE id = ? AND company_id = ?', [data, id, req.company_id]);
         console.log('UPDATE BRANCH - rows affected:', result.affectedRows);
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Establecimiento no encontrado' });
         res.json({ message: 'Establecimiento actualizado' });
     } catch (error) {
         console.error('UPDATE ERROR:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            const msg = error.sqlMessage?.includes('codigo_mh')
+                ? 'El código MH ya existe en esta empresa'
+                : 'El código de sucursal ya existe en esta empresa';
+            return res.status(409).json({ message: msg });
+        }
         res.status(500).json({ message: 'Error al actualizar establecimiento', error: error.message });
     }
 };
