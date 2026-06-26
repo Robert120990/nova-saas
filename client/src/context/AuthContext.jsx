@@ -35,6 +35,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const logout = () => {
+        axios.post('/api/auth/logout').catch(() => {});
         setUser(null);
         localStorage.removeItem('user');
         localStorage.removeItem('token');

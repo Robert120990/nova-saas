@@ -9,11 +9,13 @@ const ConnectedUsers = () => {
     const confirm = useConfirm();
     const queryClient = useQueryClient();
 
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, isError, error } = useQuery({
         queryKey: ['users-connected'],
         queryFn: async () => (await axios.get('/api/users/connected')).data,
         refetchInterval: 10000,
     });
+
+    console.log('[ConnectedUsers]', { data, isLoading, isError, error: error?.message });
 
     const terminateMutation = useMutation({
         mutationFn: async (sessionId) => {
@@ -75,6 +77,10 @@ const ConnectedUsers = () => {
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
                 {isLoading ? (
                     <div className="p-12 text-center text-slate-400 font-medium">Cargando...</div>
+                ) : isError ? (
+                    <div className="p-12 text-center">
+                        <p className="text-rose-500 font-medium">Error al cargar: {error?.message || 'Error desconocido'}</p>
+                    </div>
                 ) : sessions.length === 0 ? (
                     <div className="p-12 text-center text-slate-400 font-medium">No hay usuarios conectados</div>
                 ) : (
