@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useConfirm } from '../context/ConfirmContext';
@@ -8,6 +8,13 @@ import { toast } from 'sonner';
 const ConnectedUsers = () => {
     const confirm = useConfirm();
     const queryClient = useQueryClient();
+    const [now, setNow] = useState(Date.now());
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        timerRef.current = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timerRef.current);
+    }, []);
 
     const { data, isLoading, isError, error } = useQuery({
         queryKey: ['users-connected'],
@@ -44,10 +51,15 @@ const ConnectedUsers = () => {
     };
 
     const formatDateTime = (dateStr) => {
-        if (!dateStr) return 'N/A';
+        if (!dateStr) return '-';
         const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return 'N/A';
-        return d.toLocaleString('es-SV');
+        if (isNaN(d.getTime())) return '-';
+        const dia = String(d.getDate()).padStart(2, '0');
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const anio = d.getFullYear();
+        const hora = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        return `${dia}/${mes}/${anio} ${hora}:${min}`;
     };
 
     const getElapsedText = (seconds) => {
@@ -56,6 +68,11 @@ const ConnectedUsers = () => {
         if (mins < 60) return `${mins}m ${seconds % 60}s`;
         const hrs = Math.floor(mins / 60);
         return `${hrs}h ${mins % 60}m`;
+    };
+
+    const calcElapsed = (loggedInAt) => {
+        if (!loggedInAt) return 0;
+        return Math.floor((now - new Date(loggedInAt).getTime()) / 1000);
     };
 
     const sessions = data?.sessions || [];
@@ -99,12 +116,14 @@ const ConnectedUsers = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {sessions.map((session) => (
+                                {sessions.map((session) => {
+                                    const elapsed = calcElapsed(session.logged_in_at);
+                                    return (
                                     <tr key={session.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                                         <td className="px-6 py-4">
                                             <Circle
                                                 size={10}
-                                                className={session.elapsed_seconds < 30 ? 'text-emerald-500 fill-emerald-500' : 'text-amber-400 fill-amber-400'}
+                                                className={elapsed < 30 ? 'text-emerald-500 fill-emerald-500' : 'text-amber-400 fill-amber-400'}
                                             />
                                         </td>
                                         <td className="px-6 py-4">
@@ -126,7 +145,7 @@ const ConnectedUsers = () => {
                                             <span className="text-[13px] font-medium text-slate-700">{formatDateTime(session.logged_in_at)}</span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="text-[13px] font-medium text-slate-500">{getElapsedText(session.elapsed_seconds)}</span>
+                                            <span className="text-[13px] font-medium text-slate-500">{getElapsedText(elapsed)}</span>
                                         </td>
                                         <td className="px-6 py-4">
                                             {!session.is_own_session && (
@@ -142,7 +161,8 @@ const ConnectedUsers = () => {
                                             )}
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
