@@ -357,6 +357,62 @@ const deleteUser = async (req, res) => {
     }
 };
 
+const getConnectedSessions = async (req, res) => {
+    try {
+        const companyId = req.user.company_id;
+        const ownSessionId = req.user.session_id;
+
+        const [sessions] = await pool.query(
+            `SELECT us.id, us.user_id, us.branch_id, us.ip_address, us.user_agent, 
+                    us.logged_in_at, us.last_heartbeat,
+                    u.nombre, u.username,
+                    b.nombre as branch_name
+             FROM user_sessions us
+             JOIN users u ON us.user_id = u.id
+             LEFT JOIN branches b ON us.branch_id = b.id
+             WHERE us.company_id = ? AND us.is_active = 1 
+               AND us.last_heartbeat > NOW() - INTERVAL 2 MINUTE
+             ORDER BY us.last_heartbeat DESC`,
+            [companyId]
+        );
+
+        const rows = sessions.map(s => ({
+            ...s,
+            is_own_session: s.id === ownSessionId,
+            elapsed_seconds: Math.floor((Date.now() - new Date(s.last_heartbeat).getTime()) / 1000)
+        }));
+
+        res.json({ sessions: rows });
+    } catch (error) {
+        console.error('Error getting connected sessions:', error);
+        res.status(500).json({ message: 'Error al obtener sesiones conectadas' });
+    }
+};
+
+const terminateSession = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.user.company_id;
+
+        const [sessions] = await pool.query(
+            `SELECT us.id FROM user_sessions us
+             JOIN users u ON us.user_id = u.id
+             WHERE us.id = ? AND us.company_id = ?`,
+            [id, companyId]
+        );
+
+        if (sessions.length === 0) {
+            return res.status(404).json({ message: 'Sesión no encontrada' });
+        }
+
+        await pool.query('UPDATE user_sessions SET is_active = 0 WHERE id = ?', [id]);
+        res.json({ message: 'Sesión finalizada' });
+    } catch (error) {
+        console.error('Error terminating session:', error);
+        res.status(500).json({ message: 'Error al finalizar sesión' });
+    }
+};
+
 module.exports = { 
     getUsers, 
     createUser, 
@@ -366,5 +422,7 @@ module.exports = {
     assignCompanyAccess, 
     getAccessSummary, 
     deleteCompanyAccess,
-    deleteUser
+    deleteUser,
+    getConnectedSessions,
+    terminateSession
 };

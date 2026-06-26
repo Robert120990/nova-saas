@@ -90,6 +90,10 @@ router.put('/users/me', userController.updateProfile);
 router.put('/users/:id', userController.updateUser);
 router.delete('/users/:id', userController.deleteUser);
 
+// Connected users (before tenant for cross-branch visibility)
+router.get('/users/connected', userController.getConnectedSessions);
+router.post('/users/sessions/:id/terminate', userController.terminateSession);
+
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
 router.use(require('../middlewares/audit'));

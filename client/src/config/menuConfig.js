@@ -237,6 +237,7 @@ export const menuConfig = [
             { id: 'user-access', label: 'Accesos de Usuario', path: '/user-access', icon: GitBranch, permission: 'manage_user_access' },
             { id: 'roles', label: 'Roles', path: '/roles', icon: Shield, permission: 'manage_roles' },
             { id: 'audit-log', label: 'Bitácora del Sistema', path: '/seguridad/bitacora', icon: ScrollText, permission: 'manage_system' },
+            { id: 'connected-users', label: 'Usuarios Conectados', path: '/seguridad/conectados', icon: Users, permission: 'manage_users' },
         ]
     },
     {

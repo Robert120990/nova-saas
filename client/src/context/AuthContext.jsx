@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -8,11 +8,14 @@ if (apiUrl) {
     axios.defaults.baseURL = apiUrl;
 }
 
+const HEARTBEAT_INTERVAL = 60000;
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const heartbeatRef = useRef(null);
     const navigate = useNavigate();
 
     // 1. Initial Load
@@ -44,11 +47,11 @@ export const AuthProvider = ({ children }) => {
         const interceptor = axios.interceptors.response.use(
             (response) => response,
             (error) => {
-                // Si el error es 401 (No autorizado) y NO es una petición de login o seller login
                 if (error.response?.status === 401) {
                     const isExcludedRequest =
                         error.config.url.includes('/api/auth/login') ||
-                        error.config.url.includes('/api/sellers/login-pos');
+                        error.config.url.includes('/api/sellers/login-pos') ||
+                        error.config.url.includes('/api/auth/heartbeat');
 
                     if (!isExcludedRequest && user) {
                         toast.error('Sesión expirada. Por favor, inicie sesión de nuevo.');
@@ -60,7 +63,33 @@ export const AuthProvider = ({ children }) => {
         );
 
         return () => axios.interceptors.response.eject(interceptor);
-    }, [user]); // Re-bind if user context changes
+    }, [user]);
+
+    // 3. Heartbeat loop
+    useEffect(() => {
+        if (!user) return;
+
+        const sendHeartbeat = async () => {
+            try {
+                const { data } = await axios.post('/api/auth/heartbeat');
+                if (data.forceLogout) {
+                    logout();
+                }
+            } catch {
+                // Silently ignore heartbeat errors
+            }
+        };
+
+        sendHeartbeat();
+        heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+        return () => {
+            if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+            }
+        };
+    }, [user]);
 
     const login = async (username, password) => {
         try {

@@ -40,6 +40,7 @@ import DailySalesReport from './pages/DailySalesReport';
 import Contingency from './pages/Contingency';
 import Eret from './pages/Eret';
 import AuditLog from './pages/AuditLog';
+import ConnectedUsers from './pages/ConnectedUsers';
 import CashClosing from './pages/CashClosing';
 import Combos from './pages/Combos';
 import CustomerStatement from './pages/CustomerStatement';
@@ -172,6 +173,7 @@ function App() {
                         <Route path="/ventas/retorno" element={<Eret />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
+                        <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
 
                         {/* Accounts Receivable (CXC) */}
                         <Route path="/cxc/estado-cuenta" element={<CustomerStatement />} />

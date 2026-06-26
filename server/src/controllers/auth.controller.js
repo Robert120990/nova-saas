@@ -1,6 +1,17 @@
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+
+async function createSession(userId, companyId, branchId, req) {
+    const ip = req.ip || req.connection?.remoteAddress || null;
+    const ua = req.headers['user-agent'] || null;
+    const [result] = await pool.query(
+        'INSERT INTO user_sessions (user_id, company_id, branch_id, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
+        [userId, companyId, branchId, ip, ua]
+    );
+    return result.insertId;
+}
 
 const login = async (req, res) => {
     const { username, password } = req.body;
@@ -83,6 +94,8 @@ const login = async (req, res) => {
         if (companies.length === 1 && companies[0].branches.length === 1) {
             const company = companies[0];
             const branch = company.branches[0];
+
+            const sessionId = await createSession(user.id, company.id, branch.id, req);
             
             const token = jwt.sign(
                 { 
@@ -90,7 +103,8 @@ const login = async (req, res) => {
                     username: user.username, 
                     company_id: company.id,
                     branch_id: branch.id,
-                    role: company.role_name 
+                    role: company.role_name,
+                    session_id: sessionId
                 },
                 process.env.JWT_SECRET,
                 { expiresIn: '8h' }
@@ -219,13 +233,16 @@ const selectContext = async (req, res) => {
         const [userRows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
         const user = userRows[0];
 
+        const sessionId = await createSession(userId, company_id, branch_id, req);
+
         const token = jwt.sign(
             { 
                 id: userId, 
                 username: user.username, 
                 company_id, 
                 branch_id, 
-                role: empData.role_name 
+                role: empData.role_name,
+                session_id: sessionId
             },
             process.env.JWT_SECRET,
             { expiresIn: '8h' }
@@ -311,4 +328,55 @@ const getAccess = async (req, res) => {
     }
 };
 
-module.exports = { login, selectContext, getAccess };
+const heartbeat = async (req, res) => {
+    try {
+        const sessionId = req.user.session_id;
+        if (!sessionId) return res.json({ ok: true, forceLogout: false });
+
+        const [sessions] = await pool.query(
+            'SELECT id, is_active FROM user_sessions WHERE id = ?',
+            [sessionId]
+        );
+
+        if (sessions.length === 0 || !sessions[0].is_active) {
+            return res.json({ ok: true, forceLogout: true });
+        }
+
+        await pool.query(
+            'UPDATE user_sessions SET last_heartbeat = NOW() WHERE id = ?',
+            [sessionId]
+        );
+
+        // Cleanup stale sessions every 30s
+        if (!global._lastSessionCleanup || Date.now() - global._lastSessionCleanup > 30000) {
+            global._lastSessionCleanup = Date.now();
+            await pool.query(
+                `UPDATE user_sessions SET is_active = 0 
+                 WHERE is_active = 1 AND last_heartbeat < NOW() - INTERVAL 2 MINUTE`
+            );
+        }
+
+        res.json({ ok: true, forceLogout: false });
+    } catch (error) {
+        console.error('Heartbeat error:', error);
+        res.status(500).json({ message: 'Error en heartbeat' });
+    }
+};
+
+const logout = async (req, res) => {
+    try {
+        const sessionId = req.user.session_id;
+        if (sessionId) {
+            await pool.query(
+                'UPDATE user_sessions SET is_active = 0 WHERE id = ?',
+                [sessionId]
+            );
+        }
+        res.json({ message: 'Sesión cerrada' });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ message: 'Error al cerrar sesión' });
+    }
+};
+
+module.exports = { login, selectContext, getAccess, heartbeat, logout };
