@@ -75,6 +75,11 @@ import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
 import GasAdvances from './pages/GasAdvances';
 
+// RRHH Pages
+import Afps from './pages/rh/Afps';
+import Cargos from './pages/rh/Cargos';
+import DescuentosProgramados from './pages/rh/DescuentosProgramados';
+
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
 import VatBookSalesConsumers from './pages/VatBooks/VatBookSalesConsumers';
@@ -200,6 +205,11 @@ function App() {
                         <Route path="/gas-station/despachador-nozzles" element={<GasDespachadorNozzles />} />
                         <Route path="/gas-station/pos-tipos" element={<GasPosTypes />} />
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
+
+                        {/* RRHH */}
+                        <Route path="/rh/afps" element={<Afps />} />
+                        <Route path="/rh/cargos" element={<Cargos />} />
+                        <Route path="/rh/descuentos-programados" element={<DescuentosProgramados />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

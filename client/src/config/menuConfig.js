@@ -31,7 +31,9 @@ import {
     ScrollText,
     Fuel,
     Droplets,
-    UserCheck
+    UserCheck,
+    Briefcase,
+    Wallet
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -226,6 +228,23 @@ export const menuConfig = [
             { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_advances' },
             { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_settings' },
             { id: 'gas-reportes', label: 'Reportes', path: '/gas-station/reportes', icon: BarChart3, permission: 'view_gas_reports' },
+        ]
+    },
+    {
+        id: 'recursos-humanos',
+        label: 'Recursos Humanos',
+        icon: Users,
+        children: [
+            {
+                id: 'rh-catalogos',
+                label: 'Catálogos',
+                icon: BookOpen,
+                children: [
+                    { id: 'rh-afps', label: 'AFPs', path: '/rh/afps', icon: Building2, permission: 'manage_rh_afps' },
+                    { id: 'rh-cargos', label: 'Cargos', path: '/rh/cargos', icon: Briefcase, permission: 'manage_rh_cargos' },
+                    { id: 'rh-descuentos-programados', label: 'Descuentos Programados', path: '/rh/descuentos-programados', icon: Wallet, permission: 'manage_rh_descuentos' },
+                ]
+            },
         ]
     },
     {

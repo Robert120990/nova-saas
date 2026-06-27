@@ -36,6 +36,9 @@ const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
 const auditController = require('../controllers/audit.controller');
+const rhAfpController = require('../controllers/rhAfp.controller');
+const rhCargoController = require('../controllers/rhCargo.controller');
+const rhDescuentoController = require('../controllers/rhDescuentoProgramado.controller');
 
 // Gas Station Controllers
 const gasDistributorController = require('../controllers/gasDistributor.controller');
@@ -512,5 +515,23 @@ router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseo
 
 // Print full closeout data
 router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getCloseoutPrintData);
+
+// RRHH - AFPs
+router.get('/rh/afps', rhAfpController.getAfps);
+router.post('/rh/afps', rhAfpController.createAfp);
+router.put('/rh/afps/:id', rhAfpController.updateAfp);
+router.delete('/rh/afps/:id', rhAfpController.deleteAfp);
+
+// RRHH - Cargos
+router.get('/rh/cargos', rhCargoController.getCargos);
+router.post('/rh/cargos', rhCargoController.createCargo);
+router.put('/rh/cargos/:id', rhCargoController.updateCargo);
+router.delete('/rh/cargos/:id', rhCargoController.deleteCargo);
+
+// RRHH - Descuentos Programados
+router.get('/rh/descuentos-programados', rhDescuentoController.getDescuentos);
+router.post('/rh/descuentos-programados', rhDescuentoController.createDescuento);
+router.put('/rh/descuentos-programados/:id', rhDescuentoController.updateDescuento);
+router.delete('/rh/descuentos-programados/:id', rhDescuentoController.deleteDescuento);
 
 module.exports = router;
