@@ -79,6 +79,7 @@ import GasAdvances from './pages/GasAdvances';
 import Afps from './pages/rh/Afps';
 import Cargos from './pages/rh/Cargos';
 import DescuentosProgramados from './pages/rh/DescuentosProgramados';
+import Departamentos from './pages/rh/Departamentos';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -210,6 +211,7 @@ function App() {
                         <Route path="/rh/afps" element={<Afps />} />
                         <Route path="/rh/cargos" element={<Cargos />} />
                         <Route path="/rh/descuentos-programados" element={<DescuentosProgramados />} />
+                        <Route path="/rh/departamentos" element={<Departamentos />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

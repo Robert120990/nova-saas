@@ -39,6 +39,7 @@ const auditController = require('../controllers/audit.controller');
 const rhAfpController = require('../controllers/rhAfp.controller');
 const rhCargoController = require('../controllers/rhCargo.controller');
 const rhDescuentoController = require('../controllers/rhDescuentoProgramado.controller');
+const rhDepartamentoController = require('../controllers/rhDepartamento.controller');
 
 // Gas Station Controllers
 const gasDistributorController = require('../controllers/gasDistributor.controller');
@@ -533,5 +534,11 @@ router.get('/rh/descuentos-programados', rhDescuentoController.getDescuentos);
 router.post('/rh/descuentos-programados', rhDescuentoController.createDescuento);
 router.put('/rh/descuentos-programados/:id', rhDescuentoController.updateDescuento);
 router.delete('/rh/descuentos-programados/:id', rhDescuentoController.deleteDescuento);
+
+// RRHH - Departamentos
+router.get('/rh/departamentos', rhDepartamentoController.getDepartamentos);
+router.post('/rh/departamentos', rhDepartamentoController.createDepartamento);
+router.put('/rh/departamentos/:id', rhDepartamentoController.updateDepartamento);
+router.delete('/rh/departamentos/:id', rhDepartamentoController.deleteDepartamento);
 
 module.exports = router;

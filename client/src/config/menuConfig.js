@@ -243,6 +243,7 @@ export const menuConfig = [
                     { id: 'rh-afps', label: 'AFPs', path: '/rh/afps', icon: Building2, permission: 'manage_rh_afps' },
                     { id: 'rh-cargos', label: 'Cargos', path: '/rh/cargos', icon: Briefcase, permission: 'manage_rh_cargos' },
                     { id: 'rh-descuentos-programados', label: 'Descuentos Programados', path: '/rh/descuentos-programados', icon: Wallet, permission: 'manage_rh_descuentos' },
+                    { id: 'rh-departamentos', label: 'Departamentos de Personal', path: '/rh/departamentos', icon: Building2, permission: 'manage_rh_departamentos' },
                 ]
             },
         ]
