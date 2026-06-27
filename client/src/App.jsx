@@ -41,6 +41,7 @@ import Contingency from './pages/Contingency';
 import Eret from './pages/Eret';
 import AuditLog from './pages/AuditLog';
 import ConnectedUsers from './pages/ConnectedUsers';
+import Changelog from './pages/Changelog';
 import CashClosing from './pages/CashClosing';
 import Combos from './pages/Combos';
 import CustomerStatement from './pages/CustomerStatement';
@@ -180,6 +181,7 @@ function App() {
                         <Route path="/ventas" element={<SalesHistory />} />
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
+                        <Route path="/changelog" element={<Changelog />} />
 
                         {/* Accounts Receivable (CXC) */}
                         <Route path="/cxc/estado-cuenta" element={<CustomerStatement />} />

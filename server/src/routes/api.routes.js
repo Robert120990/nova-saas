@@ -40,6 +40,7 @@ const rhAfpController = require('../controllers/rhAfp.controller');
 const rhCargoController = require('../controllers/rhCargo.controller');
 const rhDescuentoController = require('../controllers/rhDescuentoProgramado.controller');
 const rhDepartamentoController = require('../controllers/rhDepartamento.controller');
+const changelogController = require('../controllers/changelog.controller');
 
 // Gas Station Controllers
 const gasDistributorController = require('../controllers/gasDistributor.controller');
@@ -97,6 +98,9 @@ router.delete('/users/:id', userController.deleteUser);
 // Connected users (before tenant for cross-branch visibility)
 router.get('/users/connected', userController.getConnectedSessions);
 router.post('/users/sessions/:id/terminate', userController.terminateSession);
+
+// Changelog (global, no tenant scope)
+router.get('/changelog', changelogController.getChangelog);
 
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
