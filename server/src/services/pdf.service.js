@@ -1550,7 +1550,140 @@ const generateRTEE = (data) => {
     });
 };
 
-module.exports = { 
+const generateVacacionPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 40;
+            const colVal = 530;
+            const pageW = 532;
+            const BOTTOM = 740;
+
+            // --- Logo + Header (y=30-68) ---
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 28, { width: 75 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 125 : M;
+            doc.fontSize(14).font('Helvetica-Bold').text(data.company_name, hx, 28);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 44);
+            doc.fontSize(12).font('Helvetica-Bold').text('RECIBO', M, 28, { align: 'right' });
+            doc.fontSize(20).font('Helvetica-Bold').fillColor('#4f46e5')
+                .text(`POR $ ${parseFloat(data.total_recibir).toFixed(2)}`, M, 42, { align: 'right' });
+            doc.fillColor('black');
+
+            // --- Body recibo (y=76-138) ---
+            doc.rect(M, 76, pageW, 62).stroke('#e5e7eb');
+            doc.fontSize(9).font('Helvetica')
+                .text(`Yo, ${data.empleado_nombres.toUpperCase()} ${data.empleado_apellidos.toUpperCase()}. Recibí de ${data.company_name.toUpperCase()}: la cantidad ${data.monto_letras}, en concepto de VACACION ANUAL.`, M + 12, 86, { width: pageW - 24 });
+            doc.text('Según el siguiente detalle.', M + 12, 122);
+
+            // --- Employee Details (y=148-180) ---
+            doc.fontSize(9).font('Helvetica');
+            doc.text(`Cargo: ${data.cargo_nombre || ''}`, M, 148);
+            doc.text(`Sueldo Mensual: $ ${parseFloat(data.sueldo_base).toFixed(2)}`, 250, 148);
+            doc.text(`Fecha Ingreso: ${data.fecha_ingreso ? new Date(data.fecha_ingreso).toLocaleDateString('es-SV') : ''}`, M, 163);
+            doc.text('Política de goce de vacación: Anual', 250, 163);
+
+            // --- Period (y=190-220) ---
+            const fpInicial = data.fecha_inicial ? new Date(data.fecha_inicial).toLocaleDateString('es-SV') : '';
+            const fpFinal = data.fecha_final ? new Date(data.fecha_final).toLocaleDateString('es-SV') : '';
+            doc.fontSize(10).font('Helvetica-Bold').text('PERIODO DE PAGO', M, 190);
+            doc.fontSize(9).font('Helvetica').text(`${fpInicial} - ${fpFinal}`, M, 205);
+            doc.fontSize(7).font('Helvetica-Oblique').text('S/G Art. 58 C/Trabajo.', M, 215);
+
+            // --- Earnings Table (y=232+) ---
+            const tblY = 232;
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('CONCEPTO', M, tblY);
+            doc.text('VALOR', colVal, tblY, { align: 'right' });
+            doc.moveTo(M, tblY + 14).lineTo(M + pageW, tblY + 14).stroke('#e5e7eb');
+
+            const sueldoQ = parseFloat(data.sueldo_base) / 2;
+            const vac = parseFloat(data.vacaciones_monto);
+            const rh = 16;
+
+            doc.font('Helvetica').fontSize(9);
+            let ry = tblY + 20;
+            doc.text('SUELDO QUINCENAL', M, ry);
+            doc.text(`$${sueldoQ.toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text('VACACIONES', M, ry);
+            doc.text(`$${vac.toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold');
+            doc.text('SUB TOTAL...', M, ry);
+            doc.text(`$${parseFloat(data.total_devengado).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += 18;
+
+            // --- Deductions ---
+            doc.font('Helvetica').fontSize(9);
+            doc.text('MENOS:', M, ry);
+            ry += rh;
+            doc.text(`ISSS...${data.isss_porcentaje || 0} %`, M, ry);
+            doc.text(`$${parseFloat(data.descuento_isss).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text(`AFP...${data.afp_porcentaje || 0} %`, M, ry);
+            doc.text(`$${parseFloat(data.descuento_afp).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text('RENTA', M, ry);
+            doc.text(`$${parseFloat(data.descuento_renta).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold');
+            doc.text('SUB TOTAL...', M, ry);
+            doc.text(`$${parseFloat(data.total_deducciones).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += 20;
+
+            // --- Total (ry) ---
+            doc.fontSize(11).font('Helvetica-Bold');
+            doc.text('TOTAL A RECIBIR...', M, ry);
+            doc.fillColor('#4f46e5')
+                .text(`$${parseFloat(data.total_recibir).toFixed(2)}`, colVal, ry, { align: 'right' });
+            doc.fillColor('black');
+
+            // --- Legal text ---
+            const legalY = ry + 24;
+            doc.fontSize(8).font('Helvetica-Oblique')
+                .text('DINERO QUE RECIBO A MI ENTERA SATISFACCION Y POR LO TANTO, LIBERO A LA EMPRESA DE TODA RESPONSABILIDAD LEGAL Y LABORAL PARA CON MI PERSONA.', M, legalY, { width: pageW, align: 'justify' });
+
+            // --- Signature at bottom ---
+            const today = new Date().toLocaleDateString('es-SV', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            doc.fontSize(9).font('Helvetica').text(`San Salvador, ${today}`, M, legalY + 24);
+
+            const firmY = BOTTOM - 80;
+            doc.moveTo(100, firmY).lineTo(270, firmY).stroke();
+            doc.fontSize(8).font('Helvetica-Bold').text('Recibí Conforme', 125, firmY + 4, { align: 'center', width: 120 });
+            doc.fontSize(9).font('Helvetica-Bold')
+                .text(`SR(A). ${data.empleado_nombres.toUpperCase()} ${data.empleado_apellidos.toUpperCase()}`, M, firmY + 22);
+            doc.fontSize(8).font('Helvetica').text('FIRMA', M, firmY + 36);
+            let extraY = firmY + 50;
+            if (data.num_dui) { doc.text(`DUI: ${data.num_dui}`, M, extraY); extraY += 12; }
+            if (data.num_nit) { doc.text(`NIT: ${data.num_nit}`, M, extraY); }
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automáticamente por el Sistema SaaS.', M, BOTTOM, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+module.exports = {
     generateTransferPDF, 
     generateStatementPDF, 
     generateAgingPDF,
@@ -1566,5 +1699,6 @@ module.exports = {
     generateSalesByPOSPDF,
     generatePendingDocumentsDetailedPDF,
     generateProviderPendingDocumentsDetailedPDF,
-    generateRTEE
+    generateRTEE,
+    generateVacacionPDF
 };

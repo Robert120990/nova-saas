@@ -684,6 +684,48 @@ FROM gas_station_closeouts gc
 WHERE gc.company_id = {COMPANY_ID} AND gc.branch_id = {BRANCH_ID}
 ORDER BY gc.fecha_turno DESC
 
+---
+
+## RECURSOS HUMANOS - EMPLEADOS
+
+### rh_empleados (Empleados)
+- id, company_id, codigo VARCHAR(10) (auto-generado 0001, editable)
+- nombres, apellidos, fecha_nacimiento
+- num_dui VARCHAR(12) (formato 00000000-0), num_nit VARCHAR(17) (formato 0000-000000-000-0)
+- afp_id FK -> rh_afp, ocupacion, direccion
+- departamento VARCHAR(10) (código MH, FK → cat_012_departamento), municipio VARCHAR(10) (código MH, FK compuesta → cat_013_municipio), distrito VARCHAR(10) (código MH, FK compuesta → cat_008_distrito), telefono, correo
+- contacto_emergencia_nombre, contacto_emergencia_telefono
+- cargo_id FK -> rh_cargos, departamento_personal_id FK -> rh_departamentos
+- num_isss, num_nup, fecha_ingreso, tipo_contrato_id FK -> rh_tipos_contrato
+- sueldo_base DECIMAL, bonificacion_fija DECIMAL, cuenta_planillera
+- es_activo TINYINT, es_jubilado TINYINT, en_vacaciones TINYINT, incapacitado TINYINT
+- comentarios TEXT, created_at, updated_at
+- UNIQUE(company_id, codigo)
+
+### rh_empleado_descuentos (Descuentos programados asignados por empleado)
+- id, company_id, empleado_id FK -> rh_empleados
+- descuento_id FK -> rh_descuentos_programados
+- quincena ENUM('primera','segunda','ambas'), valor DECIMAL
+- numero_cuotas INT, cuotas_restantes INT, numero_credito VARCHAR(50)
+- activo TINYINT(1), created_at
+
+### rh_indemnizaciones (Indemnizaciones por empleado)
+- id, company_id, empleado_id FK -> rh_empleados
+- motivo TEXT, monto DECIMAL, fecha_aplicacion DATE, created_at
+
+### rh_empleado_ausencias (Faltas, inasistencias e incapacidades)
+- id, company_id, empleado_id FK -> rh_empleados
+- tipo ENUM('falta','inasistencia','incapacidad')
+- fecha_inicio DATE, fecha_fin DATE, motivo TEXT, justificada TINYINT(1), created_at
+
+### rh_planilla_vacaciones (Planilla de vacaciones)
+- id, company_id, empleado_id FK -> rh_empleados
+- periodo_año INT, periodo_mes INT, quincena ENUM('primera','segunda')
+- fecha_inicial DATE, fecha_final DATE, dias_transcurridos INT
+- vacaciones_monto DECIMAL, descuento_isss DECIMAL, descuento_afp DECIMAL, descuento_renta DECIMAL
+- total_devengado DECIMAL, total_deducciones DECIMAL, monto_recibir DECIMAL
+- created_at, updated_at
+
 `;
 
 // Maximum rows returned per AI query (configurable)

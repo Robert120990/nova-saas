@@ -46,6 +46,8 @@ const rhRentaConfigController = require('../controllers/rhRentaConfig.controller
 const rhAguinaldoConfigController = require('../controllers/rhAguinaldoConfig.controller');
 const rhSalarioMinimoController = require('../controllers/rhSalarioMinimo.controller');
 const rhTipoContratoController = require('../controllers/rhTipoContrato.controller');
+const rhEmpleadoController = require('../controllers/rhEmpleado.controller');
+const rhPlanillaVacacionesController = require('../controllers/rhPlanillaVacaciones.controller');
 const changelogController = require('../controllers/changelog.controller');
 
 // Gas Station Controllers
@@ -588,5 +590,39 @@ router.get('/rh/tipos-contrato', rhTipoContratoController.getTiposContrato);
 router.post('/rh/tipos-contrato', rhTipoContratoController.createTipoContrato);
 router.put('/rh/tipos-contrato/:id', rhTipoContratoController.updateTipoContrato);
 router.delete('/rh/tipos-contrato/:id', rhTipoContratoController.deleteTipoContrato);
+
+// RRHH - Empleados
+router.get('/rh/empleados', rhEmpleadoController.getEmpleados);
+router.get('/rh/empleados/next-code', rhEmpleadoController.getNextCode);
+router.post('/rh/empleados', rhEmpleadoController.createEmpleado);
+router.get('/rh/empleados/:id', rhEmpleadoController.getEmpleado);
+router.put('/rh/empleados/:id', rhEmpleadoController.updateEmpleado);
+router.delete('/rh/empleados/:id', rhEmpleadoController.deleteEmpleado);
+
+// RRHH - Empleado Descuentos Programados
+router.get('/rh/empleados/:id/descuentos', rhEmpleadoController.getDescuentos);
+router.post('/rh/empleados/:id/descuentos', rhEmpleadoController.createDescuento);
+router.put('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.updateDescuento);
+router.delete('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.deleteDescuento);
+
+// RRHH - Empleado Indemnizaciones
+router.get('/rh/empleados/:id/indemnizaciones', rhEmpleadoController.getIndemnizaciones);
+router.post('/rh/empleados/:id/indemnizaciones', rhEmpleadoController.createIndemnizacion);
+router.delete('/rh/empleados/:id/indemnizaciones/:iid', rhEmpleadoController.deleteIndemnizacion);
+
+// RRHH - Empleado Ausencias
+router.get('/rh/empleados/:id/ausencias', rhEmpleadoController.getAusencias);
+router.post('/rh/empleados/:id/ausencias', rhEmpleadoController.createAusencia);
+router.delete('/rh/empleados/:id/ausencias/:aid', rhEmpleadoController.deleteAusencia);
+
+// RRHH - Planilla de Vacaciones
+router.get('/rh/planilla-vacaciones/calcular', rhPlanillaVacacionesController.calcular);
+router.get('/rh/planilla-vacaciones/empleado/:id', rhPlanillaVacacionesController.getEmpleadoData);
+router.get('/rh/planilla-vacaciones', rhPlanillaVacacionesController.getPlanillas);
+router.post('/rh/planilla-vacaciones', rhPlanillaVacacionesController.createPlanilla);
+router.get('/rh/planilla-vacaciones/:id/pdf', rhPlanillaVacacionesController.exportPDF);
+router.get('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.getPlanilla);
+router.put('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.updatePlanilla);
+router.delete('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.deletePlanilla);
 
 module.exports = router;

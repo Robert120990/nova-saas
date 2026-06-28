@@ -37,7 +37,8 @@ import {
     BadgePercent,
     HeartPulse,
     Gift,
-    FileSignature
+    FileSignature,
+    Umbrella
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -239,6 +240,8 @@ export const menuConfig = [
         label: 'Recursos Humanos',
         icon: Users,
         children: [
+            { id: 'rh-empleados', label: 'Empleados', path: '/rh/empleados', icon: Users, permission: 'manage_rh_empleados' },
+            { id: 'rh-planilla-vacaciones', label: 'Planilla Vacaciones', path: '/rh/planilla-vacaciones', icon: Umbrella, permission: 'manage_rh_planilla_vacaciones' },
             {
                 id: 'rh-catalogos',
                 label: 'Catálogos',

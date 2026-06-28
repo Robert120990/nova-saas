@@ -87,6 +87,8 @@ import RentaConfig from './pages/rh/RentaConfig';
 import AguinaldoConfig from './pages/rh/AguinaldoConfig';
 import SalarioMinimo from './pages/rh/SalarioMinimo';
 import TiposContrato from './pages/rh/TiposContrato';
+import Empleados from './pages/rh/Empleados';
+import Vacaciones from './pages/rh/Vacaciones';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -226,6 +228,8 @@ function App() {
                         <Route path="/rh/aguinaldo-config" element={<AguinaldoConfig />} />
                         <Route path="/rh/salario-minimo" element={<SalarioMinimo />} />
                         <Route path="/rh/tipos-contrato" element={<TiposContrato />} />
+                        <Route path="/rh/empleados" element={<Empleados />} />
+                        <Route path="/rh/planilla-vacaciones" element={<Vacaciones />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
