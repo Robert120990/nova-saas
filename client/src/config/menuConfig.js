@@ -33,7 +33,11 @@ import {
     Droplets,
     UserCheck,
     Briefcase,
-    Wallet
+    Wallet,
+    BadgePercent,
+    HeartPulse,
+    Gift,
+    FileSignature
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -244,6 +248,12 @@ export const menuConfig = [
                     { id: 'rh-cargos', label: 'Cargos', path: '/rh/cargos', icon: Briefcase, permission: 'manage_rh_cargos' },
                     { id: 'rh-descuentos-programados', label: 'Descuentos Programados', path: '/rh/descuentos-programados', icon: Wallet, permission: 'manage_rh_descuentos' },
                     { id: 'rh-departamentos', label: 'Departamentos de Personal', path: '/rh/departamentos', icon: Building2, permission: 'manage_rh_departamentos' },
+                    { id: 'rh-afp-tasas', label: 'Porcentajes AFP', path: '/rh/afp-tasas', icon: BadgePercent, permission: 'manage_rh_afp_tasas' },
+                    { id: 'rh-isss-tasas', label: 'Porcentajes ISSS', path: '/rh/isss-tasas', icon: HeartPulse, permission: 'manage_rh_isss_tasas' },
+                    { id: 'rh-renta-config', label: 'Renta (ISR)', path: '/rh/renta-config', icon: Receipt, permission: 'manage_rh_renta_config' },
+                    { id: 'rh-aguinaldo-config', label: 'Aguinaldo', path: '/rh/aguinaldo-config', icon: Gift, permission: 'manage_rh_aguinaldo_config' },
+                    { id: 'rh-salario-minimo', label: 'Salario Mínimo', path: '/rh/salario-minimo', icon: Banknote, permission: 'manage_rh_salario_minimo' },
+                    { id: 'rh-tipos-contrato', label: 'Tipos de Contrato', path: '/rh/tipos-contrato', icon: FileSignature, permission: 'manage_rh_tipos_contrato' },
                 ]
             },
         ]

@@ -81,6 +81,12 @@ import Afps from './pages/rh/Afps';
 import Cargos from './pages/rh/Cargos';
 import DescuentosProgramados from './pages/rh/DescuentosProgramados';
 import Departamentos from './pages/rh/Departamentos';
+import AfpTasas from './pages/rh/AfpTasas';
+import IsssTasas from './pages/rh/IsssTasas';
+import RentaConfig from './pages/rh/RentaConfig';
+import AguinaldoConfig from './pages/rh/AguinaldoConfig';
+import SalarioMinimo from './pages/rh/SalarioMinimo';
+import TiposContrato from './pages/rh/TiposContrato';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -214,6 +220,12 @@ function App() {
                         <Route path="/rh/cargos" element={<Cargos />} />
                         <Route path="/rh/descuentos-programados" element={<DescuentosProgramados />} />
                         <Route path="/rh/departamentos" element={<Departamentos />} />
+                        <Route path="/rh/afp-tasas" element={<AfpTasas />} />
+                        <Route path="/rh/isss-tasas" element={<IsssTasas />} />
+                        <Route path="/rh/renta-config" element={<RentaConfig />} />
+                        <Route path="/rh/aguinaldo-config" element={<AguinaldoConfig />} />
+                        <Route path="/rh/salario-minimo" element={<SalarioMinimo />} />
+                        <Route path="/rh/tipos-contrato" element={<TiposContrato />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

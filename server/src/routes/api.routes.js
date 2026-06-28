@@ -40,6 +40,12 @@ const rhAfpController = require('../controllers/rhAfp.controller');
 const rhCargoController = require('../controllers/rhCargo.controller');
 const rhDescuentoController = require('../controllers/rhDescuentoProgramado.controller');
 const rhDepartamentoController = require('../controllers/rhDepartamento.controller');
+const rhAfpTasaController = require('../controllers/rhAfpTasa.controller');
+const rhIsssTasaController = require('../controllers/rhIsssTasa.controller');
+const rhRentaConfigController = require('../controllers/rhRentaConfig.controller');
+const rhAguinaldoConfigController = require('../controllers/rhAguinaldoConfig.controller');
+const rhSalarioMinimoController = require('../controllers/rhSalarioMinimo.controller');
+const rhTipoContratoController = require('../controllers/rhTipoContrato.controller');
 const changelogController = require('../controllers/changelog.controller');
 
 // Gas Station Controllers
@@ -544,5 +550,43 @@ router.get('/rh/departamentos', rhDepartamentoController.getDepartamentos);
 router.post('/rh/departamentos', rhDepartamentoController.createDepartamento);
 router.put('/rh/departamentos/:id', rhDepartamentoController.updateDepartamento);
 router.delete('/rh/departamentos/:id', rhDepartamentoController.deleteDepartamento);
+
+// RRHH - Tasas de AFP
+router.get('/rh/afp-tasas', rhAfpTasaController.getAfpTasas);
+router.post('/rh/afp-tasas', rhAfpTasaController.createAfpTasa);
+router.put('/rh/afp-tasas/:id', rhAfpTasaController.updateAfpTasa);
+router.delete('/rh/afp-tasas/:id', rhAfpTasaController.deleteAfpTasa);
+
+// RRHH - Tasas de ISSS
+router.get('/rh/isss-tasas', rhIsssTasaController.getIsssTasas);
+router.post('/rh/isss-tasas', rhIsssTasaController.createIsssTasa);
+router.put('/rh/isss-tasas/:id', rhIsssTasaController.updateIsssTasa);
+router.delete('/rh/isss-tasas/:id', rhIsssTasaController.deleteIsssTasa);
+
+// RRHH - Configuración de Renta (ISR)
+router.get('/rh/renta-config', rhRentaConfigController.getRentaConfigs);
+router.get('/rh/renta-config/:id', rhRentaConfigController.getRentaConfig);
+router.post('/rh/renta-config', rhRentaConfigController.createRentaConfig);
+router.put('/rh/renta-config/:id', rhRentaConfigController.updateRentaConfig);
+router.delete('/rh/renta-config/:id', rhRentaConfigController.deleteRentaConfig);
+
+// RRHH - Configuración de Aguinaldo
+router.get('/rh/aguinaldo-config', rhAguinaldoConfigController.getAguinaldoConfigs);
+router.get('/rh/aguinaldo-config/:id', rhAguinaldoConfigController.getAguinaldoConfig);
+router.post('/rh/aguinaldo-config', rhAguinaldoConfigController.createAguinaldoConfig);
+router.put('/rh/aguinaldo-config/:id', rhAguinaldoConfigController.updateAguinaldoConfig);
+router.delete('/rh/aguinaldo-config/:id', rhAguinaldoConfigController.deleteAguinaldoConfig);
+
+// RRHH - Salario Mínimo
+router.get('/rh/salario-minimo', rhSalarioMinimoController.getSalarioMinimoConfigs);
+router.post('/rh/salario-minimo', rhSalarioMinimoController.createSalarioMinimoConfig);
+router.put('/rh/salario-minimo/:id', rhSalarioMinimoController.updateSalarioMinimoConfig);
+router.delete('/rh/salario-minimo/:id', rhSalarioMinimoController.deleteSalarioMinimoConfig);
+
+// RRHH - Tipos de Contrato
+router.get('/rh/tipos-contrato', rhTipoContratoController.getTiposContrato);
+router.post('/rh/tipos-contrato', rhTipoContratoController.createTipoContrato);
+router.put('/rh/tipos-contrato/:id', rhTipoContratoController.updateTipoContrato);
+router.delete('/rh/tipos-contrato/:id', rhTipoContratoController.deleteTipoContrato);
 
 module.exports = router;
