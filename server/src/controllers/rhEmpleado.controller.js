@@ -5,7 +5,7 @@ const LABEL = 'Empleado';
 
 const getEmpleados = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 10, solo_activos } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `
@@ -27,6 +27,10 @@ const getEmpleados = async (req, res) => {
             query += ` AND (e.codigo LIKE ? OR e.nombres LIKE ? OR e.apellidos LIKE ? OR e.num_dui LIKE ?)`;
             const s = `%${search}%`;
             params.push(s, s, s, s);
+        }
+
+        if (solo_activos === '1' || solo_activos === 'true') {
+            query += ` AND e.es_activo = 1`;
         }
 
         const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM (${query}) as sub`, params);
@@ -303,6 +307,21 @@ const createAusencia = async (req, res) => {
     }
 };
 
+const updateAusencia = async (req, res) => {
+    try {
+        const { id, aid } = req.params;
+        const { tipo, fecha_inicio, fecha_fin, motivo, justificada } = req.body;
+        const [result] = await pool.query(
+            `UPDATE rh_empleado_ausencias SET tipo = ?, fecha_inicio = ?, fecha_fin = ?, motivo = ?, justificada = ? WHERE id = ? AND empleado_id = ? AND company_id = ?`,
+            [tipo || 'falta', fecha_inicio, fecha_fin, motivo, justificada ?? 0, aid, id, req.company_id]
+        );
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Ausencia no encontrada' });
+        res.json({ id: aid });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const deleteAusencia = async (req, res) => {
     try {
         const { id, aid } = req.params;
@@ -317,9 +336,30 @@ const deleteAusencia = async (req, res) => {
     }
 };
 
+// --- Historial de indemnizaciones (desde liquidaciones) ---
+
+const getHistorialIndemnizaciones = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            `SELECT periodo_año, periodo_mes,
+                    periodo_indemnizacion_desde, periodo_indemnizacion_hasta,
+                    dias_indemnizacion, total_indemnizacion, total_devengado,
+                    monto_recibir, pago_cuotas, cuotas, pago_por_cuota
+             FROM rh_planilla_liquidaciones
+             WHERE empleado_id = ? AND company_id = ? AND total_indemnizacion > 0
+             ORDER BY periodo_año DESC, periodo_mes DESC, id DESC`,
+            [id, req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getEmpleados, getEmpleado, getNextCode, createEmpleado, updateEmpleado, deleteEmpleado,
     getDescuentos, createDescuento, updateDescuento, deleteDescuento,
     getIndemnizaciones, createIndemnizacion, deleteIndemnizacion,
-    getAusencias, createAusencia, deleteAusencia
+    getAusencias, createAusencia, updateAusencia, deleteAusencia, getHistorialIndemnizaciones
 };

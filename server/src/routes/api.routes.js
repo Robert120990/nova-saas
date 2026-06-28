@@ -47,7 +47,11 @@ const rhAguinaldoConfigController = require('../controllers/rhAguinaldoConfig.co
 const rhSalarioMinimoController = require('../controllers/rhSalarioMinimo.controller');
 const rhTipoContratoController = require('../controllers/rhTipoContrato.controller');
 const rhEmpleadoController = require('../controllers/rhEmpleado.controller');
+const rhConfigController = require('../controllers/rhConfig.controller');
 const rhPlanillaVacacionesController = require('../controllers/rhPlanillaVacaciones.controller');
+const rhPlanillaLiquidacionesController = require('../controllers/rhPlanillaLiquidaciones.controller');
+const rhHonorariosController = require('../controllers/rhHonorarios.controller');
+const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinaldos.controller');
 const changelogController = require('../controllers/changelog.controller');
 
 // Gas Station Controllers
@@ -591,6 +595,10 @@ router.post('/rh/tipos-contrato', rhTipoContratoController.createTipoContrato);
 router.put('/rh/tipos-contrato/:id', rhTipoContratoController.updateTipoContrato);
 router.delete('/rh/tipos-contrato/:id', rhTipoContratoController.deleteTipoContrato);
 
+// RRHH - Configuracion (Responsable y Sello)
+router.get('/rh/config', rhConfigController.getConfig);
+router.put('/rh/config', upload.fields([{ name: 'firma', maxCount: 1 }, { name: 'sello', maxCount: 1 }]), rhConfigController.updateConfig);
+
 // RRHH - Empleados
 router.get('/rh/empleados', rhEmpleadoController.getEmpleados);
 router.get('/rh/empleados/next-code', rhEmpleadoController.getNextCode);
@@ -606,6 +614,7 @@ router.put('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.updateDescu
 router.delete('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.deleteDescuento);
 
 // RRHH - Empleado Indemnizaciones
+router.get('/rh/empleados/:id/historial-indemnizaciones', rhEmpleadoController.getHistorialIndemnizaciones);
 router.get('/rh/empleados/:id/indemnizaciones', rhEmpleadoController.getIndemnizaciones);
 router.post('/rh/empleados/:id/indemnizaciones', rhEmpleadoController.createIndemnizacion);
 router.delete('/rh/empleados/:id/indemnizaciones/:iid', rhEmpleadoController.deleteIndemnizacion);
@@ -613,6 +622,7 @@ router.delete('/rh/empleados/:id/indemnizaciones/:iid', rhEmpleadoController.del
 // RRHH - Empleado Ausencias
 router.get('/rh/empleados/:id/ausencias', rhEmpleadoController.getAusencias);
 router.post('/rh/empleados/:id/ausencias', rhEmpleadoController.createAusencia);
+router.put('/rh/empleados/:id/ausencias/:aid', rhEmpleadoController.updateAusencia);
 router.delete('/rh/empleados/:id/ausencias/:aid', rhEmpleadoController.deleteAusencia);
 
 // RRHH - Planilla de Vacaciones
@@ -624,5 +634,36 @@ router.get('/rh/planilla-vacaciones/:id/pdf', rhPlanillaVacacionesController.exp
 router.get('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.getPlanilla);
 router.put('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.updatePlanilla);
 router.delete('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.deletePlanilla);
+
+// RRHH - Planilla de Liquidaciones
+router.get('/rh/planilla-liquidaciones/calcular', rhPlanillaLiquidacionesController.calcular);
+router.get('/rh/planilla-liquidaciones/empleado/:id', rhPlanillaLiquidacionesController.getEmpleadoData);
+router.get('/rh/planilla-liquidaciones/ultima/:empleado_id', rhPlanillaLiquidacionesController.getUltimaLiquidacion);
+router.get('/rh/planilla-liquidaciones', rhPlanillaLiquidacionesController.getLiquidaciones);
+router.post('/rh/planilla-liquidaciones', rhPlanillaLiquidacionesController.createLiquidacion);
+router.get('/rh/planilla-liquidaciones/:id/pdf', rhPlanillaLiquidacionesController.exportPDF);
+router.get('/rh/planilla-liquidaciones/:id/finiquito', rhPlanillaLiquidacionesController.exportFiniquito);
+router.get('/rh/planilla-liquidaciones/:id/acuerdo-pago', rhPlanillaLiquidacionesController.exportAcuerdoPago);
+router.get('/rh/planilla-liquidaciones/:id', rhPlanillaLiquidacionesController.getLiquidacion);
+router.put('/rh/planilla-liquidaciones/:id', rhPlanillaLiquidacionesController.updateLiquidacion);
+router.delete('/rh/planilla-liquidaciones/:id', rhPlanillaLiquidacionesController.deleteLiquidacion);
+
+// RRHH - Honorarios y Servicios
+router.get('/rh/honorarios/next-code', rhHonorariosController.getNextCode);
+router.get('/rh/honorarios', rhHonorariosController.getHonorarios);
+router.post('/rh/honorarios', rhHonorariosController.createHonorario);
+router.get('/rh/honorarios/:id/pdf', rhHonorariosController.exportPDF);
+router.get('/rh/honorarios/:id', rhHonorariosController.getHonorario);
+router.put('/rh/honorarios/:id', rhHonorariosController.updateHonorario);
+router.delete('/rh/honorarios/:id', rhHonorariosController.deleteHonorario);
+
+// RRHH - Planilla de Aguinaldos
+router.get('/rh/planilla-aguinaldos/calcular', rhPlanillaAguinaldosController.calcular);
+router.get('/rh/planilla-aguinaldos/resumen', rhPlanillaAguinaldosController.getResumen);
+router.get('/rh/planilla-aguinaldos/pdf', rhPlanillaAguinaldosController.exportPDF);
+router.get('/rh/planilla-aguinaldos/recibos', rhPlanillaAguinaldosController.exportRecibos);
+router.get('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.getPlanilla);
+router.post('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.savePlanilla);
+router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.deletePeriodo);
 
 module.exports = router;

@@ -242,6 +242,10 @@ export const menuConfig = [
         children: [
             { id: 'rh-empleados', label: 'Empleados', path: '/rh/empleados', icon: Users, permission: 'manage_rh_empleados' },
             { id: 'rh-planilla-vacaciones', label: 'Planilla Vacaciones', path: '/rh/planilla-vacaciones', icon: Umbrella, permission: 'manage_rh_planilla_vacaciones' },
+            { id: 'rh-planilla-liquidaciones', label: 'Planilla Liquidaciones', path: '/rh/liquidaciones', icon: FileText, permission: 'manage_rh_planilla_liquidaciones' },
+            { id: 'rh-honorarios', label: 'Honorarios y Servicios', path: '/rh/honorarios', icon: FileSignature, permission: 'manage_rh_honorarios' },
+            { id: 'rh-planilla-aguinaldos', label: 'Planilla Aguinaldos', path: '/rh/aguinaldos', icon: Gift, permission: 'manage_rh_planilla_aguinaldos' },
+            { id: 'rh-config', label: 'Config. RH', path: '/rh/config-rh', icon: Settings, permission: 'manage_rh_config' },
             {
                 id: 'rh-catalogos',
                 label: 'Catálogos',

@@ -1683,6 +1683,824 @@ const generateVacacionPDF = (data) => {
     });
 };
 
+const generateLiquidacionPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 40;
+            const colVal = 530;
+            const pageW = 532;
+            const BOTTOM = 740;
+            const rh = 15;
+
+            // --- Logo + Header ---
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 28, { width: 75 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 125 : M;
+            doc.fontSize(14).font('Helvetica-Bold').text(data.company_name, hx, 28);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 44);
+            doc.fontSize(12).font('Helvetica-Bold').text('RECIBO', M, 28, { align: 'right' });
+            doc.fontSize(20).font('Helvetica-Bold').fillColor('#4f46e5')
+                .text(`POR $ ${parseFloat(data.monto_recibir).toFixed(2)}`, M, 42, { align: 'right' });
+            doc.fillColor('black');
+
+            // --- Body recibo ---
+            doc.rect(M, 76, pageW, 62).stroke('#e5e7eb');
+            doc.fontSize(9).font('Helvetica')
+                .text(`Yo, ${data.empleado_nombres.toUpperCase()} ${data.empleado_apellidos.toUpperCase()}. Recibí de ${data.company_name.toUpperCase()}: la cantidad ${data.monto_letras}, en concepto de LIQUIDACION LABORAL.`, M + 12, 86, { width: pageW - 24 });
+            doc.text('Segun el siguiente detalle.', M + 12, 122);
+
+            // --- Employee Details ---
+            const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '';
+            doc.fontSize(9).font('Helvetica');
+            doc.text(`Cargo: ${data.cargo_nombre || ''}`, M, 148);
+            doc.text(`Sueldo Mensual: $ ${parseFloat(data.sueldo_base).toFixed(2)}`, 250, 148);
+            doc.text(`Fecha Ingreso: ${fmt(data.fecha_ingreso)}`, M, 163);
+            doc.text('Tipo: Liquidacion Laboral', 250, 163);
+
+            // --- Periods ---
+            let ry = 185;
+            doc.fontSize(10).font('Helvetica-Bold').text('PERIODOS', M, ry);
+            ry += 14;
+            doc.fontSize(8).font('Helvetica');
+            doc.text(`Indemnizacion: ${fmt(data.periodo_indemnizacion_desde)} - ${fmt(data.periodo_indemnizacion_hasta)}  (${data.dias_indemnizacion || 0} dias)`, M, ry);
+            ry += 12;
+            doc.text(`Vacaciones: ${fmt(data.periodo_vacaciones_desde)} - ${fmt(data.periodo_vacaciones_hasta)}  (${data.dias_vacaciones || 0} dias)`, M, ry);
+            ry += 12;
+            doc.text(`Aguinaldo: ${fmt(data.periodo_aguinaldo_desde)} - ${fmt(data.periodo_aguinaldo_hasta)}  (${data.dias_aguinaldo || 0} dias)`, M, ry);
+            ry += 12;
+            if (data.pago_ultimos_dias > 0) {
+                doc.text(`Ultimos Dias Laborados: ${fmt(data.ultimos_dias_laborados)}  (${data.dias_ultimos || 0} dias)`, M, ry);
+                ry += 12;
+            }
+            ry += 4;
+
+            // --- Earnings Table ---
+            const tblY = ry;
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('CONCEPTO', M, tblY);
+            doc.text('VALOR', colVal, tblY, { align: 'right' });
+            doc.moveTo(M, tblY + 14).lineTo(M + pageW, tblY + 14).stroke('#e5e7eb');
+
+            doc.font('Helvetica').fontSize(9);
+            ry = tblY + 20;
+            doc.text('INDEMNIZACION...', M, ry);
+            doc.text(`$${parseFloat(data.total_indemnizacion || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text('VACACIONES...', M, ry);
+            doc.text(`$${parseFloat(data.total_vacaciones || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text('AGUINALDO...', M, ry);
+            doc.text(`$${parseFloat(data.total_aguinaldo || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            if (parseFloat(data.pago_ultimos_dias || 0) > 0) {
+                doc.text('ULTIMOS DIAS LABORADOS...', M, ry);
+                doc.text(`$${parseFloat(data.pago_ultimos_dias || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+                ry += rh;
+            }
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold');
+            doc.text('SUB TOTAL...', M, ry);
+            doc.text(`$${parseFloat(data.total_devengado).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += 18;
+
+            // --- Deductions ---
+            doc.font('Helvetica').fontSize(9);
+            doc.text('MENOS:', M, ry);
+            ry += rh;
+            doc.text(`ISSS...${data.isss_porcentaje || 0} %`, M, ry);
+            doc.text(`$${parseFloat(data.descuento_isss || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text(`AFP...${data.afp_porcentaje || 0} %`, M, ry);
+            doc.text(`$${parseFloat(data.descuento_afp || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text('RENTA...', M, ry);
+            doc.text(`$${parseFloat(data.descuento_renta || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            if (parseFloat(data.otros_descuentos || 0) > 0) {
+                doc.text('OTROS DESCUENTOS...', M, ry);
+                doc.text(`$${parseFloat(data.otros_descuentos || 0).toFixed(2)}`, colVal, ry, { align: 'right' });
+                ry += rh;
+            }
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold');
+            doc.text('SUB TOTAL...', M, ry);
+            doc.text(`$${parseFloat(data.total_deducciones).toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += 20;
+
+            // --- Total ---
+            doc.fontSize(11).font('Helvetica-Bold');
+            doc.text('TOTAL A RECIBIR', M, ry, { continued: true, width: 250 });
+            doc.fillColor('#4f46e5')
+                .text(` $ ${parseFloat(data.monto_recibir).toFixed(2)}`, { align: 'right' });
+            doc.fillColor('black');
+
+            // --- Cuotas info ---
+            if (data.pago_cuotas) {
+                ry += 24;
+                doc.fontSize(9).font('Helvetica');
+                doc.text(`Pago en ${data.cuotas} cuotas de $${parseFloat(data.pago_por_cuota || 0).toFixed(2)} cada una.`, M, ry);
+            }
+
+            // --- Legal text ---
+            const legalY = ry + 28;
+            doc.fontSize(8).font('Helvetica-Oblique')
+                .text('DINERO QUE RECIBO A MI ENTERA SATISFACCION Y POR LO TANTO, LIBERO A LA EMPRESA DE TODA RESPONSABILIDAD LEGAL Y LABORAL PARA CON MI PERSONA.', M, legalY, { width: pageW, align: 'justify' });
+
+            // --- Signature ---
+            const today = new Date().toLocaleDateString('es-SV', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            doc.fontSize(9).font('Helvetica').text(`San Salvador, ${today}`, M, legalY + 24);
+
+            const firmY = BOTTOM - 80;
+            doc.moveTo(100, firmY).lineTo(270, firmY).stroke();
+            doc.fontSize(8).font('Helvetica-Bold').text('Recibí Conforme', 125, firmY + 4, { align: 'center', width: 120 });
+            doc.fontSize(9).font('Helvetica-Bold')
+                .text(`SR(A). ${data.empleado_nombres.toUpperCase()} ${data.empleado_apellidos.toUpperCase()}`, M, firmY + 22);
+            doc.fontSize(8).font('Helvetica').text('FIRMA', M, firmY + 36);
+            let extraY = firmY + 50;
+            if (data.num_dui) { doc.text(`DUI: ${data.num_dui}`, M, extraY); extraY += 12; }
+            if (data.num_nit) { doc.text(`NIT: ${data.num_nit}`, M, extraY); }
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generateFiniquitoPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 50;
+            const pageW = 512;
+            const BOTTOM_FOOTER = 730;
+            const SIG_Y = BOTTOM_FOOTER - 55;
+
+            // === PAGE 1: Employee Declaration ===
+
+            // --- Logo + Header ---
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 38, { width: 65 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 125 : M;
+            doc.y = 38;
+            doc.fontSize(13).font('Helvetica-Bold').text(data.company_name?.toUpperCase() || '', hx, 40);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 56);
+            doc.fontSize(14).font('Helvetica-Bold').text('FINIQUITO LABORAL', M, 40, { align: 'right' });
+            doc.moveTo(M, 68).lineTo(M + pageW, 68).stroke('#4f46e5');
+
+            // --- Body (flow mode) ---
+            doc.y = 82;
+            doc.fontSize(10).font('Helvetica');
+
+            doc.text(`Yo, ${data.empleado_nombres?.toUpperCase() || ''} ${data.empleado_apellidos?.toUpperCase() || ''}, mayor de edad, de nacionalidad salvadorena y del domicilio de la ciudad de ${data.ciudad || 'San Salvador'}, departamento de ${data.departamento || 'San Salvador'}, portador/a de mi Documento Unico de Identidad numero ${data.num_dui || '_______________'}; por medio del presente, actuando en mi caracter personal, MANIFIESTO:`, { width: pageW, align: 'justify' });
+            doc.moveDown(0.5);
+
+            doc.text(`I) Que he venido desempenando para y a las ordenes del senor(a) ${(data.company_name || '').toUpperCase()}, el cargo de ${(data.cargo_nombre || '').toUpperCase()}.`, { width: pageW, align: 'justify' });
+            doc.moveDown(0.5);
+
+            const motivo = data.motivo || 'RENUNCIA INMEDIATA';
+            doc.text(`II) Que por medio del presente documento hago constar que mi relacion laboral culmina por: ${motivo}, a partir de este dia, doy por terminada la relacion laboral que me vinculo con el referido senor, haciendo constar que el mismo no me adeuda ninguna cantidad de dinero en concepto de salarios ordinarios o extraordinarios, vacaciones u aguinaldos, fueran completos o proporcionales, Indemnizaciones, dias de asueto o de descanso, por horas extraordinarias, ni en concepto de ninguna otra prestacion laboral, de seguridad social, ni previsional, por haber recibido a mi entera satisfaccion, el cien por ciento de todas mis prestaciones laborales e indemnizacion, declarando por ende, libre y solvente de toda responsabilidad al senor(a) ${(data.company_name || '').toUpperCase()}, y a las empresas vinculadas, de cualquier reclamo de indole laboral o de cualquier otra naturaleza por los servicios prestados hasta esta fecha, extendiendole en este acto al senor(a) ${(data.company_name || '').toUpperCase()}, el mas amplio y completo FINIQUITO, el cual hago extensivo a cualquier otra persona natural o juridica que pudiera haberse visto involucrada en el trabajo que desempene hasta esta fecha sea directa o indirectamente.`, { width: pageW, align: 'justify' });
+
+            // --- Fecha y lugar ---
+            doc.moveDown(1);
+            const today = new Date();
+            const city = data.ciudad || 'San Salvador';
+            const dept = data.departamento || 'San Salvador';
+            const fechaTexto = today.toLocaleDateString('es-SV', { day: 'numeric', month: 'long', year: 'numeric' });
+            doc.fontSize(10).font('Helvetica')
+                .text(`En fe de lo cual firmo el presente documento en la ciudad de ${city}, departamento de ${dept}, a los ${fechaTexto}.`, { width: pageW, align: 'justify' });
+
+            // --- Page 1 Signatures (fixed at bottom) ---
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.moveTo(M + 40, SIG_Y).lineTo(M + 220, SIG_Y).stroke();
+            doc.text(`${data.empleado_nombres?.toUpperCase() || ''} ${data.empleado_apellidos?.toUpperCase() || ''}`, M + 40, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA EMPLEADO', M + 40, SIG_Y + 20, { width: 180, align: 'center' });
+
+            const emp1X = M + pageW - 260;
+            doc.moveTo(emp1X, SIG_Y).lineTo(emp1X + 180, SIG_Y).stroke();
+            doc.fontSize(8).font('Helvetica-Bold')
+                .text(`${(data.empleador_nombre || data.company_name || '').toUpperCase()}`, emp1X, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA EMPLEADOR', emp1X, SIG_Y + 20, { width: 180, align: 'center' });
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+            doc.fillColor('black');
+
+            // === PAGE 2: Notary Act ===
+            doc.addPage();
+
+            doc.fontSize(13).font('Helvetica-Bold').text(data.company_name?.toUpperCase() || '', M, 40);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', M, 56);
+            doc.fontSize(14).font('Helvetica-Bold').text('ACTA NOTARIAL', M, 40, { align: 'right' });
+            doc.moveTo(M, 68).lineTo(M + pageW, 68).stroke('#4f46e5');
+
+            doc.y = 82;
+            doc.fontSize(10).font('Helvetica');
+            doc.text(`En la ciudad de ${city}, departamento de ${dept}, a las ${today.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })} horas del dia ${fechaTexto}. Ante mi, ${data.notario_nombre || '________________________'}, Notario, del domicilio de la ciudad de ${data.notario_domicilio || city}, departamento de ${data.notario_dept || dept}, comparece la/el senor(a) ${data.empleado_nombres?.toUpperCase() || ''} ${data.empleado_apellidos?.toUpperCase() || ''}, de ${data.edad || '___'} anos de edad, de nacionalidad salvadorena y del domicilio de ${city}, departamento de ${dept}, a quien no conozco, pero identifico por medio de su Documento Unico de Identidad numero ${data.num_dui || '_______________'}; quien por este medio, ME DICE: Que reconoce como suya la firma que antecede, asi como las declaraciones contenidas en el anterior documento que consta de un folio util, que ha sido suscrito en esta misma ciudad, este mismo dia, mes y ano, y que literalmente DICE:`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.5);
+            doc.fontSize(9).font('Helvetica-Oblique');
+            doc.text(`"${data.empleado_nombres?.toUpperCase() || ''} ${data.empleado_apellidos?.toUpperCase() || ''}, mayor de edad, de nacionalidad salvadorena y del domicilio de ${city}, departamento de ${dept}, portador/a de su Documento Unico de Identidad numero ${data.num_dui || '_______________'}; por medio del presente, actuando en su caracter personal, MANIFIESTO: I) Que ha venido desempenando para y a las ordenes del senor(a) ${(data.company_name || '').toUpperCase()}, el cargo de ${(data.cargo_nombre || '').toUpperCase()}. II) Que a partir de este dia, da por terminada la relacion laboral que le vinculo con el referido senor por: ${motivo}, haciendo constar que el mismo no le adeuda ninguna cantidad de dinero en concepto de salarios, vacaciones, aguinaldos, indemnizaciones, ni ninguna otra prestacion laboral, declarando por ende, libre y solvente de toda responsabilidad al senor(a) ${(data.company_name || '').toUpperCase()}, extendiendole el mas amplio y completo FINIQUITO."`, { width: pageW - 20, align: 'justify' });
+
+            doc.moveDown(0.5);
+            doc.fontSize(10).font('Helvetica');
+            doc.text(`Y yo, el suscrito Notario, DOY FE: Que la firma que aparece al calce del anterior documento es autentica, por haber sido puesta de su propio puno y letra y a mi presencia por el compareciente. Asi se expreso el compareciente, a quien explique los efectos legales de la presente acta notarial, que consta de un folio util; y leida que le fue por mi integramente, en un solo acto ininterrumpido, la ratifica por ser conforme a su voluntad y para constancia firma conmigo. DOY FE.`, { width: pageW, align: 'justify' });
+
+            // --- Page 2 Signatures (fixed at bottom) ---
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.moveTo(M + 40, SIG_Y).lineTo(M + 220, SIG_Y).stroke();
+            doc.text(`${data.empleado_nombres?.toUpperCase() || ''} ${data.empleado_apellidos?.toUpperCase() || ''}`, M + 40, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA EMPLEADO', M + 40, SIG_Y + 20, { width: 180, align: 'center' });
+
+            const emp2X = M + pageW - 260;
+            doc.moveTo(emp2X, SIG_Y).lineTo(emp2X + 180, SIG_Y).stroke();
+            doc.fontSize(8).font('Helvetica-Bold')
+                .text(`${(data.notario_nombre || 'NOTARIO').toUpperCase()}`, emp2X, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA NOTARIO', emp2X, SIG_Y + 20, { width: 180, align: 'center' });
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generateAcuerdoPagoPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 50;
+            const pageW = 512;
+            const BOTTOM_FOOTER = 730;
+            const SIG_Y = BOTTOM_FOOTER - 55;
+
+            const today = new Date();
+            const fechaTexto = today.toLocaleDateString('es-SV', { day: 'numeric', month: 'long', year: 'numeric' });
+            const city = data.ciudad || 'San Salvador';
+            const dept = data.departamento || 'San Salvador';
+
+            // === PAGE 1: Payment Agreement ===
+
+            // --- Logo + Header ---
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 38, { width: 65 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 125 : M;
+            doc.fontSize(13).font('Helvetica-Bold').text(data.company_name?.toUpperCase() || '', hx, 40);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 56);
+            doc.fontSize(14).font('Helvetica-Bold').text('ACUERDO DE PAGO', M, 40, { align: 'right' });
+            doc.moveTo(M, 68).lineTo(M + pageW, 68).stroke('#4f46e5');
+
+            const empleado = `${data.empleado_nombres?.toUpperCase() || ''} ${data.empleado_apellidos?.toUpperCase() || ''}`;
+            const empleador = (data.company_name || '').toUpperCase();
+            const firmante = (data.empleador_nombre || data.company_name || '').toUpperCase();
+            const monto = parseFloat(data.monto_recibir || 0).toFixed(2);
+            const numCuotas = data.cuotas || 1;
+            const pagoCuota = parseFloat(data.pago_por_cuota || 0).toFixed(2);
+            const diaPago = today.getDate();
+            const detCuotas = `${numCuotas} cuotas de $${pagoCuota} cada una, pagaderas los dias ${diaPago} de cada mes`;
+
+            // --- Body ---
+            doc.y = 82;
+            doc.fontSize(10).font('Helvetica');
+
+            doc.text(`En la ciudad de ${city}, departamento de ${dept}, a los ${fechaTexto}. Ante mi, ${data.notario_nombre || '________________________'}, Notario, del domicilio de ${data.notario_domicilio || city}, Departamento de ${data.notario_dept || dept}, comparece ${empleado}, mayor de edad, estudiante, de nacionalidad salvadorena, a quien no conozco, pero identifico por medio de su Documento Unico de Identidad numero ${data.num_dui || '_______________'}, quien en adelante sera denominado como "el empleado" quien actuando en su calidad personal, por este medio ME DICE:`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.5);
+            doc.text(`I) ANTECEDENTE: Que el empleado ha desempenado el cargo de ${(data.cargo_nombre || '').toUpperCase()} para y a las ordenes del senor(a) ${empleador}, en adelante denominado como "El Empleador"`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.3);
+            doc.text(`II) Que el empleado de comun acuerdo con la empleadora dan por terminada su relacion laboral en esta fecha;`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.3);
+            doc.text(`III) En vista de lo anterior, el empleado manifiesta que junto con el empleador, ha revisado sus calculos en concepto de indemnizacion y prestaciones laborales correspondientes, habiendo llegado a un acuerdo de pago de $${monto}, menos los descuentos de ley correspondientes, en concepto de indemnizacion, vacacion proporcional, aguinaldo proporcional, y demas que conforme a derecho le corresponden por haber finalizado de comun acuerdo su relacion laboral en esta fecha.`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.3);
+            doc.text(`IV) DECLARACION JURADA DE ACUERDO DE PAGO: Manifiesta el compareciente, que de comun acuerdo entre las partes, en esta misma fecha quedo establecido que del monto anteriormente detallado se recibira por el empleado en ${numCuotas} cuotas mensuales, fijas y sucesivas de $${pagoCuota}, ${detCuotas}. En caso de que la fecha sea un dia inhabil, sera pagadera el dia habil inmediato posterior;`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.3);
+            doc.text(`V) Habiendose acordado lo anterior, manifiesta la compareciente que se dio por satisfecha por ser el anterior acuerdo conforme con su voluntad, por lo que exonera al Empleador de toda responsabilidad al haber llegado al presente acuerdo de pago de dicha prestacion, y al recibir la ultima cuota, se compromete a firmar el respectivo finiquito a favor del senor(a) ${empleador}.`, { width: pageW, align: 'justify' });
+
+            doc.moveDown(0.5);
+            doc.text(`Y yo, el suscrito Notario, DOY FE: a) De haber explicado a la compareciente los efectos legales de la presente acta notarial de acuerdo voluntario de pago y demas, de lo cual manifiestan estar enterados, y aceptan por ser conforme a sus voluntades; y b) Que la compareciente esta en su total capacidad de comparecer al otorgamiento del presente. Asi se expreso la compareciente, a quien explique los efectos legales de la presente acta notarial, que consta de un folio util; y leida que le fue por mi integramente, en un solo acto ininterrumpido, la ratifica por ser conforme a su voluntad y para constancia firma conmigo. DOY FE.`, { width: pageW, align: 'justify' });
+
+            // --- Signatures (fixed at bottom) ---
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.moveTo(M + 40, SIG_Y).lineTo(M + 220, SIG_Y).stroke();
+            doc.text(empleado, M + 40, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA EMPLEADO', M + 40, SIG_Y + 20, { width: 180, align: 'center' });
+
+            const emp1X = M + pageW - 260;
+            doc.moveTo(emp1X, SIG_Y).lineTo(emp1X + 180, SIG_Y).stroke();
+            doc.fontSize(8).font('Helvetica-Bold').text(firmante, emp1X, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA EMPLEADOR', emp1X, SIG_Y + 20, { width: 180, align: 'center' });
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+            doc.fillColor('black');
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generateHonorarioPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 40;
+            const colVal = 530;
+            const pageW = 532;
+            const BOTTOM_FOOTER = 740;
+            const SIG_Y = BOTTOM_FOOTER - 55;
+
+            // --- Logo + Header ---
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 28, { width: 75 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 125 : M;
+            doc.fontSize(14).font('Helvetica-Bold').text(data.company_name?.toUpperCase() || '', hx, 28);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 44);
+            doc.fontSize(12).font('Helvetica-Bold').text('RECIBO', M, 28, { align: 'right' });
+            doc.fontSize(20).font('Helvetica-Bold').fillColor('#4f46e5')
+                .text(`POR $ ${parseFloat(data.liquido_pagar).toFixed(2)}`, M, 42, { align: 'right' });
+            doc.fillColor('black');
+
+            // --- Body recibo ---
+            doc.rect(M, 76, pageW, 62).stroke('#e5e7eb');
+            doc.fontSize(9).font('Helvetica')
+                .text(`Yo, ${(data.nombre || '').toUpperCase()}. Recibí de ${(data.company_name || '').toUpperCase()}: la cantidad ${data.monto_letras}, en concepto de HONORARIOS PROFESIONALES.`, M + 12, 86, { width: pageW - 24 });
+            doc.text('Segun el siguiente detalle.', M + 12, 122);
+
+            // --- Provider Details ---
+            doc.fontSize(9).font('Helvetica');
+            doc.text(`Nombre: ${data.nombre || ''}`, M, 148);
+            doc.text(`No. Recibo: ${data.numero || ''}`, 250, 148);
+            doc.text(`DUI: ${data.num_dui || '-'}`, M, 163);
+            doc.text(`NIT: ${data.num_nit || '-'}`, 250, 163);
+            doc.text(`Concepto: ${data.concepto || ''}`, M, 178);
+            const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '';
+            doc.text(`Fecha: ${fmt(data.fecha)}`, 250, 178);
+
+            // --- Amounts Table ---
+            let ry = 200;
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('CONCEPTO', M, ry);
+            doc.text('VALOR', colVal, ry, { align: 'right' });
+            doc.moveTo(M, ry + 14).lineTo(M + pageW, ry + 14).stroke('#e5e7eb');
+
+            const monto = parseFloat(data.monto || 0);
+            const isr = parseFloat(data.renta_isr || 0);
+            const liquido = parseFloat(data.liquido_pagar || 0);
+            const rh = 16;
+
+            doc.font('Helvetica').fontSize(9);
+            ry += 20;
+            doc.text('HONORARIOS...', M, ry);
+            doc.text(`$${monto.toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.text('ISR (10%)...', M, ry);
+            doc.text(`$${isr.toFixed(2)}`, colVal, ry, { align: 'right' });
+            ry += rh;
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold');
+            doc.text('LIQUIDO A PAGAR', M, ry);
+            doc.fillColor('#4f46e5')
+                .text(`$${liquido.toFixed(2)}`, colVal, ry, { align: 'right' });
+            doc.fillColor('black');
+
+            // --- Signatures ---
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.moveTo(M + 40, SIG_Y).lineTo(M + 220, SIG_Y).stroke();
+            doc.text((data.nombre || '').toUpperCase(), M + 40, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('RECIBI CONFORME', M + 40, SIG_Y + 20, { width: 180, align: 'center' });
+
+            const empX = M + pageW - 260;
+            doc.moveTo(empX, SIG_Y).lineTo(empX + 180, SIG_Y).stroke();
+            doc.fontSize(8).font('Helvetica-Bold')
+                .text((data.company_name || '').toUpperCase(), empX, SIG_Y + 6, { width: 180, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text('FIRMA EMPRESA', empX, SIG_Y + 20, { width: 180, align: 'center' });
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generateAguinaldoPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 30;
+            const pageW = 732;
+            const BOTTOM_FOOTER = 560;
+
+            const fmtDate = (d) => {
+                if (!d) return '';
+                try {
+                    const date = new Date(d);
+                    if (isNaN(date.getTime())) return String(d);
+                    const dd = date.getUTCDate().toString().padStart(2, '0');
+                    const mm = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+                    const yy = date.getUTCFullYear();
+                    return `${dd}/${mm}/${yy}`;
+                } catch (e) { return String(d); }
+            };
+
+            // --- Logo + Header ---
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 25, { width: 55 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 95 : M;
+            doc.fontSize(12).font('Helvetica-Bold').text(data.company_name?.toUpperCase() || '', hx, 25);
+            doc.fontSize(8).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 40);
+            doc.fontSize(13).font('Helvetica-Bold').text('PLANILLA DE AGUINALDOS', M, 25, { align: 'right' });
+            doc.fontSize(9).font('Helvetica')
+                .text(`${data.periodo_label || ''}  |  ${data.departamento_label || 'Todos'}`, M, 42, { align: 'right' });
+            doc.moveTo(M, 58).lineTo(M + pageW, 58).stroke('#4f46e5');
+
+            // --- Table columns ---
+            const col = {
+                codigo: M,
+                nombre: M + 45,
+                cargo: M + 240,
+                ingreso: M + 370,
+                base: M + 435,
+                dias: M + 500,
+                tabla: M + 530,
+                aguinaldo: M + 560,
+                excedente: M + 610,
+                renta: M + 655,
+                recibir: M + 690
+            };
+
+            const drawHeader = (y) => {
+                doc.fontSize(7).font('Helvetica-Bold');
+                doc.text('Codigo', col.codigo, y);
+                doc.text('Nombre', col.nombre, y);
+                doc.text('Cargo', col.cargo, y);
+                doc.text('F. Ingreso', col.ingreso, y);
+                doc.text('F. Base', col.base, y);
+                doc.text('Dias', col.dias, y, { align: 'right', width: 25 });
+                doc.text('Tabla', col.tabla, y, { align: 'right', width: 25 });
+                doc.text('Aguinaldo', col.aguinaldo, y, { align: 'right', width: 45 });
+                doc.text('Exc.', col.excedente, y, { align: 'right', width: 45 });
+                doc.text('Renta', col.renta, y, { align: 'right', width: 35 });
+                doc.text('Recibir', col.recibir, y, { align: 'right', width: 45 });
+                y += 11;
+                doc.moveTo(M, y).lineTo(M + pageW, y).stroke('#e5e7eb');
+                return y + 3;
+            };
+
+            const drawRow = (item, y) => {
+                const ag = parseFloat(item.aguinaldo_calculado || 0);
+                const re = parseFloat(item.renta || 0);
+                const mr = parseFloat(item.monto_recibir || 0);
+                doc.fontSize(7).font('Helvetica');
+                doc.text(item.codigo || '', col.codigo, y);
+                doc.text(`${item.nombres || ''} ${item.apellidos || ''}`, col.nombre, y, { width: col.cargo - col.nombre - 5 });
+                doc.text(item.cargo_nombre || '', col.cargo, y, { width: col.ingreso - col.cargo - 5 });
+                doc.text(fmtDate(item.fecha_ingreso), col.ingreso, y);
+                doc.text(fmtDate(item.fecha_base), col.base, y);
+                doc.text(String(item.dias_antiguedad || 0), col.dias, y, { align: 'right', width: 25 });
+                doc.text(String(item.dias_segun_tabla || 0), col.tabla, y, { align: 'right', width: 25 });
+                doc.text(`$${ag.toFixed(2)}`, col.aguinaldo, y, { align: 'right', width: 45 });
+                doc.text(`$${parseFloat(item.excedente || 0).toFixed(2)}`, col.excedente, y, { align: 'right', width: 45 });
+                doc.text(`$${re.toFixed(2)}`, col.renta, y, { align: 'right', width: 35 });
+                doc.text(`$${mr.toFixed(2)}`, col.recibir, y, { align: 'right', width: 45 });
+                return y + 11;
+            };
+
+            const items = data.items || [];
+
+            // Group by department
+            const grupos = new Map();
+            for (const item of items) {
+                const depto = item.departamento_nombre || 'Sin Depto.';
+                if (!grupos.has(depto)) grupos.set(depto, []);
+                grupos.get(depto).push(item);
+            }
+
+            let ry = 68;
+            let totalAguinaldo = 0, totalRenta = 0, totalRecibir = 0;
+            let grupoIndex = 0;
+
+            for (const [depto, deptoItems] of grupos) {
+                if (ry > BOTTOM_FOOTER - 80) { doc.addPage(); ry = 40; }
+
+                // Department header (only if multiple groups)
+                if (grupos.size > 1) {
+                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#4f46e5');
+                    doc.text(depto.toUpperCase(), M, ry);
+                    doc.fillColor('black');
+                    ry += 14;
+                }
+
+                ry = drawHeader(ry);
+
+                let subAguinaldo = 0, subRenta = 0, subRecibir = 0;
+
+                for (const item of deptoItems) {
+                    if (ry > BOTTOM_FOOTER - 40) { doc.addPage(); ry = 40; ry = drawHeader(ry); }
+                    const ag = parseFloat(item.aguinaldo_calculado || 0);
+                    const re = parseFloat(item.renta || 0);
+                    const mr = parseFloat(item.monto_recibir || 0);
+                    subAguinaldo += ag; subRenta += re; subRecibir += mr;
+                    ry = drawRow(item, ry);
+                }
+
+                // Subtotals per department (only if multiple groups)
+                if (grupos.size > 1) {
+                    doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+                    ry += 3;
+                    doc.fontSize(7).font('Helvetica-Bold');
+                    doc.text(`Subtotal ${depto}`, col.nombre, ry);
+                    doc.text(`$${subAguinaldo.toFixed(2)}`, col.aguinaldo, ry, { align: 'right', width: 45 });
+                    doc.text(`$${subRenta.toFixed(2)}`, col.renta, ry, { align: 'right', width: 35 });
+                    doc.text(`$${subRecibir.toFixed(2)}`, col.recibir, ry, { align: 'right', width: 45 });
+                    ry += 14;
+                }
+
+                totalAguinaldo += subAguinaldo;
+                totalRenta += subRenta;
+                totalRecibir += subRecibir;
+                grupoIndex++;
+            }
+
+            // Grand Totals
+            if (ry > BOTTOM_FOOTER - 20) { doc.addPage(); ry = 40; }
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke();
+            ry += 4;
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.text('TOTALES', col.nombre, ry);
+            doc.text(`$${totalAguinaldo.toFixed(2)}`, col.aguinaldo, ry, { align: 'right', width: 45 });
+            doc.text(`$${totalRenta.toFixed(2)}`, col.renta, ry, { align: 'right', width: 35 });
+            doc.text(`$${totalRecibir.toFixed(2)}`, col.recibir, ry, { align: 'right', width: 45 });
+
+            doc.fontSize(6).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generateAguinaldoRecibosPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const items = data.items || [];
+            const año = data.año || new Date().getFullYear();
+            const responsable = data.responsable_nombre || 'RECURSOS HUMANOS';
+            const firmaPath = data.firma_url || '';
+            const selloPath = data.sello_url || '';
+
+            for (let i = 0; i < items.length; i++) {
+                if (i > 0) doc.addPage();
+                const item = items[i];
+                const sueldo = parseFloat(item.sueldo_base || 0);
+                const sueldoDiario = sueldo / 30;
+                const aguinaldo = parseFloat(item.aguinaldo_calculado || 0);
+                const renta = parseFloat(item.renta || 0);
+                const monto = parseFloat(item.monto_recibir || 0);
+                const dias = item.dias_antiguedad || 0;
+                const anios = (dias / 365).toFixed(1);
+                const diasPagados = item.dias_segun_tabla || 0;
+                const depto = item.departamento_nombre || '';
+                const cargo = item.cargo_nombre || '';
+                const nombre = `${item.nombres || ''} ${item.apellidos || ''}`;
+                const fmtDate = (d) => {
+                    if (!d) return '';
+                    try {
+                        const date = new Date(d);
+                        if (isNaN(date.getTime())) return String(d);
+                        const dd = date.getUTCDate().toString().padStart(2, '0');
+                        const mm = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+                        const yy = date.getUTCFullYear();
+                        return `${dd}/${mm}/${yy}`;
+                    } catch (e) { return String(d); }
+                };
+
+                const drawCopy = (yStart, label) => {
+                    const M = 30;
+                    const W = 552;
+                    let y = yStart;
+
+                    // Company name
+                    doc.fontSize(9).font('Helvetica-Bold');
+                    doc.text(data.company_name?.toUpperCase() || '', M, y, { width: W, align: 'center' });
+                    y += 12;
+
+                    // Title
+                    doc.fontSize(8).font('Helvetica-Bold');
+                    doc.text('RECIBO DE LIQUIDACION DE AGUINALDO', M, y, { width: W, align: 'center' });
+                    y += 11;
+                    doc.moveTo(M, y).lineTo(M + W, y).stroke('#4f46e5');
+                    y += 5;
+
+                    const C1 = M + 220;
+                    doc.fontSize(7).font('Helvetica');
+
+                    // Row 1
+                    doc.text('NOMBRE DEL EMPLEADO:', M, y);
+                    doc.text('AGUINALDO A LIQUIDAR:', C1, y);
+                    y += 9;
+                    doc.font('Helvetica-Bold').text(nombre, M, y);
+                    doc.text(String(año), C1, y);
+                    y += 11;
+
+                    // Row 2
+                    doc.font('Helvetica');
+                    doc.text('CARGO:', M, y);
+                    doc.text('DEPARTAMENTO DE', C1, y);
+                    y += 9;
+                    doc.font('Helvetica-Bold').text(cargo, M, y);
+                    doc.text(depto, C1, y);
+                    y += 11;
+
+                    // Row 3
+                    doc.font('Helvetica');
+                    doc.text('SUELDO MENSUAL:', M, y);
+                    doc.text(`FECHA INGRESO: ${fmtDate(item.fecha_ingreso)}`, C1, y);
+                    y += 9;
+                    doc.font('Helvetica-Bold').text(`$ ${sueldo.toFixed(2)}`, M, y);
+                    y += 11;
+
+                    // Row 4
+                    doc.font('Helvetica');
+                    doc.text('SUELDO DIARIO:', M, y);
+                    doc.text(`ANTIGUEDAD AÑOS: ${anios}`, M + 130, y);
+                    doc.text(`DIAS PAGADOS: ${diasPagados}`, M + 240, y);
+                    y += 9;
+                    doc.font('Helvetica-Bold').text(`$ ${sueldoDiario.toFixed(2)}`, M, y);
+                    y += 12;
+
+                    // Row 5
+                    doc.font('Helvetica');
+                    doc.text(`ANTIGUEDAD DIAS: ${dias}`, M, y);
+                    doc.text(`SEGUN ART. 198 COD. DE TRABAJO`, M + 140, y);
+                    y += 12;
+
+                    // Amounts box
+                    const ax = M + 5;
+                    const aw = W - 10;
+                    doc.rect(ax, y, aw, 50).stroke('#e5e7eb');
+                    let ay = y + 6;
+
+                    doc.font('Helvetica').fontSize(7);
+                    doc.text('AGUINALDO:', ax + 5, ay);
+                    doc.font('Helvetica-Bold').text(`$ ${aguinaldo.toFixed(2)}`, ax + 5, ay, { align: 'right', width: aw - 10 });
+                    ay += 12;
+
+                    doc.font('Helvetica');
+                    doc.text('MENOS RENTA:', ax + 5, ay);
+                    doc.font('Helvetica-Bold').text(`$ ${renta.toFixed(2)}`, ax + 5, ay, { align: 'right', width: aw - 10 });
+                    ay += 12;
+
+                    doc.moveTo(ax + 5, ay).lineTo(ax + aw - 5, ay).stroke('#e5e7eb');
+                    ay += 4;
+
+                    doc.font('Helvetica');
+                    doc.text('TOTAL A RECIBIR:', ax + 5, ay);
+                    doc.fontSize(9).font('Helvetica-Bold').fillColor('#4f46e5');
+                    doc.text(`$ ${monto.toFixed(2)}`, ax + 5, ay, { align: 'right', width: aw - 10 });
+                    doc.fillColor('black');
+
+                    y += 60;
+
+                    y += 60;
+
+                    // Signatures
+                    doc.fontSize(7).font('Helvetica');
+                    const sigW = 200;
+                    doc.moveTo(M + 20, y).lineTo(M + 20 + sigW, y).stroke('#e5e7eb');
+                    doc.fontSize(6).font('Helvetica-Bold').text('RECIBI CONFORME', M + 20, y + 4, { width: sigW, align: 'center' });
+                    doc.fontSize(7).font('Helvetica-Bold').text(nombre, M, y + 20, { width: sigW + 40, align: 'center' });
+
+                    // Firma y sello (arriba de la linea)
+                    if (firmaPath) {
+                        try {
+                            const fFile = firmaPath.split('/').pop();
+                            const fAbs = path.join(__dirname, '..', '..', 'uploads', fFile);
+                            if (fs.existsSync(fAbs)) doc.image(fAbs, M + W - sigW - 10, y - 50, { width: 90, height: 35 });
+                        } catch (e) { /* ignore */ }
+                    }
+                    if (selloPath) {
+                        try {
+                            const sFile = selloPath.split('/').pop();
+                            const sAbs = path.join(__dirname, '..', '..', 'uploads', sFile);
+                            if (fs.existsSync(sAbs)) doc.image(sAbs, M + W - 120, y - 50, { width: 80, height: 40 });
+                        } catch (e) { /* ignore */ }
+                    }
+
+                    doc.fontSize(7).font('Helvetica');
+                    doc.moveTo(M + W - sigW - 20, y).lineTo(M + W - 20, y).stroke('#e5e7eb');
+                    doc.fontSize(6).font('Helvetica-Bold').text(responsable.toUpperCase(), M + W - sigW - 20, y + 4, { width: sigW, align: 'center' });
+                    doc.fontSize(7).font('Helvetica').text('RECURSOS HUMANOS', M + W - sigW - 20, y + 20, { width: sigW, align: 'center' });
+
+                    y += 45;
+
+                    // Copy label
+                    doc.fontSize(7).font('Helvetica-Bold').fillColor('#4f46e5');
+                    doc.text(label, M, y, { width: W, align: 'center' });
+                    doc.fillColor('black');
+
+                    return y;
+                };
+
+                // Top copy - Copia Empleado
+                drawCopy(30, 'COPIA EMPLEADO');
+
+                // Divider line at middle of page
+                const PAGE_MID = 396;
+                doc.moveTo(30, PAGE_MID - 4).lineTo(30 + 552, PAGE_MID - 4).stroke('#e5e7eb');
+
+                // Bottom copy - Original Empresa, starts at middle
+                drawCopy(PAGE_MID, 'ORIGINAL EMPRESA');
+            }
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 module.exports = {
     generateTransferPDF, 
     generateStatementPDF, 
@@ -1700,5 +2518,11 @@ module.exports = {
     generatePendingDocumentsDetailedPDF,
     generateProviderPendingDocumentsDetailedPDF,
     generateRTEE,
-    generateVacacionPDF
+    generateVacacionPDF,
+    generateLiquidacionPDF,
+    generateFiniquitoPDF,
+    generateAcuerdoPagoPDF,
+    generateHonorarioPDF,
+    generateAguinaldoPDF,
+    generateAguinaldoRecibosPDF
 };

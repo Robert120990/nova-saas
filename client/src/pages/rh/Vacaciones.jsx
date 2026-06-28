@@ -80,7 +80,7 @@ const Vacaciones = () => {
     // Fetch employees for search modal
     const { data: empResponse = { data: [] } } = useQuery({
         queryKey: ['rh-empleados-search', empSearch],
-        queryFn: async () => (await axios.get('/api/rh/empleados', { params: { search: empSearch, limit: 50 } })).data,
+        queryFn: async () => (await axios.get('/api/rh/empleados', { params: { search: empSearch, limit: 50, solo_activos: 1 } })).data,
         enabled: isEmpModalOpen,
         staleTime: 0
     });
@@ -148,7 +148,7 @@ const Vacaciones = () => {
     const handleCodigoSearch = async () => {
         if (!codigoInput.trim()) return;
         try {
-            const res = await axios.get('/api/rh/empleados', { params: { search: codigoInput.trim(), limit: 1 } });
+            const res = await axios.get('/api/rh/empleados', { params: { search: codigoInput.trim(), limit: 1, solo_activos: 1 } });
             const emp = res.data.data?.[0];
             if (emp) {
                 await loadEmpleado(emp.id);
@@ -424,30 +424,14 @@ const Vacaciones = () => {
 
                     {/* Employee Read-only Data */}
                     {empleadoData && (
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                <User size={14} /> Datos del Empleado
-                            </div>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div>
-                                    <label className={labelCls}>Nombre</label>
-                                    <div className={roCls}>{empleadoData.nombres} {empleadoData.apellidos}</div>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Cargo</label>
-                                    <div className={roCls}>{empleadoData.cargo_nombre || <span className="text-slate-300 italic">Sin cargo</span>}</div>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Departamento Personal</label>
-                                    <div className={roCls}>{empleadoData.departamento_nombre || <span className="text-slate-300 italic">Sin depto.</span>}</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-3 max-w-xs">
-                                <div>
-                                    <label className={labelCls}>Sueldo Mensual</label>
-                                    <div className={`${roCls} font-bold text-indigo-600`}>${parseFloat(empleadoData.sueldo_base || 0).toFixed(2)}</div>
-                                </div>
-                            </div>
+                        <div className="flex items-center gap-4 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 text-xs">
+                            <User size={14} className="text-indigo-400 shrink-0" />
+                            <span className="font-bold text-slate-700">{empleadoData.nombres} {empleadoData.apellidos}</span>
+                            <span className="text-slate-400">|</span>
+                            <span className="text-slate-500">{empleadoData.cargo_nombre || <span className="italic">Sin cargo</span>}</span>
+                            <span className="text-slate-400">|</span>
+                            <span className="text-slate-500">{empleadoData.departamento_nombre || <span className="italic">Sin depto.</span>}</span>
+                            <span className="ml-auto font-bold text-indigo-600">Sueldo: ${parseFloat(empleadoData.sueldo_base || 0).toFixed(2)}</span>
                         </div>
                     )}
 

@@ -22,6 +22,18 @@ const TABS = [
     { id: 'ausencias', label: 'Faltas / Inasistencias', icon: <CalendarX size={14} /> },
 ];
 
+const fmtDate = (dateStr) => {
+    if (!dateStr) return '-';
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return String(dateStr);
+        const d = date.getUTCDate().toString().padStart(2, '0');
+        const m = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+        const y = date.getUTCFullYear();
+        return `${d}/${m}/${y}`;
+    } catch (e) { return String(dateStr); }
+};
+
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
 const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
 
@@ -106,6 +118,12 @@ const Empleados = () => {
         enabled: !!selected?.id
     });
 
+    const { data: historialIndemnizaciones = [] } = useQuery({
+        queryKey: ['rh-empleado-historial-indemnizaciones', selected?.id],
+        queryFn: async () => (await axios.get(`/api/rh/empleados/${selected.id}/historial-indemnizaciones`)).data,
+        enabled: !!selected?.id
+    });
+
     const { data: ausencias = [], refetch: refetchAusencias } = useQuery({
         queryKey: ['rh-empleado-ausencias', selected?.id],
         queryFn: async () => (await axios.get(`/api/rh/empleados/${selected.id}/ausencias`)).data,
@@ -155,7 +173,7 @@ const Empleados = () => {
             return axios.post(`/api/rh/empleados/${selected.id}/ausencias`, data);
         },
         onSuccess: () => { refetchAusencias(); toast.success('Ausencia registrada'); },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar ausencia')
+        onError: (error) => { toast.error(error.response?.data?.message || 'Error al guardar ausencia'); }
     });
 
     const deleteAusenciaMutation = useMutation({
@@ -495,7 +513,7 @@ const Empleados = () => {
                         <IndemnizacionesTab
                             visible={activeTab === 'indemnizaciones'}
                             selected={selected}
-                            indemnizaciones={indemnizaciones}
+                            historial={historialIndemnizaciones}
                         />
 
                         {/* TAB 5: Ausencias */}
@@ -505,6 +523,7 @@ const Empleados = () => {
                             ausencias={ausencias}
                             ausenciaMutation={ausenciaMutation}
                             deleteAusenciaMutation={deleteAusenciaMutation}
+                            refetch={refetchAusencias}
                         />
                     </div>
 
@@ -670,7 +689,7 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
 };
 
 // --- Sub-component: Indemnizaciones ---
-const IndemnizacionesTab = ({ visible, selected, indemnizaciones }) => {
+const IndemnizacionesTab = ({ visible, selected, historial }) => {
     if (!visible) return null;
 
     if (!selected) {
@@ -682,30 +701,40 @@ const IndemnizacionesTab = ({ visible, selected, indemnizaciones }) => {
         );
     }
 
+    const meses = [
+        '', 'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+    ];
+
     return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
+        <div className="space-y-3 animate-in fade-in slide-in-from-left-2 duration-200">
             <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
                 <ScrollText size={16} className="text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Indemnizaciones</h3>
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Historial de Indemnizaciones</h3>
             </div>
-
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-xs">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Fecha</th>
-                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Motivo</th>
-                            <th className="text-right px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Monto</th>
+                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Periodo</th>
+                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Rango Fechas</th>
+                            <th className="text-right px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Dias</th>
+                            <th className="text-right px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Indemnizacion</th>
+                            <th className="text-right px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Total Liquid.</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {indemnizaciones.length === 0 ? (
-                            <tr><td colSpan={3} className="text-center py-8 text-slate-400 italic">Sin indemnizaciones registradas</td></tr>
-                        ) : indemnizaciones.map(i => (
-                            <tr key={i.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                <td className="px-3 py-2 text-slate-600">{i.fecha_aplicacion ? new Date(i.fecha_aplicacion).toLocaleDateString() : '-'}</td>
-                                <td className="px-3 py-2 text-slate-700">{i.motivo || <span className="text-slate-300 italic">-</span>}</td>
-                                <td className="px-3 py-2 text-right font-bold text-slate-700">${parseFloat(i.monto).toFixed(2)}</td>
+                        {(!historial || historial.length === 0) ? (
+                            <tr><td colSpan={5} className="text-center py-8 text-slate-400 italic">Sin historial de indemnizaciones</td></tr>
+                        ) : historial.map((h, i) => (
+                            <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="px-3 py-2 text-slate-700 font-medium">{meses[h.periodo_mes]} {h.periodo_año}</td>
+                                <td className="px-3 py-2 text-slate-500">
+                                    {fmtDate(h.periodo_indemnizacion_desde)} - {fmtDate(h.periodo_indemnizacion_hasta)}
+                                </td>
+                                <td className="px-3 py-2 text-right text-slate-600">{h.dias_indemnizacion}</td>
+                                <td className="px-3 py-2 text-right font-bold text-indigo-600">${parseFloat(h.total_indemnizacion).toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right font-bold text-slate-700">${parseFloat(h.total_devengado).toFixed(2)}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -716,8 +745,8 @@ const IndemnizacionesTab = ({ visible, selected, indemnizaciones }) => {
 };
 
 // --- Sub-component: Ausencias ---
-const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAusenciaMutation }) => {
-    const [showForm, setShowForm] = useState(false);
+const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAusenciaMutation, refetch }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [editAusencia, setEditAusencia] = useState(null);
     const [formData, setFormData] = useState({ tipo: 'falta', fecha_inicio: '', fecha_fin: '', motivo: '', justificada: false });
     const confirm = useConfirm();
@@ -725,29 +754,52 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
     const resetForm = () => {
         setFormData({ tipo: 'falta', fecha_inicio: '', fecha_fin: '', motivo: '', justificada: false });
         setEditAusencia(null);
-        setShowForm(false);
+        setIsModalOpen(false);
     };
 
-    const handleEdit = (item) => {
-        setEditAusencia(item);
-        setFormData({
-            tipo: item.tipo,
-            fecha_inicio: item.fecha_inicio?.substring(0, 10) || '',
-            fecha_fin: item.fecha_fin?.substring(0, 10) || '',
-            motivo: item.motivo || '',
-            justificada: !!item.justificada
-        });
-        setShowForm(true);
+    const dateToInput = (d) => {
+        if (!d) return '';
+        if (d instanceof Date) return d.toISOString().substring(0, 10);
+        if (typeof d === 'string') return d.substring(0, 10);
+        return '';
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        ausenciaMutation.mutate({ data: formData, editId: editAusencia?.id }, { onSuccess: () => resetForm() });
+    const openModal = (item) => {
+        if (item) {
+            setEditAusencia(item);
+            setFormData({
+                tipo: item.tipo,
+                fecha_inicio: dateToInput(item.fecha_inicio),
+                fecha_fin: dateToInput(item.fecha_fin),
+                motivo: item.motivo || '',
+                justificada: !!item.justificada
+            });
+        } else {
+            setEditAusencia(null);
+            setFormData({ tipo: 'falta', fecha_inicio: '', fecha_fin: '', motivo: '', justificada: false });
+        }
+        setIsModalOpen(true);
     };
 
     const handleDelete = async (item) => {
-        const ok = await confirm({ title: '¿Eliminar ausencia?', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Sí, eliminar', variant: 'danger' });
+        const ok = await confirm({ title: 'Eliminar ausencia?', message: 'Esta accion no se puede deshacer.', confirmLabel: 'Si, eliminar', variant: 'danger' });
         if (ok) deleteAusenciaMutation.mutate(item.id);
+    };
+
+    const handleSubmit = () => {
+        ausenciaMutation.mutate(
+            { data: formData, editId: editAusencia?.id },
+            {
+                onSuccess: () => {
+                    refetch();
+                    toast.success(editAusencia ? 'Ausencia actualizada' : 'Ausencia registrada');
+                    resetForm();
+                },
+                onError: (error) => {
+                    toast.error(error.response?.data?.message || 'Error al guardar ausencia');
+                }
+            }
+        );
     };
 
     if (!visible) return null;
@@ -777,49 +829,10 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
                     <CalendarX size={16} className="text-indigo-600" />
                     <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Faltas / Inasistencias / Incapacidades</h3>
                 </div>
-                {!showForm && (
-                    <button type="button" onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700">
-                        <Plus size={14} /> Agregar
-                    </button>
-                )}
+                <button type="button" onClick={() => openModal(null)} className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700">
+                    <Plus size={14} /> Agregar
+                </button>
             </div>
-
-            {showForm && (
-                <form onSubmit={handleSubmit} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div className="grid grid-cols-3 gap-3">
-                        <div>
-                            <label className={labelCls}>Tipo</label>
-                            <select value={formData.tipo} onChange={e => setFormData({ ...formData, tipo: e.target.value })} className={fieldCls}>
-                                <option value="falta">Falta</option>
-                                <option value="inasistencia">Inasistencia</option>
-                                <option value="incapacidad">Incapacidad</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelCls}>Fecha Inicio</label>
-                            <input type="date" value={formData.fecha_inicio} onChange={e => setFormData({ ...formData, fecha_inicio: e.target.value })} required className={fieldCls} />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Fecha Fin</label>
-                            <input type="date" value={formData.fecha_fin} onChange={e => setFormData({ ...formData, fecha_fin: e.target.value })} className={fieldCls} />
-                        </div>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Motivo</label>
-                        <textarea value={formData.motivo} onChange={e => setFormData({ ...formData, motivo: e.target.value })} placeholder="Motivo" className={`${fieldCls} h-16 resize-none`} />
-                    </div>
-                    <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors w-fit">
-                        <input type="checkbox" checked={formData.justificada} onChange={e => setFormData({ ...formData, justificada: e.target.checked })} className="rounded text-indigo-600" />
-                        <span className="text-xs font-bold text-slate-600">Justificada</span>
-                    </label>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <button type="button" onClick={resetForm} className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
-                        <button type="submit" disabled={ausenciaMutation.isPending} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50">
-                            {ausenciaMutation.isPending ? 'Guardando...' : (editAusencia ? 'Actualizar' : 'Agregar')}
-                        </button>
-                    </div>
-                </form>
-            )}
 
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-xs">
@@ -835,27 +848,61 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
                     </thead>
                     <tbody>
                         {ausencias.length === 0 ? (
-                            <tr><td colSpan={6} className="text-center py-8 text-slate-400 italic">Sin registros</td></tr>
+                            <tr><td colSpan={6} className="text-center py-8 text-slate-400 italic">Sin ausencias registradas</td></tr>
                         ) : ausencias.map(a => (
                             <tr key={a.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                <td className="px-3 py-2">
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${tipoBadge(a.tipo)}`}>{a.tipo}</span>
-                                </td>
-                                <td className="px-3 py-2 text-slate-600">{a.fecha_inicio ? new Date(a.fecha_inicio).toLocaleDateString() : '-'}</td>
-                                <td className="px-3 py-2 text-slate-600">{a.fecha_fin ? new Date(a.fecha_fin).toLocaleDateString() : '-'}</td>
-                                <td className="px-3 py-2 text-slate-700">{a.motivo || <span className="text-slate-300 italic">-</span>}</td>
-                                <td className="px-3 py-2 text-center">
-                                    {a.justificada ? <span className="text-emerald-600 font-bold">Sí</span> : <span className="text-slate-300">No</span>}
-                                </td>
+                                <td className="px-3 py-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tipoBadge(a.tipo)}`}>{a.tipo}</span></td>
+                                <td className="px-3 py-2 text-slate-600">{fmtDate(a.fecha_inicio)}</td>
+                                <td className="px-3 py-2 text-slate-600">{fmtDate(a.fecha_fin)}</td>
+                                <td className="px-3 py-2 text-slate-700 max-w-[200px] truncate">{a.motivo || '-'}</td>
+                                <td className="px-3 py-2 text-center">{a.justificada ? <span className="text-emerald-600 text-[10px] font-bold">Si</span> : <span className="text-slate-300">No</span>}</td>
                                 <td className="px-3 py-2 flex gap-1">
-                                    <button type="button" onClick={() => handleEdit(a)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit size={13} /></button>
-                                    <button type="button" onClick={() => handleDelete(a)} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 size={13} /></button>
+                                    <button type="button" onClick={() => openModal(a)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
+                                    <button type="button" onClick={() => handleDelete(a)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
+
+            {/* Modal */}
+            <Modal isOpen={isModalOpen} onClose={resetForm} title={editAusencia ? 'Editar Ausencia' : 'Nueva Ausencia'} maxWidth="max-w-md">
+                <div className="space-y-4 pb-2">
+                    <div>
+                        <label className={labelCls}>Tipo</label>
+                        <select value={formData.tipo} onChange={e => setFormData({ ...formData, tipo: e.target.value })} className={fieldCls}>
+                            <option value="falta">Falta</option>
+                            <option value="inasistencia">Inasistencia</option>
+                            <option value="incapacidad">Incapacidad</option>
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className={labelCls}>Fecha Inicio</label>
+                            <input type="date" value={formData.fecha_inicio} onChange={e => setFormData({ ...formData, fecha_inicio: e.target.value })} required className={fieldCls} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Fecha Fin</label>
+                            <input type="date" value={formData.fecha_fin} onChange={e => setFormData({ ...formData, fecha_fin: e.target.value })} className={fieldCls} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Motivo</label>
+                        <textarea value={formData.motivo} onChange={e => setFormData({ ...formData, motivo: e.target.value })} placeholder="Motivo" className={`${fieldCls} h-16 resize-none`} />
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" checked={formData.justificada} onChange={e => setFormData({ ...formData, justificada: e.target.checked })} className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                        <span className="text-xs font-bold text-slate-600">Justificada</span>
+                    </label>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                        <button type="button" onClick={resetForm} className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
+                        <button type="button" onClick={handleSubmit} disabled={ausenciaMutation.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50">
+                            {ausenciaMutation.isPending ? 'Guardando...' : (editAusencia ? 'Actualizar' : 'Agregar')}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

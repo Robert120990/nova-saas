@@ -89,6 +89,10 @@ import SalarioMinimo from './pages/rh/SalarioMinimo';
 import TiposContrato from './pages/rh/TiposContrato';
 import Empleados from './pages/rh/Empleados';
 import Vacaciones from './pages/rh/Vacaciones';
+import ConfigRh from './pages/rh/ConfigRh';
+import Liquidaciones from './pages/rh/Liquidaciones';
+import Honorarios from './pages/rh/Honorarios';
+import Aguinaldos from './pages/rh/Aguinaldos';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -230,6 +234,10 @@ function App() {
                         <Route path="/rh/tipos-contrato" element={<TiposContrato />} />
                         <Route path="/rh/empleados" element={<Empleados />} />
                         <Route path="/rh/planilla-vacaciones" element={<Vacaciones />} />
+                        <Route path="/rh/config-rh" element={<ConfigRh />} />
+                        <Route path="/rh/liquidaciones" element={<Liquidaciones />} />
+                        <Route path="/rh/honorarios" element={<Honorarios />} />
+                        <Route path="/rh/aguinaldos" element={<Aguinaldos />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
