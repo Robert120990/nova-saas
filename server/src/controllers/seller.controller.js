@@ -2,7 +2,7 @@ const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 
 const getSellers = async (req, res) => {
-    const { search = '', page = 1, limit = 10 } = req.query;
+    const { search = '', page = 1, limit = 15 } = req.query;
     const offset = (page - 1) * limit;
     
     try {

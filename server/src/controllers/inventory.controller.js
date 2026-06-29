@@ -185,7 +185,7 @@ const createTransfer = async (req, res) => {
 
 const getTransfers = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         const params = [req.company_id];
 
@@ -349,7 +349,7 @@ const getProductsForPhysicalInventory = async (req, res) => {
 
 const getPhysicalInventories = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         const params = [req.company_id];
 

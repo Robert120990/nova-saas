@@ -7,14 +7,34 @@ const Pagination = ({
     totalItems, 
     onPageChange, 
     itemsOnPage, 
-    isLoading 
+    isLoading,
+    limit = 15,
+    onLimitChange
 }) => {
     if (totalPages <= 1 && totalItems <= itemsOnPage) return null;
 
     return (
         <div className="flex items-center justify-between px-2 py-4">
-            <div className="text-sm text-slate-500 font-medium">
-                Mostrando <span className="text-slate-900 font-bold">{itemsOnPage}</span> de <span className="text-slate-900 font-bold">{totalItems}</span> registros
+            <div className="flex items-center gap-3">
+                {onLimitChange && (
+                    <div className="flex items-center gap-1.5">
+                        <select
+                            value={limit}
+                            onChange={(e) => onLimitChange(Number(e.target.value))}
+                            className="text-[11px] font-bold bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 cursor-pointer"
+                        >
+                            <option value={10}>10</option>
+                            <option value={15}>15</option>
+                            <option value={20}>20</option>
+                            <option value={30}>30</option>
+                            <option value={50}>50</option>
+                        </select>
+                        <span className="text-[11px] text-slate-400 font-medium">por página</span>
+                    </div>
+                )}
+                <div className="text-sm text-slate-500 font-medium">
+                    Mostrando <span className="text-slate-900 font-bold">{itemsOnPage}</span> de <span className="text-slate-900 font-bold">{totalItems}</span> registros
+                </div>
             </div>
             <div className="flex items-center gap-2">
                 <button 

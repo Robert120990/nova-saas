@@ -184,7 +184,7 @@ const createAdjustment = async (req, res) => {
 
 const getAdjustments = async (req, res) => {
     try {
-        const { search, branch_id, page = 1, limit = 10 } = req.query;
+        const { search, branch_id, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         const companyId = req.company_id || req.user?.company_id;
         if (!companyId) return res.status(400).json({ message: 'Contexto de empresa no encontrado' });

@@ -20,6 +20,7 @@ const Products = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
 
     useEffect(() => {
@@ -31,8 +32,8 @@ const Products = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['products', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/products', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['products', debouncedSearch, page, limit],
+        queryFn: async () => (await axios.get('/api/products', { params: { search: debouncedSearch, page, limit } })).data
     });
 
     const products = response.data || [];
@@ -259,6 +260,8 @@ const Products = () => {
                 onPageChange={setPage}
                 itemsOnPage={products.length}
                 isLoading={isLoading}
+                limit={limit}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
             />
 
             <Modal 

@@ -17,6 +17,7 @@ const Users = () => {
     const [selectedUser, setSelectedUser] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     
     // Simple debounce logic
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -29,10 +30,10 @@ const Users = () => {
     }, [searchTerm]);
 
     const { data: response = { users: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['users', debouncedSearch, page],
+        queryKey: ['users', debouncedSearch, page, limit],
         queryFn: async () => {
             const { data } = await axios.get('/api/users', { 
-                params: { search: debouncedSearch, page } 
+                params: { search: debouncedSearch, page, limit } 
             });
             return data;
         }
@@ -213,6 +214,8 @@ const Users = () => {
                 onPageChange={setPage}
                 itemsOnPage={users.length}
                 isLoading={isLoading}
+                limit={limit}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
             />
 
             <Modal 

@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10, es_credito, es_anticipado } = req.query;
+        const { search, page = 1, limit = 15, es_credito, es_anticipado } = req.query;
         const offset = (page - 1) * limit;
 
         console.log(`[DEBUG] getCustomers: company_id=${req.company_id}, search=${search}, page=${page}`);

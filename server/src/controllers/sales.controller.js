@@ -295,7 +295,7 @@ const createSale = async (req, res) => {
  * Obtiene el historial de ventas paginado.
  */
 const getSales = async (req, res) => {
-    const { page = 1, limit = 10, dte_type, start_date, end_date, search = '', customer_id, status, only_processed, exclude_has_nc } = req.query;
+    const { page = 1, limit = 15, dte_type, start_date, end_date, search = '', customer_id, status, only_processed, exclude_has_nc } = req.query;
     const offset = (page - 1) * limit;
 
     try {

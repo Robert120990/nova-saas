@@ -5,7 +5,7 @@ const LABEL = 'Empleado';
 
 const getEmpleados = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10, solo_activos } = req.query;
+        const { search, page = 1, limit = 15, solo_activos } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `

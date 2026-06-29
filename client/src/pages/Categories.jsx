@@ -16,6 +16,7 @@ const Categories = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
 
     React.useEffect(() => {
@@ -27,8 +28,8 @@ const Categories = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['categories', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/categories', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['categories', debouncedSearch, page, limit],
+        queryFn: async () => (await axios.get('/api/categories', { params: { search: debouncedSearch, page, limit } })).data
     });
 
     const categories = response.data || [];
@@ -146,6 +147,8 @@ const Categories = () => {
                 onPageChange={setPage}
                 itemsOnPage={categories.length}
                 isLoading={isLoading}
+                limit={limit}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
             />
 
             <Modal 

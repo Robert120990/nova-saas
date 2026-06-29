@@ -14,7 +14,7 @@ const getNextCode = (prefix) => {
 
 const getPlanillas = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10, año, mes } = req.query;
+        const { search, page = 1, limit = 15, año, mes } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `

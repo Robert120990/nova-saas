@@ -5,7 +5,7 @@ const LABEL = 'Tasa de ISSS';
 
 const getIsssTasas = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `

@@ -16,9 +16,9 @@ const ChartOfAccounts = () => {
     const [selectedFormType, setSelectedFormType] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [isImporting, setIsImporting] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
-    const PAGE_SIZE = 30;
 
     const { data: accounts = [], isLoading } = useQuery({
         queryKey: ['accounts'],
@@ -31,8 +31,8 @@ const ChartOfAccounts = () => {
         return accounts.filter(a => a.code?.toLowerCase().includes(q) || a.name?.toLowerCase().includes(q));
     }, [accounts, search]);
 
-    const totalPages = Math.ceil(filteredAccounts.length / PAGE_SIZE);
-    const paginatedAccounts = filteredAccounts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const totalPages = Math.ceil(filteredAccounts.length / limit);
+    const paginatedAccounts = filteredAccounts.slice((page - 1) * limit, page * limit);
     if (page > totalPages && totalPages > 0) setPage(1);
 
     const { data: accountTypes = [] } = useQuery({
@@ -169,7 +169,7 @@ const ChartOfAccounts = () => {
                     </tr>
                 )}
             />
-            {totalPages > 1 && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />}
+            {totalPages > 1 && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} limit={limit} onLimitChange={(l) => { setLimit(l); setPage(1); }} />}
 
             <Modal isOpen={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); setSelectedFormType(''); }} title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'} maxWidth="max-w-md">
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">

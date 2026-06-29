@@ -4,7 +4,7 @@ const TABLE = 'gas_station_islands';
 
 exports.getIslands = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10 } = req.query;
+        const { search, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         let where = 'WHERE company_id = ?';
         let params = [req.company_id];

@@ -21,6 +21,7 @@ const Providers = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [nitValue, setNitValue] = useState('');
 
@@ -43,8 +44,8 @@ const Providers = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['providers', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/providers', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['providers', debouncedSearch, page, limit],
+        queryFn: async () => (await axios.get('/api/providers', { params: { search: debouncedSearch, page, limit } })).data
     });
 
     const providers = response.data || [];
@@ -229,6 +230,8 @@ const Providers = () => {
                 onPageChange={setPage}
                 itemsOnPage={providers.length}
                 isLoading={isLoading}
+                limit={limit}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
             />
 
             <Modal 

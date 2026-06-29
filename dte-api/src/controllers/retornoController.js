@@ -74,7 +74,7 @@ async function getStatus(req, res) {
 
 async function list(req, res) {
     try {
-        const { search = '', page = 1, limit = 10 } = req.query;
+        const { search = '', page = 1, limit = 15 } = req.query;
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
         let whereClause = 'WHERE tipo_dte = ? AND company_id = ?';

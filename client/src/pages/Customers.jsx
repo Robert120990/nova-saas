@@ -33,6 +33,7 @@ const Customers = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [nitValue, setNitValue] = useState('');
     const [docType, setDocType] = useState('DUI');
@@ -64,8 +65,8 @@ const Customers = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['customers', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/customers', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['customers', debouncedSearch, page, limit],
+        queryFn: async () => (await axios.get('/api/customers', { params: { search: debouncedSearch, page, limit } })).data
     });
 
     const customers = response.data || [];
@@ -351,6 +352,8 @@ const Customers = () => {
                 onPageChange={setPage}
                 itemsOnPage={customers.length}
                 isLoading={isLoading}
+                limit={limit}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
             />
 
             <Modal 

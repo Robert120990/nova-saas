@@ -15,6 +15,7 @@ const Combos = () => {
     const [selectedCombo, setSelectedCombo] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
     
     // Combo Form State
@@ -37,8 +38,8 @@ const Combos = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['combos', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/combos', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['combos', debouncedSearch, page, limit],
+        queryFn: async () => (await axios.get('/api/combos', { params: { search: debouncedSearch, page, limit } })).data
     });
 
     const combos = response.data || [];
@@ -252,6 +253,8 @@ const Combos = () => {
                 onPageChange={setPage}
                 itemsOnPage={combos.length}
                 isLoading={isLoading}
+                limit={limit}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
             />
 
             <Modal 

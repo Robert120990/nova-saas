@@ -7,7 +7,7 @@ const { generateProviderStatementPDF, generateProviderAgingPDF, generateProvider
  * Obtiene el estado de cuenta de un proveedor para una sucursal específica.
  */
 const getProviderStatement = async (req, res) => {
-    const { provider_id, branch_id, search, page = 1, limit = 10 } = req.query;
+    const { provider_id, branch_id, search, page = 1, limit = 15 } = req.query;
     const company_id = req.company_id;
 
     if (!provider_id || !branch_id) {
@@ -248,7 +248,7 @@ const registerPayment = async (req, res) => {
  * Obtiene el historial de pagos a un proveedor (paginado).
  */
 const getPaymentHistory = async (req, res) => {
-    const { provider_id, branch_id, page = 1, limit = 10, search = '' } = req.query;
+    const { provider_id, branch_id, page = 1, limit = 15, search = '' } = req.query;
     const company_id = req.company_id;
 
     const offset = (page - 1) * limit;

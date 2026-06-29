@@ -11,6 +11,7 @@ const Sellers = () => {
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedSeller, setSelectedSeller] = useState(null);
     const [sellerToDelete, setSellerToDelete] = useState(null);
@@ -18,8 +19,8 @@ const Sellers = () => {
     const [selectedPosId, setSelectedPosId] = useState('');
 
     const { data, isLoading } = useQuery({
-        queryKey: ['sellers', search, page],
-        queryFn: async () => (await axios.get('/api/sellers', { params: { search, page, limit: 10 } })).data
+        queryKey: ['sellers', search, page, limit],
+        queryFn: async () => (await axios.get('/api/sellers', { params: { search, page, limit } })).data
     });
 
     const { data: branches = [] } = useQuery({ queryKey: ['branches'], queryFn: async () => (await axios.get('/api/branches')).data });
@@ -179,6 +180,8 @@ const Sellers = () => {
                     totalPages={data.pagination.totalPages}
                     onPageChange={setPage}
                     totalItems={data.pagination.total}
+                    limit={limit}
+                    onLimitChange={(l) => { setLimit(l); setPage(1); }}
                 />
             )}
 

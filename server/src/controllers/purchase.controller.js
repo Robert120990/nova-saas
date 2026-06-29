@@ -7,7 +7,7 @@ const { getEffectiveProductId } = require('../utils/inventoryUtils');
  */
 const getPurchases = async (req, res) => {
     try {
-        const { search, page = 1, limit = 10, branch_id } = req.query;
+        const { search, page = 1, limit = 15, branch_id } = req.query;
         const offset = (page - 1) * limit;
         const companyId = req.company_id || req.user?.company_id;
 
