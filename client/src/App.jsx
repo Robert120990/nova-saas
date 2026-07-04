@@ -75,6 +75,7 @@ import GasDespachadores from './pages/GasDespachadores';
 import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
 import GasAdvances from './pages/GasAdvances';
+import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
 
 // RRHH Pages
 import Afps from './pages/rh/Afps';
@@ -221,6 +222,7 @@ function App() {
                         <Route path="/gas-station/despachador-nozzles" element={<GasDespachadorNozzles />} />
                         <Route path="/gas-station/pos-tipos" element={<GasPosTypes />} />
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
+                        <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />
 
                         {/* RRHH */}
                         <Route path="/rh/afps" element={<Afps />} />

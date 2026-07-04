@@ -232,7 +232,14 @@ export const menuConfig = [
             { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'view_gas_readings_history' },
             { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_advances' },
             { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_settings' },
-            { id: 'gas-reportes', label: 'Reportes', path: '/gas-station/reportes', icon: BarChart3, permission: 'view_gas_reports' },
+            { 
+                id: 'gas-reportes-parent', 
+                label: 'Reportes', 
+                icon: BarChart3,
+                children: [
+                    { id: 'gas-reporte-ventas', label: 'Lecturas - Ventas', path: '/gas-station/reporte-ventas', icon: BarChart3, permission: 'view_gas_fuel_sales_report' },
+                ]
+            },
         ]
     },
     {

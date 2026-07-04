@@ -65,6 +65,7 @@ const gasConfigController = require('../controllers/gasConfig.controller');
 const gasDespachadorController = require('../controllers/gasDespachador.controller');
 const gasPosTypeController = require('../controllers/gasPosType.controller');
 const gasAdvanceController = require('../controllers/gasAdvance.controller');
+const gasReporteController = require('../controllers/gasReporte.controller');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -534,6 +535,9 @@ router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseo
 
 // Print full closeout data
 router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getCloseoutPrintData);
+
+// Gas Station - Reporte Ventas
+router.get('/gas-station/reporte-ventas', gasReporteController.getReporteVentas);
 
 // RRHH - AFPs
 router.get('/rh/afps', rhAfpController.getAfps);

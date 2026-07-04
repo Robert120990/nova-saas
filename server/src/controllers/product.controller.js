@@ -169,10 +169,11 @@ const lookupProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
     const { id } = req.params;
     try {
-        await pool.query('DELETE FROM products WHERE id = ? AND company_id = ?', [id, req.company_id]);
-        res.json({ message: 'Producto eliminado' });
+        await pool.query('UPDATE products SET status = ? WHERE id = ? AND company_id = ?', ['inactivo', id, req.company_id]);
+        res.json({ message: 'Producto desactivado' });
     } catch (error) {
-        res.status(500).json({ message: 'Error al eliminar producto' });
+        console.error('Error al desactivar producto:', error);
+        res.status(500).json({ message: 'Error al desactivar producto' });
     }
 };
 
@@ -181,7 +182,7 @@ const getFuelProducts = async (req, res) => {
         const [rows] = await pool.query(`
             SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_unitario, p.costo, p.tipo_combustible
             FROM products p
-            WHERE p.company_id = ? AND p.tipo_combustible > 0
+            WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
             ORDER BY p.nombre ASC
         `, [req.company_id]);
         
