@@ -64,8 +64,8 @@ const openShift = async (req, res) => {
         const [numRow] = await pool.query(`
             SELECT COALESCE(MAX(shift_number), 0) + 1 AS next
             FROM pos_shifts
-            WHERE company_id = ? AND branch_id = ? AND shift_date = CURDATE()
-        `, [req.company_id, branch_id]);
+            WHERE company_id = ? AND pos_id = ? AND shift_date = CURDATE()
+        `, [req.company_id, pos_id]);
 
         const shiftNumber = numRow[0].next;
 
