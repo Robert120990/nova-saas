@@ -1000,9 +1000,9 @@ const SalesTerminal = () => {
         }
     };
 
-    const handleBarcodeSubmit = (e) => {
+    const handleBarcodeSubmit = async (e) => {
         if (e.key === 'Enter' && quickBarcode) {
-            // Buscar primero en productos
+            // Buscar primero en productos precargados
             const product = products.find(p => p.codigo === quickBarcode || p.codigo_barra === quickBarcode);
             if (product) {
                 if (product.status === 'inactivo') {
@@ -1028,35 +1028,60 @@ const SalesTerminal = () => {
                 setQuickCant('1');
                 
                 if (discountRule) {
-                    // Si hay descuento de cliente, saltar precio directamente a agregar
                     toast.info('Descuento de cliente aplicado');
-                    // timeout para asegurar que el estado se actualizó antes de handleAddQuick o dejar en cantidad
                     qtyInputRef.current?.focus();
                 } else {
                     qtyInputRef.current?.focus();
                 }
             } else {
-                // Si no es producto, buscar en combos
-                const combo = combos.find(c => c.barcode === quickBarcode);
-                if (combo) {
-                    if (combo.status === 'inactive') {
+                // Fallback: buscar directo en el servidor (por si la lista no ha cargado)
+                try {
+                    const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
+                        params: { branch_id: sellerSession?.branch_id }
+                    });
+                    const product = res.data;
+                    if (product.status === 'inactivo') {
                         setQuickBarcode('');
-                        return toast.error('El combo se encuentra inactivo');
+                        return toast.error('El producto se encuentra inactivo');
                     }
-                    // Los combos se añaden directamente o se pueden pre-cargar igual que productos
-                    const discountRule = getCustomerDiscount(combo.id); // Note: Assuming combos can also have discounts if product_id logic allows
-                    const finalPrice = calculateDiscountedPrice(combo.price || 0, discountRule);
-
-                    setQuickProd({ ...combo, nombre: combo.name, precio_unitario: combo.price, isCombo: true });
+                    if (product.tipo_combustible > 0) {
+                        setFuelProd(product);
+                        setFuelAmount(product.precio_unitario || '0');
+                        setFuelQty('1');
+                        setIsFuelModalOpen(true);
+                        setQuickBarcode('');
+                        return;
+                    }
+                    const discountRule = getCustomerDiscount(product.id);
+                    const finalPrice = calculateDiscountedPrice(product.precio_unitario || 0, discountRule);
+                    setQuickProd(product);
                     setQuickPrecio(finalPrice.toFixed(2));
-                    setQuickDesc(combo.name);
+                    setQuickDesc(product.nombre);
                     setQuickCant('1');
-                    
                     if (discountRule) toast.info('Descuento de cliente aplicado');
                     qtyInputRef.current?.focus();
-                } else {
-                    toast.error('Producto o Combo no encontrado');
-                    setQuickBarcode('');
+                } catch {
+                    // Si no es producto, buscar en combos
+                    const combo = combos.find(c => c.barcode === quickBarcode);
+                    if (combo) {
+                        if (combo.status === 'inactive') {
+                            setQuickBarcode('');
+                            return toast.error('El combo se encuentra inactivo');
+                        }
+                        const discountRule = getCustomerDiscount(combo.id);
+                        const finalPrice = calculateDiscountedPrice(combo.price || 0, discountRule);
+
+                        setQuickProd({ ...combo, nombre: combo.name, precio_unitario: combo.price, isCombo: true });
+                        setQuickPrecio(finalPrice.toFixed(2));
+                        setQuickDesc(combo.name);
+                        setQuickCant('1');
+                        
+                        if (discountRule) toast.info('Descuento de cliente aplicado');
+                        qtyInputRef.current?.focus();
+                    } else {
+                        toast.error('Producto o Combo no encontrado');
+                        setQuickBarcode('');
+                    }
                 }
             }
         }

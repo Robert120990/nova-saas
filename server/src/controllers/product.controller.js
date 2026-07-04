@@ -149,6 +149,23 @@ const updateProduct = async (req, res) => {
     }
 };
 
+const lookupProduct = async (req, res) => {
+    try {
+        const { code } = req.params;
+        const { branch_id } = req.query;
+        const [rows] = await pool.query(`
+            SELECT p.* FROM products p
+            JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+            WHERE p.company_id = ? AND (p.codigo = ? OR p.codigo_barra = ?)
+            LIMIT 1
+        `, [branch_id, req.company_id, code, code]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Producto no encontrado' });
+        res.json(rows[0]);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const deleteProduct = async (req, res) => {
     const { id } = req.params;
     try {
@@ -251,4 +268,4 @@ const getLubricantProducts = async (req, res) => {
     }
 };
 
-module.exports = { getProducts, createProduct, updateProduct, deleteProduct, getFuelProducts, updateFuelPrices, getLubricantProducts };
+module.exports = { getProducts, lookupProduct, createProduct, updateProduct, deleteProduct, getFuelProducts, updateFuelPrices, getLubricantProducts };

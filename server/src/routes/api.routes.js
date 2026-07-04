@@ -177,6 +177,7 @@ router.delete('/categories/:id', categoryController.deleteCategory);
 router.get('/products', productController.getProducts);
 router.get('/products/fuel', productController.getFuelProducts);
 router.patch('/products/fuel/prices', productController.updateFuelPrices);
+router.get('/products/lookup/:code', productController.lookupProduct);
 router.post('/products', productController.createProduct);
 router.put('/products/:id', productController.updateProduct);
 router.delete('/products/:id', productController.deleteProduct);
