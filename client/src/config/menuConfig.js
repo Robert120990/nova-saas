@@ -261,6 +261,7 @@ export const menuConfig = [
                     { id: 'rh-aguinaldo-config', label: 'Aguinaldo', path: '/rh/aguinaldo-config', icon: Gift, permission: 'manage_rh_aguinaldo_config' },
                     { id: 'rh-salario-minimo', label: 'Salario Mínimo', path: '/rh/salario-minimo', icon: Banknote, permission: 'manage_rh_salario_minimo' },
                     { id: 'rh-tipos-contrato', label: 'Tipos de Contrato', path: '/rh/tipos-contrato', icon: FileSignature, permission: 'manage_rh_tipos_contrato' },
+                    { id: 'rh-cuentas-planillas', label: 'Cuentas de Planillas', path: '/rh/cuentas-planillas', icon: Calculator, permission: 'manage_rh_cuentas_planillas' },
                 ]
             },
         ]

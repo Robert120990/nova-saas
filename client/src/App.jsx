@@ -93,6 +93,7 @@ import ConfigRh from './pages/rh/ConfigRh';
 import Liquidaciones from './pages/rh/Liquidaciones';
 import Honorarios from './pages/rh/Honorarios';
 import Aguinaldos from './pages/rh/Aguinaldos';
+import CuentasPlanillas from './pages/rh/CuentasPlanillas';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -238,6 +239,7 @@ function App() {
                         <Route path="/rh/liquidaciones" element={<Liquidaciones />} />
                         <Route path="/rh/honorarios" element={<Honorarios />} />
                         <Route path="/rh/aguinaldos" element={<Aguinaldos />} />
+                        <Route path="/rh/cuentas-planillas" element={<CuentasPlanillas />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

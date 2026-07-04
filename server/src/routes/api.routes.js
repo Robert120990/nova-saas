@@ -52,6 +52,7 @@ const rhPlanillaVacacionesController = require('../controllers/rhPlanillaVacacio
 const rhPlanillaLiquidacionesController = require('../controllers/rhPlanillaLiquidaciones.controller');
 const rhHonorariosController = require('../controllers/rhHonorarios.controller');
 const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinaldos.controller');
+const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.controller');
 const changelogController = require('../controllers/changelog.controller');
 
 // Gas Station Controllers
@@ -594,6 +595,13 @@ router.get('/rh/tipos-contrato', rhTipoContratoController.getTiposContrato);
 router.post('/rh/tipos-contrato', rhTipoContratoController.createTipoContrato);
 router.put('/rh/tipos-contrato/:id', rhTipoContratoController.updateTipoContrato);
 router.delete('/rh/tipos-contrato/:id', rhTipoContratoController.deleteTipoContrato);
+
+// RRHH - Cuentas de Planillas
+router.get('/rh/cuentas-planillas', rhCuentaPlanillaController.getCuentasPlanillas);
+router.get('/rh/cuentas-planillas/next-orden', rhCuentaPlanillaController.getNextOrden);
+router.post('/rh/cuentas-planillas', rhCuentaPlanillaController.createCuentaPlanilla);
+router.put('/rh/cuentas-planillas/:id', rhCuentaPlanillaController.updateCuentaPlanilla);
+router.delete('/rh/cuentas-planillas/:id', rhCuentaPlanillaController.deleteCuentaPlanilla);
 
 // RRHH - Configuracion (Responsable y Sello)
 router.get('/rh/config', rhConfigController.getConfig);
