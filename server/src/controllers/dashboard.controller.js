@@ -142,6 +142,7 @@ const getStats = async (req, res) => {
             const [activeShiftsRaw] = await pool.query(`
                 SELECT 
                     s.id, 
+                    s.shift_number,
                     sel.nombre as seller_name, 
                     p.nombre as pos_name, 
                     b.nombre as branch_name,
@@ -172,6 +173,7 @@ const getStats = async (req, res) => {
 
             const activeShifts = (activeShiftsRaw || []).map(s => ({
                 id: s.id,
+                shift_number: s.shift_number,
                 seller_name: s.seller_name,
                 pos_name: s.pos_name,
                 branch_name: s.branch_name,
