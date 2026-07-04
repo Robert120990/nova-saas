@@ -72,7 +72,7 @@ const SalesHistory = () => {
         email: ''
     });
     const [retransmitLoading, setRetransmitLoading] = useState(false);
-    const [openMenuId, setOpenMenuId] = useState(null);
+    const [menuState, setMenuState] = useState(null);
     const limit = 10;
 
     const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading } = useQuery({
@@ -445,52 +445,59 @@ const SalesHistory = () => {
                             <td className="px-4 py-1 font-black text-slate-900 text-[12.5px]">
                                 ${parseFloat(sale.total_pagar).toFixed(2)}
                             </td>
-                            <td className="px-6 py-1 text-right overflow-visible">
-                                <div className="relative flex justify-end">
-                                    <button 
-                                        onClick={() => setOpenMenuId(openMenuId === sale.id ? null : sale.id)}
+                            <td className="px-6 py-1 text-right">
+                                <div className="flex justify-end">
+                                    <button
+                                        onClick={(e) => {
+                                            if (menuState?.id === sale.id) {
+                                                setMenuState(null);
+                                            } else {
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                setMenuState({ id: sale.id, top: rect.bottom + 8, right: document.documentElement.clientWidth - rect.right });
+                                            }
+                                        }}
                                         className={`p-2 rounded-xl transition-all flex items-center gap-1 border ${
-                                            openMenuId === sale.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 hover:text-slate-600 border-slate-100'
+                                            menuState?.id === sale.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 hover:text-slate-600 border-slate-100'
                                         }`}
                                     >
                                         <span className="text-[10px] font-black uppercase tracking-widest pl-1">Acciones</span>
-                                        <ChevronDown size={14} className={`transition-transform duration-200 ${openMenuId === sale.id ? 'rotate-180' : ''}`} />
+                                        <ChevronDown size={14} className={`transition-transform duration-200 ${menuState?.id === sale.id ? 'rotate-180' : ''}`} />
                                     </button>
 
-                                    {openMenuId === sale.id && (
-                                        <>
-                                            <div className="fixed inset-0 z-[100]" onClick={() => setOpenMenuId(null)} />
-                                            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[101] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                                                <div className="p-2 grid grid-cols-1 gap-1">
-                                                    <button onClick={() => { handleViewSale(sale.id); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                    {menuState?.id === sale.id && <div className="fixed inset-0 z-[100]" onClick={() => setMenuState(null)} />}
+                                    {menuState?.id === sale.id && (
+                                        <div className="fixed z-[101]" style={{ top: menuState.top, right: menuState.right }}>
+                                            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <div className="p-2 grid grid-cols-1 gap-1 w-56">
+                                                    <button onClick={() => { handleViewSale(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><Eye size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Ver Detalle</span>
                                                     </button>
                                                     
-                                                    <button onClick={() => { handleViewRTEE(sale.id); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handleViewRTEE(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-110 transition-transform"><FileText size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Representación (PDF)</span>
                                                     </button>
 
-                                                    <button onClick={() => { handleViewJSON(sale.id); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handleViewJSON(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Code size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Ver JSON DTE</span>
                                                     </button>
 
-                                                    <button onClick={() => { handleViewResponse(sale.id); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handleViewResponse(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg group-hover:scale-110 transition-transform"><Terminal size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Respuesta MH</span>
                                                     </button>
 
                                                     {sale.dte_status === 'ACCEPTED' && (
-                                                        <button onClick={() => { handleResendEmail(sale); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <button onClick={() => { handleResendEmail(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform"><Send size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Reenviar Correo</span>
                                                         </button>
                                                     )}
 
                                                     {(sale.dte_status === 'REJECTED' || sale.dte_status === 'RECHAZADO') && (
-                                                        <button onClick={() => { handleOpenRetransmitModal(sale); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Reintentar Envío</span>
                                                         </button>
@@ -499,7 +506,7 @@ const SalesHistory = () => {
                                                     <div className="h-px bg-slate-100 my-1 mx-2" />
 
                                                     <button 
-                                                        onClick={() => { handleOpenVoidModal(sale); setOpenMenuId(null); }} 
+                                                        onClick={() => { handleOpenVoidModal(sale); setMenuState(null); }} 
                                                         disabled={sale.estado === 'anulado' || !isVoidableDTE(sale)}
                                                         className={`flex items-center gap-3 w-full p-2.5 text-left rounded-xl transition-all group ${
                                                             sale.estado === 'anulado' || !isVoidableDTE(sale) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-rose-50 text-rose-600'
@@ -511,13 +518,13 @@ const SalesHistory = () => {
                                                         <span className="text-xs font-bold">Anular Operación</span>
                                                     </button>
 
-                                                    <button onClick={() => { handlePrintTicket(sale); setOpenMenuId(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handlePrintTicket(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Printer size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Reimprimir Ticket</span>
                                                     </button>
                                                 </div>
                                             </div>
-                                        </>
+                                        </div>
                                     )}
                                 </div>
                             </td>
@@ -572,8 +579,8 @@ const SalesHistory = () => {
                                     <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
                                         <span className="block text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Código de Generación (DTE)</span>
                                         <span className="font-mono text-xs font-black text-indigo-700 break-all">{saleDetail.codigo_generacion}</span>
-                                    </div>
-                                )}
+                                        </div>
+                                    )}
                             </div>
 
                             <div className="space-y-4">
