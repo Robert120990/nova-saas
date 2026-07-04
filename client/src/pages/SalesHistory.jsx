@@ -453,7 +453,11 @@ const SalesHistory = () => {
                                                 setMenuState(null);
                                             } else {
                                                 const rect = e.currentTarget.getBoundingClientRect();
-                                                setMenuState({ id: sale.id, top: rect.bottom + 8, right: document.documentElement.clientWidth - rect.right });
+                                                const menuH = 296;
+                                                const spaceBelow = window.innerHeight - rect.bottom;
+                                                const dir = spaceBelow < menuH && rect.top > menuH ? 'up' : 'down';
+                                                const top = dir === 'up' ? rect.top - 8 - menuH : rect.bottom + 8;
+                                                setMenuState({ id: sale.id, top, right: document.documentElement.clientWidth - rect.right, dir });
                                             }
                                         }}
                                         className={`p-2 rounded-xl transition-all flex items-center gap-1 border ${
@@ -467,7 +471,7 @@ const SalesHistory = () => {
                                     {menuState?.id === sale.id && <div className="fixed inset-0 z-[100]" onClick={() => setMenuState(null)} />}
                                     {menuState?.id === sale.id && (
                                         <div className="fixed z-[101]" style={{ top: menuState.top, right: menuState.right }}>
-                                            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <div className={`bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in duration-200 ${menuState.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'}`}>
                                                 <div className="p-2 grid grid-cols-1 gap-1 w-56">
                                                     <button onClick={() => { handleViewSale(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><Eye size={14} /></div>
