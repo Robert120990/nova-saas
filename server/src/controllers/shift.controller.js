@@ -60,15 +60,28 @@ const openShift = async (req, res) => {
             return res.status(400).json({ message: 'Ya existe un turno abierto para este punto de venta' });
         }
 
+        // Calcular siguiente shift_number por sucursal + fecha
+        const [numRow] = await pool.query(`
+            SELECT COALESCE(MAX(shift_number), 0) + 1 AS next
+            FROM pos_shifts
+            WHERE company_id = ? AND branch_id = ? AND shift_date = CURDATE()
+        `, [req.company_id, branch_id]);
+
+        const shiftNumber = numRow[0].next;
+
         const [result] = await pool.query(`
-            INSERT INTO pos_shifts (company_id, branch_id, pos_id, seller_id, start_time, opening_balance, status)
-            VALUES (?, ?, ?, ?, NOW(), ?, 'open')
-        `, [req.company_id, branch_id, pos_id, seller_id, opening_balance || 0]);
+            INSERT INTO pos_shifts (company_id, branch_id, pos_id, seller_id, start_time, shift_date, shift_number, opening_balance, status)
+            VALUES (?, ?, ?, ?, NOW(), CURDATE(), ?, ?, 'open')
+        `, [req.company_id, branch_id, pos_id, seller_id, shiftNumber, opening_balance || 0]);
+
+        const today = new Date().toISOString().split('T')[0];
 
         res.status(201).json({ 
             id: result.insertId, 
-            message: 'Turno abierto exitosamente',
-            shift_id: result.insertId 
+            shift_id: result.insertId,
+            shift_number: shiftNumber,
+            shift_date: today,
+            message: 'Turno abierto exitosamente'
         });
     } catch (error) {
         console.error('Error in openShift:', error);

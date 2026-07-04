@@ -1411,6 +1411,7 @@ const SalesTerminal = () => {
                                 <div className="px-4 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-sm font-bold text-indigo-600 flex items-center gap-2">
                                     <div className={`w-2 h-2 rounded-full ${currentShift ? 'bg-green-500 animate-pulse' : 'bg-rose-500'}`}></div>
                                     {sellerSession ? `${sellerSession.seller_name} — ${sellerSession.pos_name || 'Sin POS'}` : 'Acceso Limitado'}
+                                    {currentShift?.shift_number && <span className="text-[10px] font-black text-indigo-400 ml-auto">#{currentShift.shift_number}</span>}
                                 </div>
                             </div>
                         </div>

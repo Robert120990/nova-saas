@@ -191,6 +191,7 @@ const CashClosing = () => {
                             <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Turno Activo</span>
                         </div>
                         <span className="text-[10px] font-bold text-slate-500">{shift.pos_name || 'Sin terminal'}</span>
+                            {shift.shift_number && <span className="text-[10px] font-black text-indigo-500">#{shift.shift_number}</span>}
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-3">
                         <div>
@@ -307,6 +308,7 @@ const CashClosing = () => {
                             <thead>
                                 <tr className="bg-slate-50/50 border-b border-slate-100">
                                     <th className="px-8 py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Inicio / Fin</th>
+                                    <th className="px-8 py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Turno</th>
                                     <th className="px-8 py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Responsable</th>
                                     <th className="px-8 py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">POS</th>
                                     <th className="px-8 py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Esperado</th>
@@ -325,6 +327,9 @@ const CashClosing = () => {
                                                     {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })} - {shift.end_time ? new Date(shift.end_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' }) : 'Abierto'}
                                                 </span>
                                             </div>
+                                        </td>
+                                        <td className="px-8 py-6 text-center">
+                                            <span className="text-xs font-black text-indigo-600">#{shift.shift_number || '-'}</span>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-3">
@@ -665,7 +670,7 @@ const CashClosing = () => {
                                 <h4 className="text-2xl font-black text-slate-900 tracking-tight">
                                     {shiftSummary.status === 'active' ? 'Turno en Curso' : 'Turno Cerrado'}
                                 </h4>
-                                <p className="text-slate-500 font-medium font-mono text-[10px] uppercase tracking-widest mt-1">ID Turno: #{shiftSummary.id}</p>
+                                <p className="text-slate-500 font-medium font-mono text-[10px] uppercase tracking-widest mt-1">Turno: #{shiftSummary.shift_number || shiftSummary.id}</p>
                             </div>
                         </div>
 

@@ -139,7 +139,10 @@ const Dashboard = () => {
                             <div key={shift.id} className={`p-3 rounded-2xl hover:bg-white transition-all shrink-0 w-56 ${isOld ? 'bg-amber-50/80 border-2 border-amber-400 animate-pulse' : 'bg-slate-50/50 border border-slate-100 hover:border-indigo-100'}`}>
                                 <div className="flex justify-between items-start mb-1">
                                     <div className="min-w-0">
-                                        <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{shift.seller_name}</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{shift.seller_name}</p>
+                                            {shift.shift_number && <span className="text-[10px] font-black text-indigo-500 shrink-0">#{shift.shift_number}</span>}
+                                        </div>
                                         <p className="text-[11px] font-bold text-slate-800 truncate">Caja: {shift.pos_name}</p>
                                     </div>
                                     {isOld ? <AlertCircle size={12} className="text-amber-500 shrink-0" /> : <ArrowUpRight size={12} className="text-emerald-500 shrink-0" />}
