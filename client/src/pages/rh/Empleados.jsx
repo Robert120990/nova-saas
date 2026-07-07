@@ -228,13 +228,18 @@ const Empleados = () => {
 
     const handleSaveEmergency = (e) => {
         e.preventDefault();
-        if (!emergencyForm.nombre || !emergencyForm.telefono) return;
+        if (!emergencyForm.nombre || !emergencyForm.telefono) {
+            toast.error('Nombre y teléfono son requeridos');
+            return;
+        }
         if (editEmergency !== null) {
             setEmergencyContacts(prev => prev.map((c, i) =>
                 i === editEmergency ? { nombre: emergencyForm.nombre, telefono: emergencyForm.telefono, parentesco: emergencyForm.parentesco } : c
             ));
+            toast.success('Contacto actualizado');
         } else {
             setEmergencyContacts(prev => [...prev, { nombre: emergencyForm.nombre, telefono: emergencyForm.telefono, parentesco: emergencyForm.parentesco }]);
+            toast.success('Contacto agregado');
         }
         resetEmergencyForm();
     };
