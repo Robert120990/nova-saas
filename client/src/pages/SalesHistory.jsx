@@ -65,6 +65,9 @@ const SalesHistory = () => {
         numDocSolicita: ''
     });
     const [isRetransmitModalOpen, setIsRetransmitModalOpen] = useState(false);
+    const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+    const [regenerateSaleId, setRegenerateSaleId] = useState(null);
+    const [regenerateLoading, setRegenerateLoading] = useState(false);
     const [retransmitForm, setRetransmitForm] = useState({
         nombre: '',
         nit: '',
@@ -213,14 +216,22 @@ const SalesHistory = () => {
         }
     };
 
-    const handleRegenerateDTE = async (saleId) => {
-        if (!confirm('¿Está seguro de regenerar este DTE? Se creará uno nuevo con nuevos códigos de Hacienda.')) return;
+    const handleRegenerateDTE = (saleId) => {
+        setRegenerateSaleId(saleId);
+        setIsRegenerateModalOpen(true);
+    };
+
+    const handleRegenerateConfirm = async () => {
+        setRegenerateLoading(true);
         try {
-            const res = await axios.post(`/api/sales/${saleId}/regenerate-dte`);
+            const res = await axios.post(`/api/sales/${regenerateSaleId}/regenerate-dte`);
             toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
+            setIsRegenerateModalOpen(false);
             queryClient.invalidateQueries(['sales-history']);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al regenerar DTE');
+        } finally {
+            setRegenerateLoading(false);
         }
     };
 
@@ -914,6 +925,52 @@ const SalesHistory = () => {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Modal de Regenerar DTE */}
+            <Modal
+                isOpen={isRegenerateModalOpen}
+                onClose={() => setIsRegenerateModalOpen(false)}
+                title="Regenerar DTE"
+                maxWidth="max-w-lg"
+            >
+                <div className="space-y-6">
+                    <div className="flex items-center gap-3 p-4 bg-indigo-50 text-indigo-800 rounded-3xl border border-indigo-100 text-xs">
+                        <RefreshCcw size={20} className="shrink-0" />
+                        <div>
+                            <p className="font-black uppercase tracking-widest mb-1">Confirmar Regeneración</p>
+                            <p className="font-medium text-Spanish">Se creará un nuevo DTE con nuevos códigos de Hacienda (codigoGeneracion y numeroControl). El DTE anterior quedará intacto.</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-dotted border-slate-200 text-center">
+                        <p className="text-slate-600 text-sm font-bold text-Spanish">¿Está seguro de regenerar este DTE? Se transmitirá con el ambiente actual de la empresa.</p>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-6">
+                        <button 
+                            type="button"
+                            onClick={() => setIsRegenerateModalOpen(false)}
+                            className="px-6 py-2.5 text-slate-500 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
+                            disabled={regenerateLoading}
+                        >
+                            Cancelar
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={handleRegenerateConfirm}
+                            className="px-8 py-2.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
+                            disabled={regenerateLoading}
+                        >
+                            {regenerateLoading ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <RefreshCcw size={16} />
+                            )}
+                            Confirmar
+                        </button>
+                    </div>
+                </div>
             </Modal>
 
             {/* Modal de Retransmisión */}
