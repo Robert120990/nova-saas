@@ -18,6 +18,7 @@ const Providers = () => {
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
+    const [selectedPais, setSelectedPais] = useState('9579');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -140,6 +141,7 @@ const Providers = () => {
         setSelectedMun(provider.municipio);
         setSelectedDistrito(provider.distrito);
         setSelectedActivity(provider.codigo_actividad);
+        setSelectedPais(provider.pais || '9579');
         setNitValue(provider.nit || '');
         setIsModalOpen(true);
     };
@@ -161,6 +163,7 @@ const Providers = () => {
                         setSelectedMun('');
                         setSelectedDistrito('');
                         setSelectedActivity('');
+                        setSelectedPais('9579');
                         setNitValue('');
                         setIsModalOpen(true); 
                     }}
@@ -250,7 +253,7 @@ const Providers = () => {
                         </div>
                         <div>
                             <label className={labelCls}>País</label>
-                            <select name="pais" defaultValue={selectedProvider?.pais || '222'} className={fieldCls} required>
+                            <select name="pais" value={selectedPais} onChange={(e) => setSelectedPais(e.target.value)} className={fieldCls} required>
                                 {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
                             </select>
                         </div>

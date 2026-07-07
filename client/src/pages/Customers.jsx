@@ -35,6 +35,7 @@ const Customers = () => {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [selectedPais, setSelectedPais] = useState('9579');
     const [nitValue, setNitValue] = useState('');
     const [docType, setDocType] = useState('DUI');
 
@@ -250,6 +251,7 @@ const Customers = () => {
         setEsAnticipado(customer.es_anticipado || false);
         setDocType(customer.tipo_documento || 'DUI');
         setNitValue(customer.nit || '');
+        setSelectedPais(customer.pais || '9579');
         setIsModalOpen(true);
     };
 
@@ -276,6 +278,7 @@ const Customers = () => {
                         setEsAnticipado(false);
                         setDocType('DUI');
                         setNitValue('');
+                        setSelectedPais('9579');
                         setIsModalOpen(true); 
                     }} 
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 font-bold text-sm"
@@ -372,7 +375,7 @@ const Customers = () => {
                         </div>
                         <div>
                             <label className={labelCls}>País</label>
-                            <select name="pais" defaultValue={selectedCustomer?.pais || '222'} className={fieldCls} required>
+                            <select name="pais" value={selectedPais} onChange={(e) => setSelectedPais(e.target.value)} className={fieldCls} required>
                                 {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
                             </select>
                         </div>

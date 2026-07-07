@@ -73,7 +73,7 @@ const createProvider = async (req, res) => {
 
     data.company_id = req.company_id;
     if (!data.tipo_persona) data.tipo_persona = '1';
-    if (!data.pais) data.pais = '9300';
+    if (!data.pais) data.pais = '9579';
 
     try {
         const [result] = await pool.query('INSERT INTO providers SET ?', [data]);

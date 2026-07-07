@@ -104,6 +104,7 @@ const SalesTerminal = () => {
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
+    const [selectedPais, setSelectedPais] = useState('9579');
     const [manualCustomerName, setManualCustomerName] = useState('');
 
     // Shift Management State
@@ -333,6 +334,7 @@ const SalesTerminal = () => {
         setSelectedActivity(selectedCustomerData.codigo_actividad || '');
         setDocType(selectedCustomerData.tipo_documento || 'DUI');
         setNitValue(selectedCustomerData.nit || '');
+        setSelectedPais(selectedCustomerData.pais || '9579');
         setIsCustomerModalOpen(true);
     };
 
@@ -1287,6 +1289,7 @@ const SalesTerminal = () => {
                                             setSelectedMun('');
                                             setSelectedDistrito('');
                                             setSelectedActivity('');
+                                            setSelectedPais('9579');
                                             setIsCustomerModalOpen(true);
                                         }}
                                         className="text-indigo-600 hover:bg-indigo-50 p-1 rounded-lg transition-all"
@@ -2223,7 +2226,7 @@ const SalesTerminal = () => {
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">País</label>
-                            <select name="pais" defaultValue={editingCustomer?.pais || '222'} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
+                            <select name="pais" value={selectedPais} onChange={(e) => setSelectedPais(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
                                 {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
                             </select>
                         </div>
