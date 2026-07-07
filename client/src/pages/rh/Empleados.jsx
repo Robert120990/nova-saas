@@ -208,7 +208,6 @@ const Empleados = () => {
         });
 
         data.emergency_contacts = emergencyContacts;
-        console.log('[DEBUG] handleSubmit emergency_contacts:', JSON.stringify(emergencyContacts));
 
         mutation.mutate(data);
     };
@@ -258,12 +257,8 @@ const Empleados = () => {
     };
 
     const handleEdit = (item) => {
-        console.log('[DEBUG] handleEdit item:', item.id, item.codigo);
-        console.log('[DEBUG] emergency_contacts raw:', item.emergency_contacts);
-        const parsed = parseEmergencyContacts(item.emergency_contacts);
-        console.log('[DEBUG] emergency_contacts parsed:', parsed);
         setSelected(item);
-        setEmergencyContacts(parsed);
+        setEmergencyContacts(parseEmergencyContacts(item.emergency_contacts));
         setSelectedDept(item.departamento || '');
         setSelectedMun(item.municipio || '');
         setSelectedDistrito(item.distrito || '');
