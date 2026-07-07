@@ -213,6 +213,17 @@ const SalesHistory = () => {
         }
     };
 
+    const handleRegenerateDTE = async (saleId) => {
+        if (!confirm('¿Está seguro de regenerar este DTE? Se creará uno nuevo con nuevos códigos de Hacienda.')) return;
+        try {
+            const res = await axios.post(`/api/sales/${saleId}/regenerate-dte`);
+            toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
+            queryClient.invalidateQueries(['sales-history']);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al regenerar DTE');
+        }
+    };
+
     const handlePrintTicket = async (sale) => {
         try {
             const { data: detail } = await axios.get(`/api/sales/${sale.id}`);
@@ -405,7 +416,16 @@ const SalesHistory = () => {
                             </td>
                              <td className="px-4 py-1">
                                  <div className="flex flex-col leading-[1.1]">
-                                     <span className="font-bold text-slate-900 text-[10px] truncate leading-none mb-0.5">{sale.tipo_documento_name}</span>
+                                     <div className="flex items-center gap-1.5 mb-0.5">
+                                         <span className="font-bold text-slate-900 text-[10px] truncate leading-none">{sale.tipo_documento_name}</span>
+                                         {sale.codigo_generacion && (
+                                             sale.dte_ambiente === '01' ? (
+                                                 <span className="text-[7px] px-1 py-px bg-emerald-50 text-emerald-600 rounded font-black uppercase tracking-wider leading-none">Prod</span>
+                                             ) : (
+                                                 <span className="text-[7px] px-1 py-px bg-amber-50 text-amber-600 rounded font-black uppercase tracking-wider leading-none">Pruebas</span>
+                                             )
+                                         )}
+                                     </div>
                                      <div className="flex flex-col">
                                          {sale.numero_control ? (
                                              <span className="text-[10.25px] font-mono font-bold text-indigo-500 opacity-80 truncate max-w-[300px]" title={`Control: ${sale.numero_control}`}>{sale.numero_control}</span>
@@ -504,6 +524,13 @@ const SalesHistory = () => {
                                                         <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Reintentar Envío</span>
+                                                        </button>
+                                                    )}
+
+                                                    {sale.codigo_generacion && (
+                                                        <button onClick={() => { handleRegenerateDTE(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
+                                                            <span className="text-xs font-bold text-slate-600">Regenerar DTE</span>
                                                         </button>
                                                     )}
 

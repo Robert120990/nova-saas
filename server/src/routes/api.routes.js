@@ -259,6 +259,7 @@ router.get('/sales/dte-json/:id', salesController.getDTEJson);
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
+router.post('/sales/:id/regenerate-dte', salesController.regenerateDTE);
 
 // Contingency (proxy to dte-api)
 router.get('/contingency/status', salesController.getContingencyStatus);

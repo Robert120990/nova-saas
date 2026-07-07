@@ -303,7 +303,7 @@ const getSales = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
-            d.status as dte_status, d.numero_control as dte_control, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
+            d.status as dte_status, d.numero_control as dte_control, d.ambiente as dte_ambiente, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'
                 WHEN '03' THEN 'Crédito Fiscal'
@@ -1812,6 +1812,147 @@ const getRetornoStatus = async (req, res) => {
     }
 };
 
+const regenerateDTE = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const [sales] = await pool.query(
+            `SELECT s.*, c.*, s.id as sale_id, cat.description as actividad_economica
+             FROM sales_headers s
+             JOIN companies c ON s.company_id = c.id
+             LEFT JOIN cat_019_actividad_economica cat ON c.codigo_actividad = cat.code
+             WHERE s.id = ? AND s.company_id = ?`,
+            [id, req.company_id]
+        );
+
+        if (sales.length === 0) {
+            return res.status(404).json({ message: 'Venta no encontrada' });
+        }
+
+        const sale = sales[0];
+
+        if (!sale.dte_active) {
+            return res.status(400).json({ message: 'La empresa no tiene activado el módulo DTE' });
+        }
+
+        const [items] = await pool.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
+        const [payments] = await pool.query('SELECT * FROM sales_payments WHERE sale_id = ?', [id]);
+        const [linkedDocs] = await pool.query('SELECT * FROM sales_linked_documents WHERE sale_id = ?', [id]);
+
+        let codPuntoVentaMH = null;
+        if (sale.pos_id) {
+            const [pos] = await pool.query('SELECT codigo FROM points_of_sale WHERE id = ?', [sale.pos_id]);
+            if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
+        }
+
+        const dtePayload = {
+            header: {
+                dte_type: sale.dte_type || sale.tipo_documento,
+                customer_id: sale.customer_id,
+                cliente_nombre: sale.cliente_nombre || null,
+                customer_branch_id: sale.customer_branch_id || null,
+                seller_id: sale.seller_id,
+                pos_id: sale.pos_id,
+                shift_id: sale.shift_id || null,
+                branch_id: sale.branch_id,
+                user_id: req.user.id,
+                condicion_operacion: sale.condicion_operacion || 1,
+                total_gravado: sale.total_gravado || 0,
+                total_exento: sale.total_exento || 0,
+                total_nosujetas: sale.total_nosujetas || 0,
+                fovial: sale.fovial || 0,
+                total_fovial: sale.fovial || 0,
+                cotrans: sale.cotrans || 0,
+                total_cotrans: sale.cotrans || 0,
+                total_iva: sale.total_iva || 0,
+                descuento_general: sale.descuento_general || 0,
+                total_descuento: sale.descuento_general || 0,
+                iva_percibido: sale.iva_percibido || 0,
+                total_percepcion: sale.iva_percibido || 0,
+                iva_retenido: sale.iva_retenido || 0,
+                total_retencion: sale.iva_retenido || 0,
+                total_pagar: sale.total_pagar || 0,
+                payment_condition: sale.payment_condition || 1,
+                observaciones: sale.observaciones || null,
+                export_item_type: sale.export_item_type || null,
+                fiscal_enclosure: sale.fiscal_enclosure || null,
+                export_regime: sale.export_regime || null,
+                dest_country_code: sale.dest_country_code || null,
+                remission_type: sale.remission_type || null,
+                transporter_name: sale.transporter_name || null,
+                vehicle_plate: sale.vehicle_plate || null,
+                incoterms: sale.incoterms || '01',
+                desc_incoterms: sale.desc_incoterms || 'EXW- En fabrica',
+                flete: sale.flete || 0,
+                seguro: sale.seguro || 0,
+                total_letras: sale.total_letras || ''
+            },
+            items: items.map(item => ({
+                product_id: item.product_id,
+                combo_id: item.combo_id || null,
+                codigo: item.codigo || null,
+                descripcion: item.descripcion,
+                nombre: item.descripcion,
+                cantidad: item.cantidad,
+                precio_unitario: item.precio_unitario,
+                precio: item.precio_unitario,
+                monto_descuento: item.monto_descuento || 0,
+                descuento: item.monto_descuento || 0,
+                venta_gravada: item.venta_gravada || 0,
+                venta_exenta: item.venta_exenta || 0,
+                exento: item.venta_gravada === 0 && item.venta_exenta > 0,
+                tributos: typeof item.tributos === 'string' ? JSON.parse(item.tributos) : (item.tributos || [])
+            })),
+            payments: payments.map(p => ({
+                codigo: p.metodo_pago || '01',
+                monto: p.monto,
+                referencia: p.referencia || null
+            })),
+            linkedDocuments: linkedDocs.map(d => ({
+                doc_type: d.doc_type || d.tipo_documento || '03',
+                generation_type: d.generation_type || 1,
+                doc_number: d.doc_number || d.numero_documento || '',
+                emission_date: d.emission_date || d.fecha_emision || '',
+                montoSujeto: d.monto_sujeto || 0,
+                ivaRetenido: d.iva_retenido || 0,
+                descripcion: d.descripcion || ''
+            })),
+            emisor_adicional: {
+                descActividad: sale.actividad_economica || 'Actividad no definida',
+                codPuntoVentaMH: codPuntoVentaMH
+            }
+        };
+
+        console.log(`[SalesController] Regenerando DTE para venta ${id} con ambiente ${sale.ambiente || 'test'}`);
+        const dteResult = await dteService.emitDTE(sale, dtePayload, id);
+
+        if (!dteResult.success || dteResult.skip) {
+            return res.status(400).json({
+                success: false,
+                message: dteResult.error || 'Error al regenerar DTE'
+            });
+        }
+
+        const dteInfo = dteResult.data;
+
+        await pool.query(
+            'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
+            [dteInfo.codigo_generacion, dteInfo.numero_control, dteInfo.sello_recepcion || null, dteInfo.fh_procesamiento || null, id]
+        );
+
+        res.json({
+            success: true,
+            message: 'DTE regenerado exitosamente',
+            codigoGeneracion: dteInfo.codigo_generacion,
+            numeroControl: dteInfo.numero_control,
+            ambiente: sale.ambiente || 'test'
+        });
+    } catch (error) {
+        console.error('Error en regenerateDTE:', error);
+        res.status(500).json({ message: 'Error al regenerar DTE', error: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -1833,6 +1974,7 @@ module.exports = {
     resendDTEEmail,
     voidSale,
     retransmitSaleDTE,
+    regenerateDTE,
     listRetornos,
     emitRetorno,
     getRetornoStatus,
