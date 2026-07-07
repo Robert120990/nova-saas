@@ -36,7 +36,7 @@ exports.initCloseout = async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO gas_station_closeouts (company_id, branch_id, seller_id, seller_name, fecha_turno, numero_turno) VALUES (?, ?, ?, ?, ?, ?)`,
-            [req.company_id, req.user.branch_id || null, seller_id, seller_name || '', fecha_turno, numero_turno]
+            [req.company_id, req.user.branch_id || null, seller_id, seller_name || '', fecha_turno, parseInt(numero_turno, 10)]
         );
         const closeoutId = result.insertId;
 
@@ -241,7 +241,7 @@ exports.getCloseouts = async (req, res) => {
         }
 
         if (search) {
-            where += ' AND (c.numero_turno LIKE ? OR c.seller_name LIKE ?)';
+            where += ' AND (CAST(c.numero_turno AS CHAR) LIKE ? OR c.seller_name LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
         }
 

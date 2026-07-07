@@ -436,7 +436,7 @@ REGLAS DE MULTI-TENENCIA:
 
 ### gas_station_closeouts (Cierres de turno gasolinera)
 - id, company_id, branch_id, seller_id, seller_name
-- fecha_turno DATE, numero_turno VARCHAR(20)
+- fecha_turno DATE, numero_turno INT
 - estado VARCHAR(20) ('abierto','cerrado')
 - observaciones, closed_at TIMESTAMP, created_at, updated_at
 

@@ -28,8 +28,8 @@ exports.getReporteVentas = async (req, res) => {
                 SELECT 
                     r.product_id,
                     AVG(r.precio) AS precio,
-                    SUM(r.lectura_actual) AS lectura_galones,
-                    ROUND(SUM(r.lectura_actual * r.precio), 2) AS lectura_monto
+                    SUM(COALESCE(r.lectura_actual, 0) - COALESCE(r.lectura_anterior, 0) - COALESCE(r.calibracion, 0)) AS lectura_galones,
+                    ROUND(SUM((COALESCE(r.lectura_actual, 0) - COALESCE(r.lectura_anterior, 0) - COALESCE(r.calibracion, 0)) * r.precio), 2) AS lectura_monto
                 FROM gas_station_closeout_readings r
                 JOIN gas_station_closeouts c ON r.closeout_id = c.id
                 WHERE c.company_id = ? AND c.fecha_turno = ? AND c.branch_id = ?
@@ -46,6 +46,10 @@ exports.getReporteVentas = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
+                  AND (? = 0 OR sh.shift_id IN (
+                      SELECT id FROM pos_shifts
+                      WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
+                  ))
                 GROUP BY si.product_id
             ) v ON p.id = v.product_id
             WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
@@ -53,8 +57,9 @@ exports.getReporteVentas = async (req, res) => {
         `;
 
         const params = [
-            company_id, fecha, branch_id, turnoNum, String(turnoNum),
-            company_id, fecha, branch_id,
+            company_id, fecha, branch_id, turnoNum, turnoNum,
+            company_id, fecha, branch_id, turnoNum,
+            company_id, branch_id, fecha, turnoNum,
             company_id
         ];
 
