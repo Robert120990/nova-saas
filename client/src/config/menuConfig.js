@@ -28,6 +28,7 @@ import {
     Unlock,
     Sparkles,
     Undo2,
+    RefreshCcw,
     ScrollText,
     Fuel,
     Droplets,

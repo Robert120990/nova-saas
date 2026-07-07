@@ -303,7 +303,7 @@ const getSales = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
-            d.status as dte_status, d.numero_control as dte_control, d.ambiente as dte_ambiente, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
+            d.status as dte_status, d.numero_control as dte_control, COALESCE(d.ambiente, '00') as dte_ambiente, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'
                 WHEN '03' THEN 'Crédito Fiscal'
