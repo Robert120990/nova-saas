@@ -310,6 +310,31 @@ export const getAllPermissions = () => {
     const groups = [];
     const seen = {};
 
+    // Top-level items (e.g., Dashboard)
+    const topLevelPerms = [];
+    topLevelItems.forEach(item => {
+        if (item.permission) {
+            if (seen[item.permission]) {
+                console.error(
+                    `[getAllPermissions] ERROR: El permiso "${item.permission}" ya fue registrado en "${seen[item.permission]}". `
+                    + `Duplicado encontrado en "Generales > ${item.label}". `
+                    + 'Cada permiso debe tener un ID único.'
+                );
+            } else {
+                seen[item.permission] = `Generales > ${item.label}`;
+            }
+            topLevelPerms.push({ id: item.permission, label: item.label });
+        }
+    });
+    if (topLevelPerms.length > 0) {
+        groups.push({
+            id: 'generales',
+            label: 'Generales',
+            icon: LayoutDashboard,
+            permissions: topLevelPerms
+        });
+    }
+
     menuConfig.forEach(group => {
         const perms = [];
 
