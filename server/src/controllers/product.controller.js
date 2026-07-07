@@ -231,12 +231,15 @@ const getLubricantProducts = async (req, res) => {
             return res.json([]);
         }
 
+        const branchId = req.query.branch_id || req.user?.branch_id || null;
+
         const [products] = await pool.query(`
             SELECT p.id, p.codigo, p.descripcion, p.precio_unitario
             FROM products p
-            WHERE p.company_id = ? AND p.category_id = ?
+            JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+            WHERE p.company_id = ? AND p.category_id = ? AND p.status = 'activo'
             ORDER BY p.codigo ASC
-        `, [req.company_id, categoryId]);
+        `, [branchId, req.company_id, categoryId]);
 
         if (products.length === 0) return res.json([]);
 
@@ -246,9 +249,10 @@ const getLubricantProducts = async (req, res) => {
             WHERE lr.closeout_id = (
                 SELECT c2.id FROM gas_station_closeouts c2
                 WHERE c2.company_id = ? AND c2.estado = 'cerrado'
+                AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
                 ORDER BY c2.id DESC LIMIT 1
             )
-        `, [req.company_id]);
+        `, [req.company_id, branchId, branchId]);
 
         const lastReadingMap = {};
         lastReadings.forEach(r => {
