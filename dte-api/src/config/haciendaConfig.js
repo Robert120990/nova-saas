@@ -12,7 +12,7 @@ require('dotenv').config();
  * @returns {string} The configured URL
  */
 function getEndpoint(key, ambiente) {
-    const isProd = ambiente === 'produccion';
+    const isProd = ambiente === 'produccion' || ambiente === '01';
     const suffix = isProd ? '_PROD' : '_TEST';
     const envVarName = `HACIENDA_${key.toUpperCase()}_URL${suffix}`;
     const url = process.env[envVarName];
