@@ -4,9 +4,10 @@
 
 const axios = require('axios');
 require('dotenv').config();
+const { isProduction } = require('../../config/haciendaConfig');
 
 async function signWithExternalSigner(dteJson, nit, certificatePassword, ambiente) {
-    const isTest = ambiente !== 'produccion';
+    const isTest = !isProduction(ambiente);
     const signerUrl = isTest
         ? (process.env.SIGNER_URL_TEST || 'http://localhost:8114/firmardocumento/')
         : (process.env.SIGNER_URL_PROD || 'http://localhost:8113/firmardocumento/');

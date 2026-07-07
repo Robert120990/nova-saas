@@ -8,6 +8,7 @@ const { calculateItem, calculateTotals, round, round4, round6, getAmountInWords 
 const { sanitizeText, cleanNumbers } = require('../utils/text');
 const { validateDTE } = require('../validators/schemaValidator');
 const { getSchemaVersion } = require('../utils/versionMap');
+const { getMHAmbiente } = require('../config/haciendaConfig');
 const pool = require('../../config/db');
 
 /**
@@ -115,7 +116,7 @@ async function generateDTE(payload) {
 
     const identificacion = {
         version: version,
-        ambiente: company.ambiente === 'produccion' ? '01' : '00',
+        ambiente: getMHAmbiente(company.ambiente),
         tipoDte: tipoDte,
         numeroControl: numeroControl,
         codigoGeneracion: codigoGeneracion,

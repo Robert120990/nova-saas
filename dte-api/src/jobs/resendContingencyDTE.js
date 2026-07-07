@@ -6,6 +6,7 @@
 const pool = require('../../config/db');
 const { authenticate, transmitDTE } = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
+const { getMHAmbiente } = require('../config/haciendaConfig');
 
 const MAX_RETRIES = 5;
 
@@ -35,7 +36,7 @@ async function processContingencyQueue() {
 
             // 3. Transmit
             const version = getSchemaVersion(task.tipo_documento);
-            const ambiente = (task.ambiente === 'produccion' || task.ambiente === '01') ? '01' : '00';
+            const ambiente = getMHAmbiente(task.ambiente);
             const result = await transmitDTE(auth.token, task.json_firmado, {
                 ambiente: ambiente,
                 tipoDte: task.tipo_documento,

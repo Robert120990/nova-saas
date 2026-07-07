@@ -7,6 +7,7 @@ const schemaValidator = require('../validators/schemaValidator');
 const signatureService = require('../services/signature/signatureService');
 const transmissionService = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
+const { getMHAmbiente } = require('../config/haciendaConfig');
 const queue = require('../queue/transmissionQueue');
 const pool = require('../../config/db');
 
@@ -72,12 +73,12 @@ async function emit(req, res) {
         console.log(`[Transmission] JWS identified (starting with): ${jwsString.substring(0, 50)}...`);
 
         const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
-            ambiente: company[0].ambiente === 'produccion' ? '01' : '00',
+            ambiente: getMHAmbiente(company[0].ambiente),
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
             version: getSchemaVersion(tipoDte)
         });
-        console.log(`[DTE-EMIT-DEBUG] Ambiente enviado a Hacienda: "${company[0].ambiente === 'produccion' ? '01' : '00'}" (DB: "${company[0].ambiente}")`);
+        console.log(`[DTE-EMIT-DEBUG] Ambiente enviado a Hacienda: "${getMHAmbiente(company[0].ambiente)}" (DB: "${company[0].ambiente}")`);
 
         // 6. Store in Database
         const dbStatus = txResult.success && txResult.status === 'PROCESADO' ? 'ACCEPTED' : 'REJECTED';

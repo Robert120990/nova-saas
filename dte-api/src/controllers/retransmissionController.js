@@ -8,6 +8,7 @@ const dteGenerator = require('../services/dteGenerator');
 const signatureService = require('../services/signature/signatureService');
 const transmissionService = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
+const { getMHAmbiente } = require('../config/haciendaConfig');
 const pool = require('../../config/db');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
 
@@ -237,7 +238,7 @@ async function retransmit(req, res) {
         const version = getSchemaVersion(tipoDte);
 
         const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
-            ambiente: company[0].ambiente === 'produccion' ? '01' : '00',
+            ambiente: getMHAmbiente(company[0].ambiente),
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
             version: version
