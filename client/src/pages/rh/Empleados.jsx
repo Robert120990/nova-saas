@@ -226,8 +226,7 @@ const Empleados = () => {
         setShowEmergencyForm(true);
     };
 
-    const handleSaveEmergency = (e) => {
-        e.preventDefault();
+    const handleSaveEmergency = () => {
         if (!emergencyForm.nombre || !emergencyForm.telefono) {
             toast.error('Nombre y teléfono son requeridos');
             return;
@@ -467,15 +466,15 @@ const Empleados = () => {
                                 </div>
 
                                 {showEmergencyForm && (
-                                    <form onSubmit={handleSaveEmergency} className="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2 mb-3">
+                                    <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2 mb-3">
                                         <div className="grid grid-cols-3 gap-2">
                                             <div>
                                                 <label className={labelCls}>Nombre</label>
-                                                <input value={emergencyForm.nombre} onChange={e => setEmergencyForm({ ...emergencyForm, nombre: e.target.value })} required placeholder="Nombre completo" className={fieldCls} />
+                                                <input value={emergencyForm.nombre} onChange={e => setEmergencyForm({ ...emergencyForm, nombre: e.target.value })} placeholder="Nombre completo" className={fieldCls} />
                                             </div>
                                             <div>
                                                 <label className={labelCls}>Teléfono</label>
-                                                <input value={emergencyForm.telefono} onChange={e => setEmergencyForm({ ...emergencyForm, telefono: e.target.value })} required placeholder="Teléfono" className={fieldCls} />
+                                                <input value={emergencyForm.telefono} onChange={e => setEmergencyForm({ ...emergencyForm, telefono: e.target.value })} placeholder="Teléfono" className={fieldCls} />
                                             </div>
                                             <div>
                                                 <label className={labelCls}>Parentesco</label>
@@ -484,11 +483,11 @@ const Empleados = () => {
                                         </div>
                                         <div className="flex justify-end gap-2">
                                             <button type="button" onClick={resetEmergencyForm} className="px-3 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
-                                            <button type="submit" className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold">
+                                            <button type="button" onClick={handleSaveEmergency} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold">
                                                 {editEmergency !== null ? 'Actualizar' : 'Agregar'}
                                             </button>
                                         </div>
-                                    </form>
+                                    </div>
                                 )}
 
                                 {emergencyContacts.length === 0 && !showEmergencyForm && (
