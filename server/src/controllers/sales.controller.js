@@ -1814,9 +1814,12 @@ const getRetornoStatus = async (req, res) => {
 
 const regenerateDTE = async (req, res) => {
     const { id } = req.params;
+    let connection;
 
     try {
-        const [sales] = await pool.query(
+        connection = await pool.getConnection();
+
+        const [sales] = await connection.query(
             `SELECT s.*, c.*, s.id as sale_id, cat.description as actividad_economica
              FROM sales_headers s
              JOIN companies c ON s.company_id = c.id
@@ -1835,15 +1838,18 @@ const regenerateDTE = async (req, res) => {
             return res.status(400).json({ message: 'La empresa no tiene activado el módulo DTE' });
         }
 
-        const [items] = await pool.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
-        const [payments] = await pool.query('SELECT * FROM sales_payments WHERE sale_id = ?', [id]);
-        const [linkedDocs] = await pool.query('SELECT * FROM sales_linked_documents WHERE sale_id = ?', [id]);
+        const [items] = await connection.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
+        const [payments] = await connection.query('SELECT * FROM sales_payments WHERE sale_id = ?', [id]);
+        const [linkedDocs] = await connection.query('SELECT * FROM sales_linked_documents WHERE sale_id = ?', [id]);
 
         let codPuntoVentaMH = null;
         if (sale.pos_id) {
-            const [pos] = await pool.query('SELECT codigo FROM points_of_sale WHERE id = ?', [sale.pos_id]);
+            const [pos] = await connection.query('SELECT codigo FROM points_of_sale WHERE id = ?', [sale.pos_id]);
             if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
         }
+
+        connection.release();
+        connection = null;
 
         const dtePayload = {
             header: {
@@ -1935,10 +1941,13 @@ const regenerateDTE = async (req, res) => {
 
         const dteInfo = dteResult.data;
 
-        await pool.query(
+        connection = await pool.getConnection();
+        await connection.query(
             'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
             [dteInfo.codigo_generacion, dteInfo.numero_control, dteInfo.sello_recepcion || null, dteInfo.fh_procesamiento || null, id]
         );
+        connection.release();
+        connection = null;
 
         res.json({
             success: true,
@@ -1950,6 +1959,8 @@ const regenerateDTE = async (req, res) => {
     } catch (error) {
         console.error('Error en regenerateDTE:', error);
         res.status(500).json({ message: 'Error al regenerar DTE', error: error.message });
+    } finally {
+        if (connection) connection.release();
     }
 };
 
