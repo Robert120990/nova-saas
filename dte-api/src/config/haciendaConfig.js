@@ -17,6 +17,8 @@ function getEndpoint(key, ambiente) {
     const envVarName = `HACIENDA_${key.toUpperCase()}_URL${suffix}`;
     const url = process.env[envVarName];
 
+    console.log(`[HaciendaConfig-DEBUG] getEndpoint(${key}, "${ambiente}") → isProd=${isProd} → ${url}`);
+
     if (!url) {
         throw new Error(`Endpoint de Hacienda no configurado: ${envVarName}. Verifique su archivo .env`);
     }

@@ -36,6 +36,7 @@ async function emit(req, res) {
 
         // 2. Get Company/Branch credentials for signing and transmission
         const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
+        console.log(`[DTE-EMIT-DEBUG] Company ${req.company_id} — ambiente DB: "${company[0].ambiente}"`);
         const certPass = bodyPassword || company[0].certificate_password;
         const signatureMode = process.env.SIGNATURE_MODE || 'internal';
 
@@ -76,6 +77,7 @@ async function emit(req, res) {
             codigoGeneracion: codigoGeneracion,
             version: getSchemaVersion(tipoDte)
         });
+        console.log(`[DTE-EMIT-DEBUG] Ambiente enviado a Hacienda: "${company[0].ambiente === 'produccion' ? '01' : '00'}" (DB: "${company[0].ambiente}")`);
 
         // 6. Store in Database
         const dbStatus = txResult.success && txResult.status === 'PROCESADO' ? 'ACCEPTED' : 'REJECTED';
