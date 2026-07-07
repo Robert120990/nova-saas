@@ -32,7 +32,19 @@ const Roles = () => {
     const parsePermissions = (raw) => {
         if (!raw) return [];
         if (Array.isArray(raw)) return raw;
-        try { return JSON.parse(raw); } catch { return []; }
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+                if (typeof parsed === 'string') {
+                    try {
+                        const doubleParsed = JSON.parse(parsed);
+                        if (Array.isArray(doubleParsed)) return doubleParsed;
+                    } catch {}
+                }
+            } catch {}
+        }
+        return [];
     };
 
     useEffect(() => {
@@ -113,7 +125,7 @@ const Roles = () => {
         if (!formData.name) return toast.error("El nombre es requerido");
         mutation.mutate({
             ...formData,
-            permissions: JSON.stringify(formData.permissions)
+            permissions: formData.permissions
         });
     };
 

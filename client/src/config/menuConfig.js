@@ -282,8 +282,8 @@ export const menuConfig = [
             { id: 'user-access', label: 'Accesos de Usuario', path: '/user-access', icon: GitBranch, permission: 'manage_user_access' },
             { id: 'roles', label: 'Roles', path: '/roles', icon: Shield, permission: 'manage_roles' },
             { id: 'audit-log', label: 'Bitácora del Sistema', path: '/seguridad/bitacora', icon: ScrollText, permission: 'manage_system' },
-            { id: 'connected-users', label: 'Usuarios Conectados', path: '/seguridad/conectados', icon: Users, permission: 'manage_users' },
-            { id: 'changelog', label: 'Historial de Cambios', path: '/changelog', icon: History, permission: 'manage_system' },
+            { id: 'connected-users', label: 'Usuarios Conectados', path: '/seguridad/conectados', icon: Users, permission: 'manage_connected_users' },
+            { id: 'changelog', label: 'Historial de Cambios', path: '/changelog', icon: History, permission: 'manage_changelog' },
         ]
     },
     {
@@ -308,17 +308,27 @@ export const menuConfig = [
 
 export const getAllPermissions = () => {
     const groups = [];
-    
+    const seen = {};
+
     menuConfig.forEach(group => {
         const perms = [];
-        
+
         const extractPermissions = (items, prefix = '') => {
             items.forEach(item => {
                 if (item.permission) {
+                    if (seen[item.permission]) {
+                        console.error(
+                            `[getAllPermissions] ERROR: El permiso "${item.permission}" ya fue registrado en "${seen[item.permission]}". `
+                            + `Duplicado encontrado en "${group.label} > ${item.label}". `
+                            + 'Cada permiso debe tener un ID único.'
+                        );
+                    } else {
+                        seen[item.permission] = `${group.label} > ${item.label}`;
+                    }
                     const fullLabel = prefix ? `${prefix} - ${item.label}` : item.label;
                     perms.push({ id: item.permission, label: fullLabel });
                 }
-                
+
                 if (item.children) {
                     const nextPrefix = item.label === 'Reportes' ? 'Reportes' : '';
                     extractPermissions(item.children, nextPrefix);

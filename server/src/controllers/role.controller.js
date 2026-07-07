@@ -12,11 +12,18 @@ const getRoles = async (req, res) => {
 const createRole = async (req, res) => {
     const { name, permissions } = req.body;
     try {
+        const perms = typeof permissions === 'string' ? JSON.parse(permissions) : permissions;
+        if (!Array.isArray(perms)) {
+            return res.status(400).json({ message: 'El formato de permisos no es válido' });
+        }
+        if (new Set(perms).size !== perms.length) {
+            return res.status(400).json({ message: 'No se permiten IDs de permiso duplicados' });
+        }
         const [result] = await pool.query(
             'INSERT INTO roles (name, permissions) VALUES (?, ?)',
-            [name, JSON.stringify(permissions)]
+            [name, JSON.stringify(perms)]
         );
-        res.status(201).json({ id: result.insertId, name, permissions });
+        res.status(201).json({ id: result.insertId, name, permissions: perms });
     } catch (error) {
         res.status(500).json({ message: 'Error al crear rol' });
     }
@@ -26,9 +33,16 @@ const updateRole = async (req, res) => {
     const { id } = req.params;
     const { name, permissions } = req.body;
     try {
+        const perms = typeof permissions === 'string' ? JSON.parse(permissions) : permissions;
+        if (!Array.isArray(perms)) {
+            return res.status(400).json({ message: 'El formato de permisos no es válido' });
+        }
+        if (new Set(perms).size !== perms.length) {
+            return res.status(400).json({ message: 'No se permiten IDs de permiso duplicados' });
+        }
         await pool.query(
             'UPDATE roles SET name = ?, permissions = ? WHERE id = ?',
-            [name, JSON.stringify(permissions), id]
+            [name, JSON.stringify(perms), id]
         );
         res.json({ message: 'Rol actualizado' });
     } catch (error) {
