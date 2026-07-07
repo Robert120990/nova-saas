@@ -96,9 +96,41 @@ const GasCloseout = () => {
             setFechaTurno(editData.fecha_turno?.split('T')[0] || editData.fecha_turno);
             setNumeroTurno(editData.numero_turno);
             setTankReadings(editData.tankReadings || []);
+            setLubricantReadings(editData.lubricantReadings || []);
             setCloseoutDespachadores(editData.despachadores || []);
+            setGastos(editData.gastos || []);
+            setRemesas(editData.remesas || []);
+            setCupones(editData.cupones || []);
+            setDescuentos(editData.descuentos || []);
+            setAdelantos(editData.adelantos || []);
+            setTarjetas(editData.tarjetas || []);
+            setCreditos(editData.creditos || []);
+            setVales(editData.vales || []);
+            setAnticiposDesp(editData.anticipos_despachadores || []);
         }
     }, [editData]);
+
+    useEffect(() => {
+        if (!editId) {
+            setCloseoutId(null);
+            setReadings([]);
+            setEstado(null);
+            setSellerId('');
+            setSellerName('');
+            setTankReadings([]);
+            setLubricantReadings([]);
+            setCloseoutDespachadores([]);
+            setGastos([]);
+            setRemesas([]);
+            setCupones([]);
+            setDescuentos([]);
+            setAdelantos([]);
+            setTarjetas([]);
+            setCreditos([]);
+            setVales([]);
+            setAnticiposDesp([]);
+        }
+    }, [editId]);
 
     const { data: sellers = [] } = useQuery({
         queryKey: ['sellers-all'],

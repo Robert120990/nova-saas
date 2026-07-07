@@ -75,8 +75,8 @@ exports.initCloseout = async (req, res) => {
                    p.precio_unitario
             FROM gas_station_nozzles n
             JOIN products p ON n.product_id = p.id
-            WHERE n.company_id = ?
-        `, [req.company_id]);
+            WHERE n.company_id = ? AND (n.branch_id = ? OR (? IS NULL AND n.branch_id IS NULL))
+        `, [req.company_id, req.user.branch_id || null, req.user.branch_id || null]);
 
         const readings = [];
         for (const n of nozzles) {
@@ -113,8 +113,8 @@ exports.initCloseout = async (req, res) => {
         }
 
         const [tanks] = await pool.query(
-            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ?`,
-            [req.company_id]
+            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
         );
 
         const tankReadings = [];
@@ -185,8 +185,8 @@ exports.initTankReadings = async (req, res) => {
         }
 
         const [tanks] = await pool.query(
-            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ?`,
-            [req.company_id]
+            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
         );
 
         const tankReadings = [];
