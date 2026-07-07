@@ -54,7 +54,10 @@ const getEmpleado = async (req, res) => {
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    a.descripcion as afp_nombre,
-                   tc.descripcion as tipo_contrato_nombre
+                   tc.descripcion as tipo_contrato_nombre,
+                   (SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT('id', ec.id, 'nombre', ec.nombre, 'telefono', ec.telefono, 'parentesco', ec.parentesco)), '[]')
+                    FROM rh_empleado_emergency_contacts ec WHERE ec.empleado_id = e.id
+                   ) AS emergency_contacts
             FROM ${TABLE} e
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
             LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
@@ -87,10 +90,10 @@ const createEmpleado = async (req, res) => {
     try {
         let { codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
               ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-              contacto_emergencia_nombre, contacto_emergencia_telefono,
               cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
               tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
-              es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios } = req.body;
+              es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios,
+              emergency_contacts } = req.body;
 
         if (!codigo) {
             const [maxResult] = await pool.query(
@@ -103,19 +106,30 @@ const createEmpleado = async (req, res) => {
         const [result] = await pool.query(
             `INSERT INTO ${TABLE} (company_id, codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
               ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-              contacto_emergencia_nombre, contacto_emergencia_telefono,
               cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
               tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
               es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [req.company_id, codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
              ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-             contacto_emergencia_nombre, contacto_emergencia_telefono,
              cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
              tipo_contrato_id, sueldo_base || 0, bonificacion_fija || 0, cuenta_planillera,
              es_activo ?? 1, es_jubilado ?? 0, en_vacaciones ?? 0, incapacitado ?? 0, comentarios]
         );
-        res.status(201).json({ id: result.insertId, codigo });
+
+        const empleadoId = result.insertId;
+        if (Array.isArray(emergency_contacts) && emergency_contacts.length > 0) {
+            for (const ec of emergency_contacts) {
+                if (ec.nombre && ec.telefono) {
+                    await pool.query(
+                        `INSERT INTO rh_empleado_emergency_contacts (empleado_id, nombre, telefono, parentesco) VALUES (?, ?, ?, ?)`,
+                        [empleadoId, ec.nombre, ec.telefono, ec.parentesco || null]
+                    );
+                }
+            }
+        }
+
+        res.status(201).json({ id: empleadoId, codigo });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ message: `El código de ${LABEL} ya existe en esta empresa` });
@@ -129,28 +143,39 @@ const updateEmpleado = async (req, res) => {
         const { id } = req.params;
         const { codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
                 ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-                contacto_emergencia_nombre, contacto_emergencia_telefono,
                 cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
                 tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
-                es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios } = req.body;
+                es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios,
+                emergency_contacts } = req.body;
 
         const [result] = await pool.query(
             `UPDATE ${TABLE} SET codigo = ?, nombres = ?, apellidos = ?, fecha_nacimiento = ?, num_dui = ?, num_nit = ?, afp_id = ?,
              ocupacion = ?, direccion = ?, departamento = ?, municipio = ?, distrito = ?, telefono = ?, correo = ?,
-             contacto_emergencia_nombre = ?, contacto_emergencia_telefono = ?,
              cargo_id = ?, departamento_personal_id = ?, num_isss = ?, num_nup = ?, fecha_ingreso = ?,
              tipo_contrato_id = ?, sueldo_base = ?, bonificacion_fija = ?, cuenta_planillera = ?,
              es_activo = ?, es_jubilado = ?, en_vacaciones = ?, incapacitado = ?, comentarios = ?
              WHERE id = ? AND company_id = ?`,
             [codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
              ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-             contacto_emergencia_nombre, contacto_emergencia_telefono,
              cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
              tipo_contrato_id, sueldo_base || 0, bonificacion_fija || 0, cuenta_planillera,
              es_activo ?? 1, es_jubilado ?? 0, en_vacaciones ?? 0, incapacitado ?? 0, comentarios,
              id, req.company_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
+
+        if (Array.isArray(emergency_contacts)) {
+            await pool.query(`DELETE FROM rh_empleado_emergency_contacts WHERE empleado_id = ?`, [id]);
+            for (const ec of emergency_contacts) {
+                if (ec.nombre && ec.telefono) {
+                    await pool.query(
+                        `INSERT INTO rh_empleado_emergency_contacts (empleado_id, nombre, telefono, parentesco) VALUES (?, ?, ?, ?)`,
+                        [id, ec.nombre, ec.telefono, ec.parentesco || null]
+                    );
+                }
+            }
+        }
+
         res.json({ id, codigo });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {

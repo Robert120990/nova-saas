@@ -50,6 +50,10 @@ const Empleados = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [emergencyContacts, setEmergencyContacts] = useState([]);
+    const [showEmergencyForm, setShowEmergencyForm] = useState(false);
+    const [editEmergency, setEditEmergency] = useState(null);
+    const [emergencyForm, setEmergencyForm] = useState({ nombre: '', telefono: '', parentesco: '' });
 
     useEffect(() => {
         const timer = setTimeout(() => { setDebouncedSearch(searchTerm); setPage(1); }, 500);
@@ -203,11 +207,54 @@ const Empleados = () => {
             if (data[k] === '' || data[k] === 'null') data[k] = null;
         });
 
+        data.emergency_contacts = emergencyContacts;
+
         mutation.mutate(data);
+    };
+
+    const resetEmergencyForm = () => {
+        setEmergencyForm({ nombre: '', telefono: '', parentesco: '' });
+        setEditEmergency(null);
+        setShowEmergencyForm(false);
+    };
+
+    const handleEditEmergency = (idx) => {
+        const item = emergencyContacts[idx];
+        if (!item) return;
+        setEditEmergency(idx);
+        setEmergencyForm({ nombre: item.nombre, telefono: item.telefono, parentesco: item.parentesco || '' });
+        setShowEmergencyForm(true);
+    };
+
+    const handleSaveEmergency = (e) => {
+        e.preventDefault();
+        if (!emergencyForm.nombre || !emergencyForm.telefono) return;
+        if (editEmergency !== null) {
+            setEmergencyContacts(prev => prev.map((c, i) =>
+                i === editEmergency ? { nombre: emergencyForm.nombre, telefono: emergencyForm.telefono, parentesco: emergencyForm.parentesco } : c
+            ));
+        } else {
+            setEmergencyContacts(prev => [...prev, { nombre: emergencyForm.nombre, telefono: emergencyForm.telefono, parentesco: emergencyForm.parentesco }]);
+        }
+        resetEmergencyForm();
+    };
+
+    const handleDeleteEmergency = (idx) => {
+        setEmergencyContacts(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const parseEmergencyContacts = (raw) => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch { return []; }
     };
 
     const handleEdit = (item) => {
         setSelected(item);
+        setEmergencyContacts(parseEmergencyContacts(item.emergency_contacts));
         setSelectedDept(item.departamento || '');
         setSelectedMun(item.municipio || '');
         setSelectedDistrito(item.distrito || '');
@@ -225,6 +272,7 @@ const Empleados = () => {
                 <button
                     onClick={async () => {
                         setSelected(null);
+                        setEmergencyContacts([]);
                         setSelectedDept(''); setSelectedMun(''); setSelectedDistrito('');
                         setActiveTab('personal');
                         try {
@@ -271,7 +319,7 @@ const Empleados = () => {
 
             <Pagination currentPage={page} totalPages={response.totalPages} totalItems={response.total} onPageChange={setPage} itemsOnPage={items.length} isLoading={isLoading} />
 
-            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelected(null); setNextCode(''); setSelectedDept(''); setSelectedMun(''); setSelectedDistrito(''); }} title={selected ? 'Editar Empleado' : 'Nuevo Empleado'} maxWidth="max-w-5xl">
+            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSelected(null); setNextCode(''); setEmergencyContacts([]); setSelectedDept(''); setSelectedMun(''); setSelectedDistrito(''); }} title={selected ? 'Editar Empleado' : 'Nuevo Empleado'} maxWidth="max-w-5xl">
                 <form onSubmit={handleSubmit} className="space-y-6 pb-4">
                     {selected && (
                         <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 mb-2 flex items-center gap-3">
@@ -400,15 +448,75 @@ const Empleados = () => {
                                     <input name="correo" type="email" defaultValue={selected?.correo || ''} placeholder="correo@ejemplo.com" className={fieldCls} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className={labelCls}>Contacto de Emergencia</label>
-                                    <input name="contacto_emergencia_nombre" defaultValue={selected?.contacto_emergencia_nombre || ''} placeholder="Nombre completo" className={fieldCls} />
+                            <div className="border-t border-slate-100 pt-4 mt-2">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <UserCircle size={14} className="text-amber-500" />
+                                        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Contactos de Emergencia</h4>
+                                    </div>
+                                    {!showEmergencyForm && (
+                                        <button type="button" onClick={() => { setEmergencyForm({ nombre: '', telefono: '', parentesco: '' }); setEditEmergency(null); setShowEmergencyForm(true); }} className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-700">
+                                            <Plus size={12} /> Agregar
+                                        </button>
+                                    )}
                                 </div>
-                                <div>
-                                    <label className={labelCls}>Teléfono de Emergencia</label>
-                                    <input name="contacto_emergencia_telefono" defaultValue={selected?.contacto_emergencia_telefono || ''} placeholder="Teléfono" className={fieldCls} />
-                                </div>
+
+                                {showEmergencyForm && (
+                                    <form onSubmit={handleSaveEmergency} className="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2 mb-3">
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div>
+                                                <label className={labelCls}>Nombre</label>
+                                                <input value={emergencyForm.nombre} onChange={e => setEmergencyForm({ ...emergencyForm, nombre: e.target.value })} required placeholder="Nombre completo" className={fieldCls} />
+                                            </div>
+                                            <div>
+                                                <label className={labelCls}>Teléfono</label>
+                                                <input value={emergencyForm.telefono} onChange={e => setEmergencyForm({ ...emergencyForm, telefono: e.target.value })} required placeholder="Teléfono" className={fieldCls} />
+                                            </div>
+                                            <div>
+                                                <label className={labelCls}>Parentesco</label>
+                                                <input value={emergencyForm.parentesco} onChange={e => setEmergencyForm({ ...emergencyForm, parentesco: e.target.value })} placeholder="Ej: Esposa, Madre" className={fieldCls} />
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end gap-2">
+                                            <button type="button" onClick={resetEmergencyForm} className="px-3 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+                                            <button type="submit" className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold">
+                                                {editEmergency !== null ? 'Actualizar' : 'Agregar'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                {emergencyContacts.length === 0 && !showEmergencyForm && (
+                                    <p className="text-[11px] text-slate-400 italic">Sin contactos de emergencia registrados</p>
+                                )}
+
+                                {emergencyContacts.length > 0 && (
+                                    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                        <table className="w-full text-[11px]">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200">
+                                                    <th className="text-left px-2 py-1.5 font-bold text-slate-500 uppercase text-[10px]">Nombre</th>
+                                                    <th className="text-left px-2 py-1.5 font-bold text-slate-500 uppercase text-[10px]">Teléfono</th>
+                                                    <th className="text-left px-2 py-1.5 font-bold text-slate-500 uppercase text-[10px]">Parentesco</th>
+                                                    <th className="px-2 py-1.5 font-bold text-slate-500 uppercase text-[10px] w-16">Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {emergencyContacts.map((c, idx) => (
+                                                    <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                                                        <td className="px-2 py-1.5 font-medium text-slate-700">{c.nombre}</td>
+                                                        <td className="px-2 py-1.5 text-slate-600">{c.telefono}</td>
+                                                        <td className="px-2 py-1.5 text-slate-500">{c.parentesco || <span className="text-slate-300">-</span>}</td>
+                                                        <td className="px-2 py-1.5 flex gap-1">
+                                                            <button type="button" onClick={() => handleEditEmergency(idx)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit size={13} /></button>
+                                                            <button type="button" onClick={() => handleDeleteEmergency(idx)} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 size={13} /></button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -530,7 +638,7 @@ const Empleados = () => {
                     {/* Only show save button for tabs 1-2 (main form) */}
                     {(activeTab === 'personal' || activeTab === 'laboral') && (
                         <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-                            <button type="button" onClick={() => { setIsModalOpen(false); setSelected(null); setNextCode(''); setSelectedDept(''); setSelectedMun(''); setSelectedDistrito(''); }} className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
+                            <button type="button" onClick={() => { setIsModalOpen(false); setSelected(null); setNextCode(''); setEmergencyContacts([]); resetEmergencyForm(); setSelectedDept(''); setSelectedMun(''); setSelectedDistrito(''); }} className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
                             <button type="submit" disabled={mutation.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50">
                                 {mutation.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Guardando...</> : (selected ? 'Guardar Cambios' : 'Registrar Empleado')}
                             </button>
