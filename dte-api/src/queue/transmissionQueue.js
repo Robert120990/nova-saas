@@ -18,7 +18,7 @@ async function processQueue() {
 
     // 1. Get pending tasks
     const [tasks] = await pool.query(
-        'SELECT tq.*, d.codigo_generacion, d.tipo_dte, d.ambiente, d.json_firmado, c.api_user, c.api_password ' +
+        'SELECT tq.*, d.codigo_generacion, d.tipo_dte, d.ambiente, d.json_firmado, c.api_user, c.api_password, c.ambiente AS company_ambiente ' +
         'FROM transmission_queue tq ' +
         'JOIN dtes d ON tq.dte_id = d.id ' +
         'JOIN companies c ON d.company_id = c.id ' +
@@ -31,7 +31,7 @@ async function processQueue() {
             await pool.query('UPDATE transmission_queue SET status = "PROCESSING" WHERE id = ?', [task.id]);
 
             // 2. Authenticate
-            const auth = await authenticate(task.api_user, task.api_password);
+            const auth = await authenticate(task.api_user, task.api_password, task.company_ambiente);
             if (!auth.success) {
                 throw new Error(auth.message);
             }

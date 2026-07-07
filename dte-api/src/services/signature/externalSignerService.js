@@ -5,8 +5,8 @@
 const axios = require('axios');
 require('dotenv').config();
 
-async function signWithExternalSigner(dteJson, nit, certificatePassword) {
-    const isTest = (process.env.HACIENDA_ENV || 'test') === 'test';
+async function signWithExternalSigner(dteJson, nit, certificatePassword, ambiente) {
+    const isTest = ambiente !== 'produccion';
     const signerUrl = isTest
         ? (process.env.SIGNER_URL_TEST || 'http://localhost:8114/firmardocumento/')
         : (process.env.SIGNER_URL_PROD || 'http://localhost:8113/firmardocumento/');
@@ -15,7 +15,7 @@ async function signWithExternalSigner(dteJson, nit, certificatePassword) {
         console.log('[Signature] Using signer URL:', signerUrl);
         
         const requestBody = {
-            nit: nit.replace(/-/g, ''), // Back to digits only to avoid 809 format error
+            nit: nit.replace(/-/g, ''),
             activo: true,
             passwordPri: certificatePassword,
             dteJson: dteJson
@@ -27,13 +27,11 @@ async function signWithExternalSigner(dteJson, nit, certificatePassword) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            timeout: 10000 // 10 seconds timeout for local service
+            timeout: 10000
         });
 
         console.log('[Signature] Signer raw response:', JSON.stringify(response.data).substring(0, 200));
 
-        // The external signer returns just the JWS string or a body with it
-        // Check for common error structures from Hacienda signer (like { codigo: '809', ... })
         if (response.data && response.data.codigo) {
             const errorMsg = Array.isArray(response.data.mensaje) ? response.data.mensaje.join(', ') : response.data.mensaje;
             throw new Error(`${response.data.codigo}: ${errorMsg || 'Error desconocido del firmador'}`);

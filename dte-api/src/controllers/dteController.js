@@ -35,7 +35,7 @@ async function emit(req, res) {
         const { codigoGeneracion, numeroControl, tipoDte } = dte.identificacion;
 
         // 2. Get Company/Branch credentials for signing and transmission
-        const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password FROM companies WHERE id = ?', [req.company_id]);
+        const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
         const certPass = bodyPassword || company[0].certificate_password;
         const signatureMode = process.env.SIGNATURE_MODE || 'internal';
 
@@ -47,7 +47,8 @@ async function emit(req, res) {
         const signResult = await signatureService.signDTE(dte, {
             certificatePath: company[0].certificate_path,
             certificatePassword: certPass,
-            nit: company[0].nit
+            nit: company[0].nit,
+            ambiente: company[0].ambiente
         });
 
         if (!signResult.success) {
@@ -56,7 +57,7 @@ async function emit(req, res) {
 
         // 4. Authenticate with Hacienda
         console.log(`[HaciendaAuth] Authenticaton request for company ${company[0].nit}...`);
-        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password);
+        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, company[0].ambiente);
         if (!auth.success) {
             throw new Error(`Error MH Auth: ${auth.message}`);
         }
@@ -89,8 +90,8 @@ async function emit(req, res) {
         }
 
         await pool.query(
-            'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 venta_id || null,
                 codigoGeneracion,
@@ -100,6 +101,7 @@ async function emit(req, res) {
                 req.branch_id,
                 req.user ? req.user.id : 0,
                 dbStatus,
+                dte.identificacion.ambiente,
                 JSON.stringify(dte),
                 jwsString,
                 txResult.selloRecepcion || null,
@@ -151,7 +153,7 @@ async function generate(req, res) {
         // 2. Save to DB
         const ventaId = req.body.venta_id || null;
         const [result] = await pool.query(
-            'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, json_original) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 ventaId,
                 dte.identificacion.codigoGeneracion,
@@ -161,6 +163,7 @@ async function generate(req, res) {
                 req.branch_id,
                 req.user ? req.user.id : 0,
                 'PENDING',
+                dte.identificacion.ambiente,
                 JSON.stringify(dte)
             ]
         );
@@ -199,7 +202,7 @@ async function sign(req, res) {
         if (rows.length === 0) return res.status(404).json({ success: false, message: 'DTE no encontrado' });
 
         const dte = rows[0];
-        const [company] = await pool.query('SELECT nit, certificate_path, certificate_password FROM companies WHERE id = ?', [req.company_id]);
+        const [company] = await pool.query('SELECT nit, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
         
         const certPath = company[0].certificate_path;
         const certPass = bodyPassword || company[0].certificate_password;
@@ -212,7 +215,8 @@ async function sign(req, res) {
         const signResult = await signatureService.signDTE(dte.json_original, {
             certificatePath: certPath,
             certificatePassword: certPass,
-            nit: company[0].nit
+            nit: company[0].nit,
+            ambiente: company[0].ambiente
         });
 
         if (signResult.success) {

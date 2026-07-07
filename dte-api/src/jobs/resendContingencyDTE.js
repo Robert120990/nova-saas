@@ -30,7 +30,7 @@ async function processContingencyQueue() {
     for (const task of tasks) {
         try {
             // 2. Authenticate
-            const auth = await authenticate(task.api_user, task.api_password);
+            const auth = await authenticate(task.api_user, task.api_password, task.ambiente);
             if (!auth.success) throw new Error(auth.message);
 
             // 3. Transmit

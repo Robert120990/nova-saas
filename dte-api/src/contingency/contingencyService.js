@@ -6,7 +6,7 @@ const pool = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { authenticate } = require('../transmission/transmissionService');
 const axios = require('axios');
-const haciendaConfig = require('../config/haciendaConfig');
+const { getEndpoint } = require('../config/haciendaConfig');
 
 async function startContingency(payload) {
     const { motivo, tipoContingencia, companyId, branchId } = payload;
@@ -66,7 +66,7 @@ async function getActiveContingency(companyId) {
 
 async function sendContingencyReport(contingencyId) {
     const [contingencyRows] = await pool.query(
-        'SELECT c.*, comp.nit, comp.razon_social, comp.correo, comp.telefono, ' +
+        'SELECT c.*, comp.nit, comp.razon_social, comp.correo, comp.telefono, comp.ambiente, ' +
         'b.tipo_establecimiento, b.codigo_mh, b.codigo as punto_venta_codigo ' +
         'FROM dte_contingencies c ' +
         'LEFT JOIN companies comp ON c.company_id = comp.id ' +
@@ -122,10 +122,10 @@ async function sendContingencyReport(contingencyId) {
     };
 
     try {
-        const auth = await authenticate(con.api_user, con.api_password);
+        const auth = await authenticate(con.api_user, con.api_password, con.ambiente);
         if (!auth.success) return { success: false, message: 'Error de autenticación MH' };
 
-        const url = haciendaConfig.contingency;
+        const url = getEndpoint('contingencia', con.ambiente);
         const response = await axios.post(url, report, {
             headers: { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' }
         });

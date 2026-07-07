@@ -7,7 +7,7 @@ const signatureService = require('../services/signature/signatureService');
 const { authenticate } = require('../transmission/transmissionService');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const haciendaConfig = require('../config/haciendaConfig');
+const { getEndpoint } = require('../config/haciendaConfig');
 
 async function invalidateDTE(payload, companyId, user) {
     const { codigoGeneracion, motivo, descripcion, nombreResponsable, tipDocResponsable, numDocResponsable, nombreSolicita, tipDocSolicita, numDocSolicita } = payload;
@@ -94,7 +94,8 @@ async function invalidateDTE(payload, companyId, user) {
         {
             certificatePath: company.certificate_path,
             certificatePassword: company.certificate_password,
-            nit: company.nit
+            nit: company.nit,
+            ambiente: company.ambiente
         }
     );
 
@@ -103,12 +104,12 @@ async function invalidateDTE(payload, companyId, user) {
     }
 
     // 4. Send to Hacienda
-    const auth = await authenticate(company.api_user, company.api_password);
+    const auth = await authenticate(company.api_user, company.api_password, company.ambiente);
     if (!auth.success) {
         throw new Error(`Error de autenticación: ${auth.message}`);
     }
 
-    const invalidationUrl = haciendaConfig.endpoints.invalidation;
+    const invalidationUrl = getEndpoint('invalidacion', dte.ambiente);
     
     try {
         const response = await axios.post(invalidationUrl, {

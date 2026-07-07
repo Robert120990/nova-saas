@@ -4,10 +4,10 @@
 
 const axios = require('axios');
 const qs = require('qs');
-const haciendaConfig = require('../config/haciendaConfig');
+const { getEndpoint } = require('../config/haciendaConfig');
 
-async function authenticate(apiUser, apiPassword) {
-    const authUrl = haciendaConfig.endpoints.auth;
+async function authenticate(apiUser, apiPassword, ambiente) {
+    const authUrl = getEndpoint('auth', ambiente);
 
     try {
         console.log(`[HaciendaAuth] Attempting login for user: ${apiUser}`);
@@ -52,7 +52,7 @@ async function authenticate(apiUser, apiPassword) {
 }
 
 async function transmitDTE(token, signedDte, dteInfo) {
-    const receptionUrl = haciendaConfig.endpoints.reception;
+    const receptionUrl = getEndpoint('recepcion', dteInfo.ambiente);
 
     try {
         const payload = {
@@ -68,7 +68,7 @@ async function transmitDTE(token, signedDte, dteInfo) {
         
         const response = await axios.post(receptionUrl, payload, {
             headers: {
-                'Authorization': token, // Token already has 'Bearer ' prefix usually
+                'Authorization': token,
                 'Content-Type': 'application/json'
             }
         });

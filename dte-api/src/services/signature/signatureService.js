@@ -13,7 +13,7 @@ require('dotenv').config();
  * @returns {Promise<Object>}
  */
 async function signDTE(dteJson, options = {}) {
-    const { certificatePath, certificatePassword, nit } = options;
+    const { certificatePath, certificatePassword, nit, ambiente } = options;
     const mode = process.env.SIGNATURE_MODE || 'internal';
     
     console.log(`[Signature] Using mode: ${mode}`);
@@ -22,7 +22,7 @@ async function signDTE(dteJson, options = {}) {
         if (mode === 'internal') {
             return await signWithInternalSigner(dteJson, certificatePath, certificatePassword);
         } else if (mode === 'external') {
-            return await signWithExternalSigner(dteJson, nit, certificatePassword);
+            return await signWithExternalSigner(dteJson, nit, certificatePassword, ambiente || 'test');
         } else if (mode === 'mock') {
             console.log('[Signature] Using MOCK mode... returning dummy JWS');
             return {

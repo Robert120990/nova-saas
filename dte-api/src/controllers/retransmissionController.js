@@ -215,7 +215,8 @@ async function retransmit(req, res) {
         const signResult = await signatureService.signDTE(dteJson, {
             certificatePath: company[0].certificate_path,
             certificatePassword: certPass,
-            nit: company[0].nit
+            nit: company[0].nit,
+            ambiente: company[0].ambiente
         });
 
         if (!signResult.success) {
@@ -223,7 +224,7 @@ async function retransmit(req, res) {
         }
 
         // 5. Authenticate with Hacienda
-        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password);
+        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, company[0].ambiente);
         if (!auth.success) {
             throw new Error(`Error MH Auth: ${auth.message}`);
         }

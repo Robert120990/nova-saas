@@ -2,7 +2,7 @@ const pool = require('../../../config/db');
 const signatureService = require('../signature/signatureService');
 const { authenticate } = require('../../transmission/transmissionService');
 const axios = require('axios');
-const haciendaConfig = require('../../config/haciendaConfig');
+const { getEndpoint } = require('../../config/haciendaConfig');
 const { validateDTE } = require('../../validators/schemaValidator');
 const { getSchemaVersion } = require('../../utils/versionMap');
 const { round, getAmountInWords } = require('../../utils/calculations');
@@ -244,14 +244,15 @@ async function emitERET(payload, companyId, user) {
     const signResult = await signatureService.signDTE(eretJson, {
         certificatePath: company[0].certificate_path,
         certificatePassword: certPass,
-        nit: company[0].nit
+        nit: company[0].nit,
+        ambiente: company[0].ambiente
     });
 
     if (!signResult.success) {
         throw new Error(`Falla en firma: ${signResult.message}`);
     }
 
-    const auth = await authenticate(company[0].api_user, company[0].api_password);
+    const auth = await authenticate(company[0].api_user, company[0].api_password, company[0].ambiente);
     if (!auth.success) {
         throw new Error(`Error MH Auth: ${auth.message}`);
     }
@@ -259,7 +260,7 @@ async function emitERET(payload, companyId, user) {
     let jwsString = typeof signResult.jws === 'string' ? signResult.jws : signResult.jws?.body || JSON.stringify(signResult.jws);
     jwsString = jwsString.replace(/^"|"$/g, '').trim();
 
-    const receptionUrl = haciendaConfig.endpoints.reception;
+    const receptionUrl = getEndpoint('recepcion', eretJson.identificacion.ambiente);
 
     let txResult;
     try {
