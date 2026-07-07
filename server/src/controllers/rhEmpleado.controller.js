@@ -13,7 +13,10 @@ const getEmpleados = async (req, res) => {
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    a.descripcion as afp_nombre,
-                   tc.descripcion as tipo_contrato_nombre
+                   tc.descripcion as tipo_contrato_nombre,
+                   (SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT('id', ec.id, 'nombre', ec.nombre, 'telefono', ec.telefono, 'parentesco', ec.parentesco)), '[]')
+                    FROM rh_empleado_emergency_contacts ec WHERE ec.empleado_id = e.id
+                   ) AS emergency_contacts
             FROM ${TABLE} e
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
             LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
