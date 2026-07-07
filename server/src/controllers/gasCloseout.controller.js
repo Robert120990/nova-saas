@@ -57,8 +57,8 @@ exports.initCloseout = async (req, res) => {
             }
         } else {
             const [allDespachadores] = await pool.query(
-                `SELECT id, codigo, descripcion FROM gas_station_despachadores WHERE company_id = ? ORDER BY id ASC`,
-                [req.company_id]
+                `SELECT id, codigo, descripcion FROM gas_station_despachadores WHERE company_id = ? AND branch_id = ? ORDER BY id ASC`,
+                [req.company_id, req.user.branch_id]
             );
             for (const d of allDespachadores) {
                 await pool.query(
