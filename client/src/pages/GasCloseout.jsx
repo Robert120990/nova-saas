@@ -899,9 +899,13 @@ const GasCloseout = () => {
             }
 
             if (field === 'lectura_actual') {
-                const calibKey = `calibracion-${currentReading.nozzle_id}`;
-                const calibEl = inputRefs.current[calibKey];
-                if (calibEl) { calibEl.focus(); return; }
+                const nextReading = readings[index + 1];
+                if (nextReading) {
+                    const nextKey = editAnterior ? `anterior-${nextReading.nozzle_id}` : `lectura_actual-${nextReading.nozzle_id}`;
+                    const nextEl = inputRefs.current[nextKey];
+                    if (nextEl) nextEl.focus();
+                }
+                return;
             }
 
             if (field === 'calibracion') {
@@ -1517,6 +1521,7 @@ const GasCloseout = () => {
                                                             onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
                                                             onKeyDown={(e) => handleKeyDown(e, idx, 'lectura_actual')}
                                                             onFocus={(e) => e.target.select()}
+                                                            onWheel={(e) => e.target.blur()}
                                                             disabled={estado === 'cerrado'}
                                                             className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
                                                         />
@@ -1531,6 +1536,7 @@ const GasCloseout = () => {
                                                             onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
                                                             onKeyDown={(e) => handleKeyDown(e, idx, 'calibracion')}
                                                             onFocus={(e) => e.target.select()}
+                                                            onWheel={(e) => e.target.blur()}
                                                             disabled={estado === 'cerrado'}
                                                             className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
                                                         />

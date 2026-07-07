@@ -341,7 +341,7 @@ exports.updateReading = async (req, res) => {
 
         const [closeouts] = await pool.query(
             `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
-            [id, req.company_id]
+            [closeoutId, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
         if (closeouts[0].estado === 'cerrado') {
