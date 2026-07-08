@@ -1270,7 +1270,7 @@ const SalesTerminal = () => {
     }
 
     return (
-        <div className="min-h-0 flex flex-col gap-6 pb-20 overflow-y-auto custom-scrollbar pr-2">
+        <div className="min-h-0 flex flex-col gap-4 pb-20 overflow-y-auto custom-scrollbar pr-2">
             {activeView === 'pos' ? (
                 <>
                     {/* Header: Cliente, Tipo DTE, Vendedor */}
@@ -1454,7 +1454,7 @@ const SalesTerminal = () => {
                     )}
 
                     {/* Área Principal (Carrito y Totales) */}
-                    <div className="flex-none flex flex-col lg:flex-row gap-6 mb-10">
+                    <div className="flex-none flex flex-col lg:flex-row gap-4 mb-6">
                         <div className="flex-[8] bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col">
                             {/* Quick Add Bar (Like Purchases) */}
                             <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-[120px_1fr_80px_100px_100px_40px] gap-2 items-end">
@@ -1627,8 +1627,8 @@ const SalesTerminal = () => {
                         </div>
 
                         <div className="flex-[3] flex flex-col gap-4">
-                            <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl">
-                                <div className="space-y-1.5 mb-6 opacity-80 text-[10px] font-bold uppercase tracking-wider">
+                            <div className="bg-slate-900 rounded-[2rem] p-5 text-white shadow-xl">
+                                <div className="space-y-1.5 mb-4 opacity-80 text-[10px] font-bold uppercase tracking-wider">
                                     {tipoDte === '07' ? (
                                         <>
                                             <div className="flex justify-between border-b border-white/10 pb-1"><span>Docs. Vinculados</span><span>{linkedDocs.length}</span></div>
@@ -1651,11 +1651,11 @@ const SalesTerminal = () => {
                                     )}
                                     {generalDiscount > 0 && <div className="flex justify-between text-rose-300"><span>Descuento Gral.</span><span>-${generalDiscount.toFixed(2)}</span></div>}
                                 </div>
-                                <div className="text-5xl font-black mb-6 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
+                                <div className="text-4xl font-black mb-4 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
                                 <button 
                                     disabled={tipoDte === '07' ? linkedDocs.length === 0 : cart.length === 0}
                                     onClick={goToPayment}
-                                    className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200"
+                                    className="w-full bg-indigo-600 text-white py-3 rounded-2xl font-black uppercase text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200"
                                 >
                                     {tipoDte === '07' ? 'Emitir Retención (F10)' : 'Pagar (F10)'}
                                 </button>
