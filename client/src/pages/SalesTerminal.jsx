@@ -1671,9 +1671,9 @@ const SalesTerminal = () => {
                     </div>
                 </>
             ) : (
-                <div className="flex-1 flex flex-col gap-4 bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 animate-in zoom-in-95 duration-300">
-                    <div className="flex items-center justify-between mb-2">
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight">Caja de Cobro</h2>
+                <div className="flex-1 flex flex-col gap-2 bg-white rounded-[3rem] pt-4 pb-5 px-6 shadow-sm border border-slate-100 animate-in zoom-in-95 duration-300">
+                    <div className="flex items-center justify-between mb-0">
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Caja de Cobro</h2>
                         <button onClick={() => setActiveView('pos')} className="bg-slate-100 p-4 rounded-2xl"><X size={24} className="text-slate-600" /></button>
                     </div>
 
@@ -1715,9 +1715,9 @@ const SalesTerminal = () => {
                         </div>
 
                         {/* Columna de Pagos */}
-                        <div className="flex flex-col gap-4 overflow-hidden">
+                        <div className="flex flex-col gap-3">
                             {/* Condición de Operación */}
-                            <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col gap-2">
+                            <div className="bg-white p-4 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col gap-1">
                                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Condición de la Operación (DTE)</label>
                                 <select 
                                     value={condicionPago}
@@ -1730,7 +1730,7 @@ const SalesTerminal = () => {
                                             toast.info('Venta al crédito: los pagos ahora son opcionales (Prima)');
                                         }
                                     }}
-                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all"
+                                    className="w-full px-5 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all"
                                 >
                                     {condiciones.length > 0 ? condiciones.map(c => (
                                         <option key={c.code} value={c.code} disabled={c.code === '2' && !selectedCustomerData?.es_credito}>{c.description.toUpperCase()}</option>
@@ -1744,14 +1744,14 @@ const SalesTerminal = () => {
                             </div>
 
                             {/* Formulario de Abono */}
-                            <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-white p-4 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Forma de Pago</label>
                                         <select 
                                             value={currentPayment.metodo_pago}
                                             onChange={(e) => setCurrentPayment({...currentPayment, metodo_pago: e.target.value})}
-                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         >
                                             {paymentMethods.length > 0 ? paymentMethods.map(m => (
                                                 <option key={m.code} value={m.code}>{m.description}</option>
@@ -1773,13 +1773,13 @@ const SalesTerminal = () => {
                                             value={currentPayment.monto}
                                             onChange={(e) => setCurrentPayment({...currentPayment, monto: e.target.value})}
                                             placeholder="0.00"
-                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         />
                                     </div>
                                 </div>
 
                                 {['02', '03', '04', '05'].includes(currentPayment.metodo_pago) && (
-                                    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                                         <div className="col-span-1">
                                             <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Referencia / Auth</label>
                                             <input 
@@ -1837,21 +1837,21 @@ const SalesTerminal = () => {
                                         setCurrentPayment({ metodo_pago: '01', monto: remaining > 0 ? remaining.toFixed(2) : '', referencia: '', num_cheque: '', last_digits: '' });
                                         toast.success('Abono registrado');
                                     }}
-                                    className="w-full py-3.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-black active:scale-95 transition-all shadow-md"
+                                    className="w-full py-2.5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-black active:scale-95 transition-all shadow-md"
                                 >
                                     Agregar Abono
                                 </button>
                             </div>
 
                             {/* Listado de Abonos */}
-                            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
+                            <div className="space-y-3">
                                 <div className="flex items-center justify-between px-2">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                         {condicionPago === '2' ? 'Primas / Abonos Iniciales' : 'Registro de Abonos'}
                                     </span>
                                 </div>
                                 {payments.map((p, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-5 bg-white rounded-3xl border border-slate-100 shadow-sm group hover:border-indigo-200 transition-all">
+                                    <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-3xl border border-slate-100 shadow-sm group hover:border-indigo-200 transition-all">
                                         <div className="flex items-center gap-4">
                                             <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 group-hover:scale-110 transition-transform">
                                                 {p.metodo_pago === '01' ? <Banknote size={20} /> : <CreditCard size={20} />}
@@ -1870,7 +1870,7 @@ const SalesTerminal = () => {
                                     </div>
                                 ))}
                                 {payments.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center py-12 text-slate-300 gap-4 border-2 border-dashed border-slate-100 rounded-[2.5rem]">
+                                    <div className="flex flex-col items-center justify-center py-8 text-slate-300 gap-3 border-2 border-dashed border-slate-100 rounded-[2.5rem]">
                                         <Calculator size={40} className="opacity-20" />
                                         <span className="font-bold uppercase text-[10px] tracking-[0.2em] italic">Esperando abonos...</span>
                                     </div>
