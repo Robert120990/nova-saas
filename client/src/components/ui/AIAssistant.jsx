@@ -21,8 +21,12 @@ const AIAssistant = () => {
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef(null);
 
-    // Permission check
-    const hasPermission = user?.role === 'SuperAdmin' || (user?.permissions && JSON.parse(user.permissions).includes('ai_assistant_access'));
+    const userPerms = (() => {
+        if (!user?.permissions) return [];
+        if (Array.isArray(user.permissions)) return user.permissions;
+        try { return JSON.parse(user.permissions); } catch { return []; }
+    })();
+    const hasPermission = user?.role === 'SuperAdmin' || userPerms.includes('ai_assistant_access');
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
