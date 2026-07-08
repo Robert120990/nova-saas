@@ -248,9 +248,22 @@ const SalesHistory = () => {
                     = $${((parseFloat(item.cantidad) * parseFloat(item.precio_unitario)) - parseFloat(item.monto_descuento || 0)).toFixed(2)}
                 </div>
             `).join('');
+            const { data: companies } = await axios.get('/api/companies');
+            const company = Array.isArray(companies) ? companies.find(c => c.id == detail.company_id) : null;
+            const fechaStr = detail.fecha_emision ? new Date(detail.fecha_emision).toLocaleDateString('es-SV') : '';
+            const horaStr = detail.hora_emision || '';
+            let branchAddr = '';
+            if (detail.branch_id) {
+                try {
+                    const { data: branchesData } = await axios.get('/api/branches');
+                    const branch = Array.isArray(branchesData) ? branchesData.find(b => b.id == detail.branch_id) : null;
+                    if (branch?.direccion) branchAddr = branch.direccion;
+                } catch (e) {}
+            }
 
-            const qrUrl = sale.dte_control || sale.codigo_generacion
-                ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(sale.codigo_generacion || sale.dte_control)}`
+            const origin = window.location.origin;
+            const qrUrl = (sale.dte_control || sale.codigo_generacion)
+                ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(origin + '/api/public/dte/' + (sale.codigo_generacion || sale.dte_control) + '/pdf')}`
                 : '';
 
             const html = `
@@ -266,13 +279,21 @@ const SalesHistory = () => {
                         </style>
                     </head>
                     <body>
-                        <div class="center bold" style="font-size: 14px;">${detail.branch_name || 'NOVA SAAS'}</div>
+                        <div class="center bold" style="font-size: 14px;">${company?.razon_social || detail.branch_name || 'EMPRESA'}</div>
+                        ${detail.branch_name ? `<div class="center" style="font-size: 10px;">${detail.branch_name}</div>` : ''}
+                        ${branchAddr ? `<div class="center" style="font-size: 8px;">${branchAddr}</div>` : ''}
+                        <div class="center" style="font-size: 9px;">NIT: ${company?.nit || ''} | NRC: ${company?.nrc || ''}</div>
                         <div class="dashed"></div>
-                        <div class="center bold">${detail.tipo_documento_name || 'DOCUMENTO'}</div>
-                        <div class="center" style="font-size: 11px; margin: 3px 0;">${detail.numero_control || '---'}</div>
+                        <div class="flex-between"><span>TIPO DTE:</span><span>${detail.tipo_documento_name || 'FACTURA'}</span></div>
+                        <div class="flex-between"><span>N° CONTROL:</span><span>${detail.numero_control || '---'}</span></div>
+                        <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${detail.codigo_generacion || '---'}</span></div>
+                        ${detail.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${detail.sello_recepcion}</span></div>` : ''}
+                        <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>
+                        <div class="flex-between"><span>HORA:</span><span>${horaStr}</span></div>
                         <div class="dashed"></div>
                         <div><span class="bold">CLIENTE:</span> ${detail.customer_name || 'CONSUMIDOR FINAL'}</div>
                         ${detail.customer_nit ? `<div><span class="bold">NIT:</span> ${detail.customer_nit}</div>` : ''}
+                        ${detail.customer_nrc ? `<div><span class="bold">NRC:</span> ${detail.customer_nrc}</div>` : ''}
                         <div class="dashed"></div>
                         <div class="flex-between bold">
                             <div style="width: 50%;">DESCRIPCION</div>
@@ -287,8 +308,8 @@ const SalesHistory = () => {
                         <div class="flex-between"><div>TOTAL IVA</div><div>$${parseFloat(detail.total_iva || 0).toFixed(2)}</div></div>
                         ${parseFloat(detail.total_exento || 0) > 0 ? `<div class="flex-between"><div>TOTAL EXENTAS</div><div>$${parseFloat(detail.total_exento).toFixed(2)}</div></div>` : ''}
                         ${parseFloat(detail.total_no_sujeto || 0) > 0 ? `<div class="flex-between"><div>NO SUJETAS</div><div>$${parseFloat(detail.total_no_sujeto).toFixed(2)}</div></div>` : ''}
-                        ${parseFloat(detail.fovial || 0) > 0 ? `<div class="flex-between"><div>FOVIAL</div><div>$${parseFloat(detail.fovial).toFixed(2)}</div></div>` : ''}
-                        ${parseFloat(detail.cotrans || 0) > 0 ? `<div class="flex-between"><div>COTRANS</div><div>$${parseFloat(detail.cotrans).toFixed(2)}</div></div>` : ''}
+                        <div class="flex-between"><div>FOVIAL</div><div>$${parseFloat(detail.fovial || 0).toFixed(2)}</div></div>
+                        <div class="flex-between"><div>COTRANS</div><div>$${parseFloat(detail.cotrans || 0).toFixed(2)}</div></div>
                         <div class="flex-between bold" style="font-size: 1.2em; margin-top: 5px;">
                             <div>TOTAL A PAGAR</div>
                             <div>$${parseFloat(detail.total_pagar || 0).toFixed(2)}</div>
@@ -503,54 +524,54 @@ const SalesHistory = () => {
                                     {menuState?.id === sale.id && (
                                         <div className="fixed z-[101]" style={{ top: menuState.top, right: menuState.right }}>
                                             <div className={`bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in duration-200 ${menuState.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'}`}>
-                                                <div className="p-2 grid grid-cols-1 gap-1 w-56">
-                                                    <button onClick={() => { handleViewSale(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                <div className="p-1.5 grid grid-cols-1 gap-0.5 w-52">
+                                                    <button onClick={() => { handleViewSale(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><Eye size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Ver Detalle</span>
                                                     </button>
                                                     
-                                                    <button onClick={() => { handleViewRTEE(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handleViewRTEE(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-110 transition-transform"><FileText size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Representación (PDF)</span>
                                                     </button>
 
-                                                    <button onClick={() => { handleViewJSON(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handleViewJSON(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Code size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Ver JSON DTE</span>
                                                     </button>
 
-                                                    <button onClick={() => { handleViewResponse(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handleViewResponse(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg group-hover:scale-110 transition-transform"><Terminal size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Respuesta MH</span>
                                                     </button>
 
                                                     {sale.dte_status === 'ACCEPTED' && (
-                                                        <button onClick={() => { handleResendEmail(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <button onClick={() => { handleResendEmail(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform"><Send size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Reenviar Correo</span>
                                                         </button>
                                                     )}
 
                                                     {(sale.dte_status === 'REJECTED' || sale.dte_status === 'RECHAZADO') && (
-                                                        <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Reintentar Envío</span>
                                                         </button>
                                                     )}
 
                                                     {sale.codigo_generacion && (
-                                                        <button onClick={() => { handleRegenerateDTE(sale.id); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <button onClick={() => { handleRegenerateDTE(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Regenerar DTE</span>
                                                         </button>
                                                     )}
 
-                                                    <div className="h-px bg-slate-100 my-1 mx-2" />
+                                                    <div className="h-px bg-slate-100 my-0.5 mx-1" />
 
                                                     <button 
                                                         onClick={() => { handleOpenVoidModal(sale); setMenuState(null); }} 
                                                         disabled={sale.estado === 'anulado' || !isVoidableDTE(sale)}
-                                                        className={`flex items-center gap-3 w-full p-2.5 text-left rounded-xl transition-all group ${
+                                                        className={`flex items-center gap-2 w-full p-1.5 text-left rounded-xl transition-all group ${
                                                             sale.estado === 'anulado' || !isVoidableDTE(sale) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-rose-50 text-rose-600'
                                                         }`}
                                                     >
@@ -560,7 +581,7 @@ const SalesHistory = () => {
                                                         <span className="text-xs font-bold">Anular Operación</span>
                                                     </button>
 
-                                                    <button onClick={() => { handlePrintTicket(sale); setMenuState(null); }} className="flex items-center gap-3 w-full p-2.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                    <button onClick={() => { handlePrintTicket(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Printer size={14} /></div>
                                                         <span className="text-xs font-bold text-slate-600">Reimprimir Ticket</span>
                                                     </button>

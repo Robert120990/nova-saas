@@ -618,12 +618,42 @@ const SalesTerminal = () => {
 
     const handlePrintTicket = async (sale) => {
         const printContainer = window.open('', '_blank', 'width=400,height=600');
+        const origin = window.location.origin;
+        const qrUrl = sale.dte?.codigo_generacion
+            ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(origin + '/api/public/dte/' + sale.dte.codigo_generacion + '/pdf')}`
+            : '';
+        const now = new Date();
+        const fechaStr = now.toLocaleDateString('es-SV');
+        const horaStr = now.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        let branchAddr = '';
+        if (sellerSession?.branch_id) {
+            try {
+                const { data: branchesData } = await axios.get('/api/branches');
+                const branch = Array.isArray(branchesData) ? branchesData.find(b => b.id == sellerSession.branch_id) : null;
+                if (branch?.direccion) branchAddr = branch.direccion;
+            } catch (e) {}
+        }
         
         const itemsHtml = sale.items.map(item => `
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                 <div style="flex: 1;">${item.nombre}</div>
             </div>
 
+                    <div class="center bold" style="font-size: 14px;">${currentCompany?.razon_social || user?.company_name || 'EMPRESA'}</div>
+                    ${sellerSession?.branch_name ? `<div class="center" style="font-size: 10px;">${sellerSession.branch_name}</div>` : ''}
+                    ${branchAddr ? `<div class="center" style="font-size: 8px;">${branchAddr}</div>` : ''}
+                    <div class="center" style="font-size: 9px;">NIT: ${currentCompany?.nit || ''} | NRC: ${currentCompany?.nrc || ''}</div>
+                    <div class="dashed"></div>
+                    <div class="flex-between"><span>TIPO DTE:</span><span>${sale.tipoDteName || 'FACTURA'}</span></div>
+                    <div class="flex-between"><span>N° CONTROL:</span><span>${sale.dte?.numero_control || '---'}</span></div>
+                    <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${sale.dte?.codigo_generacion || '---'}</span></div>
+                    ${sale.dte?.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${sale.dte.sello_recepcion}</span></div>` : ''}
+                    <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>
+                    <div class="flex-between"><span>HORA:</span><span>${horaStr}</span></div>
+                    <div class="dashed"></div>
+                    <div><span class="bold">CLIENTE:</span> ${sale.customer?.nombre || 'CONSUMIDOR FINAL'}</div>
+                    ${sale.customer?.nit ? `<div><span class="bold">NIT:</span> ${sale.customer.nit}</div>` : ''}
+                    ${sale.customer?.nrc ? `<div><span class="bold">NRC:</span> ${sale.customer.nrc}</div>` : ''}
                     <div class="dashed"></div>
 
                     <div class="flex-between bold">
