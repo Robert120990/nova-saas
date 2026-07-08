@@ -32,7 +32,7 @@ async function generateControlNumber(tipoDte, companyId, tipoEstablecimiento, co
     const connection = await pool.getConnection();
     const year = new Date().getFullYear();
     const letter = getEstablecimientoLetter(tipoEstablecimiento, codEstableMH);
-    const estabCode = String(codEstableMH || '1').replace(/^[^\d]*/, '').slice(-3).padStart(3, '0');
+    const estabCode = String(codEstableMH || '1').replace(/^[^\d]*/, '').padStart(3, '0');
     const posCode = String(codPuntoVentaMH || '1').replace(/^[^\d]*/, '').slice(-3).padStart(3, '0');
     const serie = `${letter}${estabCode}P${posCode}`;
 
