@@ -50,6 +50,13 @@ const Dashboard = () => {
     const permissions = getPermissions(user);
     const hasDashboardAccess = isSuperAdmin || permissions.includes('view_dashboard');
 
+    // Hooks must always be called (Rules of Hooks)
+    const { data: stats, isLoading } = useQuery({
+        queryKey: ['dashboard-stats', user?.company_id],
+        queryFn: async () => (await axios.get('/api/dashboard/general-stats')).data,
+        enabled: !!user?.company_id && hasDashboardAccess
+    });
+
     if (!hasDashboardAccess) {
         return (
             <div className="space-y-8 animate-in fade-in duration-500 pb-10 max-w-3xl mx-auto">
@@ -114,12 +121,6 @@ const Dashboard = () => {
             </div>
         );
     }
-
-    const { data: stats, isLoading } = useQuery({
-        queryKey: ['dashboard-stats', user?.company_id],
-        queryFn: async () => (await axios.get('/api/dashboard/general-stats')).data,
-        enabled: !!user?.company_id
-    });
 
     if (isLoading) {
         return (
