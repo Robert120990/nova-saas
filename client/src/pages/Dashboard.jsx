@@ -18,7 +18,10 @@ import {
     Monitor,
     AlertCircle,
     ChevronRight,
-    Search
+    Search,
+    ShieldAlert,
+    User,
+    GitBranch
 } from 'lucide-react';
 
 const StatCard = ({ label, value, icon: Icon, color, bg, subtitle }) => (
@@ -34,8 +37,83 @@ const StatCard = ({ label, value, icon: Icon, color, bg, subtitle }) => (
     </div>
 );
 
+const getPermissions = (user) => {
+    if (!user?.permissions) return [];
+    if (Array.isArray(user.permissions)) return user.permissions;
+    try { return JSON.parse(user.permissions); } catch { return []; }
+};
+
 const Dashboard = () => {
     const { user } = useAuth();
+
+    const isSuperAdmin = user?.role === 'SuperAdmin';
+    const permissions = getPermissions(user);
+    const hasDashboardAccess = isSuperAdmin || permissions.includes('view_dashboard');
+
+    if (!hasDashboardAccess) {
+        return (
+            <div className="space-y-8 animate-in fade-in duration-500 pb-10 max-w-3xl mx-auto">
+                <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 px-8 py-10">
+                        <div className="flex items-center gap-4 mb-2">
+                            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                                <Building2 size={28} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-indigo-200 text-[11px] font-bold uppercase tracking-widest">Sistema</p>
+                                <h1 className="text-2xl font-black text-white tracking-tight">{user?.company_name || 'SAAS SV'}</h1>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="px-8 py-8 space-y-6">
+                        <div>
+                            <div className="flex items-center gap-3 mb-1">
+                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+                                    <User size={20} className="text-indigo-600" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Bienvenido, {user?.nombre || user?.username}</h2>
+                                    <p className="text-slate-500 font-medium text-[13px]">Has iniciado sesión correctamente</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Tu Rol</p>
+                                <div className="flex items-center gap-2">
+                                    <ShieldAlert size={16} className="text-indigo-500" />
+                                    <span className="text-sm font-bold text-slate-900">{user?.role || '—'}</span>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Sucursal</p>
+                                <div className="flex items-center gap-2">
+                                    <GitBranch size={16} className="text-indigo-500" />
+                                    <span className="text-sm font-bold text-slate-900">{user?.branch_name || '—'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+                            <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                                    <ShieldAlert size={16} className="text-amber-600" />
+                                </div>
+                                <div>
+                                    <p className="text-[13px] font-bold text-amber-800">Acceso restringido al Dashboard</p>
+                                    <p className="text-[12px] text-amber-700 mt-1 leading-relaxed">
+                                        Tu rol no tiene permisos para ver las estadísticas generales del Dashboard. 
+                                        Utiliza el menú lateral para navegar a los módulos disponibles.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const { data: stats, isLoading } = useQuery({
         queryKey: ['dashboard-stats', user?.company_id],
