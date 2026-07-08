@@ -18,7 +18,10 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     Printer,
-    Trash2
+    Trash2,
+    Users,
+    Plus,
+    X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -46,6 +49,11 @@ const CashClosing = () => {
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
     const [expenses, setExpenses] = useState([{ description: '', amount: '' }]);
     const [incomes, setIncomes] = useState([{ description: '', amount: '', payment_method: '01' }]);
+    const [selectedResponsibleId, setSelectedResponsibleId] = useState('');
+    const [selectedSellers, setSelectedSellers] = useState([]);
+    const [isEditSellersModalOpen, setIsEditSellersModalOpen] = useState(false);
+    const [editingShiftSellers, setEditingShiftSellers] = useState(null);
+    const [shiftSellersList, setShiftSellersList] = useState([]);
 
     // Queries
     const { data: currentShiftStatus, isLoading: isLoadingStatus } = useQuery({
@@ -100,6 +108,8 @@ const CashClosing = () => {
         onSuccess: () => {
             queryClient.invalidateQueries(['shifts']);
             setIsOpeningModalOpen(false);
+            setSelectedSellers([]);
+            setSelectedResponsibleId('');
             toast.success('Turno abierto correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al abrir turno')
@@ -117,6 +127,18 @@ const CashClosing = () => {
             toast.success('Turno cerrado correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al cerrar turno')
+    });
+
+    const updateSellersMutation = useMutation({
+        mutationFn: async ({ id, seller_ids }) => (await axios.put(`/api/shifts/${id}/sellers`, { seller_ids })).data,
+        onSuccess: () => {
+            queryClient.invalidateQueries(['shifts']);
+            setIsEditSellersModalOpen(false);
+            setEditingShiftSellers(null);
+            setShiftSellersList([]);
+            toast.success('Vendedores actualizados correctamente');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar vendedores')
     });
 
     const loadSummary = async (shiftId) => {
@@ -151,7 +173,28 @@ const CashClosing = () => {
             seller_id: formData.get('seller_id'),
             pos_id: formData.get('pos_id'),
             branch_id: user.branch_id || formData.get('branch_id'),
-            opening_balance: parseFloat(openingBalance)
+            opening_balance: parseFloat(openingBalance),
+            assigned_sellers: selectedSellers
+        });
+    };
+
+    const handleOpenEditSellers = async (shift) => {
+        try {
+            const { data } = await axios.get(`/api/shifts/${shift.id}/sellers`);
+            setEditingShiftSellers(shift);
+            setShiftSellersList(data);
+            setIsEditSellersModalOpen(true);
+        } catch (err) {
+            toast.error('Error al cargar vendedores del turno');
+        }
+    };
+
+    const handleSaveEditSellers = () => {
+        if (!editingShiftSellers) return;
+        const sellerIds = shiftSellersList.map(s => s.seller_id);
+        updateSellersMutation.mutate({
+            id: editingShiftSellers.id,
+            seller_ids: sellerIds
         });
     };
 
@@ -195,7 +238,7 @@ const CashClosing = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-3">
                         <div>
-                            <span className="text-[9px] font-black uppercase text-slate-400">Vendedor</span>
+                            <span className="text-[9px] font-black uppercase text-slate-400">Vendedor Responsable</span>
                             <p className="text-xs font-bold text-slate-700 truncate">{shift.seller_name || 'Sin asignar'}</p>
                         </div>
                         <div className="text-right">
@@ -203,10 +246,22 @@ const CashClosing = () => {
                             <p className="text-sm font-black text-slate-900">${parseFloat(shift.opening_balance).toFixed(2)}</p>
                         </div>
                     </div>
-                    <div className="text-xs font-bold text-slate-600 mb-3">
+                    <div className="text-xs font-bold text-slate-600 mb-2">
                         {new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         {' — '}
                         {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </div>
+                    <div className="flex items-center justify-between mb-3 pt-2 border-t border-slate-100">
+                        <div>
+                            <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Vendedores</span>
+                            <button
+                                onClick={() => handleOpenEditSellers(shift)}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-all"
+                            >
+                                <Users size={12} />
+                                {shift.seller_name ? `${shift.seller_name} y más` : 'Gestionar'}
+                            </button>
+                        </div>
                     </div>
                     <button 
                         onClick={() => { setSelectedShiftId(shift.id); loadSummary(shift.id); }}
@@ -378,7 +433,7 @@ const CashClosing = () => {
             {/* Modal: Apertura de Caja */}
             <Modal
                 isOpen={isOpeningModalOpen}
-                onClose={() => setIsOpeningModalOpen(false)}
+                onClose={() => { setIsOpeningModalOpen(false); setSelectedSellers([]); setSelectedResponsibleId(''); }}
                 title="Apertura de Turno"
                 maxWidth="max-w-md"
             >
@@ -386,11 +441,46 @@ const CashClosing = () => {
                     <div className="space-y-4">
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Vendedor Responsable</label>
-                            <select name="seller_id" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all">
+                            <select name="seller_id" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all"
+                                value={selectedResponsibleId}
+                                onChange={(e) => {
+                                    setSelectedResponsibleId(e.target.value);
+                                    // Limpiar seleccionados si ya no son elegibles
+                                    setSelectedSellers(prev => prev.filter(id => id !== Number(e.target.value)));
+                                }}
+                            >
                                 <option value="">Seleccione vendedor</option>
                                 {branchSellers.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                             </select>
                         </div>
+                        {selectedResponsibleId && (
+                        <div>
+                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Vendedores Adicionales</label>
+                            <div className="max-h-40 overflow-y-auto space-y-0.5 px-1 custom-scrollbar border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
+                                {branchSellers.filter(s => s.id != selectedResponsibleId).length > 0 ? branchSellers
+                                    .filter(s => s.id != selectedResponsibleId)
+                                    .map(s => (
+                                        <label key={s.id} className={`flex items-center gap-3 p-2 rounded-xl transition-colors cursor-pointer ${selectedSellers.includes(s.id) ? 'bg-indigo-50' : 'hover:bg-slate-100'}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedSellers.includes(s.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedSellers([...selectedSellers, s.id]);
+                                                    } else {
+                                                        setSelectedSellers(selectedSellers.filter(id => id !== s.id));
+                                                    }
+                                                }}
+                                                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <span className="text-xs font-bold text-slate-700">{s.nombre}</span>
+                                        </label>
+                                    )) : (
+                                    <p className="text-[10px] text-slate-400 italic text-center py-3">No hay otros vendedores disponibles en esta sucursal</p>
+                                )}
+                            </div>
+                        </div>
+                        )}
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Punto de Venta (Terminal)</label>
                             <select name="pos_id" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all">
@@ -424,6 +514,70 @@ const CashClosing = () => {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Modal: Editar Vendedores del Turno */}
+            <Modal
+                isOpen={isEditSellersModalOpen}
+                onClose={() => { setIsEditSellersModalOpen(false); setEditingShiftSellers(null); setShiftSellersList([]); }}
+                title={`Vendedores — Turno #${editingShiftSellers?.shift_number || ''}`}
+                maxWidth="max-w-md"
+            >
+                {editingShiftSellers && (
+                    <div className="space-y-6 pt-4">
+                        <p className="text-xs font-bold text-slate-500 px-1">
+                            Responsable: <span className="text-indigo-600">{editingShiftSellers.seller_name}</span>
+                        </p>
+                        <div>
+                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Vendedores Asignados</label>
+                            <div className="max-h-60 overflow-y-auto space-y-0.5 px-1 custom-scrollbar border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
+                                {branchSellers.filter(s => s.id != editingShiftSellers.seller_id).length > 0 ? branchSellers
+                                    .filter(s => s.id != editingShiftSellers.seller_id)
+                                    .map(s => {
+                                        const isAssigned = shiftSellersList.some(sl => sl.seller_id === s.id);
+                                        return (
+                                            <label key={s.id} className={`flex items-center gap-3 p-2 rounded-xl transition-colors cursor-pointer ${isAssigned ? 'bg-indigo-50' : 'hover:bg-slate-100'}`}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={isAssigned}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setShiftSellersList([...shiftSellersList, {
+                                                                seller_id: s.id,
+                                                                seller_name: s.nombre
+                                                            }]);
+                                                        } else {
+                                                            setShiftSellersList(shiftSellersList.filter(sl => sl.seller_id !== s.id));
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-xs font-bold text-slate-700">{s.nombre}</span>
+                                            </label>
+                                        );
+                                    }) : (
+                                    <p className="text-[10px] text-slate-400 italic text-center py-3">No hay otros vendedores disponibles en esta sucursal</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                            <button 
+                                type="button" 
+                                onClick={() => { setIsEditSellersModalOpen(false); setEditingShiftSellers(null); setShiftSellersList([]); }} 
+                                className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={handleSaveEditSellers}
+                                disabled={updateSellersMutation.isPending}
+                                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-30"
+                            >
+                                {updateSellersMutation.isPending ? 'Guardando...' : 'Guardar'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </Modal>
 
             {/* Modal: Arqueo de Caja (Cierre) */}

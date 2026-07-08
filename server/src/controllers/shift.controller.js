@@ -20,10 +20,6 @@ const getCurrentShift = async (req, res) => {
             query += ` AND s.pos_id = ?`;
             params.push(pos_id);
         }
-        if (seller_id && seller_id !== 'undefined') {
-            query += ` AND s.seller_id = ?`;
-            params.push(seller_id);
-        }
 
         query += ` ORDER BY s.start_time DESC`;
 
@@ -35,7 +31,30 @@ const getCurrentShift = async (req, res) => {
 
         // Si se pidió un POS específico, devolver solo ese turno
         if (pos_id && pos_id !== 'undefined') {
-            return res.json({ open: true, shift: shifts[0] });
+            const shift = shifts[0];
+            // Si también se envió seller_id, verificar si está asignado
+            if (seller_id && seller_id !== 'undefined') {
+                const [assigned] = await pool.query(`
+                    SELECT id FROM pos_shift_sellers
+                    WHERE shift_id = ? AND seller_id = ?
+                `, [shift.id, seller_id]);
+                const isAssigned = assigned.length > 0;
+                if (!isAssigned) {
+                    const [resp] = await pool.query(`
+                        SELECT sel.nombre as responsable_name
+                        FROM sellers sel
+                        WHERE sel.id = ?
+                    `, [shift.seller_id]);
+                    return res.json({
+                        open: true,
+                        shift,
+                        isAssigned: false,
+                        responsable_name: resp[0]?.responsable_name || shift.seller_name
+                    });
+                }
+                return res.json({ open: true, shift, isAssigned: true });
+            }
+            return res.json({ open: true, shift });
         }
 
         // Sin POS específico: devolver todos los turnos abiertos
@@ -47,7 +66,7 @@ const getCurrentShift = async (req, res) => {
 };
 
 const openShift = async (req, res) => {
-    const { pos_id, branch_id, seller_id, opening_balance } = req.body;
+    const { pos_id, branch_id, seller_id, opening_balance, assigned_sellers } = req.body;
     
     try {
         // Verificar si ya hay uno abierto
@@ -74,13 +93,33 @@ const openShift = async (req, res) => {
             VALUES (?, ?, ?, ?, NOW(), CURDATE(), ?, ?, 'open')
         `, [req.company_id, branch_id, pos_id, seller_id, shiftNumber, opening_balance || 0]);
 
+        const shiftId = result.insertId;
+
+        // Insertar responsable + vendedores adicionales en pos_shift_sellers
+        const sellerIds = [seller_id];
+        if (assigned_sellers && Array.isArray(assigned_sellers)) {
+            for (const sid of assigned_sellers) {
+                const id = Number(sid);
+                if (id && !sellerIds.includes(id)) {
+                    sellerIds.push(id);
+                }
+            }
+        }
+        for (const sid of sellerIds) {
+            await pool.query(`
+                INSERT IGNORE INTO pos_shift_sellers (shift_id, seller_id)
+                VALUES (?, ?)
+            `, [shiftId, sid]);
+        }
+
         const today = new Date().toISOString().split('T')[0];
 
         res.status(201).json({ 
-            id: result.insertId, 
-            shift_id: result.insertId,
+            id: shiftId, 
+            shift_id: shiftId,
             shift_number: shiftNumber,
             shift_date: today,
+            assigned_count: sellerIds.length,
             message: 'Turno abierto exitosamente'
         });
     } catch (error) {
@@ -348,4 +387,92 @@ const getShiftsHistory = async (req, res) => {
     }
 };
 
-module.exports = { getCurrentShift, openShift, getShiftSummary, closeShift, getShiftsHistory };
+const getShiftSellers = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [shift] = await pool.query(
+            'SELECT seller_id FROM pos_shifts WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+        if (shift.length === 0) {
+            return res.status(404).json({ message: 'Turno no encontrado' });
+        }
+
+        const [rows] = await pool.query(`
+            SELECT pss.id, pss.seller_id, sel.nombre as seller_name, pss.assigned_at
+            FROM pos_shift_sellers pss
+            JOIN sellers sel ON pss.seller_id = sel.id
+            WHERE pss.shift_id = ?
+            ORDER BY pss.id
+        `, [id]);
+
+        const responsableId = shift[0].seller_id;
+        const sellers = rows.map(r => ({
+            ...r,
+            isResponsable: r.seller_id === responsableId
+        }));
+
+        res.json(sellers);
+    } catch (error) {
+        console.error('Error in getShiftSellers:', error);
+        res.status(500).json({ message: 'Error al obtener vendedores del turno' });
+    }
+};
+
+const updateShiftSellers = async (req, res) => {
+    const { id } = req.params;
+    const { seller_ids } = req.body;
+
+    try {
+        const [shift] = await pool.query(
+            'SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+        if (shift.length === 0) {
+            return res.status(404).json({ message: 'Turno no encontrado' });
+        }
+        if (shift[0].status !== 'open') {
+            return res.status(400).json({ message: 'El turno ya está cerrado' });
+        }
+
+        // Reemplazar todos los sellers asignados (siempre incluir responsable)
+        await pool.query('DELETE FROM pos_shift_sellers WHERE shift_id = ?', [id]);
+
+        const allIds = [shift[0].seller_id];
+        if (seller_ids && Array.isArray(seller_ids)) {
+            for (const sid of seller_ids) {
+                const num = Number(sid);
+                if (num && !allIds.includes(num)) {
+                    allIds.push(num);
+                }
+            }
+        }
+        for (const sid of allIds) {
+            await pool.query(`
+                INSERT IGNORE INTO pos_shift_sellers (shift_id, seller_id)
+                VALUES (?, ?)
+            `, [id, sid]);
+        }
+
+        const [rows] = await pool.query(`
+            SELECT pss.id, pss.seller_id, sel.nombre as seller_name, pss.assigned_at
+            FROM pos_shift_sellers pss
+            JOIN sellers sel ON pss.seller_id = sel.id
+            WHERE pss.shift_id = ?
+            ORDER BY pss.id
+        `, [id]);
+
+        const responsableId = shift[0].seller_id;
+        const sellers = rows.map(r => ({
+            ...r,
+            isResponsable: r.seller_id === responsableId
+        }));
+
+        res.json({ sellers, message: 'Vendedores actualizados correctamente' });
+    } catch (error) {
+        console.error('Error in updateShiftSellers:', error);
+        res.status(500).json({ message: 'Error al actualizar vendedores del turno' });
+    }
+};
+
+module.exports = { getCurrentShift, openShift, getShiftSummary, closeShift, getShiftsHistory, getShiftSellers, updateShiftSellers };

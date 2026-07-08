@@ -443,7 +443,13 @@ const SalesTerminal = () => {
                     console.log('[DEBUG-POS-SHIFT] Respuesta:', res.data);
                     
                     if (res.data.open) {
-                        setCurrentShift(res.data.shift);
+                        if (res.data.isAssigned === false) {
+                            setCurrentShift(null);
+                            toast.error(`No está asignado al turno activo (#${res.data.shift.shift_number}, responsable: ${res.data.responsable_name}). Consulte con el responsable de turno.`);
+                            navigate('/ventas/cierre');
+                        } else {
+                            setCurrentShift(res.data.shift);
+                        }
                     } else {
                         setCurrentShift(null);
                         toast.error('Debe abrir un turno para vender. Redirigiendo...');
