@@ -1320,7 +1320,7 @@ const SalesTerminal = () => {
     }
 
     return (
-        <div className="min-h-0 flex flex-col gap-4 pb-20 overflow-y-auto custom-scrollbar pr-2">
+        <div className="min-h-0 flex flex-col gap-4 pb-20 overflow-y-auto custom-scrollbar pr-2 -mt-6 md:-mt-8">
             {activeView === 'pos' ? (
                 <>
                     {/* Header: Cliente, Tipo DTE, Vendedor */}
