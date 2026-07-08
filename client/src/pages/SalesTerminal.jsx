@@ -377,7 +377,11 @@ const SalesTerminal = () => {
             }
             if (e.key === 'F10') {
                 e.preventDefault();
-                if (tipoDte === '07' ? linkedDocs.length > 0 : cart.length > 0) goToPayment();
+                if (activeView === 'pago') {
+                    handleProcessSale();
+                } else if (tipoDte === '07' ? linkedDocs.length > 0 : cart.length > 0) {
+                    goToPayment();
+                }
             }
             if (e.key === 'Escape' && isAuthModalOpen) {
                 navigate('/dashboard');
@@ -416,7 +420,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate]);
+    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView, handleProcessSale]);
 
     // Auto-focus barcode input when starting POS
     useEffect(() => {
@@ -1664,15 +1668,15 @@ const SalesTerminal = () => {
                     </div>
                 </>
             ) : (
-                <div className="flex-1 flex flex-col gap-4 bg-white rounded-[3rem] p-8 shadow-sm border border-slate-100 animate-in zoom-in-95 duration-300">
-                    <div className="flex items-center justify-between mb-4">
+                <div className="flex-1 flex flex-col gap-4 bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 animate-in zoom-in-95 duration-300">
+                    <div className="flex items-center justify-between mb-2">
                         <h2 className="text-4xl font-black text-slate-900 tracking-tight">Caja de Cobro</h2>
                         <button onClick={() => setActiveView('pos')} className="bg-slate-100 p-4 rounded-2xl"><X size={24} className="text-slate-600" /></button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1 min-h-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
                         {/* Columna de Resumen */}
-                        <div className="bg-slate-50 p-8 rounded-[3rem] flex flex-col border border-slate-100 overflow-y-auto custom-scrollbar">
+                        <div className="bg-slate-50 p-6 rounded-[3rem] flex flex-col border border-slate-100 overflow-y-auto custom-scrollbar">
                             <span className="text-indigo-500 font-black uppercase text-[10px] tracking-[0.2em] mb-4">Resumen de Operación</span>
                             <div className="space-y-2 mb-8 text-xs font-bold text-slate-500 uppercase">
                                 <div className="flex justify-between border-b border-slate-100 pb-1"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
@@ -1708,9 +1712,9 @@ const SalesTerminal = () => {
                         </div>
 
                         {/* Columna de Pagos */}
-                        <div className="flex flex-col gap-6 overflow-hidden">
+                        <div className="flex flex-col gap-4 overflow-hidden">
                             {/* Condición de Operación */}
-                            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col gap-2">
+                            <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col gap-2">
                                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Condición de la Operación (DTE)</label>
                                 <select 
                                     value={condicionPago}
@@ -1737,7 +1741,7 @@ const SalesTerminal = () => {
                             </div>
 
                             {/* Formulario de Abono */}
-                            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+                            <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Forma de Pago</label>
@@ -1870,11 +1874,11 @@ const SalesTerminal = () => {
                                 )}
                             </div>
 
-                            <div className="space-y-4 py-4">
+                            <div className="space-y-3 py-2">
                                 <button 
                                     onClick={handleProcessSale}
                                     disabled={processSale.isPending || (condicionPago === '1' && payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) < (totals.total - 0.01))}
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed text-white py-8 rounded-[2.5rem] font-black uppercase text-sm tracking-[0.2em] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-4"
+                                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed text-white py-5 rounded-[2.5rem] font-black uppercase text-sm tracking-[0.2em] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-4"
                                 >
                                     {processSale.isPending ? 'Emitiendo DTE...' : 'Finalizar y Facturar'}
                                     <ChevronRight size={20} />
