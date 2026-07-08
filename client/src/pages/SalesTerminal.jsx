@@ -141,7 +141,7 @@ const SalesTerminal = () => {
 
     const { data: customers = [] } = useQuery({
         queryKey: ['customers'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 99999 } })).data?.data || []
     });
 
     const { data: products = [] } = useQuery({
