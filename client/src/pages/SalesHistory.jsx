@@ -508,7 +508,8 @@ const SalesHistory = () => {
                                                 const menuH = 296;
                                                 const spaceBelow = window.innerHeight - rect.bottom;
                                                 const dir = spaceBelow < menuH && rect.top > menuH ? 'up' : 'down';
-                                                const top = dir === 'up' ? rect.top - 8 - menuH : rect.bottom + 8;
+                                                let top = dir === 'up' ? rect.top - 8 - menuH : rect.bottom + 8;
+                                                top = Math.max(8, Math.min(top, window.innerHeight - menuH - 8));
                                                 setMenuState({ id: sale.id, top, right: document.documentElement.clientWidth - rect.right, dir });
                                             }
                                         }}
@@ -523,7 +524,7 @@ const SalesHistory = () => {
                                     {menuState?.id === sale.id && <div className="fixed inset-0 z-[100]" onClick={() => setMenuState(null)} />}
                                     {menuState?.id === sale.id && (
                                         <div className="fixed z-[101]" style={{ top: menuState.top, right: menuState.right }}>
-                                            <div className={`bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in duration-200 ${menuState.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'}`}>
+                                                <div className={`bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-[calc(100dvh-2rem)] overflow-y-auto animate-in fade-in duration-200 ${menuState.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'}`}>
                                                 <div className="p-1.5 grid grid-cols-1 gap-0.5 w-52">
                                                     <button onClick={() => { handleViewSale(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><Eye size={14} /></div>

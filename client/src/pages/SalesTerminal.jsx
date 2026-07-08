@@ -638,7 +638,21 @@ const SalesTerminal = () => {
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                 <div style="flex: 1;">${item.nombre}</div>
             </div>
+        `).join('');
 
+        const ticketHtml = `
+            <html>
+                <head>
+                    <title>Ticket de Venta</title>
+                    <style>
+                        body { width: 72mm; font-family: 'Courier New', monospace; font-size: 10px; margin: 0; padding: 5px; }
+                        .center { text-align: center; }
+                        .bold { font-weight: bold; }
+                        .dashed { border-top: 1px dashed #000; margin: 4px 0; }
+                        .flex-between { display: flex; justify-content: space-between; }
+                    </style>
+                </head>
+                <body>
                     <div class="center bold" style="font-size: 14px;">${currentCompany?.razon_social || user?.company_name || 'EMPRESA'}</div>
                     ${sellerSession?.branch_name ? `<div class="center" style="font-size: 10px;">${sellerSession.branch_name}</div>` : ''}
                     ${branchAddr ? `<div class="center" style="font-size: 8px;">${branchAddr}</div>` : ''}
@@ -713,10 +727,9 @@ const SalesTerminal = () => {
                     <div style="height: 30px;"></div>
                 </body>
             </html>
-        `);
+        `;
 
-        // Obtener ticket HTML completo antes de cerrar
-        const fullHtml = printContainer.document.documentElement.outerHTML;
+        printContainer.document.write(ticketHtml);
 
         // Verificar si el POS tiene QZ Tray con impresora configurada
         let qzSuccess = false;
@@ -725,7 +738,7 @@ const SalesTerminal = () => {
                 const { data } = await axios.get('/api/pos');
                 const pos = Array.isArray(data) ? data.find(p => p.id == sellerSession.pos_id) : null;
                 if (pos?.auto_print && pos?.printer_name) {
-                    const qzResult = await printTicket(fullHtml, pos.printer_name);
+                    const qzResult = await printTicket(ticketHtml, pos.printer_name);
                     qzSuccess = qzResult?.success;
                 }
             }
