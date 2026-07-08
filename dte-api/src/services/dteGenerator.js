@@ -177,8 +177,8 @@ async function generateDTE(payload) {
 
     // Estos campos NO van en Nota de Crédito (05) ni en CR (07)
     if (tipoDte !== '05' && tipoDte !== '07') {
-        emisor.codEstable = String(branch.codigo || '1').padStart(4, '0');
-        emisor.codPuntoVenta = '0001';
+        emisor.codEstable = (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0');
+        emisor.codPuntoVenta = String(codPuntoVentaMH || '0001').padStart(4, '0');
     }
 
     // CR (07): usa campos con nombres diferentes
