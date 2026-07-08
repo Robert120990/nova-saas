@@ -378,7 +378,7 @@ const SalesTerminal = () => {
             if (e.key === 'F10') {
                 e.preventDefault();
                 if (activeView === 'pago') {
-                    handleProcessSale();
+                    handleProcessSaleRef.current();
                 } else if (tipoDte === '07' ? linkedDocs.length > 0 : cart.length > 0) {
                     goToPayment();
                 }
@@ -420,7 +420,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView, handleProcessSale]);
+    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView]);
 
     // Auto-focus barcode input when starting POS
     useEffect(() => {
@@ -816,6 +816,9 @@ const SalesTerminal = () => {
         };
         processSale.mutate(saleData);
     };
+
+    const handleProcessSaleRef = useRef(handleProcessSale);
+    handleProcessSaleRef.current = handleProcessSale;
 
     // Totals Calculation
     const totals = useMemo(() => {
