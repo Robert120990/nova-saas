@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { sendCloseoutToRrs } = require('../services/gasCloseoutRrs.service');
 
 exports.initCloseout = async (req, res) => {
     try {
@@ -17,20 +18,31 @@ exports.initCloseout = async (req, res) => {
             return res.status(400).json({ message: 'Ya existe un turno abierto en esta sucursal. Debe cerrarlo antes de iniciar uno nuevo.' });
         }
 
-        const [lastTurno] = await pool.query(
-            `SELECT DATE_FORMAT(fecha_turno, '%d/%m/%Y') as fecha_turno, numero_turno FROM gas_station_closeouts
+        // Verify (fecha_turno, numero_turno) pair is not duplicate
+        const [existingTurno] = await pool.query(
+            `SELECT id FROM gas_station_closeouts
              WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
-             ORDER BY created_at DESC LIMIT 1`,
-            [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
+             AND fecha_turno = ? AND numero_turno = ?
+             LIMIT 1`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null, fecha_turno, parseInt(numero_turno, 10)]
+        );
+        if (existingTurno.length > 0) {
+            return res.status(400).json({ message: `El turno #${numero_turno} ya existe para la fecha ${fecha_turno}` });
+        }
+
+        // Validate numbering within the same date
+        const [lastOnDate] = await pool.query(
+            `SELECT numero_turno FROM gas_station_closeouts
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             AND fecha_turno = ?
+             ORDER BY numero_turno DESC LIMIT 1`,
+            [req.company_id, req.user.branch_id || null, req.user.branch_id || null, fecha_turno]
         );
 
-        if (lastTurno.length > 0) {
-            const last = lastTurno[0];
-            if (fecha_turno < last.fecha_turno) {
-                return res.status(400).json({ message: `La fecha del turno no puede ser menor al último turno (${last.fecha_turno})` });
-            }
-            if (parseInt(numero_turno) <= parseInt(last.numero_turno)) {
-                return res.status(400).json({ message: `El número de turno debe ser mayor al último turno (${last.numero_turno})` });
+        if (lastOnDate.length > 0) {
+            const lastNum = parseInt(lastOnDate[0].numero_turno, 10);
+            if (parseInt(numero_turno, 10) <= lastNum) {
+                return res.status(400).json({ message: `El número de turno debe ser mayor al último turno registrado en esta fecha (${lastNum})` });
             }
         }
 
@@ -1781,7 +1793,7 @@ exports.deleteAnticipoDesp = async (req, res) => {
 exports.getLastTurno = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT DATE_FORMAT(fecha_turno, '%d/%m/%Y') as fecha_turno, numero_turno FROM gas_station_closeouts
+            `SELECT fecha_turno, numero_turno FROM gas_station_closeouts
              WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
              ORDER BY created_at DESC LIMIT 1`,
             [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
@@ -1904,5 +1916,34 @@ exports.getCloseoutPrintData = async (req, res) => {
     } catch (error) {
         console.error('Error getCloseoutPrintData:', error);
         res.status(500).json({ message: 'Error al obtener datos de impresión' });
+    }
+};
+
+exports.sendToRrs = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+        if (closeouts[0].estado !== 'cerrado') {
+            return res.status(400).json({ message: 'El cierre debe estar cerrado para enviarlo a RRS' });
+        }
+
+        await sendCloseoutToRrs(id, req.company_id);
+
+        await pool.query(
+            `UPDATE gas_station_closeouts SET rrs_enviado_at = NOW() WHERE id = ?`,
+            [id]
+        );
+
+        res.json({ message: 'Cierre enviado a RRS exitosamente' });
+    } catch (error) {
+        console.error('Error sendToRrs:', error);
+        res.status(500).json({ message: error.message || 'Error al enviar cierre a RRS' });
     }
 };

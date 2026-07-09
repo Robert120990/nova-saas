@@ -4,7 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -18,6 +18,7 @@ const GasReadingHistory = () => {
     const [page, setPage] = useState(1);
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
+    const [rrsModal, setRrsModal] = useState(null);
 
     React.useEffect(() => {
         const timer = setTimeout(() => {
@@ -41,6 +42,16 @@ const GasReadingHistory = () => {
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al eliminar')
+    });
+
+    const sendToRrsMutation = useMutation({
+        mutationFn: (id) => axios.post(`/api/gas-station/closeouts/${id}/send-to-rrs`),
+        onSuccess: () => {
+            toast.success('Cierre enviado a RRS exitosamente');
+            setRrsModal(null);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al enviar a RRS')
     });
 
     const handleView = (item) => {
@@ -85,7 +96,7 @@ const GasReadingHistory = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Fecha', 'Turno #', 'Vendedor', 'Estado', 'Galones Vendidos', 'Total Monto', 'Diferencia', 'Acciones']}
+                    headers={['Fecha', 'Turno #', 'Vendedor', 'Estado', 'Galones Vendidos', 'Total Monto', 'Diferencia', 'RRS', 'Acciones']}
                     data={response.data}
                     isLoading={isLoading}
                     renderRow={(c) => (
@@ -119,6 +130,18 @@ const GasReadingHistory = () => {
                                 }`}>
                                     {parseFloat(c.total_diferencia_efectivo) >= 0 ? '+' : ''}
                                     ${parseFloat(c.total_diferencia_efectivo).toFixed(2)}
+                                </span>
+                            </td>
+                            <td className="px-3 py-1">
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[9px] font-bold uppercase ${
+                                    c.rrs_enviado_at
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-slate-100 text-slate-500'
+                                }`}>
+                                    {c.rrs_enviado_at ? <CheckCircle size={10} /> : <XCircle size={10} />}
+                                    {c.rrs_enviado_at ? (
+                                        <span title={new Date(c.rrs_enviado_at).toLocaleString('es-SV')}>Enviado</span>
+                                    ) : 'Pendiente'}
                                 </span>
                             </td>
                             <td className="px-3 py-1">
@@ -156,6 +179,15 @@ const GasReadingHistory = () => {
                                     >
                                         <Printer size={15} />
                                     </button>
+                                    {c.estado === 'cerrado' && (
+                                        <button
+                                            onClick={() => setRrsModal(c)}
+                                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            title={c.rrs_enviado_at ? 'Reenviar a RRS' : 'Enviar a RRS'}
+                                        >
+                                            <Database size={15} />
+                                        </button>
+                                    )}
                                 </div>
                             </td>
                         </tr>
@@ -204,6 +236,43 @@ const GasReadingHistory = () => {
                 </div>
             </Modal>
 
+            {/* RRS Send modal */}
+            <Modal
+                isOpen={!!rrsModal}
+                onClose={() => setRrsModal(null)}
+                title={rrsModal?.rrs_enviado_at ? 'Reenviar a RRS' : 'Enviar a RRS'}
+                maxWidth="max-w-sm"
+            >
+                <div className="text-center py-4">
+                    <Database size={40} className="mx-auto text-emerald-400 mb-3" />
+                    <p className="text-sm font-medium text-slate-700 mb-1">
+                        Turno #{rrsModal?.numero_turno} — {new Date(rrsModal?.fecha_turno).toLocaleDateString('es-SV')}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                        {rrsModal?.rrs_enviado_at
+                            ? `Enviado previamente el ${new Date(rrsModal.rrs_enviado_at).toLocaleString('es-SV')}. Al reenviar se eliminarán los datos existentes y se volverán a insertar.`
+                            : 'El cierre será enviado a la base de datos RRS (empresa 015).'}
+                    </p>
+                </div>
+                <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                    <button
+                        onClick={() => setRrsModal(null)}
+                        className="px-4 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={() => sendToRrsMutation.mutate(rrsModal?.id)}
+                        disabled={sendToRrsMutation.isPending}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-1"
+                    >
+                        {sendToRrsMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+                        {sendToRrsMutation.isPending
+                            ? 'Enviando...'
+                            : rrsModal?.rrs_enviado_at ? 'Reenviar' : 'Enviar'}
+                    </button>
+                </div>
+            </Modal>
 
         </div>
     );

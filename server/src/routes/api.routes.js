@@ -539,6 +539,9 @@ router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseo
 // Print full closeout data
 router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getCloseoutPrintData);
 
+// Send closeout to RRS external database
+router.post('/gas-station/closeouts/:id/send-to-rrs', gasCloseoutController.sendToRrs);
+
 // Gas Station - Reporte Ventas
 router.get('/gas-station/reporte-ventas', gasReporteController.getReporteVentas);
 

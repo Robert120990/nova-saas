@@ -3423,7 +3423,7 @@ const GasCloseout = () => {
                 {lastTurno && (
                     <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 flex items-center gap-3 text-xs">
                         <span className="font-bold text-indigo-700 uppercase tracking-wider">Último Turno:</span>
-                        <span className="text-indigo-600">{(lastTurno.fecha_turno instanceof Date ? lastTurno.fecha_turno.toLocaleDateString('es-SV') : lastTurno.fecha_turno)} — #{lastTurno.numero_turno}</span>
+                        <span className="text-indigo-600">{new Date(lastTurno.fecha_turno + 'T00:00:00').toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })} — #{lastTurno.numero_turno}</span>
                     </div>
                 )}
                 <div>
