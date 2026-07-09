@@ -70,7 +70,6 @@ export const menuConfig = [
             { id: 'ventas-reglas-descuento', label: 'Reglas de Descuento', path: '/ventas/reglas-descuento', icon: Tag, permission: 'manage_discount_rules' },
             { id: 'ventas-contingencia', label: 'Contingencia DTE', path: '/ventas/contingencia', icon: AlertTriangle, permission: 'manage_dte_contingency' },
             { id: 'ventas-retorno', label: 'Retorno / ERET', path: '/ventas/retorno', icon: Undo2, permission: 'manage_dte_return' },
-            { id: 'ventas-regenerar-dte', label: 'Regenerar DTE', path: '/ventas', icon: RefreshCcw, permission: 'regenerate_dte' },
             { id: 'pos-cierre', label: 'Corte de Caja', path: '/ventas/cierre', icon: Calculator, permission: 'manage_cash_closure' },
             { 
                 id: 'ventas-reportes-parent', 
