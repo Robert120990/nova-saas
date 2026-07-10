@@ -113,9 +113,12 @@ const loginPos = async (req, res) => {
                         `SELECT ps.pos_id, p.nombre as pos_name 
                          FROM pos_shifts ps
                          LEFT JOIN points_of_sale p ON ps.pos_id = p.id
-                         WHERE ps.seller_id = ? AND ps.company_id = ? AND ps.status = 'open'
+                         WHERE (ps.seller_id = ? OR EXISTS (
+                             SELECT 1 FROM pos_shift_sellers pss
+                             WHERE pss.shift_id = ps.id AND pss.seller_id = ?
+                         )) AND ps.company_id = ? AND ps.status = 'open'
                          ORDER BY ps.start_time DESC LIMIT 1`,
-                        [seller.id, req.company_id]
+                        [seller.id, seller.id, req.company_id]
                     );
                     if (activeShift.length > 0) {
                         posId = activeShift[0].pos_id;
