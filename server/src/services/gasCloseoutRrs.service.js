@@ -3,6 +3,16 @@ const pool = require('../config/db');
 
 let rrsPool = null;
 
+function formatDateDDMMYYYY(val) {
+    if (!val) return '';
+    const d = val instanceof Date ? val : new Date(String(val).substring(0, 10) + 'T00:00:00');
+    if (isNaN(d.getTime())) return String(val).substring(0, 10);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+}
+
 function getRrsPool() {
     if (rrsPool) return rrsPool;
     rrsPool = mysql.createPool({
@@ -124,9 +134,7 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
     const tankLecturaId = cierreId + '-T';
     const idEmpresa = '015';
     const idPuntoVenta = 'P01';
-    const fechaTurno = closeout.fecha_turno instanceof Date
-        ? closeout.fecha_turno.toISOString().split('T')[0]
-        : String(closeout.fecha_turno).substring(0, 10);
+    const fechaTurno = formatDateDDMMYYYY(closeout.fecha_turno);
 
     const rrs = getRrsPool();
     const conn = await rrs.getConnection();
@@ -162,13 +170,13 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
 
         // 2. cierre_turno_lecturas
         for (const r of readings) {
-            await conn.execute(`
+                await conn.execute(`
                 INSERT INTO cierre_turno_lecturas
                     (id_cierre_turno, id_cajero, id_producto, id_pistola, codigo_producto, nom_producto,
                      precio, lectura_anterior, lectura_actual, diferencia, calibracion, monto,
                      evaporacion, autoconsumo, varios, otros, total,
                      electronica_ant, electronica_act, dif_electronica, dif_manual, id_empresa, nombre)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, 0, 0, 0, 0, ?, ?)
             `, [
                 cierreId,
                 getNozzleDespachadorCodigo(r.nozzle_id, nozzleAssignments, despachadores),
@@ -182,10 +190,18 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
                 parseFloat(r.diferencia) || 0,
                 parseFloat(r.calibracion) || 0,
                 parseFloat(r.monto) || 0,
+                parseFloat(r.diferencia) || 0,
                 idEmpresa,
                 r.descripcion_producto || ''
             ]);
         }
+
+        // Actualizar id_producto en cierre_turno_lecturas usando codigo_producto
+        await conn.execute(`
+            UPDATE cierre_turno_lecturas a, productos b
+            SET a.id_producto = b.id
+            WHERE a.id_empresa = ? AND a.codigo_producto = b.codigo AND a.id_empresa = b.id_empresa
+        `, [idEmpresa]);
 
         // 3. cierre_turno_gastos
         for (const g of gastos) {
@@ -197,7 +213,7 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
                 cierreId,
                 getDespachadorCodigo(g.despachador_id, despachadores),
                 g.rubro || '',
-                g.fecha instanceof Date ? g.fecha.toISOString().split('T')[0] : String(g.fecha || fechaTurno).substring(0, 10),
+                g.fecha ? formatDateDDMMYYYY(g.fecha) : fechaTurno,
                 g.documento || '',
                 g.tipo || '',
                 g.proveedor || g.proveedor_nombre || '',
