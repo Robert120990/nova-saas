@@ -1473,6 +1473,8 @@ const resendDTEEmail = async (req, res) => {
         const result = await mailerService.sendDTEEmail(id, req.company_id);
         if (result.success) {
             res.json({ success: true, message: 'Correo enviado correctamente' });
+        } else if (result.skip) {
+            res.json({ success: false, message: 'El cliente no tiene un correo electrónico registrado.' });
         } else {
             res.status(500).json({ success: false, message: 'Error al enviar correo', error: result.error });
         }

@@ -412,9 +412,19 @@ module.exports = {
 
             if (!dteJson) throw new Error('El DTE no tiene JSON original para envío');
             if (!dteJson.receptor.correo) {
-                console.log(`[Mailer] Venta ID ${saleId}: El cliente no tiene correo configurado. Se omite envío.`);
-                await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = "Cliente sin correo" WHERE id = ?', [saleId]);
-                return { success: false, skip: true };
+                // Intentar obtener el correo actualizado del cliente desde la tabla customers
+                const [customerRows] = await pool.query(
+                    'SELECT correo FROM customers WHERE id = ? AND company_id = ?',
+                    [venta.customer_id, venta.company_id]
+                );
+                if (customerRows.length > 0 && customerRows[0].correo) {
+                    dteJson.receptor.correo = customerRows[0].correo;
+                    console.log(`[Mailer] Venta ID ${saleId}: Correo recuperado de la tabla customers: ${dteJson.receptor.correo}`);
+                } else {
+                    console.log(`[Mailer] Venta ID ${saleId}: El cliente no tiene correo configurado. Se omite envío.`);
+                    await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = "Cliente sin correo" WHERE id = ?', [saleId]);
+                    return { success: false, skip: true };
+                }
             }
 
 

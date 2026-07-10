@@ -124,12 +124,17 @@ const SalesHistory = () => {
         }
 
         try {
-            await axios.post(`/api/sales/resend-email/${sale.id}`);
-            toast.success('Proceso de reenvío de correo iniciado');
+            const { data } = await axios.post(`/api/sales/resend-email/${sale.id}`);
+            if (data.success) {
+                toast.success('Correo enviado correctamente');
+            } else {
+                toast.warning(data.message || 'El cliente no tiene un correo electrónico registrado');
+            }
             queryClient.invalidateQueries(['sales-history']);
         } catch (error) {
             console.error('Error al reenviar correo:', error);
-            toast.error('Error al iniciar el reenvío de correo');
+            const msg = error.response?.data?.message || 'Error al iniciar el reenvío de correo';
+            toast.error(msg);
         }
     };
 
