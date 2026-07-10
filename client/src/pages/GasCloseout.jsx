@@ -592,6 +592,73 @@ const GasCloseout = () => {
         setRemesas(prev => prev.filter(r => r.id !== id));
     };
 
+    const escHtml = (str) => {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+
+    const handlePrintRemesaLabel = (remesa) => {
+        const companyName = user?.company_name || '';
+        const branchName = user?.branch_name || '';
+        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remesa</title>
+<style>
+    @page { margin: 0; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 6mm 4mm; color: #1e293b; font-size: 10px; width: 80mm; max-width: 80mm; border: 1px solid #000; }
+    .header { text-align: center; margin-bottom: 6px; }
+    .header h2 { font-size: 13px; margin: 0 0 2px; }
+    .header .sub { font-size: 9px; color: #64748b; }
+    .label { font-size: 7px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; margin-bottom: 1px; }
+    .value { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+    .value.monto { font-size: 18px; color: #059669; }
+    .divider { border: 0; border-top: 1px dashed #cbd5e1; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9px; }
+    .row .lbl { color: #64748b; }
+    .row .val { font-weight: 600; }
+    @media print {
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80mm; max-width: 80mm; }
+    }
+</style></head><body>
+    <div class="header">
+        <h2>${escHtml(companyName)}</h2>
+        <div class="sub">${escHtml(branchName)}</div>
+    </div>
+    <hr class="divider">
+    <div class="label">Remesa</div>
+    <div class="value">${escHtml(remesa.documento || '—')}</div>
+    <div class="row">
+        <span class="lbl">Turno</span>
+        <span class="val">#${numeroTurno || '—'}</span>
+    </div>
+    <div class="row">
+        <span class="lbl">Fecha</span>
+        <span class="val">${fechaTurno || '—'}</span>
+    </div>
+    <div class="row">
+        <span class="lbl">Despachador</span>
+        <span class="val">${escHtml(remesa.despachador_descripcion || '—')}</span>
+    </div>
+    <div class="row">
+        <span class="lbl">Tipo Operación</span>
+        <span class="val">${({
+            venta_combustible: 'Venta Combustible',
+            recuperacion_credito: 'Recuperación Crédito',
+            pago_anticipado: 'Pago Anticipado'
+        }[remesa.tipo_operacion] || remesa.tipo_operacion)}</span>
+    </div>
+    <hr class="divider">
+    <div style="text-align:center;">
+        <div class="label">Monto</div>
+        <div class="value monto">$${parseFloat(remesa.monto || 0).toFixed(2)}</div>
+    </div>
+    <script>setTimeout(() => { window.print(); }, 200);<\/script>
+</body></html>`;
+
+        const win = window.open('', '_blank');
+        win.document.write(html);
+        win.document.close();
+    };
+
     const handleOpenCupones = () => {
         setShowCuponesModal(true);
     };
@@ -1486,7 +1553,7 @@ const GasCloseout = () => {
                                             const diferencia = r.lectura_actual - r.lectura_anterior - r.calibracion;
                                             const monto = diferencia * r.precio;
                                             return (
-                                                <tr key={r.nozzle_id} className="hover:bg-slate-50 transition-colors text-[11px]">
+                                                <tr key={r.nozzle_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-indigo-100 transition-colors text-[11px]`}>
                                                     <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap">{r.codigo_pistola}</td>
                                                     <td className="px-1.5 py-0.5 max-w-[120px] truncate">
                                                         <span className="font-medium text-slate-800">{r.codigo_producto}</span>
@@ -1841,14 +1908,23 @@ const GasCloseout = () => {
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1 text-center">
-                                                    {estado !== 'cerrado' && (
+                                                    <div className="flex items-center justify-center gap-0.5">
                                                         <button
-                                                            onClick={() => handleRemoveRemesa(r.id)}
-                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                            onClick={() => handlePrintRemesaLabel(r)}
+                                                            className="p-0.5 text-slate-300 hover:text-indigo-500 transition-colors"
+                                                            title="Imprimir etiqueta"
                                                         >
-                                                            <Trash2 size={14} />
+                                                            <Printer size={14} />
                                                         </button>
-                                                    )}
+                                                        {estado !== 'cerrado' && (
+                                                            <button
+                                                                onClick={() => handleRemoveRemesa(r.id)}
+                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
