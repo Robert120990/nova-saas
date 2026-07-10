@@ -53,6 +53,7 @@ const rhPlanillaLiquidacionesController = require('../controllers/rhPlanillaLiqu
 const rhHonorariosController = require('../controllers/rhHonorarios.controller');
 const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinaldos.controller');
 const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.controller');
+const rhPlanillaController = require('../controllers/rhPlanilla.controller');
 const changelogController = require('../controllers/changelog.controller');
 
 // Gas Station Controllers
@@ -542,8 +543,15 @@ router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getClo
 // Send closeout to RRS external database
 router.post('/gas-station/closeouts/:id/send-to-rrs', gasCloseoutController.sendToRrs);
 
+// Gas Station - Ventas Comparacion & DTE Complementaria
+router.get('/gas-station/closeouts/:id/ventas-comparacion', gasCloseoutController.getVentasComparacion);
+router.post('/gas-station/closeouts/:id/generar-complementaria', gasCloseoutController.generarComplementaria);
+
 // Gas Station - Reporte Ventas
 router.get('/gas-station/reporte-ventas', gasReporteController.getReporteVentas);
+
+// Gas Station - Reporte Detalle del Cierre
+router.get('/gas-station/reports/closeout-detail/pdf', gasReporteController.getCloseoutDetailPDF);
 
 // RRHH - AFPs
 router.get('/rh/afps', rhAfpController.getAfps);
@@ -684,5 +692,23 @@ router.get('/rh/planilla-aguinaldos/recibos', rhPlanillaAguinaldosController.exp
 router.get('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.getPlanilla);
 router.post('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.savePlanilla);
 router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.deletePeriodo);
+
+// RRHH - Planillas Quincenales
+router.get('/rh/planillas/cuentas-activas', rhPlanillaController.getCuentasActivas);
+router.post('/rh/planillas/calcular', rhPlanillaController.calcular);
+router.post('/rh/planillas/generar', rhPlanillaController.generarPlanilla);
+router.get('/rh/planillas/grupos', rhPlanillaController.getGruposPlanilla);
+router.get('/rh/planillas/recibos-masivos', rhPlanillaController.exportRecibosMasivos);
+router.post('/rh/planillas/cerrar-periodo', rhPlanillaController.cerrarPeriodo);
+router.post('/rh/planillas/eliminar-periodo', rhPlanillaController.eliminarPeriodo);
+router.get('/rh/planillas/empleado/:id', rhPlanillaController.getEmpleadoData);
+router.get('/rh/planillas', rhPlanillaController.getPlanillas);
+router.post('/rh/planillas', rhPlanillaController.createPlanilla);
+router.get('/rh/planillas/:id/pdf', rhPlanillaController.exportPDF);
+router.get('/rh/planillas/:id/recibo', rhPlanillaController.exportRecibo);
+router.get('/rh/planillas/:id', rhPlanillaController.getPlanilla);
+router.put('/rh/planillas/:id', rhPlanillaController.updatePlanilla);
+router.delete('/rh/planillas/:id', rhPlanillaController.deletePlanilla);
+router.post('/rh/planillas/:id/pagar', rhPlanillaController.pagarPlanilla);
 
 module.exports = router;

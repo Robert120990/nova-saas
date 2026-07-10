@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { sendCloseoutToRrs } = require('../services/gasCloseoutRrs.service');
+const dteService = require('../services/dte.service');
 
 exports.initCloseout = async (req, res) => {
     try {
@@ -1945,5 +1946,340 @@ exports.sendToRrs = async (req, res) => {
     } catch (error) {
         console.error('Error sendToRrs:', error);
         res.status(500).json({ message: error.message || 'Error al enviar cierre a RRS' });
+    }
+};
+
+exports.getVentasComparacion = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [closeouts] = await pool.query(
+            `SELECT c.fecha_turno, c.numero_turno, c.branch_id
+             FROM gas_station_closeouts c WHERE c.id = ? AND c.company_id = ?`,
+            [id, company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+
+        const { fecha_turno, numero_turno, branch_id } = closeouts[0];
+
+        const turnoNum = parseInt(numero_turno, 10) || 0;
+
+        const [rows] = await pool.query(`
+            SELECT 
+                p.codigo AS codigo_producto,
+                p.descripcion AS descripcion_producto,
+                COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS precio,
+                COALESCE(l.lectura_galones, 0) AS lectura_galones,
+                COALESCE(l.lectura_monto, 0) AS lectura_monto,
+                COALESCE(v.venta_galones, 0) AS venta_galones,
+                COALESCE(v.venta_monto, 0) AS venta_monto,
+                COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0) AS diferencia_galones,
+                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS diferencia_monto
+            FROM products p
+            LEFT JOIN (
+                SELECT 
+                    r.product_id,
+                    AVG(r.precio) AS precio,
+                    SUM(COALESCE(r.lectura_actual, 0) - COALESCE(r.lectura_anterior, 0) - COALESCE(r.calibracion, 0)) AS lectura_galones,
+                    ROUND(SUM((COALESCE(r.lectura_actual, 0) - COALESCE(r.lectura_anterior, 0) - COALESCE(r.calibracion, 0)) * r.precio), 2) AS lectura_monto
+                FROM gas_station_closeout_readings r
+                JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                WHERE c.company_id = ? AND c.fecha_turno = ? AND c.branch_id = ?
+                  AND (? = 0 OR c.numero_turno = ?)
+                GROUP BY r.product_id
+            ) l ON p.id = l.product_id
+            LEFT JOIN (
+                SELECT 
+                    si.product_id,
+                    AVG(si.precio_unitario) AS precio,
+                    SUM(si.cantidad) AS venta_galones,
+                    ROUND(SUM(si.cantidad * si.precio_unitario), 2) AS venta_monto
+                FROM sales_items si
+                JOIN sales_headers sh ON si.sale_id = sh.id
+                WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
+                  AND sh.estado != 'anulado'
+                  AND (? = 0 OR sh.shift_id IN (
+                      SELECT id FROM pos_shifts
+                      WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
+                  ))
+                GROUP BY si.product_id
+            ) v ON p.id = v.product_id
+            WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
+            ORDER BY p.codigo
+        `, [
+            company_id, fecha_turno, branch_id, turnoNum, turnoNum,
+            company_id, fecha_turno, branch_id, turnoNum,
+            company_id, branch_id, fecha_turno, turnoNum,
+            company_id
+        ]);
+
+        const totales = {
+            lectura_galones: 0, lectura_monto: 0,
+            venta_galones: 0, venta_monto: 0,
+            diferencia_galones: 0, diferencia_monto: 0,
+        };
+
+        for (const row of rows) {
+            totales.lectura_galones += parseFloat(row.lectura_galones) || 0;
+            totales.lectura_monto += parseFloat(row.lectura_monto) || 0;
+            totales.venta_galones += parseFloat(row.venta_galones) || 0;
+            totales.venta_monto += parseFloat(row.venta_monto) || 0;
+            totales.diferencia_galones += parseFloat(row.diferencia_galones) || 0;
+            totales.diferencia_monto += parseFloat(row.diferencia_monto) || 0;
+        }
+
+        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno });
+    } catch (error) {
+        console.error('Error getVentasComparacion:', error);
+        res.status(500).json({ message: 'Error al obtener comparacion de ventas' });
+    }
+};
+
+exports.generarComplementaria = async (req, res) => {
+    const { id } = req.params;
+    const company_id = req.company_id;
+
+    try {
+        const [closeouts] = await pool.query(
+            `SELECT c.fecha_turno, c.numero_turno, c.branch_id
+             FROM gas_station_closeouts c WHERE c.id = ? AND c.company_id = ?`,
+            [id, company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+
+        const { fecha_turno, numero_turno, branch_id } = closeouts[0];
+        const turnoNum = parseInt(numero_turno, 10) || 0;
+
+        const [posShift] = await pool.query(
+            `SELECT id, seller_id FROM pos_shifts
+             WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
+             LIMIT 1`,
+            [company_id, branch_id, fecha_turno, turnoNum]
+        );
+        if (posShift.length === 0) {
+            return res.status(400).json({ message: `No se encontro un turno de facturacion (POS) para la fecha ${fecha_turno} turno #${turnoNum}. Debe crear el turno de facturacion primero.` });
+        }
+
+        const [rows] = await pool.query(`
+            SELECT 
+                p.id AS product_id,
+                p.codigo AS codigo_producto,
+                p.descripcion AS descripcion_producto,
+                COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS precio,
+                COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0) AS diferencia_galones,
+                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS diferencia_monto
+            FROM products p
+            LEFT JOIN (
+                SELECT r.product_id, AVG(r.precio) AS precio,
+                    SUM(COALESCE(r.lectura_actual, 0) - COALESCE(r.lectura_anterior, 0) - COALESCE(r.calibracion, 0)) AS lectura_galones,
+                    ROUND(SUM((COALESCE(r.lectura_actual, 0) - COALESCE(r.lectura_anterior, 0) - COALESCE(r.calibracion, 0)) * r.precio), 2) AS lectura_monto
+                FROM gas_station_closeout_readings r
+                JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                WHERE c.company_id = ? AND c.fecha_turno = ? AND c.branch_id = ? AND (? = 0 OR c.numero_turno = ?)
+                GROUP BY r.product_id
+            ) l ON p.id = l.product_id
+            LEFT JOIN (
+                SELECT si.product_id, AVG(si.precio_unitario) AS precio,
+                    SUM(si.cantidad) AS venta_galones,
+                    ROUND(SUM(si.cantidad * si.precio_unitario), 2) AS venta_monto
+                FROM sales_items si
+                JOIN sales_headers sh ON si.sale_id = sh.id
+                WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
+                  AND sh.estado != 'anulado'
+                  AND (? = 0 OR sh.shift_id IN (
+                      SELECT id FROM pos_shifts WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
+                  ))
+                GROUP BY si.product_id
+            ) v ON p.id = v.product_id
+            WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
+            HAVING diferencia_galones > 0
+            ORDER BY p.codigo
+        `, [
+            company_id, fecha_turno, branch_id, turnoNum, turnoNum,
+            company_id, fecha_turno, branch_id, turnoNum,
+            company_id, branch_id, fecha_turno, turnoNum,
+            company_id
+        ]);
+
+        if (rows.length === 0) {
+            return res.status(400).json({ message: 'No hay diferencias positivas para generar complementaria' });
+        }
+
+        const [companyRows] = await pool.query(
+            `SELECT id, razon_social, nit, dte_active, dte_ambiente, actividad_economica,
+                    departamento, municipio, direccion, telefono, correo_electronico,
+                    codigo_establecimiento, codigo_punto_venta_mh
+             FROM companies WHERE id = ?`,
+            [company_id]
+        );
+        if (companyRows.length === 0) return res.status(404).json({ message: 'Empresa no encontrada' });
+        const company = companyRows[0];
+
+        const [customer] = await pool.query(
+            `SELECT id, codigo, nombres, dui, nit, direccion, telefono, correo
+             FROM customers WHERE company_id = ? AND (nit = '' OR nit IS NULL) AND tipo_persona = 'CF'
+             ORDER BY id ASC LIMIT 1`,
+            [company_id]
+        );
+
+        if (customer.length === 0) {
+            return res.status(400).json({ message: 'No se encontro cliente consumidor final (CF)' });
+        }
+
+        const cliente = customer[0];
+
+        let totalMonto = 0;
+        const items = rows.map(r => {
+            const monto = parseFloat(r.diferencia_monto) || 0;
+            totalMonto += monto;
+            return {
+                product_id: r.product_id,
+                codigo: r.codigo_producto,
+                descripcion: r.descripcion_producto,
+                cantidad: parseFloat((parseFloat(r.diferencia_galones) || 0).toFixed(5)),
+                precioUnitario: parseFloat(r.precio) || 0,
+                montoDescu: 0,
+                ventaNoSujeta: 0,
+                ventaExenta: 0,
+                ventaGravada: monto,
+                tributos: ["20"],
+                noGravado: 0,
+                ivaItem: 0,
+                tipoItem: 1
+            };
+        });
+
+        const iva = Math.round(totalMonto * 0.13 * 100) / 100;
+        const totalPagar = totalMonto + iva;
+
+        const payload = {
+            header: {
+                dte_type: '01',
+                customer_id: cliente.id,
+                customer_name: cliente.nombres,
+                customer_nit: cliente.nit,
+                customer_nrc: '',
+                customer_dui: cliente.dui || '',
+                customer_direccion: cliente.direccion || company.direccion,
+                customer_telefono: cliente.telefono || company.telefono,
+                customer_correo: cliente.correo || company.correo_electronico,
+                branch_id: branch_id || req.user.branch_id,
+                user_id: req.user?.id,
+                payment_type: 'CONT',
+                fovial: 0,
+                cotrans: 0,
+                taxes: [],
+                total_gravado: totalMonto,
+                total_iva: iva,
+                total_pagar: totalPagar,
+                shift_id: posShift[0].id,
+                seller_id: posShift[0].seller_id || null,
+            },
+            items,
+            payments: [{ codigo: '01', monto: totalPagar, referencia: '', plazo: '', periodo: '' }],
+            linkedDocuments: [],
+            emisor_adicional: {
+                descActividad: company.actividad_economica || '',
+                codPuntoVentaMH: company.codigo_punto_venta_mh || ''
+            }
+        };
+
+        // Crear la venta en sales_headers con shift_id vinculado al POS shift
+        const [saleResult] = await pool.query('INSERT INTO sales_headers SET ?', [{
+            company_id,
+            branch_id,
+            customer_id: cliente.id,
+            seller_id: payload.header.seller_id,
+            shift_id: posShift[0].id,
+            dte_type: '01',
+            tipo_documento: '01',
+            condicion_operacion: 1,
+            fecha_emision: new Date(),
+            hora_emision: new Date().toTimeString().split(' ')[0],
+            estado: 'emitido',
+            total_gravado: totalMonto,
+            total_exento: 0,
+            total_nosujetas: 0,
+            fovial: 0,
+            cotrans: 0,
+            total_iva: iva,
+            descuento_general: 0,
+            iva_percibido: 0,
+            iva_retenido: 0,
+            total_pagar: totalPagar,
+            payment_condition: 1,
+            cliente_nombre: cliente.nombres,
+            observaciones: `Complementaria turno ${fecha_turno} #${turnoNum}`,
+            created_at: new Date()
+        }]);
+        const saleId = saleResult.insertId;
+
+        // Crear sales_items
+        for (const item of items) {
+            await pool.query('INSERT INTO sales_items SET ?', [{
+                sale_id: saleId,
+                product_id: item.product_id,
+                codigo: item.codigo,
+                descripcion: item.descripcion,
+                cantidad: item.cantidad,
+                precio_unitario: item.precioUnitario,
+                monto_descuento: 0,
+                venta_gravada: item.ventaGravada,
+                venta_exenta: 0,
+                tributos: JSON.stringify(item.tributos || [])
+            }]);
+        }
+
+        // Crear sales_payments
+        await pool.query('INSERT INTO sales_payments SET ?', [{
+            sale_id: saleId,
+            metodo_pago: '01',
+            monto: totalPagar,
+            referencia: '',
+            created_at: new Date()
+        }]);
+
+        // Emitir DTE vinculado a la venta
+        const dteResult = await dteService.emitDTE(company, payload, saleId);
+
+        if (dteResult.success) {
+            // Actualizar sale header con datos del DTE
+            await pool.query(
+                `UPDATE sales_headers SET
+                 numero_control = ?, codigo_generacion = ?, sello_recepcion = ?, fh_procesamiento = ?
+                 WHERE id = ?`,
+                [dteResult.data.numero_control, dteResult.data.codigo_generacion,
+                 dteResult.data.sello_recepcion, dteResult.data.fh_procesamiento, saleId]
+            );
+            res.json({
+                message: 'Complementaria generada exitosamente',
+                codigo_generacion: dteResult.data.codigo_generacion,
+                numero_control: dteResult.data.numero_control,
+                total: totalPagar,
+                items: rows.length,
+                sale_id: saleId,
+                shift_id: posShift[0].id
+            });
+        } else if (dteResult.codigo_generacion) {
+            await pool.query(
+                `UPDATE sales_headers SET codigo_generacion = ?, numero_control = ? WHERE id = ?`,
+                [dteResult.codigo_generacion, dteResult.numero_control || null, saleId]
+            );
+            res.status(400).json({
+                message: 'Complementaria generada con errores en DTE',
+                codigo_generacion: dteResult.codigo_generacion,
+                sale_id: saleId,
+                error: dteResult.error
+            });
+        } else {
+            res.status(500).json({
+                message: dteResult.error || 'Error al generar complementaria',
+                sale_id: saleId
+            });
+        }
+    } catch (error) {
+        console.error('Error generarComplementaria:', error);
+        res.status(500).json({ message: error.message || 'Error al generar complementaria' });
     }
 };

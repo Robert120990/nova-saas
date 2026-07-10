@@ -5,7 +5,7 @@ import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
     FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save,
-    Users, UserCheck, Printer
+    Users, UserCheck, Printer, BarChart3, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -64,6 +64,9 @@ const GasCloseout = () => {
     const [vales, setVales] = useState([]);
     const [showAnticiposModal, setShowAnticiposModal] = useState(false);
     const [anticiposDesp, setAnticiposDesp] = useState([]);
+    const [showDiferenciasModal, setShowDiferenciasModal] = useState(false);
+    const [diferenciasData, setDiferenciasData] = useState(null);
+    const [diferenciasLoading, setDiferenciasLoading] = useState(false);
 
     const inputRefs = useRef({});
     const tankInputRefs = useRef({});
@@ -393,6 +396,15 @@ const GasCloseout = () => {
             toast.success('Anticipos despachados guardados');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar anticipos despachados')
+    });
+
+    const generarComplementariaMutation = useMutation({
+        mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/generar-complementaria`),
+        onSuccess: (res) => {
+            toast.success(`Complementaria generada: ${res.data.codigo_generacion}`);
+            setShowDiferenciasModal(false);
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al generar complementaria')
     });
 
     const lubricantTotal = useMemo(() =>
@@ -829,6 +841,20 @@ const GasCloseout = () => {
         setShowAnticiposModal(true);
     };
 
+    const handleOpenDiferencias = async () => {
+        setShowDiferenciasModal(true);
+        setDiferenciasLoading(true);
+        try {
+            const { data } = await axios.get(`/api/gas-station/closeouts/${closeoutId}/ventas-comparacion`);
+            setDiferenciasData(data);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al obtener datos de comparacion');
+            setShowDiferenciasModal(false);
+        } finally {
+            setDiferenciasLoading(false);
+        }
+    };
+
     const handleAddAnticipoRow = () => {
         setAnticiposDesp(prev => [...prev, {
             id: Date.now(),
@@ -1121,6 +1147,7 @@ const GasCloseout = () => {
         { label: 'Tanques', icon: FlaskConical, key: 'tanques', enabled: true },
         { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas', enabled: true },
         { label: 'Adelantos', icon: Banknote, key: 'adelantos', enabled: true },
+        { label: 'Diferencias', icon: BarChart3, key: 'diferencias', enabled: true },
     ];
 
     const inputCls = "w-28 px-1.5 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] text-right font-mono";
@@ -1479,7 +1506,8 @@ const GasCloseout = () => {
                                         const isVales = btn.key === 'vales';
                                         const isAnticipos = btn.key === 'anticipos';
                                         const isTanques = btn.key === 'tanques';
-                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTanques || (btn.enabled && estado === 'abierto');
+                                        const isDiferencias = btn.key === 'diferencias';
+                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTanques || isDiferencias || (btn.enabled && estado === 'abierto');
                                         return (
                                             <button
                                                 key={btn.key}
@@ -1496,6 +1524,7 @@ const GasCloseout = () => {
                                                     if (isCreditos) handleOpenCreditos();
                                                     if (isVales) handleOpenVales();
                                                     if (btn.key === 'anticipos') handleOpenAnticipos();
+                                                    if (isDiferencias) handleOpenDiferencias();
                                                 }}
                                                 disabled={!canClick}
                                                 className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
@@ -3240,6 +3269,104 @@ const GasCloseout = () => {
                                         </tfoot>
                                     )}
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showDiferenciasModal && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowDiferenciasModal(false); setDiferenciasData(null); }} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl max-h-[90vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <BarChart3 size={16} className="text-indigo-600" />
+                                    Diferencias Lectura vs Venta
+                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                        {diferenciasData?.fecha} — Turno #{diferenciasData?.turno}
+                                    </span>
+                                </h3>
+                                <button
+                                    onClick={() => { setShowDiferenciasModal(false); setDiferenciasData(null); }}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 pb-4 flex-1">
+                                {diferenciasLoading ? (
+                                    <div className="flex items-center justify-center py-16">
+                                        <Loader2 size={24} className="animate-spin text-indigo-600" />
+                                        <span className="ml-3 text-sm font-medium text-slate-500">Cargando datos...</span>
+                                    </div>
+                                ) : diferenciasData ? (
+                                    <>
+                                        <table className="w-full text-left border-collapse mt-3">
+                                            <thead>
+                                                <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100">Código</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100">Producto</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Precio</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Lectura (Gl)</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Lectura ($)</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Venta (Gl)</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Venta ($)</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Dif. (Gl)</th>
+                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Dif. ($)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50 text-[11px]">
+                                                {diferenciasData.data.map((row, i) => (
+                                                    <tr key={i} className={`hover:bg-slate-50 transition-colors ${parseFloat(row.diferencia_monto) > 0 ? 'bg-amber-50/50' : ''}`}>
+                                                        <td className="px-2 py-1 font-bold text-slate-700">{row.codigo_producto}</td>
+                                                        <td className="px-2 py-1 text-slate-600">{row.descripcion_producto}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">${parseFloat(row.precio).toFixed(2)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">{parseFloat(row.lectura_galones).toFixed(5)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">${parseFloat(row.lectura_monto).toFixed(2)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">{parseFloat(row.venta_galones).toFixed(5)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">${parseFloat(row.venta_monto).toFixed(2)}</td>
+                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_galones) > 0 ? 'text-red-600' : parseFloat(row.diferencia_galones) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                            {parseFloat(row.diferencia_galones).toFixed(5)}
+                                                        </td>
+                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_monto) > 0 ? 'text-red-600' : parseFloat(row.diferencia_monto) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                            ${parseFloat(row.diferencia_monto).toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-bold">
+                                                <tr>
+                                                    <td colSpan={3} className="px-2 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
+                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">{diferenciasData.totales.lectura_galones.toFixed(5)}</td>
+                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">${diferenciasData.totales.lectura_monto.toFixed(2)}</td>
+                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">{diferenciasData.totales.venta_galones.toFixed(5)}</td>
+                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">${diferenciasData.totales.venta_monto.toFixed(2)}</td>
+                                                    <td className={`px-2 py-1.5 text-right font-mono ${diferenciasData.totales.diferencia_galones > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                        {diferenciasData.totales.diferencia_galones.toFixed(5)}
+                                                    </td>
+                                                    <td className={`px-2 py-1.5 text-right font-mono ${diferenciasData.totales.diferencia_monto > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                        ${diferenciasData.totales.diferencia_monto.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        <div className="mt-4 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                                            <span className="text-xs text-slate-500">
+                                                Diferencias Positivas: <strong className="text-red-600 font-mono">
+                                                    ${(diferenciasData.totales.diferencia_monto > 0 ? diferenciasData.totales.diferencia_monto : 0).toFixed(2)}
+                                                </strong>
+                                            </span>
+                                            <button
+                                                onClick={() => generarComplementariaMutation.mutate()}
+                                                disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
+                                            >
+                                                {generarComplementariaMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                                                {generarComplementariaMutation.isPending ? 'Generando...' : 'Generar DTE Complementaria'}
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : null}
                             </div>
                         </div>
                     </div>

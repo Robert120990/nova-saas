@@ -20,6 +20,8 @@ const TIPOS_VALOR = [
     { value: 'porcentaje', label: 'Porcentaje' },
 ];
 
+const TIPOS_VALOR_CON_BASE = ['valor', 'porcentaje'];
+
 const CuentasPlanillas = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
@@ -169,9 +171,24 @@ const CuentasPlanillas = () => {
                         </div>
                         <div>
                             <label className={lbl}>Tipo de Valor</label>
-                            <select name="tipo_valor" defaultValue={selected?.tipo_valor || 'valor'} className={cls}>
+                            <select name="tipo_valor" id="tipo_valor" defaultValue={selected?.tipo_valor || 'valor'} className={cls}
+                                onChange={e => {
+                                    const baseInput = document.getElementById('valor_base');
+                                    if (baseInput) {
+                                        baseInput.disabled = !TIPOS_VALOR_CON_BASE.includes(e.target.value);
+                                        if (!TIPOS_VALOR_CON_BASE.includes(e.target.value)) baseInput.value = '';
+                                    }
+                                }}>
                                 {TIPOS_VALOR.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
+                        </div>
+                        <div>
+                            <label className={lbl}>Valor Base</label>
+                            <input name="valor_base" id="valor_base" type="number" step="any" min="0"
+                                defaultValue={selected?.valor_base ?? ''}
+                                disabled={selected?.tipo_valor && !TIPOS_VALOR_CON_BASE.includes(selected.tipo_valor)}
+                                placeholder="0.00" className={cls} />
+                            <p className="text-[10px] text-slate-400 mt-0.5">Para Valor o Porcentaje</p>
                         </div>
                         <div>
                             <label className={lbl}>Orden</label>

@@ -65,9 +65,10 @@ const SalesHistory = () => {
         numDocSolicita: ''
     });
     const [isRetransmitModalOpen, setIsRetransmitModalOpen] = useState(false);
-    const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
-    const [regenerateSaleId, setRegenerateSaleId] = useState(null);
-    const [regenerateLoading, setRegenerateLoading] = useState(false);
+const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+const [regenerateSaleId, setRegenerateSaleId] = useState(null);
+const [regenerateLoading, setRegenerateLoading] = useState(false);
+const [updateDateTime, setUpdateDateTime] = useState(false);
     const [retransmitForm, setRetransmitForm] = useState({
         nombre: '',
         nit: '',
@@ -221,15 +222,18 @@ const SalesHistory = () => {
         }
     };
 
-    const handleRegenerateDTE = (saleId) => {
-        setRegenerateSaleId(saleId);
+    const handleRegenerateDTE = (sale) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const origDate = sale.fecha_emision?.slice(0, 10);
+        setUpdateDateTime(origDate !== today);
+        setRegenerateSaleId(sale.id);
         setIsRegenerateModalOpen(true);
     };
 
     const handleRegenerateConfirm = async () => {
         setRegenerateLoading(true);
         try {
-            const res = await axios.post(`/api/sales/${regenerateSaleId}/regenerate-dte`);
+            const res = await axios.post(`/api/sales/${regenerateSaleId}/regenerate-dte`, { updateDateTime });
             toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
             setIsRegenerateModalOpen(false);
             queryClient.invalidateQueries(['sales-history']);
@@ -567,7 +571,7 @@ const SalesHistory = () => {
                                                     )}
 
                                                     {sale.codigo_generacion && (
-                                                        <button onClick={() => { handleRegenerateDTE(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                        <button onClick={() => { handleRegenerateDTE(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Regenerar DTE</span>
                                                         </button>
@@ -971,8 +975,24 @@ const SalesHistory = () => {
                         </div>
                     </div>
 
-                    <div className="bg-slate-50 p-6 rounded-3xl border border-dotted border-slate-200 text-center">
-                        <p className="text-slate-600 text-sm font-bold text-Spanish">¿Está seguro de regenerar este DTE? Se transmitirá con el ambiente actual de la empresa.</p>
+                    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
+                        <div>
+                            <p className="text-xs font-bold text-slate-700">Actualizar fecha y hora</p>
+                            <p className="text-[10px] text-slate-400">
+                                {updateDateTime
+                                    ? 'Se usará la fecha y hora actual (hoy difiere del DTE original)'
+                                    : 'Se preservará la fecha y hora original del DTE'}
+                            </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={updateDateTime}
+                                onChange={(e) => setUpdateDateTime(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                        </label>
                     </div>
 
                     <div className="flex items-center justify-end gap-3 pt-6">

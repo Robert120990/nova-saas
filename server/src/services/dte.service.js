@@ -53,6 +53,7 @@ class DteService {
                 tipoDte: payload.header.dte_type,
                 receptor: receptor,
                 emisor_adicional: payload.emisor_adicional || null,
+                identificacionExtra: payload.identificacionExtra || undefined,
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
                 items: payload.header.dte_type === '07' 
                     ? (payload.linkedDocuments || []).map(doc => ({

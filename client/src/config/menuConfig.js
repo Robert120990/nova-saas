@@ -239,6 +239,7 @@ export const menuConfig = [
                 icon: BarChart3,
                 children: [
                     { id: 'gas-reporte-ventas', label: 'Lecturas - Ventas', path: '/gas-station/reporte-ventas', icon: BarChart3, permission: 'view_gas_fuel_sales_report' },
+                    { id: 'gas-reporte-detalle-cierre', label: 'Detalle del Cierre', path: '/gas-station/reporte-detalle-cierre', icon: FileText, permission: 'view_gas_readings_history' },
                 ]
             },
         ]
@@ -250,6 +251,7 @@ export const menuConfig = [
         children: [
             { id: 'rh-empleados', label: 'Empleados', path: '/rh/empleados', icon: Users, permission: 'manage_rh_empleados' },
             { id: 'rh-planilla-vacaciones', label: 'Planilla Vacaciones', path: '/rh/planilla-vacaciones', icon: Umbrella, permission: 'manage_rh_planilla_vacaciones' },
+{ id: 'rh-planillas', label: 'Planillas', path: '/rh/planillas', icon: Calculator, permission: 'manage_rh_planillas' },
             { id: 'rh-planilla-liquidaciones', label: 'Planilla Liquidaciones', path: '/rh/liquidaciones', icon: FileText, permission: 'manage_rh_planilla_liquidaciones' },
             { id: 'rh-honorarios', label: 'Honorarios y Servicios', path: '/rh/honorarios', icon: FileSignature, permission: 'manage_rh_honorarios' },
             { id: 'rh-planilla-aguinaldos', label: 'Planilla Aguinaldos', path: '/rh/aguinaldos', icon: Gift, permission: 'manage_rh_planilla_aguinaldos' },

@@ -1931,6 +1931,24 @@ const regenerateDTE = async (req, res) => {
             }
         };
 
+        // Preservar fecha/hora original del DTE si el usuario no solicita actualizarlas
+        if (!req.body.updateDateTime && sale.codigo_generacion) {
+            const [dteRows] = await pool.query(
+                'SELECT json_original FROM dtes WHERE codigo_generacion = ? AND company_id = ?',
+                [sale.codigo_generacion, req.company_id]
+            );
+            if (dteRows.length > 0) {
+                const origJson = typeof dteRows[0].json_original === 'string'
+                    ? JSON.parse(dteRows[0].json_original) : dteRows[0].json_original;
+                if (origJson?.identificacion?.fecEmi && origJson?.identificacion?.horEmi) {
+                    dtePayload.identificacionExtra = {
+                        fecEmi: origJson.identificacion.fecEmi,
+                        horEmi: origJson.identificacion.horEmi
+                    };
+                }
+            }
+        }
+
         console.log(`[SalesController] Regenerando DTE para venta ${id} con ambiente ${sale.ambiente || 'test'}`);
         const dteResult = await dteService.emitDTE(sale, dtePayload, id);
 

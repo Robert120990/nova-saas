@@ -76,6 +76,7 @@ import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
 import GasAdvances from './pages/GasAdvances';
 import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
+import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
 
 // RRHH Pages
 import Afps from './pages/rh/Afps';
@@ -95,6 +96,7 @@ import Liquidaciones from './pages/rh/Liquidaciones';
 import Honorarios from './pages/rh/Honorarios';
 import Aguinaldos from './pages/rh/Aguinaldos';
 import CuentasPlanillas from './pages/rh/CuentasPlanillas';
+import Planillas from './pages/rh/Planillas';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -223,6 +225,7 @@ function App() {
                         <Route path="/gas-station/pos-tipos" element={<GasPosTypes />} />
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
                         <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />
+                        <Route path="/gas-station/reporte-detalle-cierre" element={<GasCloseoutDetailReport />} />
 
                         {/* RRHH */}
                         <Route path="/rh/afps" element={<Afps />} />
@@ -242,6 +245,7 @@ function App() {
                         <Route path="/rh/honorarios" element={<Honorarios />} />
                         <Route path="/rh/aguinaldos" element={<Aguinaldos />} />
                         <Route path="/rh/cuentas-planillas" element={<CuentasPlanillas />} />
+<Route path="/rh/planillas" element={<Planillas />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

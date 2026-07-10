@@ -2501,6 +2501,468 @@ const generateAguinaldoRecibosPDF = (data) => {
     });
 };
 
+const generateCloseoutDetailPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'A4' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const fmtDate = (d) => {
+                if (!d) return '—';
+                const dt = new Date(d);
+                return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+            };
+            const fmtVal = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
+
+            // Header
+            doc.fontSize(14).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
+            doc.fontSize(9).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
+            doc.fontSize(9).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
+            doc.moveDown(0.3);
+
+            doc.fontSize(12).font('Helvetica-Bold').text(`DETALLE DE ${data.tipo_nombre?.toUpperCase() || data.tipo_reporte?.toUpperCase()}`, { align: 'center', underline: true });
+            doc.moveDown(0.5);
+
+            const startX = 30;
+            const pageW = 780;
+
+            const colDefs = data.columns || [];
+            const colTotal = colDefs.reduce((s, c) => s + c.w, 0);
+            const drawTableHeader = () => {
+                const y = doc.y;
+                doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b');
+                let x = startX;
+                colDefs.forEach(c => {
+                    doc.text(c.label, x, y, { width: c.w, align: c.align || 'left' });
+                    x += c.w;
+                });
+                doc.fillColor('#1e293b');
+                doc.moveDown(0.3);
+                doc.moveTo(startX, doc.y).lineTo(startX + pageW, doc.y).stroke('#e2e8f0');
+                doc.moveDown(0.3);
+            };
+
+            drawTableHeader();
+
+            (data.rows || []).forEach((row, i) => {
+                if (doc.y > 520) {
+                    doc.addPage();
+                    drawTableHeader();
+                }
+                const y = doc.y;
+                let x = startX;
+                doc.fontSize(8).font('Helvetica');
+                if (i % 2 === 0) {
+                    doc.rect(startX, y - 2, pageW, 14).fill('#f8fafc');
+                }
+                colDefs.forEach(c => {
+                    const val = c.accessor ? row[c.accessor] : row[c.label];
+                    doc.fillColor('#1e293b').fontSize(8);
+                    if (c.format === 'money') {
+                        doc.text(fmtVal(val), x, y, { width: c.w, align: 'right' });
+                    } else if (c.format === 'date') {
+                        doc.text(fmtDate(val), x, y, { width: c.w, align: 'center' });
+                    } else {
+                        doc.text(String(val ?? '—'), x, y, { width: c.w, align: c.align || 'left' });
+                    }
+                    x += c.w;
+                });
+                doc.moveDown(0.9);
+            });
+
+            // Totals
+            doc.moveDown(0.3);
+            doc.moveTo(startX, doc.y).lineTo(startX + pageW, doc.y).stroke();
+            doc.moveDown(0.3);
+            const ty = doc.y;
+            let tx = startX;
+            doc.font('Helvetica-Bold').fontSize(9);
+            colDefs.forEach((c, i) => {
+                if (i === 0) {
+                    doc.text('TOTALES', tx, ty, { width: c.w, align: 'left' });
+                } else if (c.format === 'money') {
+                    const total = data.rows.reduce((s, r) => s + (parseFloat(r[c.accessor || c.label]) || 0), 0);
+                    doc.text(fmtVal(total), tx, ty, { width: c.w, align: 'right' });
+                }
+                tx += c.w;
+            });
+
+            doc.moveDown(2);
+            doc.fontSize(7).fillColor('#94a3b8').font('Helvetica').text(
+                `Generado el ${new Date().toLocaleString('es-SV')}`, { align: 'center' }
+            );
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generatePlanillaPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 40;
+            const pageW = 532;
+            const BOTTOM = 740;
+
+            const logoPath = data.logo_url;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absolutePath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absolutePath)) doc.image(absolutePath, M, 28, { width: 75 });
+                } catch (e) { /* ignore */ }
+            }
+            const hx = logoPath ? 125 : M;
+            doc.fontSize(14).font('Helvetica-Bold').text(data.company_name, hx, 28);
+            doc.fontSize(9).font('Helvetica').text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, 44);
+            doc.fontSize(12).font('Helvetica-Bold').text('PLANILLA QUINCENAL', M, 28, { align: 'right' });
+            doc.fontSize(20).font('Helvetica-Bold').fillColor('#4f46e5')
+                .text(`$ ${parseFloat(data.monto_recibir).toFixed(2)}`, M, 42, { align: 'right' });
+            doc.fillColor('black');
+
+            const quincenaLabel = data.quincena === 'primera' ? '1ra' : '2da';
+            const mesLabel = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][(data.periodo_mes || 1) - 1] || '';
+            const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '';
+
+            doc.rect(M, 76, pageW, 56).stroke('#e5e7eb');
+            doc.fontSize(9).font('Helvetica');
+            const empName = `${data.empleado_nombres || ''} ${data.empleado_apellidos || ''}`;
+            doc.text(`Empleado: ${empName}`, M + 12, 86);
+            doc.text(`Cargo: ${data.cargo_nombre || ''}`, M + 12, 100);
+            doc.text(`Departamento: ${data.departamento_nombre || ''}`, M + 12, 114);
+            doc.text(`Periodo: ${mesLabel} ${data.periodo_anio} - ${quincenaLabel} Quincena`, 280, 86);
+            doc.text(`Dias Trabajados: ${data.dias_trabajados || 0}`, 280, 100);
+            doc.text(`Sueldo Base: $ ${parseFloat(data.sueldo_base).toFixed(2)}`, 280, 114);
+
+            let ry = 148;
+            doc.fontSize(10).font('Helvetica-Bold').text('DETALLE DE PLANILLA', M, ry);
+            ry += 18;
+
+            const col1X = M;
+            const col2X = 300;
+            const colVal1 = 250;
+            const colVal2 = 510;
+            const rowH = 14;
+
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#4f46e5');
+            doc.text('PERCEPCIONES', col1X, ry);
+            doc.text('DEDUCCIONES', col2X, ry);
+            doc.fillColor('black');
+            ry += 14;
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 4;
+
+            const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
+
+            doc.font('Helvetica').fontSize(8);
+            const maxRows = Math.max(percepciones.length, deducciones.length);
+            for (let i = 0; i < maxRows; i++) {
+                if (i < percepciones.length) {
+                    const p = percepciones[i];
+                    doc.text(`${p.codigo} - ${p.descripcion}`, col1X, ry);
+                    doc.text(`$ ${parseFloat(p.valor_ingresado || 0).toFixed(2)}`, colVal1, ry, { align: 'right' });
+                }
+                if (i < deducciones.length) {
+                    const d = deducciones[i];
+                    doc.text(`${d.codigo} - ${d.descripcion}`, col2X, ry);
+                    doc.text(`$ ${parseFloat(d.valor_ingresado || 0).toFixed(2)}`, colVal2, ry, { align: 'right' });
+                }
+                ry += rowH;
+            }
+
+            ry += 2;
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold').fontSize(9);
+            doc.text('TOTAL PERCEPCIONES', col1X, ry);
+            doc.text(`$ ${parseFloat(data.total_percepciones).toFixed(2)}`, colVal1, ry, { align: 'right' });
+            ry += 16;
+
+            doc.font('Helvetica').fontSize(9);
+            doc.text('RETENCIONES DE LEY:', col2X, ry - 16);
+            const isssPct = data.isss_porcentaje || 0;
+            const afpPct = data.afp_porcentaje || 0;
+            doc.text(`ISSS (${isssPct}%)`, col2X, ry);
+            doc.text(`$ ${parseFloat(data.descuento_isss).toFixed(2)}`, colVal2, ry, { align: 'right' });
+            ry += 14;
+            doc.text(`AFP (${afpPct}%)`, col2X, ry);
+            doc.text(`$ ${parseFloat(data.descuento_afp).toFixed(2)}`, colVal2, ry, { align: 'right' });
+            ry += 14;
+            doc.text('RENTA', col2X, ry);
+            doc.text(`$ ${parseFloat(data.descuento_renta).toFixed(2)}`, colVal2, ry, { align: 'right' });
+            ry += 16;
+            doc.moveTo(col2X, ry).lineTo(colVal2, ry).stroke('#e5e7eb');
+            ry += 5;
+            doc.font('Helvetica-Bold').fontSize(9);
+            doc.text('TOTAL DEDUCCIONES', col2X, ry);
+            doc.text(`$ ${parseFloat(data.total_deducciones).toFixed(2)}`, colVal2, ry, { align: 'right' });
+            ry += 22;
+
+            doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#4f46e5');
+            ry += 6;
+            doc.fontSize(12).font('Helvetica-Bold').fillColor('#4f46e5');
+            doc.text('MONTO A RECIBIR', M, ry);
+            doc.text(`$ ${parseFloat(data.monto_recibir).toFixed(2)}`, colVal1, ry, { align: 'right' });
+            doc.fillColor('black');
+
+            const legalY = ry + 24;
+            doc.fontSize(8).font('Helvetica-Oblique')
+                .text(`Recibí de ${data.company_name} la cantidad de ${data.monto_letras}, en concepto de planilla quincenal.`, M, legalY, { width: pageW, align: 'justify' });
+
+            const today = new Date().toLocaleDateString('es-SV', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            doc.fontSize(9).font('Helvetica').text(`San Salvador, ${today}`, M, legalY + 20);
+
+            const firmY = BOTTOM - 90;
+            doc.moveTo(100, firmY).lineTo(270, firmY).stroke();
+            doc.fontSize(8).font('Helvetica-Bold').text('Recibí Conforme', 125, firmY + 4, { align: 'center', width: 120 });
+            doc.fontSize(9).font('Helvetica-Bold')
+                .text(empName, M, firmY + 22);
+            doc.fontSize(8).font('Helvetica').text('FIRMA', M, firmY + 36);
+            let extraY = firmY + 50;
+            if (data.num_dui) { doc.text(`DUI: ${data.num_dui}`, M, extraY); extraY += 12; }
+            if (data.num_nit) { doc.text(`NIT: ${data.num_nit}`, M, extraY); }
+
+            doc.fontSize(7).fillColor('grey')
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+const generatePlanillaReciboPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const M = 30;
+            const W = 552;
+            const quincenaLabel = data.quincena === 'primera' ? '1ra' : '2da';
+            const mesLabel = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][(data.periodo_mes || 1) - 1] || '';
+            const mesAnio = `${mesLabel} ${data.periodo_anio}`;
+            const empName = `${data.empleado_nombres || ''} ${data.empleado_apellidos || ''}`;
+            const logoPath = data.logo_url;
+            const firmaPath = data.firma_url || '';
+            const selloPath = data.sello_url || '';
+            const responsable = data.responsable_nombre || 'RECURSOS HUMANOS';
+            const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '';
+
+            const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
+
+            const drawCopy = (yStart, label) => {
+                let y = yStart;
+
+                // Logo + company
+                if (logoPath) {
+                    try {
+                        const f = logoPath.split('/').pop();
+                        const p = path.join(__dirname, '..', '..', 'uploads', f);
+                        if (fs.existsSync(p)) doc.image(p, M, y, { width: 65 });
+                    } catch (e) { /* ignore */ }
+                }
+                const hx = logoPath ? 105 : M;
+                doc.fontSize(10).font('Helvetica-Bold');
+                doc.text(data.company_name?.toUpperCase() || '', hx, y);
+                doc.fontSize(7).font('Helvetica');
+                doc.text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, y + 11);
+                y += 22;
+
+                // Title
+                doc.fontSize(9).font('Helvetica-Bold');
+                doc.text('RECIBO DE PLANILLA QUINCENAL', M, y, { width: W, align: 'center' });
+                y += 11;
+                doc.moveTo(M, y).lineTo(M + W, y).stroke('#4f46e5');
+                y += 6;
+
+                // Employee info
+                doc.fontSize(7).font('Helvetica');
+                doc.text('EMPLEADO:', M, y);
+                doc.text('PERIODO:', M + 200, y);
+                doc.text('MONTO A RECIBIR:', M + 370, y);
+                y += 9;
+                doc.font('Helvetica-Bold');
+                doc.text(empName, M, y);
+                doc.text(`${mesAnio} - ${quincenaLabel} Q.`, M + 200, y);
+                doc.fillColor('#4f46e5');
+                doc.text(`$ ${parseFloat(data.monto_recibir).toFixed(2)}`, M + 370, y, { align: 'right', width: 180 });
+                doc.fillColor('black');
+                y += 10;
+                doc.font('Helvetica');
+                doc.text(`CARGO: ${data.cargo_nombre || ''}`, M, y);
+                doc.text(`DIAS: ${data.dias_trabajados || 0}`, M + 200, y);
+                y += 9;
+                doc.text(`DPTO: ${data.departamento_nombre || ''}`, M, y);
+                doc.text(`SUELDO BASE: $ ${parseFloat(data.sueldo_base || 0).toFixed(2)}`, M + 200, y);
+                y += 9;
+                doc.text(`DUI: ${data.num_dui || ''}`, M, y);
+                doc.text(`INGRESO: ${fmt(data.fecha_ingreso)}`, M + 200, y);
+                y += 9;
+                doc.text(`NIT: ${data.num_nit || ''}`, M, y);
+                y += 4;
+
+                // Seccionador
+                doc.moveTo(M, y).lineTo(M + W, y).stroke('#e5e7eb');
+                y += 6;
+
+                // Two columns: left=PERCEPCIONES, right=DEDUCCIONES
+                const leftX = M + 5;
+                const rightX = M + 290;
+                const leftValX = M + 250;
+                const rightValX = M + W - 5;
+                const colW = 270;
+                const rowH = 11;
+
+                // Column headers
+                doc.fontSize(8).font('Helvetica-Bold').fillColor('#4f46e5');
+                doc.text('PERCEPCIONES', leftX, y);
+                doc.text('DEDUCCIONES', rightX, y);
+                doc.fillColor('black');
+                y += 10;
+                doc.moveTo(leftX, y).lineTo(leftValX, y).stroke('#e5e7eb');
+                doc.moveTo(rightX, y).lineTo(rightValX, y).stroke('#e5e7eb');
+                y += 3;
+
+                doc.fontSize(7).font('Helvetica');
+
+                // Left: percepciones
+                let percY = y;
+                for (const p of percepciones) {
+                    doc.text(`${p.codigo} - ${p.descripcion}`, leftX, percY);
+                    doc.text(`$ ${parseFloat(p.valor_ingresado || 0).toFixed(2)}`, leftValX, percY, { align: 'right' });
+                    percY += rowH;
+                }
+                doc.moveTo(leftX, percY).lineTo(leftValX, percY).stroke('#e5e7eb');
+                percY += 3;
+                doc.font('Helvetica-Bold');
+                doc.text('TOTAL PERCEPCIONES', leftX, percY);
+                doc.text(`$ ${parseFloat(data.total_percepciones || 0).toFixed(2)}`, leftValX, percY, { align: 'right' });
+                percY += 14;
+
+                // Right: deducciones de ley section
+                let dedY = y;
+                doc.font('Helvetica-Bold');
+                doc.text('RETENCIONES DE LEY:', rightX, dedY);
+                doc.font('Helvetica');
+                dedY += rowH;
+                const isssPct = data.isss_porcentaje || 0;
+                const afpPct = data.afp_porcentaje || 0;
+                doc.text(`ISSS (${isssPct}%)`, rightX, dedY);
+                doc.text(`$ ${parseFloat(data.descuento_isss || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+                dedY += rowH;
+                doc.text(`AFP (${afpPct}%)`, rightX, dedY);
+                doc.text(`$ ${parseFloat(data.descuento_afp || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+                dedY += rowH;
+                doc.text('RENTA', rightX, dedY);
+                doc.text(`$ ${parseFloat(data.descuento_renta || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+                dedY += rowH + 1;
+                doc.moveTo(rightX, dedY).lineTo(rightValX, dedY).stroke('#e5e7eb');
+                dedY += 3;
+
+                if (deducciones.length > 0) {
+                    doc.font('Helvetica-Bold');
+                    doc.text('OTRAS DEDUCCIONES:', rightX, dedY);
+                    doc.font('Helvetica');
+                    dedY += rowH;
+                    for (const d of deducciones) {
+                        doc.text(`${d.codigo} - ${d.descripcion}`, rightX, dedY);
+                        doc.text(`$ ${parseFloat(d.valor_ingresado || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+                        dedY += rowH;
+                    }
+                    dedY += 1;
+                    doc.moveTo(rightX, dedY).lineTo(rightValX, dedY).stroke('#e5e7eb');
+                    dedY += 3;
+                }
+                doc.font('Helvetica-Bold');
+                doc.text('TOTAL DEDUCCIONES', rightX, dedY);
+                doc.text(`$ ${parseFloat(data.total_deducciones || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+                dedY += 14;
+
+                // Total general
+                y = Math.max(percY, dedY) + 4;
+                doc.moveTo(M, y).lineTo(M + W, y).stroke('#4f46e5');
+                y += 6;
+                doc.fontSize(10).font('Helvetica-Bold').fillColor('#4f46e5');
+                doc.text('MONTO A RECIBIR', leftX, y);
+                doc.text(`$ ${parseFloat(data.monto_recibir || 0).toFixed(2)}`, leftValX, y, { align: 'right' });
+                doc.fillColor('black');
+                y += 12;
+                doc.fontSize(7).font('Helvetica-Oblique');
+                doc.text(`Son: ${data.monto_letras}`, leftX, y, { width: W - 10 });
+                y += 16;
+
+                // Signatures
+                doc.fontSize(7).font('Helvetica');
+                const sigW = 200;
+                doc.moveTo(M + 20, y).lineTo(M + 20 + sigW, y).stroke('#e5e7eb');
+                doc.fontSize(6).font('Helvetica-Bold').text('RECIBI CONFORME', M + 20, y + 4, { width: sigW, align: 'center' });
+                doc.fontSize(7).font('Helvetica-Bold').text(empName, M, y + 20, { width: sigW + 40, align: 'center' });
+
+                if (firmaPath) {
+                    try {
+                        const fFile = firmaPath.split('/').pop();
+                        const fAbs = path.join(__dirname, '..', '..', 'uploads', fFile);
+                        if (fs.existsSync(fAbs)) doc.image(fAbs, M + W - sigW - 10, y - 50, { width: 90, height: 35 });
+                    } catch (e) { /* ignore */ }
+                }
+                if (selloPath) {
+                    try {
+                        const sFile = selloPath.split('/').pop();
+                        const sAbs = path.join(__dirname, '..', '..', 'uploads', sFile);
+                        if (fs.existsSync(sAbs)) doc.image(sAbs, M + W - 120, y - 50, { width: 80, height: 40 });
+                    } catch (e) { /* ignore */ }
+                }
+
+                doc.fontSize(7).font('Helvetica');
+                doc.moveTo(M + W - sigW - 20, y).lineTo(M + W - 20, y).stroke('#e5e7eb');
+                doc.fontSize(6).font('Helvetica-Bold').text(responsable.toUpperCase(), M + W - sigW - 20, y + 4, { width: sigW, align: 'center' });
+                doc.fontSize(7).font('Helvetica').text('RECURSOS HUMANOS', M + W - sigW - 20, y + 20, { width: sigW, align: 'center' });
+
+                y += 45;
+
+                // Copy label
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#4f46e5');
+                doc.text(label, M, y, { width: W, align: 'center' });
+                doc.fillColor('black');
+
+                return y;
+            };
+
+            // Top copy - Empleado
+            drawCopy(30, 'COPIA EMPLEADO');
+
+            // Page middle divider
+            const PAGE_MID = 396;
+            doc.moveTo(30, PAGE_MID - 4).lineTo(30 + 552, PAGE_MID - 4).stroke('#e5e7eb');
+
+            // Bottom copy - Empresa
+            drawCopy(PAGE_MID, 'ORIGINAL EMPRESA');
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 module.exports = {
     generateTransferPDF, 
     generateStatementPDF, 
@@ -2524,5 +2986,8 @@ module.exports = {
     generateAcuerdoPagoPDF,
     generateHonorarioPDF,
     generateAguinaldoPDF,
-    generateAguinaldoRecibosPDF
+    generateAguinaldoRecibosPDF,
+    generateCloseoutDetailPDF,
+    generatePlanillaPDF,
+    generatePlanillaReciboPDF
 };
