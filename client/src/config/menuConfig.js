@@ -145,7 +145,7 @@ export const menuConfig = [
             { id: 'categories', label: 'Categorías', path: '/categories', icon: Tag, permission: 'manage_categories' },
             { id: 'products', label: 'Productos', path: '/products', icon: Package, permission: 'manage_products' },
             { id: 'sellers', label: 'Vendedores', path: '/sellers', icon: Users, permission: 'manage_sellers' },
-            { id: 'customers-batch-delete', permission: 'manage_customers_batch_delete', hideInMenu: true },
+            { id: 'customers-batch-delete', label: 'Eliminación Masiva de Clientes', permission: 'manage_customers_batch_delete', hideInMenu: true },
         ]
     },
     {
