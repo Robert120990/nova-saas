@@ -61,6 +61,7 @@ import ProviderPendingDocumentsDetailedReport from './pages/ProviderPendingDocum
 import Expenses from './pages/Expenses';
 import ExpenseReport from './pages/ExpenseReport';
 import PurchaseReport from './pages/PurchaseReport';
+import PurchaseChecks from './pages/PurchaseChecks';
 
 // Gas Station Pages
 import GasDistributors from './pages/GasDistributors';
@@ -183,6 +184,7 @@ function App() {
                         <Route path="/compras/reportes/compras" element={<PurchaseReport />} />
                         <Route path="/compras/reportes/gastos" element={<ExpenseReport />} />
                         <Route path="/compras/periodo" element={<PurchasePeriod />} />
+                        <Route path="/compras/chq-contado" element={<PurchaseChecks />} />
                         <Route path="/ventas/nueva" element={<SalesTerminal />} />
                         <Route path="/ventas/cierre" element={<CashClosing />} />
                         <Route path="/ventas/reportes/ventas" element={<SalesReport />} />

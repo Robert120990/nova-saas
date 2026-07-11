@@ -231,6 +231,19 @@ router.get('/purchases', purchaseController.getPurchases);
 router.post('/purchases', purchaseController.createPurchase);
 router.get('/purchases/reports/pdf', purchaseController.getPurchaseReportPDF);
 router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
+
+// Purchase Checks (Chq Contado) — MUST be before /purchases/:id to avoid route conflict
+const purchaseCheckController = require('../controllers/purchaseCheck.controller');
+router.get('/purchases/checks', purchaseCheckController.getChecks);
+router.post('/purchases/checks', purchaseCheckController.createCheck);
+router.get('/purchases/checks/:id', purchaseCheckController.getCheckById);
+router.put('/purchases/checks/:id', purchaseCheckController.updateCheck);
+router.delete('/purchases/checks/:id', purchaseCheckController.deleteCheck);
+router.post('/purchases/checks/:id/deliver', purchaseCheckController.deliverCheck);
+router.post('/purchases/checks/:id/request', purchaseCheckController.requestCheck);
+router.get('/purchases/checks/config/:branchId', purchaseCheckController.getChqConfig);
+router.post('/purchases/checks/config', purchaseCheckController.saveChqConfig);
+
 router.get('/purchases/:id', purchaseController.getPurchaseById);
 router.put('/purchases/:id', purchaseController.updatePurchase);
 router.post('/purchases/:id/void', purchaseController.voidPurchase);

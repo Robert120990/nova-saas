@@ -154,6 +154,7 @@ export const menuConfig = [
         children: [
             { id: 'compras-lista', label: 'Gestión de Compras', path: '/compras', icon: FileText, permission: 'manage_purchases_list' },
             { id: 'compras-gastos', label: 'Gastos', path: '/compras/gastos', icon: Banknote, permission: 'manage_expenses' },
+            { id: 'compras-chq-contado', label: 'Chq Contado', path: '/compras/chq-contado', icon: CreditCard, permission: 'manage_purchase_checks' },
             { id: 'purchase-period', label: 'Periodo de Compras', path: '/compras/periodo', icon: Calendar, permission: 'manage_purchase_period' },
             { 
                 id: 'compras-reports', 

@@ -135,6 +135,9 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
     const idEmpresa = '015';
     const idPuntoVenta = 'P01';
     const fechaTurno = formatDateDDMMYYYY(closeout.fecha_turno);
+    const fechaDate = closeout.fecha_turno instanceof Date
+        ? closeout.fecha_turno.toISOString().split('T')[0]
+        : String(closeout.fecha_turno).substring(0, 10);
 
     const rrs = getRrsPool();
     const conn = await rrs.getConnection();
@@ -368,7 +371,7 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
                 VALUES (?, ?, ?, ?, ?, ?)
             `, [
                 tankLecturaId,
-                fechaTurno,
+                fechaDate,
                 parseInt(closeout.numero_turno) || 0,
                 String(closeout.id),
                 idEmpresa,
