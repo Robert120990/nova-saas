@@ -436,7 +436,7 @@ const Quedan = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Gravadas', 'IVA', 'Retención', 'Total', 'Estado', 'Acciones']}
+                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Total', 'Estado', 'Acciones']}
                     data={quedans}
                     isLoading={listLoading}
                     renderRow={(c) => (
@@ -455,15 +455,6 @@ const Quedan = () => {
                             </td>
                             <td className="px-5 py-3 text-[10px] font-bold text-slate-600 uppercase max-w-[160px] truncate">
                                 {c.provider_nombre}
-                            </td>
-                            <td className="px-5 py-3 font-bold text-slate-600 text-[10px]">
-                                ${parseFloat(c.total_gravadas || 0).toFixed(2)}
-                            </td>
-                            <td className="px-5 py-3 font-bold text-slate-600 text-[10px]">
-                                ${parseFloat(c.total_iva || 0).toFixed(2)}
-                            </td>
-                            <td className="px-5 py-3 font-bold text-slate-600 text-[10px]">
-                                ${parseFloat(c.total_retencion || 0).toFixed(2)}
                             </td>
                             <td className="px-5 py-3 font-black text-slate-900 text-[10px]">
                                 ${parseFloat(c.total || 0).toFixed(2)}
