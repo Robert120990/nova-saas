@@ -441,30 +441,30 @@ const Quedan = () => {
                     isLoading={listLoading}
                     renderRow={(c) => (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
-                            <td className="px-5 py-3 text-[10px] font-black text-slate-700 font-mono">
+                            <td className="px-5 py-1 text-[10px] font-black text-slate-700 font-mono">
                                 {c.num_quedan || '—'}
                             </td>
-                            <td className="px-5 py-3 text-[9px] font-bold text-slate-400">
+                            <td className="px-5 py-1 text-[9px] font-bold text-slate-400">
                                 {formatDate(c.fecha)}
                             </td>
-                            <td className="px-5 py-3 text-[9px] font-bold text-slate-400">
+                            <td className="px-5 py-1 text-[9px] font-bold text-slate-400">
                                 {formatDate(c.fecha_vencimiento)}
                             </td>
-                            <td className="px-5 py-3 text-[9px] font-bold text-slate-500">
+                            <td className="px-5 py-1 text-[9px] font-bold text-slate-500">
                                 {c.dias_credito || 0}
                             </td>
-                            <td className="px-5 py-3 text-[10px] font-bold text-slate-600 uppercase max-w-[160px] truncate">
+                            <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase max-w-[160px] truncate">
                                 {c.provider_nombre}
                             </td>
-                            <td className="px-5 py-3 font-black text-slate-900 text-[10px]">
+                            <td className="px-5 py-1 font-black text-slate-900 text-[10px]">
                                 ${parseFloat(c.total || 0).toFixed(2)}
                             </td>
-                            <td className="px-5 py-3">
+                            <td className="px-5 py-1">
                                 <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'ENTREGADO' ? 'bg-emerald-50 text-emerald-600' : c.status === 'SOLICITADO' ? 'bg-violet-50 text-violet-600' : 'bg-amber-50 text-amber-600'}`}>
                                     {c.status}
                                 </span>
                             </td>
-                            <td className="px-5 py-3">
+                            <td className="px-5 py-1">
                                 <div className="flex justify-end gap-1">
                                     {c.status === 'PENDIENTE' && (
                                         <>
