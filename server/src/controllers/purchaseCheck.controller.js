@@ -383,6 +383,136 @@ const saveChqConfig = async (req, res) => {
     }
 };
 
+const syncProviders = async (req, res) => {
+    try {
+        const { branch_id } = req.body;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!branch_id) {
+            return res.status(400).json({ message: 'branch_id es requerido' });
+        }
+
+        const [configs] = await pool.query(
+            'SELECT * FROM branch_chq_config WHERE company_id = ? AND branch_id = ?',
+            [companyId, branch_id]
+        );
+
+        if (configs.length === 0) {
+            return res.status(400).json({
+                message: 'Configuración de Chq Contado no encontrada para esta sucursal. Primero configure el código de destino.'
+            });
+        }
+
+        const rrsIdEmpresa = configs[0].rrs_id_empresa;
+
+        const [providers] = await pool.query(
+            'SELECT id, nombre, nombre_comercial, nit, nrc, direccion, telefono, correo FROM providers WHERE company_id = ?',
+            [companyId]
+        );
+
+        const rrs = getRrsPool();
+        let created = 0;
+        let updated = 0;
+        let errors = [];
+
+        for (const p of providers) {
+            try {
+                const nrc = (p.nrc || '').replace(/\s/g, '');
+                const nit = (p.nit || '').replace(/\s/g, '');
+                const codigoBusqueda = nrc ? `015${p.id}${nrc}` : '';
+
+                let existing = null;
+
+                if (nit) {
+                    const [rows] = await rrs.query(
+                        'SELECT * FROM proveedores WHERE id_empresa = ? AND nit = ?',
+                        [rrsIdEmpresa, nit]
+                    );
+                    if (rows.length > 0) existing = rows[0];
+                }
+
+                if (!existing && nrc) {
+                    const [rows] = await rrs.query(
+                        'SELECT * FROM proveedores WHERE id_empresa = ? AND nrc = ?',
+                        [rrsIdEmpresa, nrc]
+                    );
+                    if (rows.length > 0) existing = rows[0];
+                }
+
+                if (!existing && codigoBusqueda) {
+                    const [rows] = await rrs.query(
+                        'SELECT * FROM proveedores WHERE id_empresa = ? AND codigo = ?',
+                        [rrsIdEmpresa, codigoBusqueda]
+                    );
+                    if (rows.length > 0) existing = rows[0];
+                }
+
+                if (existing) {
+                    await rrs.query(`
+                        UPDATE proveedores SET
+                            codigo = ?,
+                            nombre = ?,
+                            nombre_comercial = ?,
+                            direccion = ?,
+                            telefono = ?,
+                            correo = ?,
+                            nrc = ?,
+                            nit = ?
+                        WHERE id = ? AND id_empresa = ?
+                    `, [
+                        codigoBusqueda || nrc || '',
+                        (p.nombre || '').substring(0, 80),
+                        (p.nombre_comercial || '').substring(0, 150),
+                        (p.direccion || '').substring(0, 100),
+                        (p.telefono || '').substring(0, 20),
+                        (p.correo || '').substring(0, 150),
+                        nrc || '',
+                        nit || '',
+                        existing.id,
+                        rrsIdEmpresa
+                    ]);
+                    updated++;
+                } else {
+                    const providerId = `${rrsIdEmpresa}-${companyId}-${p.id}`;
+                    await rrs.query(`
+                        INSERT INTO proveedores
+                            (id, id_empresa, codigo, nombre, nombre_comercial, direccion, telefono,
+                             correo, nit, nrc, tipo, es_exento, es_extranjero, con_retencion,
+                             con_percepcion, con_credito, limite_credito, cuenta_contable,
+                             es_exento_fovial, dif, napa, rnpa, id_tipo_doc, id_tipo_per, id_giro,
+                             es_exento_cotrans)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'P', 0, 0, 0, 0, 0, 0, '', 0, '', '', '', '', '', '', 0)
+                    `, [
+                        providerId,
+                        rrsIdEmpresa,
+                        codigoBusqueda || nrc || '',
+                        (p.nombre || '').substring(0, 80),
+                        (p.nombre_comercial || '').substring(0, 150),
+                        (p.direccion || '').substring(0, 100),
+                        (p.telefono || '').substring(0, 20),
+                        (p.correo || '').substring(0, 150),
+                        nit || '',
+                        nrc || ''
+                    ]);
+                    created++;
+                }
+            } catch (e) {
+                errors.push(`Proveedor #${p.id} (${p.nombre}): ${e.message}`);
+            }
+        }
+
+        res.json({
+            message: `Sincronización completada. Creados: ${created}, Actualizados: ${updated}, Errores: ${errors.length}`,
+            created,
+            updated,
+            errors
+        });
+    } catch (error) {
+        console.error('Error al sincronizar proveedores:', error);
+        res.status(500).json({ message: 'Error al sincronizar proveedores: ' + error.message });
+    }
+};
+
 module.exports = {
     getChecks,
     getCheckById,
@@ -392,5 +522,6 @@ module.exports = {
     deliverCheck,
     requestCheck,
     getChqConfig,
-    saveChqConfig
+    saveChqConfig,
+    syncProviders
 };

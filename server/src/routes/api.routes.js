@@ -243,6 +243,7 @@ router.post('/purchases/checks/:id/deliver', purchaseCheckController.deliverChec
 router.post('/purchases/checks/:id/request', purchaseCheckController.requestCheck);
 router.get('/purchases/checks/config/:branchId', purchaseCheckController.getChqConfig);
 router.post('/purchases/checks/config', purchaseCheckController.saveChqConfig);
+router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProviders);
 
 router.get('/purchases/:id', purchaseController.getPurchaseById);
 router.put('/purchases/:id', purchaseController.updatePurchase);

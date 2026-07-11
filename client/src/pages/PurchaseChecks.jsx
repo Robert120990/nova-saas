@@ -15,7 +15,8 @@ import {
     Save,
     Handshake,
     Send,
-    Settings
+    Settings,
+    RefreshCw
 } from 'lucide-react';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -165,6 +166,15 @@ const PurchaseChecks = () => {
             setShowConfigModal(false);
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar configuración'),
+    });
+
+    const syncMutation = useMutation({
+        mutationFn: (branchId) => axios.post('/api/purchases/checks/sync-providers', { branch_id: branchId }),
+        onSuccess: (res) => {
+            toast.success(res.data.message);
+            queryClient.invalidateQueries({ queryKey: ['purchase-checks'] });
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al sincronizar proveedores'),
     });
 
     const [showRequestConfirm, setShowRequestConfirm] = useState(null);
@@ -531,13 +541,33 @@ const PurchaseChecks = () => {
                                 <input type="text" value={configCodDestino} onChange={(e) => setConfigCodDestino(e.target.value)}
                                     placeholder="Ej: 01" className={inputCls} />
                             </div>
+                            {configData.config && (
+                                <>
+                                    <hr className="border-slate-200" />
+                                    <div>
+                                        <p className="text-[11px] font-bold text-slate-500 mb-2">Sincronizar Proveedores</p>
+                                        <p className="text-[10px] text-slate-400 mb-3">
+                                            Sincroniza todos los proveedores del sistema con RRS (db_system_rrs).
+                                            El match se hace por NIT, NRC o código generado.
+                                        </p>
+                                        <button
+                                            onClick={() => syncMutation.mutate(configBranchId)}
+                                            disabled={syncMutation.isPending}
+                                            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-amber-500/20 disabled:opacity-50"
+                                        >
+                                            {syncMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                                            {syncMutation.isPending ? 'Sincronizando...' : 'Sincronizar Proveedores'}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
 
                     <div className="flex justify-end gap-3 pt-2">
                         <button type="button" onClick={() => setShowConfigModal(false)}
                             className="px-4 py-2 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">
-                            Cancelar
+                            Cerrar
                         </button>
                         <button
                             onClick={() => {
