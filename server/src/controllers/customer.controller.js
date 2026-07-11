@@ -2,11 +2,38 @@ const pool = require('../config/db');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, es_credito, es_anticipado } = req.query;
+        const { search, page = 1, limit = 15, es_credito, es_anticipado, ids_only } = req.query;
         const offset = (page - 1) * limit;
 
-        console.log(`[DEBUG] getCustomers: company_id=${req.company_id}, search=${search}, page=${page}`);
-        let query = `
+        let whereClause = 'WHERE c.company_id = ?';
+        let params = [req.company_id];
+
+        if (search) {
+            whereClause += ` AND (c.nombre LIKE ? OR c.nombre_comercial LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ?) `;
+            const searchTerm = `%${search}%`;
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        if (es_credito === '1') {
+            whereClause += ` AND c.es_credito = 1 `;
+        }
+        if (es_anticipado === '1') {
+            whereClause += ` AND c.es_anticipado = 1 `;
+        }
+
+        if (ids_only === '1') {
+            const [rows] = await pool.query(
+                `SELECT c.id FROM customers c ${whereClause} ORDER BY c.nombre ASC`,
+                params
+            );
+            return res.json(rows.map(r => r.id));
+        }
+
+        const countQuery = `SELECT COUNT(*) as total FROM customers c ${whereClause}`;
+        const [countResult] = await pool.query(countQuery, params);
+        const total = countResult[0].total;
+
+        const [rows] = await pool.query(`
             SELECT c.*,
                    d.description AS departamento_nombre,
                    m.description AS municipio_nombre,
@@ -17,34 +44,10 @@ const getCustomers = async (req, res) => {
             LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
             LEFT JOIN cat_019_actividad_economica a ON c.codigo_actividad = a.code
             LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
-            WHERE c.company_id = ?
-        `;
-        let params = [req.company_id];
+            ${whereClause}
+            ORDER BY c.nombre ASC LIMIT ? OFFSET ?
+        `, [...params, parseInt(limit), parseInt(offset)]);
 
-        if (search) {
-            query += ` AND (c.nombre LIKE ? OR c.nombre_comercial LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ?) `;
-            const searchTerm = `%${search}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm);
-        }
-
-        if (es_credito === '1') {
-            query += ` AND c.es_credito = 1 `;
-        }
-        if (es_anticipado === '1') {
-            query += ` AND c.es_anticipado = 1 `;
-        }
-
-        // Count total for pagination
-        const countQuery = `SELECT COUNT(*) as total FROM (${query}) as sub`;
-        const [countResult] = await pool.query(countQuery, params);
-        const total = countResult[0].total;
-
-        // Final query with pagination
-        query += ` ORDER BY c.nombre ASC LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit), parseInt(offset));
-
-        const [rows] = await pool.query(query, params);
-        console.log(`[DEBUG] getCustomers: found ${rows.length} rows, total=${total}`);
         res.json({
             data: rows,
             total,

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { verifyToken } = require('../middlewares/auth');
+const { verifyToken, checkPermission } = require('../middlewares/auth');
 const tenantMiddleware = require('../middlewares/tenant');
 const upload = require('../config/upload');
 
@@ -156,7 +156,7 @@ router.delete('/sellers/:id', sellerController.deleteSeller);
 router.get('/customers', customerController.getCustomers);
 router.post('/customers', customerController.createCustomer);
 router.put('/customers/:id', customerController.updateCustomer);
-router.delete('/customers/batch', customerController.deleteBatchCustomers);
+router.delete('/customers/batch', checkPermission('manage_customers_batch_delete'), customerController.deleteBatchCustomers);
 router.delete('/customers/:id', customerController.deleteCustomer);
 
 // Customer Branches (Sucursales)

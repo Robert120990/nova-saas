@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
@@ -6,12 +6,18 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
 
 const Customers = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const { user } = useAuth();
+
+    const userPermissions = user?.permissions || [];
+    const isSuperAdmin = user?.role === 'SuperAdmin';
+    const canBatchDelete = isSuperAdmin || userPermissions.includes('manage_customers_batch_delete');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
@@ -181,6 +187,18 @@ const Customers = () => {
         });
         if (ok) deleteBatchMutation.mutate([...selectedIds]);
     };
+
+    const handleSelectAllResults = useCallback(async () => {
+        try {
+            const params = { ids_only: '1' };
+            if (debouncedSearch) params.search = debouncedSearch;
+            const ids = await axios.get('/api/customers', { params }).then(r => r.data);
+            setSelectedIds(new Set(ids));
+            toast.success(`${ids.length} cliente(s) seleccionados`);
+        } catch {
+            toast.error('Error al seleccionar todos los clientes');
+        }
+    }, [debouncedSearch]);
 
     // Sucursales queries & mutations
     const { data: branches = [], isLoading: branchesLoading } = useQuery({
@@ -352,7 +370,7 @@ const Customers = () => {
                 />
             </div>
 
-            {selectedIds.size > 0 && (
+            {canBatchDelete && selectedIds.size > 0 && (
                 <div className="flex items-center gap-3 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm">
                     <span className="text-xs font-bold text-indigo-700">{selectedIds.size} cliente(s) seleccionados</span>
                     <button
@@ -361,6 +379,14 @@ const Customers = () => {
                     >
                         Deseleccionar todo
                     </button>
+                    {selectedIds.size < response.total && (
+                        <button
+                            onClick={handleSelectAllResults}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase transition-colors"
+                        >
+                            Seleccionar todos los {response.total} resultados
+                        </button>
+                    )}
                     <button
                         onClick={handleDeleteSelected}
                         disabled={deleteBatchMutation.isPending}
@@ -374,28 +400,30 @@ const Customers = () => {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
                     headers={[
-                        <input
+                        ...(canBatchDelete ? [<input
                             key="select-all"
                             type="checkbox"
                             ref={selectAllRef}
                             checked={allPageSelected}
                             onChange={handleSelectAll}
                             className="accent-indigo-600 w-4 h-4 cursor-pointer"
-                        />,
+                        />] : []),
                         'Nombre / Razón Social', 'Ubicación', 'Tipo Persona / País', 'Documento', 'Condición Fiscal', 'Acciones'
                     ]}
                     data={customers}
                     isLoading={isLoading}
                     renderRow={(c) => (
                         <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(c.id) ? 'bg-indigo-50/50' : ''}`}>
-                            <td className="px-3 py-1">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedIds.has(c.id)}
-                                    onChange={() => handleSelectOne(c.id)}
-                                    className="accent-indigo-600 w-4 h-4 cursor-pointer"
-                                />
-                            </td>
+                            {canBatchDelete && (
+                                <td className="px-3 py-1">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(c.id)}
+                                        onChange={() => handleSelectOne(c.id)}
+                                        className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                                    />
+                                </td>
+                            )}
                             <td className="px-3 py-1">
                                 <div className="text-xs font-bold text-slate-900">{c.nombre}</div>
                                 <div className="text-[10px] text-slate-500 font-medium">{c.nombre_comercial}</div>
