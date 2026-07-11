@@ -60,6 +60,10 @@ const Quedan = () => {
     const [deliverId, setDeliverId] = useState(null);
     const [deliverFecha, setDeliverFecha] = useState(today());
 
+    const [showItemModal, setShowItemModal] = useState(false);
+    const [editingItemKey, setEditingItemKey] = useState(null);
+    const [itemForm, setItemForm] = useState({ fecha: today(), documento: '', tipo: 'CCF', gravadas: '', iva: '', retencion: '', percepcion: '', exentas: '' });
+
     const isEditing = editId !== null;
 
     const [showRequestConfirm, setShowRequestConfirm] = useState(null);
@@ -147,23 +151,52 @@ const Quedan = () => {
         return g + i + e;
     };
 
-    const updateItem = (key, field, value) => {
-        setFormItems(prev => prev.map(item => {
-            if (item._key !== key) return item;
-            const updated = { ...item, [field]: value };
-            if (field === 'gravadas' || field === 'iva' || field === 'exentas') {
-                updated.total = recalcItemTotal(updated);
-            }
-            return updated;
-        }));
-    };
-
     const removeItem = (key) => {
         setFormItems(prev => prev.filter(item => item._key !== key));
     };
 
-    const addItem = () => {
-        setFormItems(prev => [...prev, emptyItem()]);
+    const resetItemForm = () => {
+        setItemForm({ fecha: today(), documento: '', tipo: 'CCF', gravadas: '', iva: '', retencion: '', percepcion: '', exentas: '' });
+        setEditingItemKey(null);
+    };
+
+    const openAddItem = () => {
+        resetItemForm();
+        setShowItemModal(true);
+    };
+
+    const openEditItem = (key) => {
+        const item = formItems.find(i => i._key === key);
+        if (!item) return;
+        setItemForm({
+            fecha: item.fecha,
+            documento: item.documento,
+            tipo: item.tipo,
+            gravadas: item.gravadas,
+            iva: item.iva,
+            retencion: item.retencion,
+            percepcion: item.percepcion,
+            exentas: item.exentas
+        });
+        setEditingItemKey(key);
+        setShowItemModal(true);
+    };
+
+    const saveItem = () => {
+        const total = recalcItemTotal(itemForm);
+        if (editingItemKey) {
+            setFormItems(prev => prev.map(item =>
+                item._key === editingItemKey ? { ...item, ...itemForm, total } : item
+            ));
+        } else {
+            setFormItems(prev => [...prev, { _key: Date.now() + Math.random(), ...itemForm, total }]);
+        }
+        setShowItemModal(false);
+        resetItemForm();
+    };
+
+    const updateItemForm = (field, value) => {
+        setItemForm(prev => ({ ...prev, [field]: value }));
     };
 
     const calcTotals = () => {
@@ -554,11 +587,11 @@ const Quedan = () => {
                             <span className={labelCls}>Detalle de Documentos</span>
                             <button
                                 type="button"
-                                onClick={addItem}
+                                onClick={openAddItem}
                                 className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-[10px] font-bold uppercase tracking-wider"
                             >
                                 <PlusCircle size={14} />
-                                Agregar Fila
+                                Agregar Documento
                             </button>
                         </div>
                         <div className="overflow-x-auto">
@@ -581,72 +614,36 @@ const Quedan = () => {
                                     {formItems.length === 0 && (
                                         <tr>
                                             <td colSpan="10" className="text-center py-8 text-[10px] text-slate-400 font-medium">
-                                                Sin documentos. Presione "Agregar Fila" para añadir.
+                                                Sin documentos. Presione "Agregar Documento" para añadir.
                                             </td>
                                         </tr>
                                     )}
                                     {formItems.map((item) => (
                                         <tr key={item._key} className="border-b border-slate-50 hover:bg-slate-50/50">
-                                            <td className="py-1 px-2">
-                                                <input type="date" value={item.fecha}
-                                                    onChange={(e) => updateItem(item._key, 'fecha', e.target.value)}
-                                                    className="w-32 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600">{formatDate(item.fecha)}</td>
+                                            <td className="py-2 px-2 text-[10px] font-mono font-bold text-slate-700">{item.documento || '—'}</td>
+                                            <td className="py-2 px-2">
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${item.tipo === 'CCF' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                    {item.tipo}
+                                                </span>
                                             </td>
-                                            <td className="py-1 px-2">
-                                                <input type="text" value={item.documento}
-                                                    onChange={(e) => updateItem(item._key, 'documento', e.target.value)}
-                                                    placeholder="No. doc"
-                                                    className="w-28 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <select value={item.tipo}
-                                                    onChange={(e) => updateItem(item._key, 'tipo', e.target.value)}
-                                                    className="w-20 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                                    <option value="CCF">CCF</option>
-                                                    <option value="NCR">NCR</option>
-                                                </select>
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <input type="number" step="0.01" min="0" value={item.gravadas}
-                                                    onChange={(e) => updateItem(item._key, 'gravadas', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-right outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <input type="number" step="0.01" min="0" value={item.iva}
-                                                    onChange={(e) => updateItem(item._key, 'iva', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-right outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <input type="number" step="0.01" min="0" value={item.retencion}
-                                                    onChange={(e) => updateItem(item._key, 'retencion', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-right outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <input type="number" step="0.01" min="0" value={item.percepcion}
-                                                    onChange={(e) => updateItem(item._key, 'percepcion', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-right outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <input type="number" step="0.01" min="0" value={item.exentas}
-                                                    onChange={(e) => updateItem(item._key, 'exentas', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-right outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                                            </td>
-                                            <td className="py-1 px-2 text-[11px] font-black text-slate-700 text-right">
-                                                ${recalcItemTotal(item).toFixed(2)}
-                                            </td>
-                                            <td className="py-1 px-2">
-                                                <button
-                                                    onClick={() => removeItem(item._key)}
-                                                    className="p-1 text-slate-300 hover:text-rose-500 transition-colors"
-                                                    title="Eliminar"
-                                                >
-                                                    <Trash2 size={13} />
-                                                </button>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.gravadas) || 0).toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.iva) || 0).toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.retencion) || 0).toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.percepcion) || 0).toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.exentas) || 0).toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${recalcItemTotal(item).toFixed(2)}</td>
+                                            <td className="py-2 px-2">
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => openEditItem(item._key)}
+                                                        className="p-1 text-slate-300 hover:text-indigo-600 transition-colors" title="Editar">
+                                                        <Edit size={13} />
+                                                    </button>
+                                                    <button onClick={() => removeItem(item._key)}
+                                                        className="p-1 text-slate-300 hover:text-rose-500 transition-colors" title="Eliminar">
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -681,6 +678,93 @@ const Quedan = () => {
                         >
                             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                             {isSaving ? 'Guardando...' : (isEditing ? 'Actualizar' : 'Guardar')}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={showItemModal}
+                onClose={() => { setShowItemModal(false); resetItemForm(); }}
+                title={editingItemKey ? 'Editar Documento' : 'Agregar Documento'}
+                maxWidth="max-w-lg"
+            >
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>Fecha</label>
+                            <input type="date" value={itemForm.fecha}
+                                onChange={(e) => updateItemForm('fecha', e.target.value)}
+                                className={inputCls} />
+                        </div>
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>Documento</label>
+                            <input type="text" value={itemForm.documento}
+                                onChange={(e) => updateItemForm('documento', e.target.value)}
+                                placeholder="No. documento" className={inputCls} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className={`${labelCls} block mb-1`}>Tipo</label>
+                        <select value={itemForm.tipo}
+                            onChange={(e) => updateItemForm('tipo', e.target.value)}
+                            className={inputCls}>
+                            <option value="CCF">CCF</option>
+                            <option value="NCR">NCR</option>
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>Gravadas</label>
+                            <input type="number" step="0.01" min="0" value={itemForm.gravadas}
+                                onChange={(e) => updateItemForm('gravadas', e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                className={inputCls} />
+                        </div>
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>IVA</label>
+                            <input type="number" step="0.01" min="0" value={itemForm.iva}
+                                onChange={(e) => updateItemForm('iva', e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                className={inputCls} />
+                        </div>
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>Retención</label>
+                            <input type="number" step="0.01" min="0" value={itemForm.retencion}
+                                onChange={(e) => updateItemForm('retencion', e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                className={inputCls} />
+                        </div>
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>Percepción</label>
+                            <input type="number" step="0.01" min="0" value={itemForm.percepcion}
+                                onChange={(e) => updateItemForm('percepcion', e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                className={inputCls} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className={`${labelCls} block mb-1`}>Exentas</label>
+                        <input type="number" step="0.01" min="0" value={itemForm.exentas}
+                            onChange={(e) => updateItemForm('exentas', e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            className={inputCls} />
+                    </div>
+                    <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100 flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase">Total</span>
+                        <span className="text-lg font-black text-indigo-600">
+                            ${recalcItemTotal(itemForm).toFixed(2)}
+                        </span>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button type="button" onClick={() => { setShowItemModal(false); resetItemForm(); }}
+                            className="px-4 py-2 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">
+                            Cancelar
+                        </button>
+                        <button onClick={saveItem}
+                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20">
+                            <Save size={16} />
+                            {editingItemKey ? 'Actualizar' : 'Agregar'}
                         </button>
                     </div>
                 </div>
