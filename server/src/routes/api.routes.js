@@ -247,6 +247,17 @@ router.post('/purchases/checks/config', purchaseCheckController.saveChqConfig);
 router.post('/purchases/checks/rrs-num-cheque', purchaseCheckController.getRrsNumCheque);
 router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProviders);
 
+// Quedan
+const quedanController = require('../controllers/quedan.controller');
+router.get('/purchases/quedans', quedanController.getQuedans);
+router.post('/purchases/quedans', quedanController.createQuedan);
+router.get('/purchases/quedans/:id', quedanController.getQuedanById);
+router.put('/purchases/quedans/:id', quedanController.updateQuedan);
+router.delete('/purchases/quedans/:id', quedanController.deleteQuedan);
+router.post('/purchases/quedans/:id/deliver', quedanController.deliverQuedan);
+router.post('/purchases/quedans/:id/request', quedanController.requestQuedan);
+router.post('/purchases/quedans/:id/revert', quedanController.revertQuedan);
+
 router.get('/purchases/:id', purchaseController.getPurchaseById);
 router.put('/purchases/:id', purchaseController.updatePurchase);
 router.post('/purchases/:id/void', purchaseController.voidPurchase);

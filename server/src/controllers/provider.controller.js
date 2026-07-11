@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getProviders = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15 } = req.query;
+        const { search, page = 1, limit = 15, es_credito } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `
@@ -19,6 +19,10 @@ const getProviders = async (req, res) => {
             WHERE p.company_id = ?
         `;
         let params = [req.company_id];
+
+        if (es_credito === '1') {
+            query += ' AND p.es_credito = 1';
+        }
 
         if (search) {
             query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.numero_documento LIKE ?) `;
