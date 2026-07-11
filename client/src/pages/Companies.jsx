@@ -214,8 +214,8 @@ const Companies = () => {
                                 <div className="text-[10px] font-mono text-slate-500 mt-1 bg-slate-100 px-1.5 py-0.5 rounded inline-block">{company.nrc}</div>
                             </td>
                             <td className="px-6 py-4">
-                                <div className="text-xs text-slate-600 font-medium">Dist. {company.distrito || '01'}, {company.municipio_nombre || company.municipio}, {company.departamento_nombre || company.departamento}</div>
-                                <div className="text-[10px] text-indigo-600 font-bold max-w-[150px] truncate">{company.actividad_nombre}</div>
+                                <div className="text-xs text-slate-600 font-medium">{company.distrito_nombre || company.distrito || 'Distrito no definido'}, {company.municipio_nombre || company.municipio}, {company.departamento_nombre || company.departamento}</div>
+                                <div className="text-[10px] text-indigo-600 font-bold">{company.actividad_nombre}</div>
                             </td>
                             <td className="px-6 py-4 text-center">
                                 <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase border ${

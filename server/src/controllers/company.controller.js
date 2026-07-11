@@ -8,12 +8,14 @@ const getCompanies = async (req, res) => {
             SELECT c.*, 
                    d.description AS departamento_nombre,
                    m.description AS municipio_nombre,
+                   dist.description AS distrito_nombre,
                    a.description AS actividad_nombre,
                    env.description AS ambiente_nombre,
                    tp.description AS tipo_persona_nombre
             FROM companies c
             LEFT JOIN cat_012_departamento d ON c.departamento = d.code
             LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
+            LEFT JOIN cat_008_distrito dist ON c.distrito = dist.code AND c.departamento = dist.dep_code
             LEFT JOIN cat_019_actividad_economica a ON c.codigo_actividad = a.code
             LEFT JOIN cat_001_ambiente env ON c.ambiente = env.code
             LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
