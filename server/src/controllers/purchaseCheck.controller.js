@@ -277,7 +277,7 @@ const requestCheck = async (req, res) => {
 
         const nrc = (check.provider_nrc || '').replace(/\s/g, '');
         const codProveedor = `015${check.provider_id}${nrc}`;
-        const llave = `${config.rrs_id_empresa}-CHQ${String(check.id).padStart(20, '0')}`;
+        const llave = `${config.rrs_id_empresa}-${check.id}`;
         const tipoDestino = check.destino === 'P' ? 'PISTA' : 'TIENDA';
         const fechaDate = check.fecha instanceof Date
             ? check.fecha.toISOString().split('T')[0]
@@ -542,10 +542,10 @@ const revertCheck = async (req, res) => {
         );
 
         const rrsIdEmpresa = configs.length > 0 ? configs[0].rrs_id_empresa : '';
-        const llave = `${rrsIdEmpresa}-CHQ${String(check.id).padStart(20, '0')}`;
+        const llave = `${rrsIdEmpresa}-${check.id}`;
 
         const rrs = getRrsPool();
-        const [deleted] = await rrs.execute(
+        const [deleted] = await rrs.query(
             'DELETE FROM solicitud_chq_contado WHERE llave = ?',
             [llave]
         );
