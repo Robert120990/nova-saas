@@ -196,7 +196,14 @@ const Quedan = () => {
     };
 
     const updateItemForm = (field, value) => {
-        setItemForm(prev => ({ ...prev, [field]: value }));
+        setItemForm(prev => {
+            const next = { ...prev, [field]: value };
+            if (next.tipo === 'CCF' && (field === 'gravadas' || field === 'tipo')) {
+                const gravadas = parseFloat(field === 'gravadas' ? value : next.gravadas) || 0;
+                next.iva = (gravadas * 0.13).toFixed(2);
+            }
+            return next;
+        });
     };
 
     const calcTotals = () => {
