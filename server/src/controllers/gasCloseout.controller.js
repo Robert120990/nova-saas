@@ -812,19 +812,34 @@ exports.saveRemesas = async (req, res) => {
         }
 
         // REPLACE-ALL STRATEGY
+        // Preserve codigos of remesas that are being re-saved (they exist in DB)
+        const [existingRemesas] = await pool.query(
+            `SELECT id, codigo FROM gas_station_closeout_remesas WHERE closeout_id = ?`,
+            [id]
+        );
+        const existingCodigos = {};
+        existingRemesas.forEach(r => { existingCodigos[r.id] = r.codigo; });
+
         await pool.query(`DELETE FROM gas_station_closeout_remesas WHERE closeout_id = ?`, [id]);
 
         if (remesas && remesas.length > 0) {
-            const values = remesas.map(r => [
-                parseInt(id),
-                r.documento || '',
-                r.descripcion || '',
-                r.despachador_id ? parseInt(r.despachador_id) : null,
-                r.tipo_operacion || 'venta_combustible',
-                parseFloat(r.monto) || 0
-            ]);
+            const values = remesas.map((r, index) => {
+                let codigo = r.codigo || existingCodigos[r.id] || null;
+                if (!codigo) {
+                    codigo = `REM-${id}-${index + 1}`;
+                }
+                return [
+                    parseInt(id),
+                    codigo,
+                    r.documento || '',
+                    r.descripcion || '',
+                    r.despachador_id ? parseInt(r.despachador_id) : null,
+                    r.tipo_operacion || 'venta_combustible',
+                    parseFloat(r.monto) || 0
+                ];
+            });
             await pool.query(
-                `INSERT INTO gas_station_closeout_remesas (closeout_id, documento, descripcion, despachador_id, tipo_operacion, monto) VALUES ?`,
+                `INSERT INTO gas_station_closeout_remesas (closeout_id, codigo, documento, descripcion, despachador_id, tipo_operacion, monto) VALUES ?`,
                 [values]
             );
         }

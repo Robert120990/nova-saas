@@ -39,7 +39,8 @@ import {
     HeartPulse,
     Gift,
     FileSignature,
-    Umbrella
+    Umbrella,
+    Handshake
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -232,6 +233,7 @@ export const menuConfig = [
             { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_readings_closure' },
             { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'view_gas_readings_history' },
             { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_advances' },
+            { id: 'gas-entrega-remesas', label: 'Entrega de Remesas', path: '/gas-station/entrega-remesas', icon: Handshake, permission: 'manage_gas_remesa_delivery' },
             { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_settings' },
             { 
                 id: 'gas-reportes-parent', 

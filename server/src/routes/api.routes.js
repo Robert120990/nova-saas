@@ -67,6 +67,7 @@ const gasDespachadorController = require('../controllers/gasDespachador.controll
 const gasPosTypeController = require('../controllers/gasPosType.controller');
 const gasAdvanceController = require('../controllers/gasAdvance.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
+const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -552,6 +553,14 @@ router.get('/gas-station/reporte-ventas', gasReporteController.getReporteVentas)
 
 // Gas Station - Reporte Detalle del Cierre
 router.get('/gas-station/reports/closeout-detail/pdf', gasReporteController.getCloseoutDetailPDF);
+
+// Gas Station - Remesa Deliveries
+router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);
+router.get('/gas-station/remesa-deliveries', gasRemesaDeliveryController.getDeliveries);
+router.post('/gas-station/remesa-deliveries', gasRemesaDeliveryController.createDelivery);
+router.put('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.updateDelivery);
+router.get('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.getDelivery);
+router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
 
 // RRHH - AFPs
 router.get('/rh/afps', rhAfpController.getAfps);

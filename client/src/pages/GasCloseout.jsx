@@ -586,8 +586,10 @@ const GasCloseout = () => {
     };
 
     const handleAddRemesaRow = () => {
+        const tempId = Date.now();
         setRemesas(prev => [...prev, {
-            id: Date.now(),
+            id: tempId,
+            codigo: `REM-${closeoutId}-${prev.length + 1}`,
             documento: '',
             descripcion: '',
             despachador_id: '',
@@ -612,7 +614,9 @@ const GasCloseout = () => {
     const handlePrintRemesaLabel = (remesa) => {
         const companyName = user?.company_name || '';
         const branchName = user?.branch_name || '';
+        const barcodeValue = `${remesa.codigo || remesa.id}|${remesa.id}`;
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remesa</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3/dist/JsBarcode.all.min.js"><\/script>
 <style>
     @page { margin: 0; }
     * { box-sizing: border-box; }
@@ -627,6 +631,7 @@ const GasCloseout = () => {
     .row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9px; }
     .row .lbl { color: #64748b; }
     .row .val { font-weight: 600; }
+    .barcode-wrap { text-align: center; margin: 6px 0; }
     @media print {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80mm; max-width: 80mm; }
     }
@@ -638,6 +643,9 @@ const GasCloseout = () => {
     <hr class="divider">
     <div class="label">Remesa</div>
     <div class="value">${escHtml(remesa.documento || '—')}</div>
+    <div class="barcode-wrap">
+        <svg id="barcode"></svg>
+    </div>
     <div class="row">
         <span class="lbl">Turno</span>
         <span class="val">#${numeroTurno || '—'}</span>
@@ -663,7 +671,14 @@ const GasCloseout = () => {
         <div class="label">Monto</div>
         <div class="value monto">$${parseFloat(remesa.monto || 0).toFixed(2)}</div>
     </div>
-    <script>setTimeout(() => { window.print(); }, 200);<\/script>
+    <script>
+        try {
+            JsBarcode("#barcode", ${JSON.stringify(barcodeValue)}, {
+                width: 2, height: 40, displayValue: true, fontSize: 12, margin: 0
+            });
+        } catch(e) { console.error(e); }
+        setTimeout(() => { window.print(); }, 300);
+    <\/script>
 </body></html>`;
 
         const win = window.open('', '_blank');
@@ -1872,6 +1887,7 @@ const GasCloseout = () => {
                                 <table className="w-full text-left border-separate border-spacing-0">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Código</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Tipo de Operación</th>
@@ -1882,13 +1898,16 @@ const GasCloseout = () => {
                                     <tbody className="divide-y divide-slate-50">
                                         {remesas.length === 0 && (
                                             <tr>
-                                                <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">
                                                     No hay remesas registradas. Agregue una remesa para comenzar.
                                                 </td>
                                             </tr>
                                         )}
                                         {remesas.map(r => (
                                             <tr key={r.id} className="text-[11px] hover:bg-slate-50 transition-colors">
+                                                <td className="px-1.5 py-1">
+                                                    <span className="text-[11px] font-mono text-slate-600">${escHtml(r.codigo || '—')}</span>
+                                                </td>
                                                 <td className="px-1.5 py-1">
                                                     <input
                                                         type="text"

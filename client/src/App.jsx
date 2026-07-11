@@ -77,6 +77,7 @@ import GasPosTypes from './pages/GasPosTypes';
 import GasAdvances from './pages/GasAdvances';
 import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
 import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
+import GasRemesaDeliveries from './pages/GasRemesaDeliveries';
 
 // RRHH Pages
 import Afps from './pages/rh/Afps';
@@ -224,6 +225,7 @@ function App() {
                         <Route path="/gas-station/despachador-nozzles" element={<GasDespachadorNozzles />} />
                         <Route path="/gas-station/pos-tipos" element={<GasPosTypes />} />
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
+                        <Route path="/gas-station/entrega-remesas" element={<GasRemesaDeliveries />} />
                         <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />
                         <Route path="/gas-station/reporte-detalle-cierre" element={<GasCloseoutDetailReport />} />
 

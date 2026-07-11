@@ -71,6 +71,7 @@ const EXPANSIONS = {
     'view_gas_readings_history',
     'manage_gas_advances',
     'manage_gas_settings',
+    'manage_gas_remesa_delivery',
     'view_gas_reports',
   ],
   view_dashboard: [
