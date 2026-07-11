@@ -419,7 +419,7 @@ const syncProviders = async (req, res) => {
             try {
                 const nrc = (p.nrc || '').replace(/\s/g, '');
                 const nit = (p.nit || '').replace(/\s/g, '');
-                const codigoBusqueda = nrc ? `015${p.id}${nrc}` : '';
+                const codigoBusqueda = `015${p.id}${nrc}`;
 
                 let existing = null;
 
@@ -439,7 +439,7 @@ const syncProviders = async (req, res) => {
                     if (rows.length > 0) existing = rows[0];
                 }
 
-                if (!existing && codigoBusqueda) {
+                if (!existing) {
                     const [rows] = await rrs.query(
                         'SELECT * FROM proveedores WHERE id_empresa = ? AND codigo = ?',
                         [rrsIdEmpresa, codigoBusqueda]
@@ -460,7 +460,7 @@ const syncProviders = async (req, res) => {
                             nit = ?
                         WHERE id = ? AND id_empresa = ?
                     `, [
-                        codigoBusqueda || nrc || '',
+                        codigoBusqueda,
                         (p.nombre || '').substring(0, 80),
                         (p.nombre_comercial || '').substring(0, 150),
                         (p.direccion || '').substring(0, 100),
@@ -485,7 +485,7 @@ const syncProviders = async (req, res) => {
                     `, [
                         providerId,
                         rrsIdEmpresa,
-                        codigoBusqueda || nrc || '',
+                        codigoBusqueda,
                         (p.nombre || '').substring(0, 80),
                         (p.nombre_comercial || '').substring(0, 150),
                         (p.direccion || '').substring(0, 100),
