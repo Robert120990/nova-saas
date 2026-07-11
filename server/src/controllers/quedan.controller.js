@@ -113,6 +113,14 @@ const createQuedan = async (req, res) => {
             return res.status(400).json({ message: 'N. Quedan, proveedor y fecha son requeridos' });
         }
 
+        const [dup] = await pool.query(
+            'SELECT id FROM purchase_quedans WHERE company_id = ? AND branch_id = ? AND provider_id = ? AND num_quedan = ?',
+            [companyId, branchId, provider_id, num_quedan]
+        );
+        if (dup.length > 0) {
+            return res.status(400).json({ message: 'Ya existe un quedan con ese número para esta sucursal y proveedor' });
+        }
+
         let totalGravadas = 0, totalIva = 0, totalRetencion = 0, totalPercepcion = 0, totalExentas = 0, total = 0;
 
         if (items && items.length > 0) {
@@ -185,6 +193,18 @@ const updateQuedan = async (req, res) => {
 
         if (existing[0].status !== 'PENDIENTE') {
             return res.status(400).json({ message: 'No se puede editar un quedan que ya fue ' + existing[0].status.toLowerCase() });
+        }
+
+        const branchId = branch_id || existing[0].branch_id;
+        const quedanNum = num_quedan || existing[0].num_quedan;
+        const provId = provider_id || existing[0].provider_id;
+
+        const [dup] = await pool.query(
+            'SELECT id FROM purchase_quedans WHERE company_id = ? AND branch_id = ? AND provider_id = ? AND num_quedan = ? AND id != ?',
+            [companyId, branchId, provId, quedanNum, id]
+        );
+        if (dup.length > 0) {
+            return res.status(400).json({ message: 'Ya existe un quedan con ese número para esta sucursal y proveedor' });
         }
 
         let totalGravadas = 0, totalIva = 0, totalRetencion = 0, totalPercepcion = 0, totalExentas = 0, total = 0;
