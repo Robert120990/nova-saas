@@ -127,10 +127,10 @@ const Quedan = () => {
     };
 
     const handleProviderChange = (e) => {
-        const val = e.target.value;
+        const val = String(e.target.value);
         setFormProviderId(val);
         const provider = creditProviders.find(p => String(p.id) === val);
-        const dias = provider ? (provider.dias_credito || 0) : 0;
+        const dias = provider ? Number(provider.dias_credito) || 0 : 0;
         setFormProviderDias(dias);
         setFormFechaVenc(recalcVenc(formFecha, dias));
     };
