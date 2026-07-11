@@ -169,11 +169,28 @@ const lookupProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
     const { id } = req.params;
     try {
-        await pool.query('UPDATE products SET status = ? WHERE id = ? AND company_id = ?', ['inactivo', id, req.company_id]);
-        res.json({ message: 'Producto desactivado' });
+        const [[usage]] = await pool.query(`
+            SELECT
+                EXISTS(SELECT 1 FROM sales_items WHERE product_id = ?) AS in_sales,
+                EXISTS(SELECT 1 FROM purchase_items WHERE product_id = ?) AS in_purchases,
+                EXISTS(SELECT 1 FROM inventory_movements WHERE product_id = ?) AS in_movements,
+                EXISTS(SELECT 1 FROM inventory_adjustment_items WHERE product_id = ?) AS in_adjustments,
+                EXISTS(SELECT 1 FROM product_combo_items WHERE product_id = ?) AS in_combos
+        `, [id, id, id, id, id]);
+
+        const hasUsage = usage.in_sales || usage.in_purchases || usage.in_movements
+                      || usage.in_adjustments || usage.in_combos;
+
+        if (hasUsage) {
+            await pool.query('UPDATE products SET status = ? WHERE id = ? AND company_id = ?', ['inactivo', id, req.company_id]);
+            res.json({ message: 'Producto desactivado (tiene historial de uso)' });
+        } else {
+            await pool.query('DELETE FROM products WHERE id = ? AND company_id = ?', [id, req.company_id]);
+            res.json({ message: 'Producto eliminado permanentemente' });
+        }
     } catch (error) {
-        console.error('Error al desactivar producto:', error);
-        res.status(500).json({ message: 'Error al desactivar producto' });
+        console.error('Error al eliminar producto:', error);
+        res.status(500).json({ message: 'Error al eliminar producto' });
     }
 };
 

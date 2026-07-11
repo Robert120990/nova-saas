@@ -108,17 +108,17 @@ const Products = () => {
 
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/products/${id}`),
-        onSuccess: () => {
+        onSuccess: (res) => {
             queryClient.invalidateQueries(['products']);
-            toast.success('Producto eliminado');
+            toast.success(res.data.message || 'Producto procesado');
         }
     });
 
     const handleDeleteProduct = async (id) => {
         const ok = await confirm({
             title: '¿Eliminar producto?',
-            message: 'El producto será eliminado del catálogo permanentemente. Esta acción no se puede deshacer.',
-            confirmLabel: 'Sí, eliminar',
+            message: 'Si el producto tiene historial de uso será desactivado. Si no tiene uso será eliminado permanentemente.',
+            confirmLabel: 'Sí, continuar',
             variant: 'danger',
         });
         if (ok) deleteMutation.mutate(id);
