@@ -162,6 +162,15 @@ const updateCompany = async (req, res) => {
 
     handleFileUploads(req, data);
 
+    if (req.body.remove_logo === '1' && !req.files?.logo) {
+        const [current] = await pool.query('SELECT logo_url FROM companies WHERE id = ?', [id]);
+        if (current.length > 0 && current[0].logo_url) {
+            const oldPath = path.join(process.cwd(), current[0].logo_url);
+            if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        }
+        data.logo_url = null;
+    }
+
     try {
         await pool.query('UPDATE companies SET ? WHERE id = ?', [data, id]);
         res.json({ message: 'Empresa actualizada' });

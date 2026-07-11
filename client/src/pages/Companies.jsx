@@ -21,6 +21,7 @@ const Companies = () => {
     const [selectedContribuyente, setSelectedContribuyente] = useState('');
     const [selectedEnv, setSelectedEnv] = useState('');
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [removeLogo, setRemoveLogo] = useState(false);
     const [activeTab, setActiveTab] = useState('general');
     const [nitValue, setNitValue] = useState('');
 
@@ -81,6 +82,7 @@ const Companies = () => {
             setSelectedContribuyente(selectedCompany.tipo_contribuyente);
             setSelectedEnv(selectedCompany.ambiente);
             setPreviewUrl(null);
+            setRemoveLogo(false);
             setNitValue(selectedCompany.nit || '');
         }
     }, [selectedCompany]);
@@ -130,6 +132,11 @@ const Companies = () => {
             return;
         }
 
+        // Handle logo removal
+        if (removeLogo) {
+            formData.append('remove_logo', '1');
+        }
+
         // Handle dte_active toggle
         if (!formData.has('dte_active')) {
             formData.append('dte_active', '0');
@@ -167,6 +174,7 @@ const Companies = () => {
                         setSelectedContribuyente('');
                         setSelectedEnv('');
                         setPreviewUrl(null);
+                        setRemoveLogo(false);
                         setActiveTab('general');
                         setNitValue('');
                         setIsModalOpen(true); 
@@ -356,21 +364,33 @@ const Companies = () => {
                                         const file = e.target.files[0];
                                         if (file) {
                                             setPreviewUrl(URL.createObjectURL(file));
+                                            setRemoveLogo(false);
                                         }
                                     }}
                                 />
                                 <p className="mt-1 text-[10px] text-slate-400">Logotipo oficial. Se recomienda fondo transparente.</p>
                             </div>
-                            {(previewUrl || selectedCompany?.logo_url) && (
+                            {(previewUrl || selectedCompany?.logo_url) && !removeLogo && (
                                 <div className="w-16 h-16 bg-white border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative group">
                                     <img 
                                         src={previewUrl || selectedCompany.logo_url} 
                                         alt="Vista previa" 
                                         className="w-full h-full object-contain" 
                                     />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                        <span className="text-[8px] text-white font-bold uppercase">Previsualizar</span>
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                        <button 
+                                            type="button"
+                                            onClick={() => { setRemoveLogo(true); setPreviewUrl(null); }}
+                                            className="text-[8px] bg-red-600 text-white font-bold uppercase px-1 py-0.5 rounded pointer-events-auto hover:bg-red-700 transition-colors"
+                                        >
+                                            Eliminar
+                                        </button>
                                     </div>
+                                </div>
+                            )}
+                            {removeLogo && (
+                                <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <span className="text-[8px] text-red-600 font-bold uppercase text-center leading-tight px-1">Logo<br/>eliminado</span>
                                 </div>
                             )}
                         </div>
