@@ -1162,7 +1162,7 @@ const GasCloseout = () => {
         { label: 'Tanques', icon: FlaskConical, key: 'tanques', enabled: true },
         { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas', enabled: true },
         { label: 'Adelantos', icon: Banknote, key: 'adelantos', enabled: true },
-        { label: 'Diferencias', icon: BarChart3, key: 'diferencias', enabled: true },
+        { label: 'Lecturas/Vtas', icon: BarChart3, key: 'diferencias', enabled: true },
     ];
 
     const inputCls = "w-28 px-1.5 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] text-right font-mono";
@@ -3300,7 +3300,7 @@ const GasCloseout = () => {
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <BarChart3 size={16} className="text-indigo-600" />
-                                    Diferencias Lectura vs Venta
+                                    Lecturas vs Ventas
                                     <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
                                         {diferenciasData?.fecha} — Turno #{diferenciasData?.turno}
                                     </span>
