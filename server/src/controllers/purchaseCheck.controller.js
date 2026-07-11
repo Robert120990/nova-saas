@@ -513,6 +513,57 @@ const syncProviders = async (req, res) => {
     }
 };
 
+const revertCheck = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const [existing] = await pool.query(
+            `SELECT pc.*, p.nrc AS provider_nrc
+             FROM purchase_checks pc
+             LEFT JOIN providers p ON pc.provider_id = p.id
+             WHERE pc.id = ? AND pc.company_id = ?`,
+            [id, companyId]
+        );
+
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Cheque no encontrado' });
+        }
+
+        const check = existing[0];
+
+        if (check.status !== 'SOLICITADO') {
+            return res.status(400).json({ message: 'Solo se pueden revertir cheques en estado SOLICITADO' });
+        }
+
+        const [configs] = await pool.query(
+            'SELECT * FROM branch_chq_config WHERE company_id = ? AND branch_id = ?',
+            [companyId, check.branch_id]
+        );
+
+        const rrsIdEmpresa = configs.length > 0 ? configs[0].rrs_id_empresa : '';
+        const llave = `${rrsIdEmpresa}-CHQ${String(check.id).padStart(20, '0')}`;
+
+        const rrs = getRrsPool();
+        const [deleted] = await rrs.execute(
+            'DELETE FROM solicitud_chq_contado WHERE llave = ?',
+            [llave]
+        );
+
+        await pool.query(
+            "UPDATE purchase_checks SET status = 'PENDIENTE' WHERE id = ? AND company_id = ?",
+            [id, companyId]
+        );
+
+        res.json({
+            message: `Solicitud revertida con éxito. ${deleted.affectedRows > 0 ? 'Registro eliminado de RRS.' : 'No se encontró registro en RRS.'}`
+        });
+    } catch (error) {
+        console.error('Error al revertir cheque:', error);
+        res.status(500).json({ message: 'Error al revertir cheque: ' + error.message });
+    }
+};
+
 module.exports = {
     getChecks,
     getCheckById,
@@ -523,5 +574,6 @@ module.exports = {
     requestCheck,
     getChqConfig,
     saveChqConfig,
-    syncProviders
+    syncProviders,
+    revertCheck
 };

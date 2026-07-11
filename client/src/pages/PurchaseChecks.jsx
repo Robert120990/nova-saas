@@ -16,7 +16,8 @@ import {
     Handshake,
     Send,
     Settings,
-    RefreshCw
+    RefreshCw,
+    Undo2
 } from 'lucide-react';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -168,6 +169,15 @@ const PurchaseChecks = () => {
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar configuración'),
     });
 
+    const revertMutation = useMutation({
+        mutationFn: (id) => axios.post(`/api/purchases/checks/${id}/revert`),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ['purchase-checks'] });
+            toast.success(res.data.message);
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al revertir cheque'),
+    });
+
     const syncMutation = useMutation({
         mutationFn: (branchId) => axios.post('/api/purchases/checks/sync-providers', { branch_id: branchId }),
         onSuccess: (res) => {
@@ -189,6 +199,16 @@ const PurchaseChecks = () => {
     }, [configData]);
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
+
+    const handleRevert = async (id) => {
+        const ok = await confirm({
+            title: '¿Revertir solicitud?',
+            message: 'Se eliminará el registro de RRS y el cheque volverá a estado PENDIENTE.',
+            confirmLabel: 'Sí, revertir',
+            variant: 'warning',
+        });
+        if (ok) revertMutation.mutate(id);
+    };
 
     const handleRequest = async (id) => {
         const ok = await confirm({
@@ -388,13 +408,23 @@ const PurchaseChecks = () => {
                                         </>
                                     )}
                                     {c.status === 'SOLICITADO' && (
-                                        <button
-                                            onClick={() => openDeliverModal(c.id)}
-                                            className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                                            title="Entregar"
-                                        >
-                                            <Handshake size={14} />
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={() => openDeliverModal(c.id)}
+                                                className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                                title="Entregar"
+                                            >
+                                                <Handshake size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleRevert(c.id)}
+                                                disabled={revertMutation.isPending}
+                                                className="p-1.5 text-slate-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
+                                                title="Revertir"
+                                            >
+                                                <Undo2 size={14} />
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </td>

@@ -241,6 +241,7 @@ router.put('/purchases/checks/:id', purchaseCheckController.updateCheck);
 router.delete('/purchases/checks/:id', purchaseCheckController.deleteCheck);
 router.post('/purchases/checks/:id/deliver', purchaseCheckController.deliverCheck);
 router.post('/purchases/checks/:id/request', purchaseCheckController.requestCheck);
+router.post('/purchases/checks/:id/revert', purchaseCheckController.revertCheck);
 router.get('/purchases/checks/config/:branchId', purchaseCheckController.getChqConfig);
 router.post('/purchases/checks/config', purchaseCheckController.saveChqConfig);
 router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProviders);
