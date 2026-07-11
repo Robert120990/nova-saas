@@ -331,7 +331,7 @@ const Providers = () => {
                                 name="es_credito"
                                 id="es_credito"
                                 checked={esCredito}
-                                onChange={(e) => setEsCredito(e.target.checked)}
+                                onChange={(e) => { setEsCredito(e.target.checked); if (e.target.checked && !diasCredito) setDiasCredito('30'); }}
                                 value="1"
                                 className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
                             />
