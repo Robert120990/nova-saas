@@ -1,0 +1,3 @@
+ALTER TABLE providers
+  ADD COLUMN es_credito BOOLEAN NOT NULL DEFAULT FALSE AFTER exento_iva,
+  ADD COLUMN dias_credito INT NOT NULL DEFAULT 0 AFTER es_credito;

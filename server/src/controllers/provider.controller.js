@@ -52,7 +52,7 @@ const validColumns = [
     'company_id', 'tipo_persona', 'pais', 'nombre', 'nombre_comercial', 
     'tipo_documento', 'numero_documento', 'nit', 'nrc', 
     'codigo_actividad', 'departamento', 'municipio', 'distrito', 'direccion', 
-    'telefono', 'correo', 'tipo_contribuyente', 'es_gran_contribuyente', 'exento_iva'
+    'telefono', 'correo', 'tipo_contribuyente', 'es_gran_contribuyente', 'exento_iva', 'es_credito', 'dias_credito'
 ];
 
 const createProvider = async (req, res) => {

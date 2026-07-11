@@ -19,6 +19,8 @@ const Providers = () => {
     const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
     const [selectedPais, setSelectedPais] = useState('9579');
+    const [esCredito, setEsCredito] = useState(false);
+    const [diasCredito, setDiasCredito] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -124,6 +126,8 @@ const Providers = () => {
         
         // Handle checkboxes (if not present, set to 0)
         data.exento_iva = formData.get('exento_iva') ? 1 : 0;
+        data.es_credito = formData.get('es_credito') ? 1 : 0;
+        data.dias_credito = data.es_credito ? parseInt(diasCredito) || 0 : 0;
         data.es_gran_contribuyente = data.tipo_contribuyente === 'Gran Contribuyente' ? 1 : 0;
         
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
@@ -143,6 +147,8 @@ const Providers = () => {
         setSelectedActivity(provider.codigo_actividad);
         setSelectedPais(provider.pais || '9579');
         setNitValue(provider.nit || '');
+        setEsCredito(provider.es_credito === 1 || provider.es_credito === true);
+        setDiasCredito(provider.dias_credito || '');
         setIsModalOpen(true);
     };
 
@@ -165,6 +171,8 @@ const Providers = () => {
                         setSelectedActivity('');
                         setSelectedPais('9579');
                         setNitValue('');
+                        setEsCredito(false);
+                        setDiasCredito('');
                         setIsModalOpen(true); 
                     }}
                     className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
@@ -211,6 +219,9 @@ const Providers = () => {
                                 <div className="font-mono bg-slate-100 px-1.5 py-0.5 rounded inline-block">{p.nrc || 'N/A'}</div>
                                 {p.exento_iva === 1 && (
                                     <div className="text-[8px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full uppercase tracking-tighter w-fit">Exento IVA</div>
+                                )}
+                                {p.es_credito === 1 && (
+                                    <div className="text-[8px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full uppercase tracking-tighter w-fit mt-0.5">Crédito {p.dias_credito}d</div>
                                 )}
                             </td>
                             <td className="px-3 py-1">
@@ -297,7 +308,7 @@ const Providers = () => {
                             <input name="nrc" defaultValue={selectedProvider?.nrc} className={fieldCls} required />
                         </div>
                     </div>
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 italic">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <div className="flex items-center gap-2">
                             <input 
                                 type="checkbox" 
@@ -312,6 +323,36 @@ const Providers = () => {
                             </label>
                             <p className="text-[9px] text-slate-400 font-medium ml-auto">Aplica IVA 0% en compras</p>
                         </div>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex items-center gap-2 mb-2">
+                            <input 
+                                type="checkbox" 
+                                name="es_credito"
+                                id="es_credito"
+                                checked={esCredito}
+                                onChange={(e) => setEsCredito(e.target.checked)}
+                                value="1"
+                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                            />
+                            <label htmlFor="es_credito" className="text-[11px] font-bold text-slate-700 cursor-pointer">
+                                ES CRÉDITO
+                            </label>
+                            <p className="text-[9px] text-slate-400 font-medium ml-auto">El proveedor vende a crédito</p>
+                        </div>
+                        {esCredito && (
+                            <div className="pl-6">
+                                <label className="text-[10px] font-bold text-slate-500 block mb-1">Días de Crédito</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={diasCredito}
+                                    onChange={(e) => setDiasCredito(e.target.value)}
+                                    placeholder="30"
+                                    className="w-32 px-3 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-medium"
+                                />
+                            </div>
+                        )}
                     </div>
                     <div>
                         <label className={labelCls}>Nombre / Razón Social</label>
