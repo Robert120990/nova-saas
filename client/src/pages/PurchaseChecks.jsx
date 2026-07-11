@@ -74,10 +74,6 @@ const PurchaseChecks = () => {
         })).data
     });
 
-    const checks = listData?.data || [];
-    const total = listData?.total || 0;
-    const totalPages = listData?.totalPages || 0;
-
     const { data: providers = [] } = useQuery({
         queryKey: ['providers-all', user?.company_id],
         queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000 } })).data?.data || []
@@ -167,6 +163,22 @@ const PurchaseChecks = () => {
             setShowConfigModal(false);
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar configuración'),
+    });
+
+    const checks = listData?.data || [];
+    const total = listData?.total || 0;
+    const totalPages = listData?.totalPages || 0;
+
+    const { data: rrsNumChequeMap = {} } = useQuery({
+        queryKey: ['purchase-checks-rrs-num', checks.map(c => c.id)],
+        queryFn: async () => {
+            const ids = checks.filter(c => c.status === 'SOLICITADO').map(c => c.id);
+            if (ids.length === 0) return {};
+            const res = await axios.post('/api/purchases/checks/rrs-num-cheque', { ids });
+            return res.data;
+        },
+        enabled: checks.length > 0 && checks.some(c => c.status === 'SOLICITADO'),
+        refetchInterval: 30000,
     });
 
     const revertMutation = useMutation({
@@ -349,7 +361,7 @@ const PurchaseChecks = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Fecha', 'Proveedor', 'Monto', 'Destino', 'Estado', 'F. Entrega', 'Documento', 'Acciones']}
+                    headers={['Fecha', 'Proveedor', 'Monto', 'Destino', 'Estado', 'N. Cheque', 'F. Entrega', 'Documento', 'Acciones']}
                     data={checks}
                     isLoading={listLoading}
                     renderRow={(c) => (
@@ -371,6 +383,11 @@ const PurchaseChecks = () => {
                             <td className="px-5 py-3">
                                 <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'ENTREGADO' ? 'bg-emerald-50 text-emerald-600' : c.status === 'SOLICITADO' ? 'bg-violet-50 text-violet-600' : 'bg-amber-50 text-amber-600'}`}>
                                     {c.status}
+                                </span>
+                            </td>
+                            <td className="px-5 py-3">
+                                <span className="text-[9px] font-black text-indigo-600 font-mono tracking-tight">
+                                    {c.status === 'SOLICITADO' ? (rrsNumChequeMap[c.id] || c.rrs_num_cheque || '—') : '—'}
                                 </span>
                             </td>
                             <td className="px-5 py-3 text-[9px] font-bold text-slate-400">

@@ -564,6 +564,74 @@ const revertCheck = async (req, res) => {
     }
 };
 
+const getRrsNumCheque = async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.json({});
+        }
+
+        const companyId = req.company_id || req.user?.company_id;
+
+        const [checks] = await pool.query(
+            'SELECT id, branch_id FROM purchase_checks WHERE id IN (?) AND company_id = ?',
+            [ids, companyId]
+        );
+
+        if (checks.length === 0) return res.json({});
+
+        const branchIds = [...new Set(checks.map(c => c.branch_id))];
+
+        const [configs] = await pool.query(
+            'SELECT branch_id, rrs_id_empresa FROM branch_chq_config WHERE company_id = ? AND branch_id IN (?)',
+            [companyId, branchIds]
+        );
+
+        const branchRrsMap = {};
+        for (const cfg of configs) {
+            branchRrsMap[cfg.branch_id] = cfg.rrs_id_empresa;
+        }
+
+        const rrs = getRrsPool();
+        const llaveToCheckId = {};
+        const llaves = [];
+
+        for (const check of checks) {
+            const rrsId = branchRrsMap[check.branch_id];
+            if (!rrsId) continue;
+            const llave = `${rrsId}-${check.id}`;
+            llaveToCheckId[llave] = check.id;
+            llaves.push(llave);
+        }
+
+        if (llaves.length === 0) return res.json({});
+
+        const [rrsRows] = await rrs.query(
+            `SELECT llave, num_cheque FROM solicitud_chq_contado WHERE llave IN (?) AND num_cheque != ' ' AND num_cheque IS NOT NULL`,
+            [llaves]
+        );
+
+        const result = {};
+
+        for (const row of rrsRows) {
+            const checkId = llaveToCheckId[row.llave];
+            if (checkId && row.num_cheque && row.num_cheque.trim()) {
+                const numCheque = row.num_cheque.trim();
+                result[checkId] = numCheque;
+                await pool.query(
+                    'UPDATE purchase_checks SET rrs_num_cheque = ? WHERE id = ?',
+                    [numCheque, checkId]
+                );
+            }
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener num_cheque de RRS:', error);
+        res.status(500).json({ message: 'Error al obtener num_cheque de RRS: ' + error.message });
+    }
+};
+
 module.exports = {
     getChecks,
     getCheckById,
@@ -575,5 +643,6 @@ module.exports = {
     getChqConfig,
     saveChqConfig,
     syncProviders,
-    revertCheck
+    revertCheck,
+    getRrsNumCheque
 };

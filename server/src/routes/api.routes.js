@@ -244,6 +244,7 @@ router.post('/purchases/checks/:id/request', purchaseCheckController.requestChec
 router.post('/purchases/checks/:id/revert', purchaseCheckController.revertCheck);
 router.get('/purchases/checks/config/:branchId', purchaseCheckController.getChqConfig);
 router.post('/purchases/checks/config', purchaseCheckController.saveChqConfig);
+router.post('/purchases/checks/rrs-num-cheque', purchaseCheckController.getRrsNumCheque);
 router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProviders);
 
 router.get('/purchases/:id', purchaseController.getPurchaseById);
