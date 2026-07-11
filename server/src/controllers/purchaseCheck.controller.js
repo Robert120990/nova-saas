@@ -277,7 +277,7 @@ const requestCheck = async (req, res) => {
 
         const nrc = (check.provider_nrc || '').replace(/\s/g, '');
         const codProveedor = `015${check.provider_id}${nrc}`;
-        const llave = `${config.rrs_id_empresa}-${check.id}`;
+        const llave = `${check.id}`;
         const tipoDestino = check.destino === 'P' ? 'PISTA' : 'TIENDA';
         const fechaDate = check.fecha instanceof Date
             ? check.fecha.toISOString().split('T')[0]
