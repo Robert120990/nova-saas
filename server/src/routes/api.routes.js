@@ -156,6 +156,7 @@ router.delete('/sellers/:id', sellerController.deleteSeller);
 router.get('/customers', customerController.getCustomers);
 router.post('/customers', customerController.createCustomer);
 router.put('/customers/:id', customerController.updateCustomer);
+router.delete('/customers/batch', customerController.deleteBatchCustomers);
 router.delete('/customers/:id', customerController.deleteCustomer);
 
 // Customer Branches (Sucursales)

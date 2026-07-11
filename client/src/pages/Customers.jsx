@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
@@ -128,6 +128,59 @@ const Customers = () => {
             toast.success('Cliente eliminado');
         }
     });
+
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const selectAllRef = useRef(null);
+
+    const allPageSelected = customers.length > 0 && customers.every(c => selectedIds.has(c.id));
+    const somePageSelected = customers.some(c => selectedIds.has(c.id));
+
+    useEffect(() => {
+        if (selectAllRef.current) {
+            selectAllRef.current.indeterminate = somePageSelected && !allPageSelected;
+        }
+    }, [somePageSelected, allPageSelected]);
+
+    const handleSelectAll = () => {
+        if (allPageSelected) {
+            const next = new Set(selectedIds);
+            customers.forEach(c => next.delete(c.id));
+            setSelectedIds(next);
+        } else {
+            const next = new Set(selectedIds);
+            customers.forEach(c => next.add(c.id));
+            setSelectedIds(next);
+        }
+    };
+
+    const handleSelectOne = (id) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setSelectedIds(next);
+    };
+
+    const deleteBatchMutation = useMutation({
+        mutationFn: (ids) => axios.delete('/api/customers/batch', { data: { ids } }),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries(['customers']);
+            setSelectedIds(new Set());
+            toast.success(res.data.message || 'Clientes eliminados');
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al eliminar clientes');
+        }
+    });
+
+    const handleDeleteSelected = async () => {
+        const ok = await confirm({
+            title: '¿Eliminar clientes seleccionados?',
+            message: `${selectedIds.size} cliente(s) serán eliminados permanentemente. Esta acción no se puede deshacer.`,
+            confirmLabel: 'Sí, eliminar todos',
+            variant: 'danger',
+        });
+        if (ok) deleteBatchMutation.mutate([...selectedIds]);
+    };
 
     // Sucursales queries & mutations
     const { data: branches = [], isLoading: branchesLoading } = useQuery({
@@ -299,13 +352,50 @@ const Customers = () => {
                 />
             </div>
 
+            {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm">
+                    <span className="text-xs font-bold text-indigo-700">{selectedIds.size} cliente(s) seleccionados</span>
+                    <button
+                        onClick={() => setSelectedIds(new Set())}
+                        className="text-[10px] font-bold text-slate-500 hover:text-slate-700 uppercase transition-colors"
+                    >
+                        Deseleccionar todo
+                    </button>
+                    <button
+                        onClick={handleDeleteSelected}
+                        disabled={deleteBatchMutation.isPending}
+                        className="ml-auto px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-[10px] font-bold uppercase rounded-lg transition-all active:scale-95"
+                    >
+                        {deleteBatchMutation.isPending ? 'Eliminando...' : `Eliminar ${selectedIds.size}`}
+                    </button>
+                </div>
+            )}
+
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
-                    headers={['Nombre / Razón Social', 'Ubicación', 'Tipo Persona / País', 'Documento', 'Condición Fiscal', 'Acciones']}
+                    headers={[
+                        <input
+                            key="select-all"
+                            type="checkbox"
+                            ref={selectAllRef}
+                            checked={allPageSelected}
+                            onChange={handleSelectAll}
+                            className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                        />,
+                        'Nombre / Razón Social', 'Ubicación', 'Tipo Persona / País', 'Documento', 'Condición Fiscal', 'Acciones'
+                    ]}
                     data={customers}
                     isLoading={isLoading}
                     renderRow={(c) => (
-                        <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(c.id) ? 'bg-indigo-50/50' : ''}`}>
+                            <td className="px-3 py-1">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedIds.has(c.id)}
+                                    onChange={() => handleSelectOne(c.id)}
+                                    className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                                />
+                            </td>
                             <td className="px-3 py-1">
                                 <div className="text-xs font-bold text-slate-900">{c.nombre}</div>
                                 <div className="text-[10px] text-slate-500 font-medium">{c.nombre_comercial}</div>

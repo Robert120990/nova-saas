@@ -131,4 +131,21 @@ const deleteCustomer = async (req, res) => {
     }
 };
 
-module.exports = { getCustomers, createCustomer, updateCustomer, deleteCustomer };
+const deleteBatchCustomers = async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: 'Debe proporcionar un array de IDs' });
+    }
+    try {
+        const [result] = await pool.query(
+            'DELETE FROM customers WHERE id IN (?) AND company_id = ?',
+            [ids, req.company_id]
+        );
+        res.json({ message: `${result.affectedRows} cliente(s) eliminado(s)` });
+    } catch (error) {
+        console.error('Error al eliminar clientes:', error.message);
+        res.status(500).json({ message: 'Error al eliminar clientes' });
+    }
+};
+
+module.exports = { getCustomers, createCustomer, updateCustomer, deleteCustomer, deleteBatchCustomers };
