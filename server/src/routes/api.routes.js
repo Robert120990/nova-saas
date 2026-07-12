@@ -479,6 +479,7 @@ router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', gasCloseout
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.updateCloseoutDespachadores);
+router.put('/gas-station/closeouts/:id/despachador-nozzles', gasCloseoutController.updateCloseoutDespachadorNozzles);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);

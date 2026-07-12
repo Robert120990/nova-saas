@@ -4,7 +4,7 @@ const dteService = require('../services/dte.service');
 
 exports.initCloseout = async (req, res) => {
     try {
-        const { seller_id, seller_name, fecha_turno, numero_turno, despachadores } = req.body;
+        const { seller_id, seller_name, fecha_turno, numero_turno, despachadores, nozzle_assignments } = req.body;
         if (!seller_id || !fecha_turno || !numero_turno) {
             return res.status(400).json({ message: 'seller_id, fecha_turno y numero_turno son requeridos' });
         }
@@ -79,6 +79,36 @@ exports.initCloseout = async (req, res) => {
                     [closeoutId, d.id, d.descripcion || d.codigo || '']
                 );
                 savedDespachadores.push({ despachador_id: d.id, nombre: d.descripcion || d.codigo || '' });
+            }
+        }
+
+        const savedNozzleAssignments = [];
+        if (Array.isArray(nozzle_assignments) && nozzle_assignments.length > 0) {
+            for (const a of nozzle_assignments) {
+                if (!a.despachador_id || !Array.isArray(a.nozzle_ids)) continue;
+                for (const nid of a.nozzle_ids) {
+                    await pool.query(
+                        `INSERT INTO gas_station_closeout_despachador_nozzles (closeout_id, despachador_id, nozzle_id) VALUES (?, ?, ?)`,
+                        [closeoutId, a.despachador_id, nid]
+                    );
+                    savedNozzleAssignments.push({ despachador_id: a.despachador_id, nozzle_id: nid });
+                }
+            }
+        } else {
+            const savedIds = savedDespachadores.map(d => d.despachador_id);
+            if (savedIds.length > 0) {
+                const [liveAssignments] = await pool.query(
+                    `SELECT despachador_id, nozzle_id FROM gas_station_despachador_nozzles
+                     WHERE company_id = ? AND despachador_id IN (?)`,
+                    [req.company_id, savedIds]
+                );
+                for (const a of liveAssignments) {
+                    await pool.query(
+                        `INSERT INTO gas_station_closeout_despachador_nozzles (closeout_id, despachador_id, nozzle_id) VALUES (?, ?, ?)`,
+                        [closeoutId, a.despachador_id, a.nozzle_id]
+                    );
+                    savedNozzleAssignments.push({ despachador_id: a.despachador_id, nozzle_id: a.nozzle_id });
+                }
             }
         }
 
@@ -162,7 +192,7 @@ exports.initCloseout = async (req, res) => {
             });
         }
 
-        res.status(201).json({ id: closeoutId, readings, tankReadings, despachadores: savedDespachadores });
+        res.status(201).json({ id: closeoutId, readings, tankReadings, despachadores: savedDespachadores, despachadorNozzleAssignments: savedNozzleAssignments });
     } catch (error) {
         console.error('Error initCloseout:', error);
         res.status(500).json({ message: 'Error al iniciar cierre de lecturas' });
@@ -340,7 +370,15 @@ exports.getCloseout = async (req, res) => {
             [id]
         );
 
-        res.json({ ...closeouts[0], readings, tankReadings, despachadores });
+        let despachadorNozzleAssignments = [];
+        try {
+            [despachadorNozzleAssignments] = await pool.query(
+                `SELECT * FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`,
+                [id]
+            );
+        } catch { }
+
+        res.json({ ...closeouts[0], readings, tankReadings, despachadores, despachadorNozzleAssignments });
     } catch (error) {
         console.error('Error getCloseout:', error);
         res.status(500).json({ message: 'Error al obtener cierre de lecturas' });
@@ -1314,10 +1352,74 @@ exports.updateCloseoutDespachadores = async (req, res) => {
             }
         }
 
+        await pool.query(
+            `DELETE FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`,
+            [id]
+        );
+        const savedIds = savedDespachadores.map(d => d.despachador_id);
+        if (savedIds.length > 0) {
+            const [liveAssignments] = await pool.query(
+                `SELECT despachador_id, nozzle_id FROM gas_station_despachador_nozzles
+                 WHERE company_id = ? AND despachador_id IN (?)`,
+                [req.company_id, savedIds]
+            );
+            for (const a of liveAssignments) {
+                await pool.query(
+                    `INSERT INTO gas_station_closeout_despachador_nozzles (closeout_id, despachador_id, nozzle_id) VALUES (?, ?, ?)`,
+                    [id, a.despachador_id, a.nozzle_id]
+                );
+            }
+        }
+
         res.json({ despachadores: savedDespachadores });
     } catch (error) {
         console.error('Error updateCloseoutDespachadores:', error);
         res.status(500).json({ message: 'Error al actualizar despachadores' });
+    }
+};
+
+exports.updateCloseoutDespachadorNozzles = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { assignments } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'No se puede modificar un cierre cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(
+            `DELETE FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`,
+            [id]
+        );
+
+        if (Array.isArray(assignments) && assignments.length > 0) {
+            for (const a of assignments) {
+                if (!a.despachador_id || !Array.isArray(a.nozzle_ids)) continue;
+                for (const nid of a.nozzle_ids) {
+                    await pool.query(
+                        `INSERT INTO gas_station_closeout_despachador_nozzles (closeout_id, despachador_id, nozzle_id) VALUES (?, ?, ?)`,
+                        [id, a.despachador_id, nid]
+                    );
+                }
+            }
+        }
+
+        const [rows] = await pool.query(
+            `SELECT * FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`,
+            [id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error updateCloseoutDespachadorNozzles:', error);
+        res.status(500).json({ message: 'Error al actualizar asignaciones de mangueras' });
     }
 };
 
@@ -1907,9 +2009,7 @@ exports.getCloseoutPrintData = async (req, res) => {
         );
 
         const [nozzleAssignments] = await pool.query(
-            `SELECT dn.* FROM gas_station_despachador_nozzles dn
-             JOIN gas_station_closeout_despachadores cd ON cd.despachador_id = dn.despachador_id
-             WHERE cd.closeout_id = ?`, [id]
+            `SELECT * FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`, [id]
         );
 
         res.json({

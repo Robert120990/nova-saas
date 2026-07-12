@@ -67,6 +67,10 @@ const GasCloseout = () => {
     const [showDiferenciasModal, setShowDiferenciasModal] = useState(false);
     const [diferenciasData, setDiferenciasData] = useState(null);
     const [diferenciasLoading, setDiferenciasLoading] = useState(false);
+    const [despachadorNozzleAssignments, setDespachadorNozzleAssignments] = useState([]);
+    const [showNozzleAssignModal, setShowNozzleAssignModal] = useState(false);
+    const [modalAssignments, setModalAssignments] = useState([]);
+    const [modalSelectedDespachadorId, setModalSelectedDespachadorId] = useState('');
 
     const inputRefs = useRef({});
     const tankInputRefs = useRef({});
@@ -101,6 +105,7 @@ const GasCloseout = () => {
             setTankReadings(editData.tankReadings || []);
             setLubricantReadings(editData.lubricantReadings || []);
             setCloseoutDespachadores(editData.despachadores || []);
+            setDespachadorNozzleAssignments(editData.despachadorNozzleAssignments || []);
             setGastos(editData.gastos || []);
             setRemesas(editData.remesas || []);
             setCupones(editData.cupones || []);
@@ -123,6 +128,7 @@ const GasCloseout = () => {
             setTankReadings([]);
             setLubricantReadings([]);
             setCloseoutDespachadores([]);
+            setDespachadorNozzleAssignments([]);
             setGastos([]);
             setRemesas([]);
             setCupones([]);
@@ -156,7 +162,7 @@ const GasCloseout = () => {
         enabled: !!(closeoutId || editId)
     });
 
-    const { data: despachadorNozzleAssignments = [] } = useQuery({
+    const { data: liveNozzleAssignments = [] } = useQuery({
         queryKey: ['gas-despachador-nozzles-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data || []
     });
@@ -214,6 +220,7 @@ const GasCloseout = () => {
             setTankReadings(res.data.tankReadings?.map(r => ({ ...r, lectura_actual: r.lectura_anterior })) || []);
             setEstado('abierto');
             if (res.data.despachadores) setCloseoutDespachadores(res.data.despachadores);
+            if (res.data.despachadorNozzleAssignments) setDespachadorNozzleAssignments(res.data.despachadorNozzleAssignments);
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Cierre de lecturas iniciado');
@@ -250,6 +257,15 @@ const GasCloseout = () => {
     const updateDespachadoresMutation = useMutation({
         mutationFn: (despachadores) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachadores`, { despachadores }),
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachadores')
+    });
+
+    const updateNozzleAssignmentsMutation = useMutation({
+        mutationFn: (assignments) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachador-nozzles`, { assignments }),
+        onSuccess: (res) => {
+            setDespachadorNozzleAssignments(res.data);
+            toast.success('Asignaciones de mangueras actualizadas');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar asignaciones')
     });
 
     const updateTankMutation = useMutation({
@@ -974,7 +990,13 @@ const GasCloseout = () => {
             fecha_turno: fechaTurno,
             numero_turno: numeroTurno,
             branch_id: user?.branch_id,
-            despachadores: closeoutDespachadores
+            despachadores: closeoutDespachadores,
+            nozzle_assignments: closeoutDespachadores.map(d => ({
+                despachador_id: d.despachador_id,
+                nozzle_ids: despachadorNozzleAssignments
+                    .filter(a => a.despachador_id === d.despachador_id)
+                    .map(a => a.nozzle_id)
+            }))
         });
     };
 
@@ -1169,6 +1191,171 @@ const GasCloseout = () => {
     const inputDisabledCls = "w-28 px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-right font-mono text-slate-500";
     const inputCalibCls = "w-20 px-1.5 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] text-right font-mono";
     const inputCalibDisabledCls = "w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-right font-mono text-slate-500";
+
+    const openNozzleModal = () => {
+        const source = despachadorNozzleAssignments.length > 0 ? despachadorNozzleAssignments : liveNozzleAssignments;
+        setModalAssignments(source.map(a => ({ despachador_id: a.despachador_id, nozzle_id: a.nozzle_id })));
+        setModalSelectedDespachadorId('');
+        setShowNozzleAssignModal(true);
+    };
+
+    const handleModalSave = () => {
+        if (closeoutId) {
+            const assignments = closeoutDespachadores.map(d => ({
+                despachador_id: d.despachador_id,
+                nozzle_ids: modalAssignments.filter(a => a.despachador_id === d.despachador_id).map(a => a.nozzle_id)
+            }));
+            updateNozzleAssignmentsMutation.mutate(assignments);
+        } else {
+            setDespachadorNozzleAssignments(modalAssignments);
+        }
+        setShowNozzleAssignModal(false);
+    };
+
+    const modalSelectedNozzleIds = modalAssignments
+        .filter(a => a.despachador_id === parseInt(modalSelectedDespachadorId))
+        .map(a => a.nozzle_id);
+
+    const nozzleOccupancyMap = {};
+    modalAssignments.forEach(a => { nozzleOccupancyMap[a.nozzle_id] = a.despachador_id; });
+
+    const renderNozzleAssignModal = () => {
+        if (!showNozzleAssignModal) return null;
+        return (
+            <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                <div className="fixed inset-0 bg-black/40" onClick={() => setShowNozzleAssignModal(false)} />
+                <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl max-h-[90vh] flex flex-col">
+                    <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <Fuel size={16} className="text-indigo-600" />
+                            Asignación de Mangueras al Turno
+                        </h3>
+                        <button
+                            onClick={() => setShowNozzleAssignModal(false)}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <div className="p-5 overflow-y-auto">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Despachador
+                        </label>
+                        <select
+                            value={modalSelectedDespachadorId}
+                            onChange={(e) => setModalSelectedDespachadorId(e.target.value)}
+                            className="w-full border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                            <option value="">-- Seleccionar despachador --</option>
+                            {closeoutDespachadores.map(d => {
+                                const desp = allDespachadores.find(a => a.id === d.despachador_id);
+                                return (
+                                    <option key={d.despachador_id} value={d.despachador_id}>
+                                        {desp?.codigo || ''} — {d.nombre || desp?.descripcion || ''}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                        {modalSelectedDespachadorId && (
+                            <div className="mt-5 border-t border-slate-100 pt-4">
+                                <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Mangueras</h3>
+                                {nozzlesData.length === 0 ? (
+                                    <p className="text-xs text-slate-400 py-4 text-center">No hay mangueras registradas.</p>
+                                ) : (
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                        {nozzlesData.map(n => {
+                                            const occupancy = nozzleOccupancyMap[n.id];
+                                            const isAssignedToCurrent = modalSelectedNozzleIds.includes(n.id);
+                                            const isOccupied = occupancy && occupancy !== parseInt(modalSelectedDespachadorId);
+
+                                            if (isOccupied) {
+                                                const otherDesp = closeoutDespachadores.find(d => d.despachador_id === occupancy);
+                                                const otherDespAll = allDespachadores.find(a => a.id === occupancy);
+                                                const otherLabel = otherDesp?.nombre || otherDespAll?.codigo || `ID ${occupancy}`;
+                                                return (
+                                                    <div
+                                                        key={n.id}
+                                                        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50 text-xs text-slate-400 cursor-not-allowed"
+                                                        title={`Asignada a ${otherLabel}`}
+                                                    >
+                                                        <Lock size={14} className="text-slate-300" />
+                                                        <div className="text-left leading-tight">
+                                                            <span className="font-bold">{n.codigo}</span>
+                                                            {n.product_nombre && (
+                                                                <span className="text-[10px] text-slate-400 block">{n.product_nombre}</span>
+                                                            )}
+                                                            {n.island_codigo && (
+                                                                <span className="text-[10px] text-slate-400 block">Isla: {n.island_codigo}</span>
+                                                            )}
+                                                            <span className="text-[10px] text-amber-500 block">{otherLabel}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <button
+                                                    key={n.id}
+                                                    onClick={() => {
+                                                        setModalAssignments(prev => {
+                                                            const exists = prev.find(a =>
+                                                                a.despachador_id === parseInt(modalSelectedDespachadorId) &&
+                                                                a.nozzle_id === n.id
+                                                            );
+                                                            if (exists) {
+                                                                return prev.filter(a =>
+                                                                    !(a.despachador_id === parseInt(modalSelectedDespachadorId) && a.nozzle_id === n.id)
+                                                                );
+                                                            }
+                                                            return [...prev, { despachador_id: parseInt(modalSelectedDespachadorId), nozzle_id: n.id }];
+                                                        });
+                                                    }}
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                                                        isAssignedToCurrent
+                                                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'
+                                                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    <Fuel size={14} className={isAssignedToCurrent ? 'text-indigo-500' : 'text-slate-300'} />
+                                                    <div className="text-left leading-tight">
+                                                        <span className="font-bold">{n.codigo}</span>
+                                                        {n.product_nombre && (
+                                                            <span className="text-[10px] text-slate-500 block">{n.product_nombre}</span>
+                                                        )}
+                                                        {n.island_codigo && (
+                                                            <span className="text-[10px] text-slate-400 block">Isla: {n.island_codigo}</span>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <p className="text-xs text-slate-400 mt-3">
+                                    <Lock size={10} className="inline mr-1" />
+                                    Mangueras ocupadas por otro despachador.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-100 shrink-0">
+                        <button
+                            onClick={() => setShowNozzleAssignModal(false)}
+                            className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleModalSave}
+                            className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm"
+                        >
+                            {closeoutId ? 'Guardar' : 'Aplicar'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     if (editLoading) {
         return (
@@ -1434,11 +1621,21 @@ const GasCloseout = () => {
                                 </div>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div className="px-3 py-2 border-b border-slate-100">
+                                <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
                                     <h4 className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
                                         <UserCheck size={12} className="text-indigo-500" />
                                         Despachadores del Turno
                                     </h4>
+                                    {estado === 'abierto' && (
+                                        <button
+                                            type="button"
+                                            onClick={openNozzleModal}
+                                            className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                                        >
+                                            <Fuel size={12} />
+                                            Editar Mangueras
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
@@ -3627,6 +3824,7 @@ const GasCloseout = () => {
                         </div>
                     </div>
                 )}
+                {renderNozzleAssignModal()}
             </>
         );
     }
@@ -3645,7 +3843,7 @@ const GasCloseout = () => {
                 {lastTurno && (
                     <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 flex items-center gap-3 text-xs">
                         <span className="font-bold text-indigo-700 uppercase tracking-wider">Último Turno:</span>
-                        <span className="text-indigo-600">{new Date(lastTurno.fecha_turno + 'T00:00:00').toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })} — #{lastTurno.numero_turno}</span>
+                        <span className="text-indigo-600">{(() => { const ds = toDateStr(lastTurno.fecha_turno); if (!ds) return '—'; const [y, m, d] = ds.split('-'); return `${d}/${m}/${y}`; })()} — #{lastTurno.numero_turno}</span>
                     </div>
                 )}
                 <div>
@@ -3695,7 +3893,17 @@ const GasCloseout = () => {
                     </div>
                 </div>
                 <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Despachadores del Turno</label>
+                    <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase">Despachadores del Turno</label>
+                        <button
+                            type="button"
+                            onClick={openNozzleModal}
+                            className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                            <Fuel size={11} />
+                            Configurar Mangueras
+                        </button>
+                    </div>
                     <div className="space-y-1.5 mb-2">
                         {closeoutDespachadores.map((d, i) => {
                             const desp = allDespachadores.find(a => a.id === d.despachador_id);
@@ -3754,6 +3962,7 @@ const GasCloseout = () => {
                     {initMutation.isPending ? 'Iniciando...' : 'Iniciar Lectura'}
                 </button>
             </form>
+            {renderNozzleAssignModal()}
         </div>
     );
 };

@@ -10,32 +10,52 @@ const GasDespachadorNozzles = () => {
     const { user } = useAuth();
     const [selectedDespachadorId, setSelectedDespachadorId] = useState('');
 
-    const { data: despachadores = [] } = useQuery({
+    const { data: despachadores = [], error: despError } = useQuery({
         queryKey: ['gas-despachadores', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 5000 } })).data?.data || []
     });
 
-    const { data: nozzles = [] } = useQuery({
+    const { data: nozzles = [], error: nozzError } = useQuery({
         queryKey: ['gas-nozzles-all', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/nozzles', { params: { limit: 5000 } })).data?.data || []
     });
 
-    const { data: assignedNozzleIds = [] } = useQuery({
+    const { data: assignedNozzleIds = [], error: assignedError } = useQuery({
         queryKey: ['gas-despachador-nozzles', selectedDespachadorId, user?.branch_id],
         queryFn: async () => (await axios.get(`/api/gas-station/despachadores/${selectedDespachadorId}/nozzles`)).data,
         enabled: !!selectedDespachadorId
     });
 
-    const { data: allAssignments = [] } = useQuery({
-        queryKey: ['gas-despachador-nozzles-all', user?.branch_id],
+    const { data: allAssignments = [], error: assignError } = useQuery({
+        queryKey: ['gas-despachador-nozzles-all-page', user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data
     });
+
+    React.useEffect(() => {
+        if (despError) toast.error('Error al cargar despachadores');
+    }, [despError]);
+
+    React.useEffect(() => {
+        if (nozzError) toast.error('Error al cargar mangueras');
+    }, [nozzError]);
+
+    React.useEffect(() => {
+        if (assignedError) toast.error('Error al cargar asignaciones del despachador');
+    }, [assignedError]);
+
+    React.useEffect(() => {
+        if (assignError) toast.error('Error al cargar asignaciones');
+    }, [assignError]);
+
+    const safeNozzles = Array.isArray(nozzles) ? nozzles : [];
+    const safeAllAssignments = Array.isArray(allAssignments) ? allAssignments : [];
+    const safeDespachadores = Array.isArray(despachadores) ? despachadores : [];
 
     const [selected, setSelected] = useState([]);
     const [savingNozzleId, setSavingNozzleId] = useState(null);
 
     React.useEffect(() => {
-        setSelected(assignedNozzleIds);
+        setSelected(Array.isArray(assignedNozzleIds) ? assignedNozzleIds : []);
     }, [assignedNozzleIds]);
 
     const saveMutation = useMutation({
@@ -61,11 +81,11 @@ const GasDespachadorNozzles = () => {
     };
 
     const nozzleAssignmentMap = {};
-    allAssignments.forEach(a => {
+    safeAllAssignments.forEach(a => {
         nozzleAssignmentMap[a.nozzle_id] = { despachador_id: a.despachador_id, despachador_codigo: a.despachador_codigo };
     });
 
-    const selectedDespachador = despachadores.find(d => d.id === parseInt(selectedDespachadorId));
+    const selectedDespachador = safeDespachadores.find(d => d.id === parseInt(selectedDespachadorId));
 
     return (
         <div className="p-6 max-w-4xl mx-auto">
@@ -82,7 +102,7 @@ const GasDespachadorNozzles = () => {
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 >
                     <option value="">-- Seleccionar despachador --</option>
-                    {despachadores.map(d => (
+                    {safeDespachadores.map(d => (
                         <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                     ))}
                 </select>
@@ -90,11 +110,11 @@ const GasDespachadorNozzles = () => {
                 {selectedDespachadorId && (
                     <div className="mt-5 border-t border-slate-100 pt-4">
                         <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Mangueras</h3>
-                        {nozzles.length === 0 ? (
+                        {safeNozzles.length === 0 ? (
                             <p className="text-xs text-slate-400 py-4 text-center">No hay mangueras registradas.</p>
                         ) : (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                                {nozzles.map(n => {
+                                {safeNozzles.map(n => {
                                     const assignment = nozzleAssignmentMap[n.id];
                                     const isAssignedToCurrent = selected.includes(n.id);
                                     const isOccupied = assignment && assignment.despachador_id !== parseInt(selectedDespachadorId);
@@ -110,6 +130,12 @@ const GasDespachadorNozzles = () => {
                                                 <Lock size={14} className="text-slate-300" />
                                                 <div className="text-left leading-tight">
                                                     <span className="font-bold">{n.codigo}</span>
+                                                    {n.product_nombre && (
+                                                        <span className="text-[10px] text-slate-400 block">{n.product_nombre}</span>
+                                                    )}
+                                                    {n.island_codigo && (
+                                                        <span className="text-[10px] text-slate-400 block">Isla: {n.island_codigo}</span>
+                                                    )}
                                                     <span className="text-[10px] text-amber-500 block">{assignment.despachador_codigo}</span>
                                                 </div>
                                             </div>
@@ -136,8 +162,11 @@ const GasDespachadorNozzles = () => {
                                             )}
                                             <div className="text-left leading-tight">
                                                 <span className="font-bold">{n.codigo}</span>
-                                                {n.product_codigo && (
-                                                    <span className="text-[10px] text-slate-400 block">{n.product_codigo}</span>
+                                                {n.product_nombre && (
+                                                    <span className="text-[10px] text-slate-500 block">{n.product_nombre}</span>
+                                                )}
+                                                {n.island_codigo && (
+                                                    <span className="text-[10px] text-slate-400 block">Isla: {n.island_codigo}</span>
                                                 )}
                                             </div>
                                         </button>
