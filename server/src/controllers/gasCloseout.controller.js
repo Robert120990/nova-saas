@@ -395,8 +395,8 @@ exports.updateReading = async (req, res) => {
             [closeoutId, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
-        if (closeouts[0].estado === 'cerrado') {
-            return res.status(400).json({ message: 'El cierre ya está cerrado, no se puede modificar' });
+        if (closeouts[0].estado === 'cerrado' || closeouts[0].estado === 'reabierto') {
+            return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
@@ -431,6 +431,60 @@ exports.updateReading = async (req, res) => {
     }
 };
 
+exports.batchUpdateReadings = async (req, res) => {
+    try {
+        const { closeoutId } = req.params;
+        const { readings } = req.body;
+
+        if (!Array.isArray(readings) || readings.length === 0) {
+            return res.status(400).json({ message: 'El arreglo de lecturas es requerido' });
+        }
+
+        const [closeouts] = await pool.query(
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [closeoutId, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado' || closeouts[0].estado === 'reabierto') {
+            return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const updated = [];
+        for (const r of readings) {
+            if (!r.readingId || r.lectura_actual === undefined) continue;
+
+            const [current] = await pool.query(
+                `SELECT lectura_anterior, precio, calibracion FROM gas_station_closeout_readings WHERE id = ? AND closeout_id = ?`,
+                [r.readingId, closeoutId]
+            );
+            if (current.length === 0) continue;
+
+            const lectura_anterior = parseFloat(current[0].lectura_anterior);
+            const precio = parseFloat(current[0].precio);
+            const calibracion = parseFloat(current[0].calibracion);
+            const lectura_actual = parseFloat(r.lectura_actual);
+            const diferencia = lectura_actual - lectura_anterior - calibracion;
+            const monto = diferencia * precio;
+
+            await pool.query(`
+                UPDATE gas_station_closeout_readings
+                SET lectura_actual = ?, diferencia = ?, monto = ?
+                WHERE id = ? AND closeout_id = ?
+            `, [lectura_actual, diferencia, monto, r.readingId, closeoutId]);
+
+            updated.push({ id: parseInt(r.readingId), lectura_actual, diferencia, monto });
+        }
+
+        res.json({ updated: updated.length, readings: updated });
+    } catch (error) {
+        console.error('Error batchUpdateReadings:', error);
+        res.status(500).json({ message: 'Error al actualizar lecturas' });
+    }
+};
+
 exports.updateTankReading = async (req, res) => {
     try {
         const { closeoutId, id } = req.params;
@@ -441,8 +495,8 @@ exports.updateTankReading = async (req, res) => {
             [closeoutId, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
-        if (closeouts[0].estado === 'cerrado') {
-            return res.status(400).json({ message: 'El cierre ya está cerrado, no se puede modificar' });
+        if (closeouts[0].estado === 'cerrado' || closeouts[0].estado === 'reabierto') {
+            return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
@@ -624,6 +678,34 @@ exports.closeCloseout = async (req, res) => {
     } catch (error) {
         console.error('Error closeCloseout:', error);
         res.status(500).json({ message: 'Error al cerrar cierre de lecturas' });
+    }
+};
+
+exports.reopenCloseout = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado !== 'cerrado') {
+            return res.status(400).json({ message: 'Solo se pueden reabrir cierres cerrados' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        await pool.query(
+            `UPDATE gas_station_closeouts SET estado = 'reabierto' WHERE id = ?`,
+            [id]
+        );
+
+        res.json({ message: 'Cierre reabierto exitosamente' });
+    } catch (error) {
+        console.error('Error reopenCloseout:', error);
+        res.status(500).json({ message: 'Error al reabrir cierre de lecturas' });
     }
 };
 

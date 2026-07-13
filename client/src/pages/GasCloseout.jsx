@@ -5,7 +5,7 @@ import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
     FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save,
-    Users, UserCheck, Printer, BarChart3, FileText
+    Users, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
+import * as XLSX from 'xlsx';
 
 const GasCloseout = () => {
     const queryClient = useQueryClient();
@@ -71,8 +72,11 @@ const GasCloseout = () => {
     const [showNozzleAssignModal, setShowNozzleAssignModal] = useState(false);
     const [modalAssignments, setModalAssignments] = useState([]);
     const [modalSelectedDespachadorId, setModalSelectedDespachadorId] = useState('');
+    const [importResult, setImportResult] = useState(null);
+    const [importing, setImporting] = useState(false);
 
     const inputRefs = useRef({});
+    const fileInputRef = useRef(null);
     const tankInputRefs = useRef({});
     const lubricantInputRefs = useRef({});
 
@@ -233,6 +237,95 @@ const GasCloseout = () => {
             axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/${readingId}`, data),
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar')
     });
+
+    const batchUpdateMutation = useMutation({
+        mutationFn: (readings) =>
+            axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/batch`, { readings }),
+        onSuccess: (res) => {
+            const updated = res.data.readings;
+            setReadings(prev => prev.map(r => {
+                const u = updated.find(x => x.id === r.id);
+                if (u) return { ...r, lectura_actual: u.lectura_actual, diferencia: u.diferencia, monto: u.monto };
+                return r;
+            }));
+            setImportResult(null);
+            setImporting(false);
+            toast.success(`${res.data.updated} lecturas actualizadas`);
+        },
+        onError: (error) => {
+            setImporting(false);
+            toast.error(error.response?.data?.message || 'Error al importar lecturas');
+        }
+    });
+
+    const handleImportExcel = (file) => {
+        if (!file) return;
+        setImporting(true);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+                // Get rows as arrays for robust column detection
+                const allRows = XLSX.utils.sheet_to_json(sheet, { defval: '', header: 1 });
+
+                // Find data rows: rows where columns 2 and 3 (0-indexed) are numeric volumes
+                const dataRows = [];
+                for (const cells of allRows) {
+                    const col2 = parseFloat(String(cells[2] ?? '').replace(/[^0-9.]/g, ''));
+                    const col3 = parseFloat(String(cells[3] ?? '').replace(/[^0-9.]/g, ''));
+                    const col1 = String(cells[1] ?? '').trim();
+                    // Data rows have numeric volumes in col 2 (Initial) and col 3 (Final)
+                    // Skip header rows (non-numeric col 2)
+                    if (!isNaN(col2) && !isNaN(col3) && col2 >= 0 && col3 >= 0 && col1) {
+                        dataRows.push({
+                            initial_volume: col2,
+                            final_volume: col3,
+                            nozzle: col1
+                        });
+                    }
+                }
+
+                const matched = [];
+                const warnings = [];
+                const unmatched = [];
+
+                for (let i = 0; i < dataRows.length; i++) {
+                    const row = dataRows[i];
+                    const initialVolume = parseFloat(String(row.initial_volume || '').replace(/[^0-9.]/g, ''));
+                    const finalVolume = parseFloat(String(row.final_volume || '').replace(/[^0-9.]/g, ''));
+                    const nozzleDesc = String(row.nozzle || '');
+
+                    if (isNaN(initialVolume) || isNaN(finalVolume)) {
+                        unmatched.push({ row: nozzleDesc, reason: 'Volumen inválido' });
+                        continue;
+                    }
+
+                    const reading = readings[i];
+                    if (!reading) {
+                        unmatched.push({ row: nozzleDesc, reason: 'No hay lectura en esta posición' });
+                        continue;
+                    }
+
+                    const antDiff = Math.abs(parseFloat(reading.lectura_anterior) - initialVolume);
+                    if (antDiff >= 0.001) {
+                        warnings.push({ row: nozzleDesc, reading: `${reading.codigo_pistola} — ${reading.descripcion_producto}`, expected: reading.lectura_anterior, actual: initialVolume, diff: antDiff.toFixed(3) });
+                    }
+
+                    matched.push({ readingId: reading.id, lectura_actual: finalVolume, codigo_pistola: reading.codigo_pistola, descripcion_producto: reading.descripcion_producto });
+                }
+
+                setImportResult({ matched, warnings, unmatched, total: dataRows.length });
+                setImporting(false);
+            } catch (err) {
+                setImporting(false);
+                toast.error('Error al leer el archivo Excel');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
 
     const closeMutation = useMutation({
         mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/close`),
@@ -1001,7 +1094,7 @@ const GasCloseout = () => {
     };
 
     const handleReadingChange = (nozzleId, field, value) => {
-        if (estado === 'cerrado') return;
+        if (estado === 'cerrado' || estado === 'reabierto') return;
         setReadings(prev => prev.map(r =>
             r.nozzle_id === nozzleId ? { ...r, [field]: parseFloat(value) || 0 } : r
         ));
@@ -1050,7 +1143,7 @@ const GasCloseout = () => {
     };
 
     const handleTankReadingChange = (tankId, field, value) => {
-        if (estado === 'cerrado') return;
+        if (estado === 'cerrado' || estado === 'reabierto') return;
         setTankReadings(prev => prev.map(r =>
             r.tank_id === tankId ? { ...r, [field]: parseFloat(value) || 0 } : r
         ));
@@ -1397,10 +1490,12 @@ const GasCloseout = () => {
                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                                 estado === 'cerrado'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : estado === 'reabierto'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                 : 'bg-amber-50 text-amber-700 border border-amber-200'
                             }`}>
-                                {estado === 'cerrado' ? <Lock size={12} /> : <Unlock size={12} />}
-                                {estado === 'cerrado' ? 'Cerrado' : 'Abierto'}
+                                {estado === 'cerrado' ? <Lock size={12} /> : estado === 'reabierto' ? <LockOpen size={12} /> : <Unlock size={12} />}
+                                {estado === 'cerrado' ? 'Cerrado' : estado === 'reabierto' ? 'Reabierto' : 'Abierto'}
                             </span>
                             <button
                                 onClick={handlePdf}
@@ -1409,13 +1504,15 @@ const GasCloseout = () => {
                             >
                                 <Printer size={16} />
                             </button>
-                            {estado === 'abierto' && (
+                            {(estado === 'abierto' || estado === 'reabierto') && (
                                 <button
                                     onClick={async () => {
                                         const ok = await confirm({
-                                            title: '¿Cerrar Turno?',
-                                            message: 'Una vez cerrado no podrá modificar las lecturas ni los egresos del turno.',
-                                            confirmLabel: 'Sí, cerrar turno',
+                                            title: estado === 'reabierto' ? '¿Recerrar Turno?' : '¿Cerrar Turno?',
+                                            message: estado === 'reabierto'
+                                                ? 'El turno volverá a estado cerrado. Las lecturas y tanques permanecerán sin cambios.'
+                                                : 'Una vez cerrado no podrá modificar las lecturas ni los egresos del turno.',
+                                            confirmLabel: estado === 'reabierto' ? 'Sí, recerrar' : 'Sí, cerrar turno',
                                             cancelLabel: 'Cancelar',
                                             variant: 'warning',
                                         });
@@ -1424,7 +1521,7 @@ const GasCloseout = () => {
                                     disabled={closeMutation.isPending}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg disabled:opacity-50"
                                 >
-                                    {closeMutation.isPending ? 'Cerrando...' : 'Cerrar Turno'}
+                                    {closeMutation.isPending ? 'Cerrando...' : estado === 'reabierto' ? 'Recerrar Turno' : 'Cerrar Turno'}
                                 </button>
                             )}
                         </div>
@@ -1719,7 +1816,8 @@ const GasCloseout = () => {
                                         const isAnticipos = btn.key === 'anticipos';
                                         const isTanques = btn.key === 'tanques';
                                         const isDiferencias = btn.key === 'diferencias';
-                                        const canClick = isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTanques || isDiferencias || (btn.enabled && estado === 'abierto');
+                                        const isBlockedReabierto = (isLectura || isTanques) && estado === 'reabierto';
+                                        const canClick = !isBlockedReabierto && (isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTanques || isDiferencias || (btn.enabled && estado === 'abierto'));
                                         return (
                                             <button
                                                 key={btn.key}
@@ -1768,12 +1866,36 @@ const GasCloseout = () => {
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
-                                <button
-                                    onClick={() => { setShowReadingsModal(false); setEditAnterior(false); }}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {estado !== 'cerrado' && (
+                                        <>
+                                            <input
+                                                ref={fileInputRef}
+                                                type="file"
+                                                accept=".xlsx,.xls"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    handleImportExcel(e.target.files[0]);
+                                                    e.target.value = '';
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={importing}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all disabled:opacity-50"
+                                            >
+                                                {importing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                                                {importing ? 'Importando...' : 'Importar Excel'}
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={() => { setShowReadingsModal(false); setEditAnterior(false); }}
+                                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                    >
+                                        <X size={16} className="text-slate-400" />
+                                    </button>
+                                </div>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1 relative">
                                 <table className="w-full text-left border-separate border-spacing-0">
@@ -1856,6 +1978,101 @@ const GasCloseout = () => {
                                         })}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {importResult && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => { setImportResult(null); setImporting(false); }} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-lg max-h-[80vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <Upload size={16} className="text-indigo-600" />
+                                    Importar Lecturas
+                                </h3>
+                                <button onClick={() => { setImportResult(null); setImporting(false); }} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="p-5 overflow-y-auto">
+                                <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                                    <div className="text-center">
+                                        <div className="text-2xl font-black text-emerald-600">{importResult.matched.length}</div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase">Coinciden</div>
+                                    </div>
+                                    <div className="w-px h-10 bg-slate-200" />
+                                    <div className="text-center">
+                                        <div className="text-2xl font-black text-slate-400">{importResult.total}</div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase">Total filas</div>
+                                    </div>
+                                    {importResult.warnings.length > 0 && (
+                                        <>
+                                            <div className="w-px h-10 bg-slate-200" />
+                                            <div className="text-center">
+                                                <div className="text-2xl font-black text-amber-500">{importResult.warnings.length}</div>
+                                                <div className="text-[10px] font-bold text-slate-500 uppercase">Advertencias</div>
+                                            </div>
+                                        </>
+                                    )}
+                                    {importResult.unmatched.length > 0 && (
+                                        <>
+                                            <div className="w-px h-10 bg-slate-200" />
+                                            <div className="text-center">
+                                                <div className="text-2xl font-black text-rose-500">{importResult.unmatched.length}</div>
+                                                <div className="text-[10px] font-bold text-slate-500 uppercase">Sin match</div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                {importResult.warnings.length > 0 && (
+                                    <div className="mb-4">
+                                        <h4 className="text-[11px] font-bold text-amber-600 uppercase mb-2">Advertencias — Volumen inicial no coincide con lectura anterior</h4>
+                                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                                            {importResult.warnings.map((w, i) => (
+                                                <div key={i} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-amber-50 text-[11px]">
+                                                    <span className="font-medium text-slate-700">{w.reading}</span>
+                                                    <span className="text-amber-600 ml-auto">Esperado: {w.expected} | Recibido: {w.actual}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {importResult.unmatched.length > 0 && (
+                                    <div className="mb-4">
+                                        <h4 className="text-[11px] font-bold text-rose-600 uppercase mb-2">Filas sin coincidencia</h4>
+                                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                                            {importResult.unmatched.map((u, i) => (
+                                                <div key={i} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-rose-50 text-[11px]">
+                                                    <span className="font-medium text-slate-700">{u.row}</span>
+                                                    <span className="text-rose-500 ml-auto">{u.reason}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-100 shrink-0">
+                                <button
+                                    onClick={() => { setImportResult(null); setImporting(false); }}
+                                    className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        batchUpdateMutation.mutate(importResult.matched.map(m => ({
+                                            readingId: m.readingId,
+                                            lectura_actual: m.lectura_actual
+                                        })));
+                                    }}
+                                    disabled={importResult.matched.length === 0 || batchUpdateMutation.isPending}
+                                    className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1"
+                                >
+                                    {batchUpdateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                    {batchUpdateMutation.isPending ? 'Guardando...' : `Aplicar ${importResult.matched.length} lectura(s)`}
+                                </button>
                             </div>
                         </div>
                     </div>

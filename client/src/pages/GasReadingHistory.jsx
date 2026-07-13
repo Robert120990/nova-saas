@@ -4,7 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle, LockOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +19,7 @@ const GasReadingHistory = () => {
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [rrsModal, setRrsModal] = useState(null);
+    const [reopenConfirm, setReopenConfirm] = useState(null);
 
     React.useEffect(() => {
         const timer = setTimeout(() => {
@@ -53,6 +54,20 @@ const GasReadingHistory = () => {
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al enviar a RRS')
     });
+
+    const reopenMutation = useMutation({
+        mutationFn: (id) => axios.post(`/api/gas-station/closeouts/${id}/reopen`),
+        onSuccess: () => {
+            toast.success('Cierre reabierto exitosamente');
+            setReopenConfirm(null);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al reabrir cierre')
+    });
+
+    const permissions = user?.permissions || [];
+    const isSuperAdmin = user?.role === 'SuperAdmin';
+    const canReopenCloseout = isSuperAdmin || permissions.includes('manage_gas_closeout_reopen');
 
     const handleView = (item) => {
         navigate(`/gas-station/cierre-lecturas?editId=${item.id}`);
@@ -147,13 +162,24 @@ const GasReadingHistory = () => {
                             <td className="px-3 py-1">
                                 <div className="flex items-center gap-1">
                                     {c.estado === 'cerrado' ? (
-                                        <button
-                                            onClick={() => handleView(c)}
-                                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                            title="Ver detalle"
-                                        >
-                                            <Eye size={15} />
-                                        </button>
+                                        <>
+                                            {canReopenCloseout && (
+                                                <button
+                                                    onClick={() => setReopenConfirm(c)}
+                                                    className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                    title="Reabrir cierre con permiso especial"
+                                                >
+                                                    <LockOpen size={15} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleView(c)}
+                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                title="Ver detalle"
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </>
                                     ) : (
                                         <>
                                             <button
@@ -270,6 +296,40 @@ const GasReadingHistory = () => {
                         {sendToRrsMutation.isPending
                             ? 'Enviando...'
                             : rrsModal?.rrs_enviado_at ? 'Reenviar' : 'Enviar'}
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Reopen confirmation modal */}
+            <Modal
+                isOpen={!!reopenConfirm}
+                onClose={() => setReopenConfirm(null)}
+                title="Reabrir Cierre"
+                maxWidth="max-w-sm"
+            >
+                <div className="text-center py-4">
+                    <LockOpen size={40} className="mx-auto text-amber-400 mb-3" />
+                    <p className="text-sm font-medium text-slate-700 mb-1">
+                        ¿Reabrir Turno #{reopenConfirm?.numero_turno}?
+                    </p>
+                    <p className="text-xs text-slate-400">
+                        El cierre se marcará como reabierto. Podrá editar los datos del turno, pero no podrá modificar las lecturas ni los tanques.
+                    </p>
+                </div>
+                <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                    <button
+                        onClick={() => setReopenConfirm(null)}
+                        className="px-4 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={() => reopenMutation.mutate(reopenConfirm.id)}
+                        disabled={reopenMutation.isPending}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-1"
+                    >
+                        {reopenMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <LockOpen size={14} />}
+                        {reopenMutation.isPending ? 'Reabriendo...' : 'Reabrir'}
                     </button>
                 </div>
             </Modal>

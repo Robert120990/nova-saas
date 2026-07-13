@@ -234,7 +234,7 @@ export const menuConfig = [
                 ]
             },
             { id: 'gas-cierre-lecturas', label: 'Cierre Lecturas', path: '/gas-station/cierre-lecturas', icon: Calculator, permission: 'manage_gas_readings_closure' },
-            { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'view_gas_readings_history' },
+            { id: 'gas-historial-lecturas', label: 'Historial de Lecturas', path: '/gas-station/historial-lecturas', icon: History, permission: 'view_gas_readings_history', extraPermissions: ['manage_gas_closeout_reopen'] },
             { id: 'gas-anticipos', label: 'Anticipos de Clientes', path: '/gas-station/anticipos', icon: Banknote, permission: 'manage_gas_advances' },
             { id: 'gas-entrega-remesas', label: 'Entrega de Remesas', path: '/gas-station/entrega-remesas', icon: Handshake, permission: 'manage_gas_remesa_delivery' },
             { id: 'gas-configuracion', label: 'Configuración', path: '/gas-station/configuracion', icon: Settings, permission: 'manage_gas_settings' },
@@ -360,6 +360,15 @@ export const getAllPermissions = () => {
                     }
                     const fullLabel = prefix ? `${prefix} - ${item.label}` : item.label;
                     perms.push({ id: item.permission, label: fullLabel });
+                }
+
+                if (item.extraPermissions && Array.isArray(item.extraPermissions)) {
+                    item.extraPermissions.forEach(perm => {
+                        if (!seen[perm]) {
+                            seen[perm] = `${group.label} > ${item.label}`;
+                            perms.push({ id: perm, label: `${item.label} (${perm})` });
+                        }
+                    });
                 }
 
                 if (item.children) {
