@@ -18,7 +18,7 @@ exports.getTanks = async (req, res) => {
         }
         const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM ${TABLE} ${where}`, params);
         const total = countResult[0].total;
-        const [rows] = await pool.query(`SELECT * FROM ${TABLE} ${where} ORDER BY codigo ASC LIMIT ? OFFSET ?`, [...params, parseInt(limit), parseInt(offset)]);
+        const [rows] = await pool.query(`SELECT t.*, COALESCE(t.tipo_combustible, 0) as tipo_combustible FROM ${TABLE} t ${where} ORDER BY t.codigo ASC LIMIT ? OFFSET ?`, [...params, parseInt(limit), parseInt(offset)]);
         res.json({ data: rows, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
     } catch (error) {
         res.status(500).json({ message: 'Error al obtener tanques' });

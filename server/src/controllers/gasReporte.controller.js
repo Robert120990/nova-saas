@@ -104,6 +104,181 @@ const tipoNombres = {
     lubricantes: 'Lubricantes'
 };
 
+const fuelTypeLabels = { 1: 'REGULAR', 2: 'SUPER', 3: 'DIESEL' };
+
+exports.getFuelInventoryPDF = async (req, res) => {
+    const { start_date, end_date, tipo_combustible, branch_id } = req.query;
+    const companyId = req.company_id;
+    const fuelType = parseInt(tipo_combustible, 10);
+
+    try {
+        if (!companyId) return res.status(401).json({ message: 'No session' });
+        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
+        if (!fuelType || ![1, 2, 3].includes(fuelType)) return res.status(400).json({ message: 'Tipo de combustible inválido' });
+
+        const [companyRows] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
+        const companyInfo = companyRows[0] || { razon_social: 'Empresa' };
+
+        let branchName = 'Todas';
+        if (branch_id && branch_id !== 'all') {
+            const [br] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (br.length > 0) branchName = br[0].nombre;
+        }
+
+        const fuelLabel = fuelTypeLabels[fuelType];
+        const branchFilter = branch_id && branch_id !== 'all' ? 'AND c.branch_id = ?' : '';
+        const branchFilter2 = branch_id && branch_id !== 'all' ? 'AND ph.branch_id = ?' : '';
+        const branchFilter3 = branch_id && branch_id !== 'all' ? 'AND c2.branch_id = ?' : '';
+        const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        // Sales by service type per day
+        const [salesRows] = await pool.query(`
+            SELECT c.fecha_turno, n.tipo,
+                SUM(r.lectura_actual - r.lectura_anterior - COALESCE(r.calibracion, 0)) AS venta_gal,
+                AVG(r.precio) AS precio
+            FROM gas_station_closeout_readings r
+            JOIN gas_station_closeouts c ON r.closeout_id = c.id
+            JOIN gas_station_nozzles n ON r.nozzle_id = n.id
+            JOIN products p ON r.product_id = p.id
+            WHERE c.company_id = ?
+                AND c.fecha_turno BETWEEN ? AND ?
+                AND c.estado IN ('cerrado', 'reabierto')
+                AND p.tipo_combustible = ?
+                ${branchFilter}
+            GROUP BY c.fecha_turno, n.tipo
+            ORDER BY c.fecha_turno, n.tipo
+        `, [companyId, start_date, end_date, fuelType, ...branchParams]);
+
+        // Tank inventory (last closeout per day)
+        const [tankRows] = await pool.query(`
+            SELECT c.fecha_turno,
+                SUM(tr.lectura_actual) AS inventario_final,
+                SUM(tr.recarga) AS recarga_manual
+            FROM gas_station_closeout_tank_readings tr
+            JOIN gas_station_closeouts c ON tr.closeout_id = c.id
+            JOIN gas_station_tanks t ON tr.tank_id = t.id
+            WHERE c.company_id = ?
+                AND c.fecha_turno BETWEEN ? AND ?
+                AND c.estado IN ('cerrado', 'reabierto')
+                AND t.tipo_combustible = ?
+                ${branchFilter}
+                AND c.id IN (
+                    SELECT MAX(c2.id)
+                    FROM gas_station_closeouts c2
+                    WHERE c2.company_id = ?
+                        AND c2.estado IN ('cerrado', 'reabierto')
+                        ${branchFilter3}
+                    GROUP BY c2.fecha_turno, COALESCE(c2.branch_id, 0)
+                )
+            GROUP BY c.fecha_turno
+            ORDER BY c.fecha_turno
+        `, [companyId, start_date, end_date, fuelType, ...branchParams, companyId, ...branchParams]);
+
+        // Purchase quantities per day
+        const [purchaseRows] = await pool.query(`
+            SELECT DATE(ph.fecha) AS fecha,
+                SUM(pi.cantidad) AS recarga_compra
+            FROM purchase_items pi
+            JOIN purchase_headers ph ON pi.purchase_id = ph.id
+            JOIN products p ON pi.product_id = p.id
+            WHERE ph.company_id = ?
+                AND DATE(ph.fecha) BETWEEN ? AND ?
+                AND ph.status = 'COMPLETADO'
+                AND p.tipo_combustible = ?
+                ${branchFilter2}
+            GROUP BY DATE(ph.fecha)
+            ORDER BY DATE(ph.fecha)
+        `, [companyId, start_date, end_date, fuelType, ...branchParams]);
+
+        // Product cost for this fuel type
+        const [costRows] = await pool.query(`
+            SELECT AVG(costo) AS costo_promedio
+            FROM products
+            WHERE company_id = ? AND tipo_combustible = ? AND status = 'activo'
+        `, [companyId, fuelType]);
+        const costo = parseFloat(costRows[0]?.costo_promedio || 0);
+
+        // Build date map
+        const dateMap = {};
+
+        // Process sales
+        for (const row of salesRows) {
+            const fecha = row.fecha_turno.toISOString().slice(0, 10);
+            if (!dateMap[fecha]) dateMap[fecha] = { fecha, venta_auto: 0, venta_full: 0, venta_master: 0, precio_auto: 0, precio_full: 0, precio_master: 0, inventario: 0, recarga_manual: 0, recarga_compra: 0, costo: costo };
+            const key = row.tipo === 'A' ? 'auto' : row.tipo === 'C' ? 'full' : 'master';
+            dateMap[fecha][`venta_${key}`] = parseFloat(row.venta_gal) || 0;
+            dateMap[fecha][`precio_${key}`] = parseFloat(row.precio) || 0;
+        }
+
+        // Process tank inventory
+        for (const row of tankRows) {
+            const fecha = row.fecha_turno.toISOString().slice(0, 10);
+            if (!dateMap[fecha]) dateMap[fecha] = { fecha, venta_auto: 0, venta_full: 0, venta_master: 0, precio_auto: 0, precio_full: 0, precio_master: 0, inventario: 0, recarga_manual: 0, recarga_compra: 0, costo: costo };
+            dateMap[fecha].inventario = parseFloat(row.inventario_final) || 0;
+            dateMap[fecha].recarga_manual += parseFloat(row.recarga_manual) || 0;
+        }
+
+        // Process purchases
+        for (const row of purchaseRows) {
+            const fecha = row.fecha.toISOString().slice(0, 10);
+            if (!dateMap[fecha]) dateMap[fecha] = { fecha, venta_auto: 0, venta_full: 0, venta_master: 0, precio_auto: 0, precio_full: 0, precio_master: 0, inventario: 0, recarga_manual: 0, recarga_compra: 0, costo: costo };
+            dateMap[fecha].recarga_compra += parseFloat(row.recarga_compra) || 0;
+        }
+
+        // Calculate derived columns and sort by date
+        const rows = Object.values(dateMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+        let prev_inventario = 0;
+        for (const r of rows) {
+            const va = r.venta_auto;
+            const vf = r.venta_full;
+            const vm = r.venta_master;
+            const pa = r.precio_auto;
+            const pf = r.precio_full;
+            const pm = r.precio_master;
+            const cos = r.costo;
+            const inv = r.inventario;
+
+            r.total_venta = va + vf + vm;
+            r.margen_auto = pa - cos;
+            r.margen_full = pf - cos;
+            r.margen_master = pm - cos;
+            r.utilidad_auto = r.margen_auto * va;
+            r.utilidad_full = r.margen_full * vf;
+            r.utilidad_master = r.margen_master * vm;
+            r.utilidad_total = r.utilidad_auto + r.utilidad_full + r.utilidad_master;
+            r.margen_total = r.margen_auto + r.margen_full + r.margen_master;
+
+            if (prev_inventario === 0) prev_inventario = inv;
+            r.dif_diaria = (prev_inventario + r.recarga_manual + r.recarga_compra - inv) - r.total_venta;
+            prev_inventario = inv;
+
+            r.precio_promedio = r.total_venta > 0
+                ? (va * pa + vf * pf + vm * pm) / r.total_venta
+                : 0;
+        }
+
+        const reportData = {
+            company: companyInfo,
+            company_name: companyInfo.razon_social,
+            branch_name: branchName,
+            start_date,
+            end_date,
+            fuel_label: fuelLabel,
+            rows
+        };
+
+        const pdfBuffer = await pdfService.generateFuelInventoryPDF(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Inventario_${fuelLabel}_${start_date}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error en getFuelInventoryPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de inventario de combustible' });
+    }
+};
+
 exports.getCloseoutDetailPDF = async (req, res) => {
     const { start_date, end_date, tipo_reporte, branch_id } = req.query;
     const companyId = req.company_id;

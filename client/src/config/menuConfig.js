@@ -245,6 +245,7 @@ export const menuConfig = [
                 children: [
                     { id: 'gas-reporte-ventas', label: 'Lecturas - Ventas', path: '/gas-station/reporte-ventas', icon: BarChart3, permission: 'view_gas_fuel_sales_report' },
                     { id: 'gas-reporte-detalle-cierre', label: 'Detalle del Cierre', path: '/gas-station/reporte-detalle-cierre', icon: FileText, permission: 'view_gas_readings_history' },
+                    { id: 'gas-reporte-inventario', label: 'Inventario Combustible', path: '/gas-station/reporte-inventario-combustible', icon: BarChart3, permission: 'view_gas_fuel_sales_report' },
                 ]
             },
         ]

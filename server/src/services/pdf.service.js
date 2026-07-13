@@ -2602,6 +2602,165 @@ const generateCloseoutDetailPDF = (data) => {
     });
 };
 
+const generateFuelInventoryPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 20, layout: 'landscape', size: 'A4' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const fmtDate = (d) => {
+                if (!d) return '—';
+                const dt = new Date(d);
+                return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+            };
+            const fmtVal = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
+            const fmtGal = (v) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Header
+            doc.fontSize(13).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
+            doc.fontSize(8).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
+            doc.fontSize(8).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
+            doc.moveDown(0.2);
+            doc.fontSize(11).font('Helvetica-Bold').text(`INVENTARIO ${data.fuel_label || 'COMBUSTIBLE'}`, { align: 'center', underline: true });
+            doc.moveDown(0.3);
+
+            const startX = 20;
+            const pageW = 802;
+
+            // Column definitions — single-line labels only
+            const colDefs = [
+                { label: 'FECHA', w: 52, accessor: 'fecha', format: 'date', align: 'center', group: 'FECHA' },
+                { label: 'V.AUTO', w: 36, accessor: 'venta_auto', format: 'gal', align: 'right', group: 'VENTA' },
+                { label: 'V.FULL', w: 36, accessor: 'venta_full', format: 'gal', align: 'right', group: 'VENTA' },
+                { label: 'V.MSTR', w: 36, accessor: 'venta_master', format: 'gal', align: 'right', group: 'VENTA' },
+                { label: 'INVENTARIO', w: 46, accessor: 'inventario', format: 'gal', align: 'right', group: 'INV.' },
+                { label: 'P.AUTO', w: 32, accessor: 'precio_auto', format: 'money', align: 'right', group: 'PRECIO' },
+                { label: 'P.FULL', w: 32, accessor: 'precio_full', format: 'money', align: 'right', group: 'PRECIO' },
+                { label: 'P.MSTR', w: 32, accessor: 'precio_master', format: 'money', align: 'right', group: 'PRECIO' },
+                { label: 'COSTO', w: 30, accessor: 'costo', format: 'money', align: 'right', group: 'COSTO' },
+                { label: 'M.AUTO', w: 32, accessor: 'margen_auto', format: 'money', align: 'right', group: 'MARGEN' },
+                { label: 'M.FULL', w: 32, accessor: 'margen_full', format: 'money', align: 'right', group: 'MARGEN' },
+                { label: 'M.MSTR', w: 32, accessor: 'margen_master', format: 'money', align: 'right', group: 'MARGEN' },
+                { label: 'UTIL.TOT', w: 32, accessor: 'utilidad_total', format: 'money', align: 'right', group: 'UTILIDAD' },
+                { label: 'U.AUTO', w: 32, accessor: 'utilidad_auto', format: 'money', align: 'right', group: 'UTILIDAD' },
+                { label: 'U.FULL', w: 32, accessor: 'utilidad_full', format: 'money', align: 'right', group: 'UTILIDAD' },
+                { label: 'U.MSTR', w: 32, accessor: 'utilidad_master', format: 'money', align: 'right', group: 'UTILIDAD' },
+                { label: 'M.TOTAL', w: 32, accessor: 'margen_total', format: 'money', align: 'right', group: 'MG.TOT' },
+                { label: 'REC.MAN', w: 34, accessor: 'recarga_manual', format: 'gal', align: 'right', group: 'RECARGA' },
+                { label: 'REC.COM', w: 34, accessor: 'recarga_compra', format: 'gal', align: 'right', group: 'RECARGA' },
+                { label: 'DIF.DIA', w: 34, accessor: 'dif_diaria', format: 'gal', align: 'right', group: 'DIF.DIA' },
+                { label: 'T.VENTA', w: 38, accessor: 'total_venta', format: 'gal', align: 'right', group: 'TOT.VENTA' },
+                { label: 'P.PROM.', w: 38, accessor: 'precio_promedio', format: 'money', align: 'right', group: 'P.PROM.' }
+            ];
+
+            // Unique groups with span
+            const groups = [];
+            for (const c of colDefs) {
+                if (!groups.find(g => g.label === c.group)) {
+                    const span = colDefs.filter(x => x.group === c.group).reduce((s, x) => s + x.w, 0);
+                    groups.push({ label: c.group, w: span });
+                }
+            }
+
+            const drawTableHeader = () => {
+                const headerY = doc.y;
+
+                // Group header row background
+                doc.rect(startX, headerY, pageW, 16).fill('#f1f5f9');
+                doc.fontSize(6).font('Helvetica-Bold').fillColor('#334155');
+                let gx = startX;
+                groups.forEach(g => {
+                    doc.text(g.label, gx, headerY + 4, { width: g.w, align: 'center' });
+                    gx += g.w;
+                });
+
+                // Divider after groups
+                doc.fillColor('#cbd5e1');
+                doc.moveTo(startX, headerY + 16).lineTo(startX + pageW, headerY + 16).stroke();
+
+                // Column headers row background
+                const colY = headerY + 17;
+                doc.rect(startX, colY, pageW, 16).fill('#f8fafc');
+                doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569');
+                let cx = startX;
+                colDefs.forEach(c => {
+                    doc.text(c.label, cx, colY + 4, { width: c.w, align: 'center' });
+                    cx += c.w;
+                });
+
+                // Bottom divider
+                doc.fillColor('#94a3b8');
+                doc.moveTo(startX, colY + 16).lineTo(startX + pageW, colY + 16).stroke();
+                doc.y = colY + 18;
+            };
+
+            drawTableHeader();
+
+            const rows = data.rows || [];
+
+            rows.forEach((row, i) => {
+                if (doc.y > 495) {
+                    doc.addPage();
+                    drawTableHeader();
+                }
+                const y = doc.y;
+                let x = startX;
+                doc.fontSize(6).font('Helvetica');
+                if (i % 2 === 0) {
+                    doc.rect(startX, y, pageW, 13).fill('#f8fafc');
+                }
+                doc.fillColor('#1e293b');
+                colDefs.forEach(c => {
+                    const val = row[c.accessor];
+                    if (c.format === 'money') {
+                        doc.text(fmtVal(val), x, y + 2, { width: c.w, align: 'right' });
+                    } else if (c.format === 'date') {
+                        doc.text(fmtDate(val), x, y + 2, { width: c.w, align: 'center' });
+                    } else {
+                        doc.text(fmtGal(val), x, y + 2, { width: c.w, align: 'right' });
+                    }
+                    x += c.w;
+                });
+                doc.y = y + 13;
+            });
+
+            // Totals
+            if (rows.length > 0) {
+                doc.moveDown(0.2);
+                doc.rect(startX, doc.y, pageW, 1).fill('#64748b');
+                doc.moveDown(0.1);
+                const ty = doc.y;
+                let tx = startX;
+                doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#1e293b');
+                colDefs.forEach((c, i) => {
+                    if (i === 0) {
+                        doc.text('TOTALES', tx, ty + 2, { width: c.w, align: 'left' });
+                    } else if (c.format === 'money') {
+                        const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                        doc.text(fmtVal(total), tx, ty + 2, { width: c.w, align: 'right' });
+                    } else {
+                        const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                        doc.text(fmtGal(total), tx, ty + 2, { width: c.w, align: 'right' });
+                    }
+                    tx += c.w;
+                });
+                doc.moveDown(1.5);
+            }
+
+            doc.fontSize(6.5).fillColor('#94a3b8').font('Helvetica').text(
+                `Generado el ${new Date().toLocaleString('es-SV')}`, { align: 'center' }
+            );
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 const generatePlanillaPDF = (data) => {
     return new Promise((resolve, reject) => {
         try {
@@ -2988,6 +3147,7 @@ module.exports = {
     generateAguinaldoPDF,
     generateAguinaldoRecibosPDF,
     generateCloseoutDetailPDF,
+    generateFuelInventoryPDF,
     generatePlanillaPDF,
     generatePlanillaReciboPDF
 };

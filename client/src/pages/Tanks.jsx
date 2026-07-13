@@ -78,6 +78,13 @@ const Tanks = () => {
         setIsModalOpen(true);
     };
 
+    const fuelTypes = [
+        { value: '0', label: 'Ninguno' },
+        { value: '1', label: 'Regular' },
+        { value: '2', label: 'Especial (Super)' },
+        { value: '3', label: 'Diesel' }
+    ];
+    const getFuelTypeLabel = (v) => fuelTypes.find(f => f.value === String(v))?.label || 'Ninguno';
     const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
     const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
 
@@ -110,7 +117,7 @@ const Tanks = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Código', 'Descripción', 'Capacidad', 'Reserva', 'Acciones']}
+                    headers={['Código', 'Descripción', 'Capacidad', 'Reserva', 'Combustible', 'Acciones']}
                     data={items}
                     isLoading={isLoading}
                     renderRow={(item) => (
@@ -124,6 +131,7 @@ const Tanks = () => {
                             <td className="px-3 py-1 text-xs text-slate-500">{item.descripcion}</td>
                             <td className="px-3 py-1 text-xs font-medium text-slate-700">{parseFloat(item.capacidad).toFixed(2)}</td>
                             <td className="px-3 py-1 text-xs font-medium text-slate-700">{parseFloat(item.reserva).toFixed(2)}</td>
+                            <td className="px-3 py-1 text-xs font-medium text-slate-700">{getFuelTypeLabel(item.tipo_combustible)}</td>
                             <td className="px-3 py-1 flex gap-1">
                                 <button onClick={() => handleEdit(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
                                 <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
@@ -171,6 +179,14 @@ const Tanks = () => {
                     <div>
                         <label className={labelCls}>Reserva (galones) <span className="text-red-400">*</span></label>
                         <input name="reserva" type="number" step="0.01" defaultValue={selectedItem?.reserva} required placeholder="0.00" className={fieldCls} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Tipo de Combustible <span className="text-red-400">*</span></label>
+                        <select name="tipo_combustible" defaultValue={selectedItem?.tipo_combustible ?? '0'} required className={fieldCls}>
+                            {fuelTypes.map(ft => (
+                                <option key={ft.value} value={ft.value}>{ft.label}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="flex justify-end gap-3 pt-4">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-500 font-bold hover:text-slate-800 transition-colors">Cancelar</button>

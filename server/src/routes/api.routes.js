@@ -585,6 +585,9 @@ router.get('/gas-station/reporte-ventas', gasReporteController.getReporteVentas)
 // Gas Station - Reporte Detalle del Cierre
 router.get('/gas-station/reports/closeout-detail/pdf', gasReporteController.getCloseoutDetailPDF);
 
+// Gas Station - Reporte Inventario de Combustibles
+router.get('/gas-station/reports/fuel-inventory/pdf', gasReporteController.getFuelInventoryPDF);
+
 // Gas Station - Remesa Deliveries
 router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);
 router.get('/gas-station/remesa-deliveries', gasRemesaDeliveryController.getDeliveries);
