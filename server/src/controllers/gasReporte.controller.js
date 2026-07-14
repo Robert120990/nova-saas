@@ -365,7 +365,7 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
         for (const row of readingRows) {
             const fecha = row.fecha instanceof Date ? row.fecha.toISOString().slice(0, 10) : String(row.fecha).slice(0, 10);
             if (!dateMap[fecha]) {
-                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0 };
+                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, dif_diesel: 0, lect_regular: 0, vta_regular: 0, dif_regular: 0, lect_super: 0, vta_super: 0, dif_super: 0 };
             }
             const t = row.tipo_combustible;
             if (t === 3) dateMap[fecha].lect_diesel = parseFloat(row.lect_galones) || 0;
@@ -376,7 +376,7 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
         for (const row of salesRows) {
             const fecha = row.fecha instanceof Date ? row.fecha.toISOString().slice(0, 10) : String(row.fecha).slice(0, 10);
             if (!dateMap[fecha]) {
-                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0 };
+                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, dif_diesel: 0, lect_regular: 0, vta_regular: 0, dif_regular: 0, lect_super: 0, vta_super: 0, dif_super: 0 };
             }
             const t = row.tipo_combustible;
             if (t === 3) dateMap[fecha].vta_diesel = parseFloat(row.venta_galones) || 0;
@@ -386,7 +386,13 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
 
         const rows = Object.values(dateMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-        const totales = { lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0 };
+        for (const r of rows) {
+            r.dif_diesel = r.lect_diesel - r.vta_diesel;
+            r.dif_regular = r.lect_regular - r.vta_regular;
+            r.dif_super = r.lect_super - r.vta_super;
+        }
+
+        const totales = { lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0, dif_diesel: 0, dif_regular: 0, dif_super: 0 };
         for (const r of rows) {
             totales.lect_diesel += r.lect_diesel;
             totales.vta_diesel += r.vta_diesel;
@@ -394,11 +400,14 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
             totales.vta_regular += r.vta_regular;
             totales.lect_super += r.lect_super;
             totales.vta_super += r.vta_super;
+            totales.dif_diesel += r.dif_diesel;
+            totales.dif_regular += r.dif_regular;
+            totales.dif_super += r.dif_super;
         }
 
-        const dif_diesel = totales.lect_diesel - totales.vta_diesel;
-        const dif_regular = totales.lect_regular - totales.vta_regular;
-        const dif_super = totales.lect_super - totales.vta_super;
+        const dif_diesel = totales.dif_diesel;
+        const dif_regular = totales.dif_regular;
+        const dif_super = totales.dif_super;
         const dif_total = dif_diesel + dif_regular + dif_super;
 
         const reportData = {

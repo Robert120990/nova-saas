@@ -762,6 +762,7 @@ const GasCloseout = () => {
     .row .lbl { color: #64748b; }
     .row .val { font-weight: 600; }
     .barcode-wrap { text-align: center; margin: 6px 0; }
+    .barcode-wrap svg { max-width: 100%; height: auto; }
     @media print {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80mm; max-width: 80mm; }
     }
@@ -804,7 +805,7 @@ const GasCloseout = () => {
     <script>
         try {
             JsBarcode("#barcode", ${JSON.stringify(barcodeValue)}, {
-                width: 2, height: 40, displayValue: true, fontSize: 12, margin: 0
+                width: 1, height: 30, displayValue: true, fontSize: 9, margin: 2
             });
         } catch(e) { console.error(e); }
         setTimeout(() => { window.print(); }, 300);

@@ -71,8 +71,8 @@ function getRootParent(flatItems, item) {
 
 export function useMenuPermissions() {
     const { data: flatItems = [] } = useQuery({
-        queryKey: ['menu-items'],
-        queryFn: async () => (await axios.get('/api/menu-items?active_only=true')).data,
+        queryKey: ['menu-items-all'],
+        queryFn: async () => (await axios.get('/api/menu-items')).data,
         staleTime: 30 * 60 * 1000,
     });
 
