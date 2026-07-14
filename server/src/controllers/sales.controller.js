@@ -1617,7 +1617,7 @@ const voidSale = async (req, res) => {
     } catch (error) {
         if (connection) await connection.rollback();
         console.error('[VoidSale] Error:', error);
-        res.status(500).json({ message: 'Error al anular la venta', error: error.message });
+        res.status(500).json({ message: `Error al anular la venta: ${error.message}` });
     } finally {
         if (connection) connection.release();
     }

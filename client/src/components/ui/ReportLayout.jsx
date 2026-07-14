@@ -87,7 +87,7 @@ const ReportLayout = ({
                     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden min-h-[750px] flex flex-col relative">
                         {pdfUrl ? (
                             <iframe 
-                                src={`${pdfUrl}#toolbar=0&view=FitH`} 
+                                src={`${pdfUrl}#view=FitH`} 
                                 className="w-full flex-1 border-none"
                                 title={`${title} Preview`}
                             />
