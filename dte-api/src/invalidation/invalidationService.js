@@ -57,9 +57,9 @@ async function invalidateDTE(payload, companyId, user) {
             nit: company.nit.replace(/-/g, ''),
             nombre: company.razon_social,
             codEstableMH: branch.codigo_mh || null,
-            codEstable: String(branch.codigo || '1').padStart(4, '0'),
+            codEstable: (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0'),
             codPuntoVentaMH: pos.codigo ? String(pos.codigo).padStart(4, '0') : null,
-            codPuntoVenta: '0001',
+            codPuntoVenta: String(pos.codigo || '0001').padStart(4, '0'),
             telefono: company.telefono || '00000000',
             correo: company.correo || 'emisor@example.com'
         },
@@ -70,8 +70,8 @@ async function invalidateDTE(payload, companyId, user) {
             numeroControl: dte.numero_control,
             fecEmi: dteJson.identificacion.fecEmi,
             codigoGeneracionR: null,
-            tipoDocumento: dteJson.receptor.tipoDocumento || '36',
-            numDocumento: dteJson.receptor.numDocumento || null,
+            tipoDocumento: dteJson.receptor.tipoDocumento !== undefined ? dteJson.receptor.tipoDocumento : '36',
+            numDocumento: dteJson.receptor.numDocumento !== undefined ? dteJson.receptor.numDocumento : null,
             nombre: dteJson.receptor.nombre,
             telefono: dteJson.receptor.telefono || null,
             correo: dteJson.receptor.correo || null
