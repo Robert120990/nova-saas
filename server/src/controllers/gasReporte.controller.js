@@ -256,7 +256,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
         // Calculate derived columns and sort by date
         const rows = Object.values(dateMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-        let prev_inventario = 0;
+        let prev_inventario = inventario_inicial;
         for (const r of rows) {
             const va = r.venta_auto;
             const vf = r.venta_full;
@@ -277,7 +277,6 @@ exports.getFuelInventoryPDF = async (req, res) => {
             r.utilidad_total = r.utilidad_auto + r.utilidad_full + r.utilidad_master;
             r.margen_total = r.margen_auto + r.margen_full + r.margen_master;
 
-            if (prev_inventario === 0) prev_inventario = inv;
             r.dif_diaria = (prev_inventario + r.recarga_manual + r.recarga_compra - inv) - r.total_venta;
             prev_inventario = inv;
 
