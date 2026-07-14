@@ -15,6 +15,27 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
 import * as XLSX from 'xlsx';
 
+const parseDecimal = (value) => {
+    if (value == null) return NaN;
+    let str = String(value).trim();
+    if (str === '') return NaN;
+    const hasComma = str.includes(',');
+    const hasDot = str.includes('.');
+    if (hasComma && hasDot) {
+        const lastComma = str.lastIndexOf(',');
+        const lastDot = str.lastIndexOf('.');
+        if (lastComma > lastDot) {
+            str = str.replace(/\./g, '').replace(',', '.');
+        } else {
+            str = str.replace(/,/g, '');
+        }
+    } else if (hasComma) {
+        str = str.replace(',', '.');
+    }
+    str = str.replace(/[^0-9.-]/g, '');
+    return parseFloat(str);
+};
+
 const GasCloseout = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -274,8 +295,8 @@ const GasCloseout = () => {
                 // Find data rows: rows where columns 2 and 3 (0-indexed) are numeric volumes
                 const dataRows = [];
                 for (const cells of allRows) {
-                    const col2 = parseFloat(String(cells[2] ?? '').replace(/[^0-9.]/g, ''));
-                    const col3 = parseFloat(String(cells[3] ?? '').replace(/[^0-9.]/g, ''));
+                    const col2 = parseDecimal(cells[2]);
+                    const col3 = parseDecimal(cells[3]);
                     const col1 = String(cells[1] ?? '').trim();
                     // Data rows have numeric volumes in col 2 (Initial) and col 3 (Final)
                     // Skip header rows (non-numeric col 2)
@@ -294,8 +315,8 @@ const GasCloseout = () => {
 
                 for (let i = 0; i < dataRows.length; i++) {
                     const row = dataRows[i];
-                    const initialVolume = parseFloat(String(row.initial_volume || '').replace(/[^0-9.]/g, ''));
-                    const finalVolume = parseFloat(String(row.final_volume || '').replace(/[^0-9.]/g, ''));
+                    const initialVolume = parseDecimal(row.initial_volume);
+                    const finalVolume = parseDecimal(row.final_volume);
                     const nozzleDesc = String(row.nozzle || '');
 
                     if (isNaN(initialVolume) || isNaN(finalVolume)) {
