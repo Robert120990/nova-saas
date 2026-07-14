@@ -182,16 +182,12 @@ function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, on
                             {item.permission_key && <span className="text-[10px] font-mono text-indigo-400/60 truncate hidden xl:block">{item.permission_key}</span>}
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!item.children?.length && (
-                                <button onClick={() => onMove(item, 'up')} className="p-1 text-slate-600 hover:text-white transition-colors" title="Subir">
-                                    <ArrowUp size={14} />
-                                </button>
-                            )}
-                            {!item.children?.length && (
-                                <button onClick={() => onMove(item, 'down')} className="p-1 text-slate-600 hover:text-white transition-colors" title="Bajar">
-                                    <ArrowDown size={14} />
-                                </button>
-                            )}
+                            <button onClick={() => onMove(item, 'up')} className="p-1 text-slate-600 hover:text-white transition-colors" title="Subir">
+                                <ArrowUp size={14} />
+                            </button>
+                            <button onClick={() => onMove(item, 'down')} className="p-1 text-slate-600 hover:text-white transition-colors" title="Bajar">
+                                <ArrowDown size={14} />
+                            </button>
                             {item.is_active ? (
                                 <Eye size={14} className="text-green-500/50" />
                             ) : (
