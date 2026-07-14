@@ -2623,6 +2623,7 @@ const generateFuelInventoryPDF = (data) => {
             doc.fontSize(13).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
             doc.fontSize(8).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
             doc.fontSize(8).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
+            doc.fontSize(8).text(`Inventario Inicial: ${fmtGal(data.inventario_inicial || 0)} gal`);
             doc.moveDown(0.2);
             doc.fontSize(11).font('Helvetica-Bold').text(`INVENTARIO ${data.fuel_label || 'COMBUSTIBLE'}`, { align: 'center', underline: true });
             doc.moveDown(0.3);

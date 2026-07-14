@@ -198,6 +198,34 @@ exports.getFuelInventoryPDF = async (req, res) => {
         `, [companyId, fuelType]);
         const costo = parseFloat(costRows[0]?.costo_promedio || 0);
 
+        // Inventory from last closeout before start_date
+        let inventario_inicial = 0;
+        try {
+            const [initRows] = await pool.query(`
+                SELECT SUM(tr.lectura_actual) AS inventario_inicial
+                FROM gas_station_closeout_tank_readings tr
+                JOIN gas_station_closeouts c ON tr.closeout_id = c.id
+                JOIN gas_station_tanks t ON tr.tank_id = t.id
+                WHERE c.company_id = ?
+                    AND c.fecha_turno < ?
+                    AND c.estado IN ('cerrado', 'reabierto')
+                    AND t.tipo_combustible = ?
+                    ${branchFilter}
+                    AND c.id IN (
+                        SELECT MAX(c2.id)
+                        FROM gas_station_closeouts c2
+                        WHERE c2.company_id = ?
+                            AND c2.fecha_turno < ?
+                            AND c2.estado IN ('cerrado', 'reabierto')
+                            ${branchFilter3}
+                        GROUP BY c2.branch_id
+                    )
+            `, [companyId, start_date, fuelType, ...branchParams, companyId, start_date, ...branchParams]);
+            inventario_inicial = parseFloat(initRows[0]?.inventario_inicial || 0);
+        } catch (e) {
+            console.error('Error fetching initial inventory:', e);
+        }
+
         // Build date map
         const dateMap = {};
 
@@ -265,6 +293,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
             start_date,
             end_date,
             fuel_label: fuelLabel,
+            inventario_inicial,
             rows
         };
 
