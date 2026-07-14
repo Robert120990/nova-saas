@@ -81,6 +81,7 @@ import GasAdvances from './pages/GasAdvances';
 import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
 import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
 import FuelInventoryReport from './pages/FuelInventoryReport';
+import GalonajeVendidoReport from './pages/GalonajeVendidoReport';
 import GasRemesaDeliveries from './pages/GasRemesaDeliveries';
 
 // RRHH Pages
@@ -236,6 +237,7 @@ function App() {
                         <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />
                         <Route path="/gas-station/reporte-detalle-cierre" element={<GasCloseoutDetailReport />} />
                         <Route path="/gas-station/reporte-inventario-combustible" element={<FuelInventoryReport />} />
+                        <Route path="/gas-station/galonaje-vendido" element={<GalonajeVendidoReport />} />
 
                         {/* RRHH */}
                         <Route path="/rh/afps" element={<Afps />} />

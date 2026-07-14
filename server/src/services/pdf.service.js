@@ -2762,6 +2762,167 @@ const generateFuelInventoryPDF = (data) => {
     });
 };
 
+const generateGalonajeVendidoPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 20, layout: 'landscape', size: 'A4' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const fmtDate = (d) => {
+                if (!d) return '—';
+                const dt = new Date(d);
+                return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+            };
+            const fmtGal = (v) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const fmtDash = (v) => {
+                const n = parseFloat(v || 0);
+                return n === 0 ? '—' : fmtGal(n);
+            };
+
+            doc.fontSize(13).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
+            doc.fontSize(8).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
+            doc.fontSize(8).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
+            doc.moveDown(0.2);
+            doc.fontSize(11).font('Helvetica-Bold').text('GALONAJE VENDIDO', { align: 'center', underline: true });
+            doc.moveDown(0.3);
+
+            const startX = 20;
+            const pageW = 802;
+
+            const colDefs = [
+                { label: 'FECHA', w: 75, accessor: 'fecha', format: 'date', align: 'center', group: 'FECHA' },
+                { label: 'LECTURA', w: 85, accessor: 'lect_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
+                { label: 'VENTA', w: 85, accessor: 'vta_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
+                { label: 'LECTURA', w: 85, accessor: 'lect_regular', format: 'gal', align: 'right', group: 'REGULAR' },
+                { label: 'VENTA', w: 85, accessor: 'vta_regular', format: 'gal', align: 'right', group: 'REGULAR' },
+                { label: 'LECTURA', w: 85, accessor: 'lect_super', format: 'gal', align: 'right', group: 'SUPER' },
+                { label: 'VENTA', w: 85, accessor: 'vta_super', format: 'gal', align: 'right', group: 'SUPER' },
+            ];
+
+            const groups = [];
+            for (const c of colDefs) {
+                if (!groups.find(g => g.label === c.group)) {
+                    const span = colDefs.filter(x => x.group === c.group).reduce((s, x) => s + x.w, 0);
+                    groups.push({ label: c.group, w: span });
+                }
+            }
+
+            const drawTableHeader = () => {
+                const headerY = doc.y;
+                doc.rect(startX, headerY, pageW, 16).fill('#f1f5f9');
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#334155');
+                let gx = startX;
+                groups.forEach(g => {
+                    doc.text(g.label, gx, headerY + 4, { width: g.w, align: 'center' });
+                    gx += g.w;
+                });
+                doc.fillColor('#cbd5e1');
+                doc.moveTo(startX, headerY + 16).lineTo(startX + pageW, headerY + 16).stroke();
+
+                const colY = headerY + 17;
+                doc.rect(startX, colY, pageW, 16).fill('#f8fafc');
+                doc.fontSize(6).font('Helvetica-Bold').fillColor('#475569');
+                let cx = startX;
+                colDefs.forEach(c => {
+                    doc.text(c.label, cx, colY + 4, { width: c.w, align: 'center' });
+                    cx += c.w;
+                });
+                doc.fillColor('#94a3b8');
+                doc.moveTo(startX, colY + 16).lineTo(startX + pageW, colY + 16).stroke();
+                doc.y = colY + 18;
+            };
+
+            drawTableHeader();
+
+            const rows = data.rows || [];
+            rows.forEach((row, i) => {
+                if (doc.y > 495) {
+                    doc.addPage();
+                    drawTableHeader();
+                }
+                const y = doc.y;
+                let x = startX;
+                doc.fontSize(6.5).font('Helvetica');
+                if (i % 2 === 0) {
+                    doc.rect(startX, y, pageW, 13).fill('#f8fafc');
+                }
+                doc.fillColor('#1e293b');
+                colDefs.forEach(c => {
+                    const val = row[c.accessor];
+                    if (c.format === 'date') {
+                        doc.text(fmtDate(val), x, y + 2, { width: c.w, align: 'center' });
+                    } else {
+                        doc.text(fmtGal(val), x, y + 2, { width: c.w, align: 'right' });
+                    }
+                    x += c.w;
+                });
+                doc.y = y + 13;
+            });
+
+            if (rows.length > 0) {
+                doc.moveDown(0.2);
+                doc.rect(startX, doc.y, pageW, 1).fill('#64748b');
+                doc.moveDown(0.1);
+
+                const ty = doc.y;
+                let tx = startX;
+                doc.font('Helvetica-Bold').fontSize(7).fillColor('#1e293b');
+                colDefs.forEach((c, i) => {
+                    if (i === 0) {
+                        doc.text('TOTALES', tx, ty + 2, { width: c.w, align: 'left' });
+                    } else {
+                        const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                        doc.text(fmtGal(total), tx, ty + 2, { width: c.w, align: 'right' });
+                    }
+                    tx += c.w;
+                });
+                doc.y = ty + 16;
+
+                doc.rect(startX, doc.y, pageW, 1).fill('#e2e8f0');
+                doc.moveDown(0.1);
+
+                const dy = doc.y;
+                let dx = startX;
+                doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+                colDefs.forEach((c, i) => {
+                    if (i === 0) {
+                        doc.text('DIFERENCIA', dx, dy + 2, { width: c.w, align: 'left' });
+                    } else if (i % 2 === 1) {
+                        const difKey = c.accessor.replace('lect_', '');
+                        const difVal = data.diferencias?.[difKey] || 0;
+                        doc.text(fmtDash(difVal), dx, dy + 2, { width: c.w, align: 'right' });
+                    } else {
+                        doc.text('—', dx, dy + 2, { width: c.w, align: 'right' });
+                    }
+                    dx += c.w;
+                });
+                doc.y = dy + 16;
+
+                doc.moveDown(0.3);
+                doc.rect(startX, doc.y, pageW, 1).fill('#e2e8f0');
+                doc.moveDown(0.3);
+
+                const tdy = doc.y;
+                doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a');
+                doc.text('DIFERENCIA TOTAL', startX, tdy + 2, { width: 150, align: 'left' });
+                doc.text(`${fmtGal(data.diferencias?.total || 0)} gal`, startX + 150, tdy + 2, { width: 200, align: 'left' });
+                doc.moveDown(1.5);
+            }
+
+            doc.fontSize(6.5).fillColor('#94a3b8').font('Helvetica').text(
+                `Generado el ${new Date().toLocaleString('es-SV')}`, { align: 'center' }
+            );
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 const generatePlanillaPDF = (data) => {
     return new Promise((resolve, reject) => {
         try {
@@ -3149,6 +3310,7 @@ module.exports = {
     generateAguinaldoRecibosPDF,
     generateCloseoutDetailPDF,
     generateFuelInventoryPDF,
+    generateGalonajeVendidoPDF,
     generatePlanillaPDF,
     generatePlanillaReciboPDF
 };

@@ -307,6 +307,122 @@ exports.getFuelInventoryPDF = async (req, res) => {
     }
 };
 
+exports.getGalonajeVendidoPDF = async (req, res) => {
+    const { start_date, end_date, branch_id } = req.query;
+    const companyId = req.company_id;
+
+    try {
+        if (!companyId) return res.status(401).json({ message: 'No session' });
+        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
+
+        const [companyRows] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
+        const companyInfo = companyRows[0] || { razon_social: 'Empresa' };
+
+        let branchName = 'Todas';
+        if (branch_id && branch_id !== 'all') {
+            const [br] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (br.length > 0) branchName = br[0].nombre;
+        }
+
+        const branchFilterSale = branch_id && branch_id !== 'all' ? 'AND sh.branch_id = ?' : '';
+        const branchFilterClose = branch_id && branch_id !== 'all' ? 'AND c.branch_id = ?' : '';
+        const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        const [salesRows] = await pool.query(`
+            SELECT DATE(sh.created_at) AS fecha,
+                p.tipo_combustible,
+                SUM(si.cantidad) AS venta_galones
+            FROM sales_items si
+            JOIN sales_headers sh ON si.sale_id = sh.id
+            JOIN products p ON si.product_id = p.id
+            WHERE sh.company_id = ?
+                AND DATE(sh.created_at) BETWEEN ? AND ?
+                AND sh.estado != 'anulado'
+                AND p.tipo_combustible > 0
+                ${branchFilterSale}
+            GROUP BY DATE(sh.created_at), p.tipo_combustible
+            ORDER BY DATE(sh.created_at), p.tipo_combustible
+        `, [companyId, start_date, end_date, ...branchParams]);
+
+        const [readingRows] = await pool.query(`
+            SELECT c.fecha_turno AS fecha,
+                p.tipo_combustible,
+                SUM(r.lectura_actual - r.lectura_anterior - COALESCE(r.calibracion, 0)) AS lect_galones
+            FROM gas_station_closeout_readings r
+            JOIN gas_station_closeouts c ON r.closeout_id = c.id
+            JOIN products p ON r.product_id = p.id
+            WHERE c.company_id = ?
+                AND c.fecha_turno BETWEEN ? AND ?
+                AND c.estado IN ('cerrado', 'reabierto')
+                AND p.tipo_combustible > 0
+                ${branchFilterClose}
+            GROUP BY c.fecha_turno, p.tipo_combustible
+            ORDER BY c.fecha_turno, p.tipo_combustible
+        `, [companyId, start_date, end_date, ...branchParams]);
+
+        const dateMap = {};
+
+        for (const row of readingRows) {
+            const fecha = row.fecha instanceof Date ? row.fecha.toISOString().slice(0, 10) : String(row.fecha).slice(0, 10);
+            if (!dateMap[fecha]) {
+                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0 };
+            }
+            const t = row.tipo_combustible;
+            if (t === 3) dateMap[fecha].lect_diesel = parseFloat(row.lect_galones) || 0;
+            else if (t === 1) dateMap[fecha].lect_regular = parseFloat(row.lect_galones) || 0;
+            else if (t === 2) dateMap[fecha].lect_super = parseFloat(row.lect_galones) || 0;
+        }
+
+        for (const row of salesRows) {
+            const fecha = row.fecha instanceof Date ? row.fecha.toISOString().slice(0, 10) : String(row.fecha).slice(0, 10);
+            if (!dateMap[fecha]) {
+                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0 };
+            }
+            const t = row.tipo_combustible;
+            if (t === 3) dateMap[fecha].vta_diesel = parseFloat(row.venta_galones) || 0;
+            else if (t === 1) dateMap[fecha].vta_regular = parseFloat(row.venta_galones) || 0;
+            else if (t === 2) dateMap[fecha].vta_super = parseFloat(row.venta_galones) || 0;
+        }
+
+        const rows = Object.values(dateMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+        const totales = { lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0 };
+        for (const r of rows) {
+            totales.lect_diesel += r.lect_diesel;
+            totales.vta_diesel += r.vta_diesel;
+            totales.lect_regular += r.lect_regular;
+            totales.vta_regular += r.vta_regular;
+            totales.lect_super += r.lect_super;
+            totales.vta_super += r.vta_super;
+        }
+
+        const dif_diesel = totales.lect_diesel - totales.vta_diesel;
+        const dif_regular = totales.lect_regular - totales.vta_regular;
+        const dif_super = totales.lect_super - totales.vta_super;
+        const dif_total = dif_diesel + dif_regular + dif_super;
+
+        const reportData = {
+            company: companyInfo,
+            company_name: companyInfo.razon_social,
+            branch_name: branchName,
+            start_date,
+            end_date,
+            rows,
+            totales,
+            diferencias: { diesel: dif_diesel, regular: dif_regular, super: dif_super, total: dif_total }
+        };
+
+        const pdfBuffer = await pdfService.generateGalonajeVendidoPDF(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Galonaje_Vendido_${start_date}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error en getGalonajeVendidoPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de galonaje vendido' });
+    }
+};
+
 exports.getCloseoutDetailPDF = async (req, res) => {
     const { start_date, end_date, tipo_reporte, branch_id } = req.query;
     const companyId = req.company_id;
