@@ -257,6 +257,17 @@ const Users = () => {
                         </div>
                     </div>
 
+                    <div>
+                        <label className={labelCls}>IPs Permitidas <span className="text-[10px] font-normal normal-case text-slate-400">(opcional — una por línea, vacío = cualquier IP)</span></label>
+                        <textarea
+                            name="allowed_ips"
+                            rows={3}
+                            placeholder="192.168.1.100&#10;10.0.0.5"
+                            className={fieldCls + ' resize-none'}
+                            defaultValue={selectedUser?.allowed_ips ? (Array.isArray(selectedUser.allowed_ips) ? selectedUser.allowed_ips : JSON.parse(selectedUser.allowed_ips)).join('\n') : ''}
+                        />
+                    </div>
+
                     <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
                         <button type="submit" disabled={mutation.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50">

@@ -8,7 +8,7 @@ const getUsers = async (req, res) => {
         const companyId = req.user?.company_id || null;
 
         let query = `
-            SELECT u.id, u.username, u.nombre, u.email, u.status, ue.role_id, r.name as role_name 
+            SELECT u.id, u.username, u.nombre, u.email, u.status, u.allowed_ips, ue.role_id, r.name as role_name 
             FROM users u 
             LEFT JOIN usuario_empresa ue ON u.id = ue.usuario_id AND ue.empresa_id = ?
             LEFT JOIN roles r ON ue.role_id = r.id
@@ -46,7 +46,7 @@ const getUsers = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
-    const { username, password, nombre, email, role_id, branches } = req.body;
+    const { username, password, nombre, email, role_id, branches, allowed_ips } = req.body;
     const companyId = req.user.company_id;
     console.log('DEBUG: createUser', { username, role_id, companyId, user: req.user });
     
@@ -74,9 +74,10 @@ const createUser = async (req, res) => {
         } else {
             // Crear nuevo usuario
             const hashedPassword = await bcrypt.hash(password, 10);
+            const ipArray = allowed_ips ? (Array.isArray(allowed_ips) ? allowed_ips : allowed_ips.split('\n').map(s => s.trim()).filter(Boolean)) : [];
             const [userResult] = await connection.query(
-                'INSERT INTO users (username, password, nombre, email) VALUES (?, ?, ?, ?)',
-                [username, hashedPassword, nombre, email]
+                'INSERT INTO users (username, password, nombre, email, allowed_ips) VALUES (?, ?, ?, ?, ?)',
+                [username, hashedPassword, nombre, email, ipArray.length > 0 ? JSON.stringify(ipArray) : null]
             );
             userId = userResult.insertId;
         }
@@ -100,7 +101,7 @@ const createUser = async (req, res) => {
 
 const updateUser = async (req, res) => {
     const { id } = req.params;
-    const { username, nombre, email, role_id, status, branches, password } = req.body;
+    const { username, nombre, email, role_id, status, branches, password, allowed_ips } = req.body;
     const companyId = req.user.company_id;
     
     const connection = await pool.getConnection();
@@ -114,6 +115,11 @@ const updateUser = async (req, res) => {
         if (nombre !== undefined) { updates.push('nombre = ?'); params.push(nombre); }
         if (email !== undefined) { updates.push('email = ?'); params.push(email); }
         if (status !== undefined) { updates.push('status = ?'); params.push(status); }
+        if (allowed_ips !== undefined) {
+            const ipArray = Array.isArray(allowed_ips) ? allowed_ips : allowed_ips.split('\n').map(s => s.trim()).filter(Boolean);
+            updates.push('allowed_ips = ?');
+            params.push(ipArray.length > 0 ? JSON.stringify(ipArray) : null);
+        }
 
         if (password && password.trim() !== '') {
             const hashedPassword = await bcrypt.hash(password, 10);

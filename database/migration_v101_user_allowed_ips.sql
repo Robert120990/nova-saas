@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN allowed_ips JSON DEFAULT NULL;

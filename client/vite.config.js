@@ -5,11 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: 'localhost',
+    host: '0.0.0.0',
     proxy: {
-      '/api': 'http://127.0.0.1:4000',
-      '/uploads': 'http://127.0.0.1:4000',
-      '/health': 'http://127.0.0.1:4000'
+      '/api': { target: 'http://127.0.0.1:4000', xfwd: true },
+      '/uploads': { target: 'http://127.0.0.1:4000', xfwd: true },
+      '/health': { target: 'http://127.0.0.1:4000', xfwd: true }
     }
   }
 })

@@ -96,7 +96,14 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (username, password) => {
         try {
-            const { data } = await axios.post('/api/auth/login', { username, password });
+            let publicIP = '';
+            try {
+                const ipRes = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
+                const ipData = await ipRes.json();
+                if (ipData.ip) publicIP = ipData.ip;
+            } catch (e) { /* ignore */ }
+            const headers = publicIP ? { 'x-client-public-ip': publicIP } : {};
+            const { data } = await axios.post('/api/auth/login', { username, password }, { headers });
             if (data.mustSelectContext) {
                 setLoading(false);
                 // Guardamos el tempToken para las siguientes llamadas de selección

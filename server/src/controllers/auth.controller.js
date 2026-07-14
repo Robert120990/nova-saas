@@ -41,6 +41,16 @@ const login = async (req, res) => {
             return res.status(403).json({ message: 'Usuario inactivo' });
         }
 
+        // Validar IP permitida
+        const allowedIPs = user.allowed_ips ? (typeof user.allowed_ips === 'string' ? JSON.parse(user.allowed_ips) : user.allowed_ips) : [];
+        if (allowedIPs.length > 0) {
+            const rawIP = req.headers['x-client-public-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim() || req.socket.remoteAddress || req.ip;
+            const clientIP = rawIP ? rawIP.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1') : '';
+            if (!allowedIPs.includes(clientIP)) {
+                return res.status(403).json({ message: `Acceso no permitido desde su IP (${clientIP})` });
+            }
+        }
+
         // Obtener empresas y roles
         // Un SuperAdmin tiene acceso a TODAS las empresas
         const [roles] = await pool.query(
