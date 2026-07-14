@@ -56,9 +56,9 @@ async function invalidateDTE(payload, companyId, user) {
         emisor: {
             nit: company.nit.replace(/-/g, ''),
             nombre: company.razon_social,
-            codEstableMH: branch.codigo_mh || null,
+            codEstableMH: branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0') : String(branch.codigo || '1').padStart(4, '0'),
             codEstable: (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0'),
-            codPuntoVentaMH: pos.codigo ? String(pos.codigo).padStart(4, '0') : null,
+            codPuntoVentaMH: pos.codigo ? String(pos.codigo).padStart(4, '0') : '0001',
             codPuntoVenta: String(pos.codigo || '0001').padStart(4, '0'),
             telefono: company.telefono || '00000000',
             correo: company.correo || 'emisor@example.com'
@@ -71,7 +71,7 @@ async function invalidateDTE(payload, companyId, user) {
             fecEmi: dteJson.identificacion.fecEmi,
             codigoGeneracionR: null,
             tipoDocumento: dteJson.receptor.tipoDocumento !== undefined ? dteJson.receptor.tipoDocumento : '36',
-            numDocumento: dteJson.receptor.numDocumento !== undefined ? dteJson.receptor.numDocumento : null,
+            numDocumento: dteJson.receptor.numDocumento !== undefined ? dteJson.receptor.numDocumento : (dteJson.receptor.nit || null),
             nombre: dteJson.receptor.nombre,
             telefono: dteJson.receptor.telefono || null,
             correo: dteJson.receptor.correo || null
