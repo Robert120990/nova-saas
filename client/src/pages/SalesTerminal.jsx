@@ -1059,16 +1059,51 @@ const SalesTerminal = () => {
         }
     };
 
-    const handleBarcodeSubmit = async (e) => {
-        if (e.key === 'Enter' && quickBarcode) {
-            // Buscar primero en productos precargados
-            const product = products.find(p => p.codigo === quickBarcode || p.codigo_barra === quickBarcode);
-            if (product) {
+    const performBarcodeLookup = async () => {
+        if (!quickBarcode) return;
+
+        // Buscar primero en productos precargados
+        const product = products.find(p => p.codigo === quickBarcode || p.codigo_barra === quickBarcode);
+        if (product) {
+            if (product.status === 'inactivo') {
+                setQuickBarcode('');
+                return toast.error('El producto se encuentra inactivo');
+            }
+            
+            if (product.tipo_combustible > 0) {
+                setFuelProd(product);
+                setFuelAmount(product.precio_unitario || '0');
+                setFuelQty('1');
+                setIsFuelModalOpen(true);
+                setQuickBarcode('');
+                return;
+            }
+
+            const discountRule = getCustomerDiscount(product.id);
+            const finalPrice = calculateDiscountedPrice(product.precio_unitario || 0, discountRule);
+
+            setQuickProd(product);
+            setQuickPrecio(finalPrice.toFixed(2));
+            setQuickDesc(product.nombre);
+            setQuickCant('1');
+            
+            if (discountRule) {
+                toast.info('Descuento de cliente aplicado');
+                qtyInputRef.current?.focus();
+            } else {
+                qtyInputRef.current?.focus();
+            }
+        } else {
+            // Fallback: buscar directo en el servidor (por si la lista no ha cargado)
+            try {
+                const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
+                    params: { branch_id: sellerSession?.branch_id }
+                });
+                const product = res.data;
                 if (product.status === 'inactivo') {
                     setQuickBarcode('');
                     return toast.error('El producto se encuentra inactivo');
                 }
-                
                 if (product.tipo_combustible > 0) {
                     setFuelProd(product);
                     setFuelAmount(product.precio_unitario || '0');
@@ -1077,72 +1112,43 @@ const SalesTerminal = () => {
                     setQuickBarcode('');
                     return;
                 }
-
                 const discountRule = getCustomerDiscount(product.id);
                 const finalPrice = calculateDiscountedPrice(product.precio_unitario || 0, discountRule);
-
                 setQuickProd(product);
                 setQuickPrecio(finalPrice.toFixed(2));
                 setQuickDesc(product.nombre);
                 setQuickCant('1');
-                
-                if (discountRule) {
-                    toast.info('Descuento de cliente aplicado');
-                    qtyInputRef.current?.focus();
-                } else {
-                    qtyInputRef.current?.focus();
-                }
-            } else {
-                // Fallback: buscar directo en el servidor (por si la lista no ha cargado)
-                try {
-                    const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
-                        params: { branch_id: sellerSession?.branch_id }
-                    });
-                    const product = res.data;
-                    if (product.status === 'inactivo') {
+                if (discountRule) toast.info('Descuento de cliente aplicado');
+                qtyInputRef.current?.focus();
+            } catch {
+                // Si no es producto, buscar en combos
+                const combo = combos.find(c => c.barcode === quickBarcode);
+                if (combo) {
+                    if (combo.status === 'inactive') {
                         setQuickBarcode('');
-                        return toast.error('El producto se encuentra inactivo');
+                        return toast.error('El combo se encuentra inactivo');
                     }
-                    if (product.tipo_combustible > 0) {
-                        setFuelProd(product);
-                        setFuelAmount(product.precio_unitario || '0');
-                        setFuelQty('1');
-                        setIsFuelModalOpen(true);
-                        setQuickBarcode('');
-                        return;
-                    }
-                    const discountRule = getCustomerDiscount(product.id);
-                    const finalPrice = calculateDiscountedPrice(product.precio_unitario || 0, discountRule);
-                    setQuickProd(product);
+                    const discountRule = getCustomerDiscount(combo.id);
+                    const finalPrice = calculateDiscountedPrice(combo.price || 0, discountRule);
+
+                    setQuickProd({ ...combo, nombre: combo.name, precio_unitario: combo.price, isCombo: true });
                     setQuickPrecio(finalPrice.toFixed(2));
-                    setQuickDesc(product.nombre);
+                    setQuickDesc(combo.name);
                     setQuickCant('1');
+                    
                     if (discountRule) toast.info('Descuento de cliente aplicado');
                     qtyInputRef.current?.focus();
-                } catch {
-                    // Si no es producto, buscar en combos
-                    const combo = combos.find(c => c.barcode === quickBarcode);
-                    if (combo) {
-                        if (combo.status === 'inactive') {
-                            setQuickBarcode('');
-                            return toast.error('El combo se encuentra inactivo');
-                        }
-                        const discountRule = getCustomerDiscount(combo.id);
-                        const finalPrice = calculateDiscountedPrice(combo.price || 0, discountRule);
-
-                        setQuickProd({ ...combo, nombre: combo.name, precio_unitario: combo.price, isCombo: true });
-                        setQuickPrecio(finalPrice.toFixed(2));
-                        setQuickDesc(combo.name);
-                        setQuickCant('1');
-                        
-                        if (discountRule) toast.info('Descuento de cliente aplicado');
-                        qtyInputRef.current?.focus();
-                    } else {
-                        toast.error('Producto o Combo no encontrado');
-                        setQuickBarcode('');
-                    }
+                } else {
+                    toast.error('Producto o Combo no encontrado');
+                    setQuickBarcode('');
                 }
             }
+        }
+    };
+
+    const handleBarcodeSubmit = async (e) => {
+        if (e.key === 'Enter') {
+            await performBarcodeLookup();
         }
     };
 
@@ -1526,8 +1532,14 @@ const SalesTerminal = () => {
                                             onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} 
                                             onKeyDown={handleBarcodeSubmit} 
                                             placeholder="SCAN..." 
-                                            className="w-full pl-7 pr-1 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-mono text-[10px] font-bold transition-all" 
+                                            className="w-full pl-7 pr-8 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-mono text-[10px] font-bold transition-all" 
                                         />
+                                        <button 
+                                            onClick={performBarcodeLookup} 
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                        >
+                                            <Search size={14} />
+                                        </button>
                                     </div>
                                 </div>
                                 <div>

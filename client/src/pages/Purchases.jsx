@@ -318,26 +318,32 @@ const Purchases = () => {
         ).slice(0, 50);
     }, [products, productSearch, branchId]);
 
-    const handleBarcodeSubmit = (e) => {
-        if (e.key === 'Enter' && quickBarcode) {
-            const product = products.find(p => p.codigo === quickBarcode);
-            if (product) {
-                if (product.status !== 'activo') {
-                    setQuickBarcode('');
-                    return toast.error('El producto seleccionado se encuentra inactivo');
-                }
-                const bid = parseInt(branchId);
-                if (bid && !product.branches?.includes(bid)) {
-                    setQuickBarcode('');
-                    return toast.error('El producto no está autorizado para esta sucursal');
-                }
-                setQuickProd(product);
-                setQuickCosto(product.costo || '0');
-                qtyInputRef.current?.focus();
-            } else {
-                toast.error('Producto no encontrado');
+    const performBarcodeLookup = () => {
+        if (!quickBarcode) return;
+
+        const product = products.find(p => p.codigo === quickBarcode);
+        if (product) {
+            if (product.status !== 'activo') {
                 setQuickBarcode('');
+                return toast.error('El producto seleccionado se encuentra inactivo');
             }
+            const bid = parseInt(branchId);
+            if (bid && !product.branches?.includes(bid)) {
+                setQuickBarcode('');
+                return toast.error('El producto no está autorizado para esta sucursal');
+            }
+            setQuickProd(product);
+            setQuickCosto(product.costo || '0');
+            qtyInputRef.current?.focus();
+        } else {
+            toast.error('Producto no encontrado');
+            setQuickBarcode('');
+        }
+    };
+
+    const handleBarcodeSubmit = (e) => {
+        if (e.key === 'Enter') {
+            performBarcodeLookup();
         }
     };
 
@@ -831,7 +837,10 @@ const Purchases = () => {
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
                                     <div className="relative">
                                         <Barcode className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
-                                        <input ref={barcodeInputRef} type="text" value={quickBarcode} onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSubmit} placeholder="SCAN..." className="w-full pl-7 pr-1 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-[10px] font-bold" />
+                                        <input ref={barcodeInputRef} type="text" value={quickBarcode} onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSubmit} placeholder="SCAN..." className="w-full pl-7 pr-8 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-[10px] font-bold" />
+                                        <button onClick={performBarcodeLookup} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors">
+                                            <Search size={14} />
+                                        </button>
                                     </div>
                                 </div>
                                 <div>
