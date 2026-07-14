@@ -21,6 +21,7 @@ import Categories from './pages/Categories';
 import UserAccess from './pages/UserAccess';
 import SmtpConfig from './pages/SmtpConfig';
 import SystemSettings from './pages/SystemSettings';
+import MenuItems from './pages/MenuItems';
 import Transfers from './pages/Transfers';
 import InventoryAdjustments from './pages/InventoryAdjustments';
 import PhysicalInventory from './pages/PhysicalInventory';
@@ -160,6 +161,7 @@ function App() {
                         <Route path="/user-access" element={<UserAccess />} />
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
+                        <Route path="/admin/menu-items" element={<MenuItems />} />
                         <Route path="/inventario/traslados" element={<Transfers />} />
                         <Route path="/inventario/movimientos" element={<InventoryAdjustments />} />
                         <Route path="/inventario/fisico" element={<PhysicalInventory />} />

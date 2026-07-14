@@ -14,6 +14,7 @@ const categoryController = require('../controllers/category.controller');
 const productController = require('../controllers/product.controller');
 const userController = require('../controllers/user.controller');
 const roleController = require('../controllers/role.controller');
+const menuItemController = require('../controllers/menuItem.controller');
 const providerController = require('../controllers/provider.controller');
 const catalogController = require('../controllers/catalog.controller');
 const smtpController = require('../controllers/smtp.controller');
@@ -127,6 +128,14 @@ router.get('/roles', roleController.getRoles);
 router.post('/roles', roleController.createRole);
 router.put('/roles/:id', roleController.updateRole);
 router.delete('/roles/:id', roleController.deleteRole);
+
+// Menu Items
+router.get('/menu-items', verifyToken, menuItemController.getMenuItems);
+router.get('/menu-items/permissions', verifyToken, menuItemController.getPermissions);
+router.post('/menu-items', verifyToken, checkPermission('manage_menu'), menuItemController.createMenuItem);
+router.put('/menu-items/reorder', verifyToken, checkPermission('manage_menu'), menuItemController.reorderMenuItems);
+router.put('/menu-items/:id', verifyToken, checkPermission('manage_menu'), menuItemController.updateMenuItem);
+router.delete('/menu-items/:id', verifyToken, checkPermission('manage_menu'), menuItemController.deleteMenuItem);
 
 // Audit Log (Bitácora del Sistema)
 router.get('/audit-log', auditController.getLogs);

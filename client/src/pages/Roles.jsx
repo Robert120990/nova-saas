@@ -14,7 +14,7 @@ import {
     Search
 } from "lucide-react";
 import { toast } from "sonner";
-import { getAllPermissions } from "../config/menuConfig";
+import { useMenuPermissions } from "../hooks/useMenuItems";
 
 const Roles = () => {
     const queryClient = useQueryClient();
@@ -22,7 +22,7 @@ const Roles = () => {
     const [formData, setFormData] = useState({ name: "", description: "", permissions: [] });
     const [isDeleting, setIsDeleting] = useState(null);
 
-    const permissionGroups = getAllPermissions();
+    const permissionGroups = useMenuPermissions();
 
     const { data: roles = [], isLoading } = useQuery({
         queryKey: ["roles"],

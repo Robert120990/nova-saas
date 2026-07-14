@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
-import { menuConfig, topLevelItems } from "../../config/menuConfig.js";
 import { ChevronDown, ChevronRight, ChevronLeft, Menu, X, Save, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useMenuItems } from "../../hooks/useMenuItems";
 
 const Sidebar = () => {
     const { user, updateUser } = useAuth();
@@ -63,6 +63,8 @@ const Sidebar = () => {
         queryKey: ['system-settings'],
         queryFn: async () => (await axios.get('/api/settings')).data,
     });
+
+    const { topLevelItems, menuConfig, isLoading: menuLoading } = useMenuItems();
 
     const [hoveredItem, setHoveredItem] = useState(null);
     const [hoveredPos, setHoveredPos] = useState({ top: 0, left: 0 });
