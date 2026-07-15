@@ -64,6 +64,7 @@ import ExpenseReport from './pages/ExpenseReport';
 import PurchaseReport from './pages/PurchaseReport';
 import PurchaseChecks from './pages/PurchaseChecks';
 import Quedan from './pages/Quedan';
+import QuedanReport from './pages/QuedanReport';
 
 // Gas Station Pages
 import GasDistributors from './pages/GasDistributors';
@@ -191,6 +192,7 @@ function App() {
                         <Route path="/compras/periodo" element={<PurchasePeriod />} />
                         <Route path="/compras/chq-contado" element={<PurchaseChecks />} />
                         <Route path="/compras/quedan" element={<Quedan />} />
+                        <Route path="/compras/reportes/quedan" element={<QuedanReport />} />
                         <Route path="/ventas/nueva" element={<SalesTerminal />} />
                         <Route path="/ventas/cierre" element={<CashClosing />} />
                         <Route path="/ventas/reportes/ventas" element={<SalesReport />} />

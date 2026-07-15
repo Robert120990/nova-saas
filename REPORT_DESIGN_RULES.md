@@ -17,6 +17,7 @@ El componente recibe las siguientes propiedades:
 - `onGenerate`: Función disparada al hacer clic en el botón principal.
 - `onDownload`: Función opcional para la descarga del archivo.
 - `canGenerate`: Booleano para habilitar/deshabilitar el botón de generación.
+- `onExportExcel`: Función opcional para exportar a Excel. Debe incluirse en TODOS los reportes.
 
 ### Estándares de Layout
 - **Ancho del Contenedor**: Máximo `1400px` con padding responsivo (`p-4 md:p-8`).
@@ -33,7 +34,38 @@ El componente recibe las siguientes propiedades:
 - **Loading State**: Siempre mostrar un overlay con `backdrop-blur-sm` y un spinner animado durante la generación.
 - **Embed**: Usar un `iframe` que ocupe el resto del espacio disponible, con altura mínima de `750px`.
 
-## 2. Generación de PDF (Backend)
+## 2. Exportación a Excel
+
+Todos los reportes deben incluir la opción de exportar a Excel.
+
+### Frontend
+Se pasa la prop `onExportExcel` a `ReportLayout`. El componente muestra automáticamente el botón "Exportar Excel" cuando `pdfUrl` y `onExportExcel` están presentes.
+
+### Backend
+El mismo endpoint del PDF debe aceptar `?format=excel` y retornar un archivo Excel usando `excelService.createExcelBuffer()` y `excelService.sendExcelResponse()`.
+
+### Flujo:
+1. Frontend llama al mismo endpoint con `format: 'excel'` y `responseType: 'blob'`
+2. Backend detecta `req.query.format === 'excel'`, genera el Excel y retorna antes de la generación del PDF
+3. Frontend recibe el blob y lo descarga como `.xlsx`
+
+### Estructura del Excel (`excelService.createExcelBuffer`):
+```javascript
+const buffer = await excelService.createExcelBuffer({
+    sheets: [{
+        name: 'NombreHoja',
+        columns: [
+            { header: 'Columna', key: 'key', width: 20 },
+        ],
+        data: rows.map(r => ({
+            key: r.campo,
+        }))
+    }]
+});
+return excelService.sendExcelResponse(res, buffer, 'reporte.xlsx');
+```
+
+## 3. Generación de PDF (Backend)
 
 Ubicado en `server/src/services/pdf.service.js`.
 
@@ -49,7 +81,7 @@ Ubicado en `server/src/services/pdf.service.js`.
 - **Monedas**: Usar prefijo `$` y `toFixed(2)`.
 - **Totales**: Formatear en negrita al final de la tabla con líneas de separación claras.
 
-## 3. Ejemplo de Implementación (Backend)
+## 4. Ejemplo de Implementación (Backend)
 
 ```javascript
 // Patrón de loop robusto

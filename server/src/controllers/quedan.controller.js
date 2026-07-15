@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const mysql = require('mysql2/promise');
+const PDFDocument = require('pdfkit');
+const excelService = require('../services/excel.service');
 
 let rrsPool = null;
 function getRrsPool() {
@@ -496,6 +498,192 @@ const revertQuedan = async (req, res) => {
     }
 };
 
+const getQuedanReportPDF = async (req, res) => {
+    try {
+        const { start_date, end_date, branch_id } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Rango de fechas requerido' });
+        }
+
+        // Company info
+        const [company] = await pool.query(
+            'SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]
+        );
+        const comp = company[0] || { razon_social: 'EMPRESA', nit: '---' };
+
+        // Query quedans
+        let sql = `
+            SELECT pq.*,
+                   p.nombre AS provider_nombre,
+                   p.nrc AS provider_nrc,
+                   b.nombre AS branch_nombre
+            FROM purchase_quedans pq
+            LEFT JOIN providers p ON pq.provider_id = p.id
+            LEFT JOIN branches b ON pq.branch_id = b.id
+            WHERE pq.company_id = ? AND pq.fecha BETWEEN ? AND ?
+        `;
+        const params = [companyId, start_date, end_date];
+
+        if (branch_id && branch_id !== 'all') {
+            sql += ' AND pq.branch_id = ?';
+            params.push(branch_id);
+        }
+
+        sql += ' ORDER BY pq.fecha ASC, pq.num_quedan ASC';
+
+        const [rows] = await pool.query(sql, params);
+
+        // Excel export
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Quedanes',
+                    columns: [
+                        { header: 'N. Quedan', key: 'num_quedan', width: 15 },
+                        { header: 'Fecha', key: 'fecha', width: 15 },
+                        { header: 'Vencimiento', key: 'vencimiento', width: 15 },
+                        { header: 'Proveedor', key: 'proveedor', width: 30 },
+                        { header: 'Sucursal', key: 'sucursal', width: 20 },
+                        { header: 'Días Crédito', key: 'dias_credito', width: 12 },
+                        { header: 'Total', key: 'total', width: 15 },
+                        { header: 'Estado', key: 'estado', width: 15 }
+                    ],
+                    data: rows.map(r => ({
+                        num_quedan: r.num_quedan || '---',
+                        fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                        vencimiento: r.fecha_vencimiento ? new Date(r.fecha_vencimiento).toLocaleDateString('es-SV') : '---',
+                        proveedor: r.provider_nombre || '---',
+                        sucursal: r.branch_nombre || '---',
+                        dias_credito: r.dias_credito || 0,
+                        total: `$${parseFloat(r.total || 0).toFixed(2)}`,
+                        estado: r.status || '---'
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Reporte_Quedanes_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        // Generate PDF
+        const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => {
+            const result = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="Reporte_Quedanes_${start_date}_al_${end_date}.pdf"`);
+            res.send(result);
+        });
+
+        // Header
+        doc.fontSize(16).font('Helvetica-Bold').text(comp.razon_social?.toUpperCase() || 'EMPRESA', { align: 'center' });
+        doc.fontSize(9).font('Helvetica').text(`NIT: ${comp.nit || '---'}`, { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(13).font('Helvetica-Bold').text('REPORTE DE QUEDANES EMITIDOS', { align: 'center' });
+        doc.fontSize(9).font('Helvetica').text(`Periodo: ${start_date} al ${end_date}`, { align: 'center' });
+
+        let branchName = 'Todas las sucursales';
+        if (branch_id && branch_id !== 'all' && rows.length > 0) {
+            branchName = rows[0].branch_nombre;
+        }
+        doc.text(`Sucursal: ${branchName}`, { align: 'center' });
+        doc.moveDown(1.5);
+
+        // Table
+        const startX = 40;
+        const tableWidth = 520;
+        let currentY = doc.y;
+
+        const drawTableHeader = (y) => {
+            doc.fontSize(7).font('Helvetica-Bold');
+            const colX = {
+                num: startX,
+                fecha: startX + 55,
+                venc: startX + 103,
+                dias: startX + 151,
+                proveedor: startX + 181,
+                total: startX + 365,
+                estado: startX + 455
+            };
+            doc.text('N. QUEDAN', colX.num, y);
+            doc.text('FECHA', colX.fecha, y);
+            doc.text('VENCE', colX.venc, y);
+            doc.text('DÍAS', colX.dias, y);
+            doc.text('PROVEEDOR', colX.proveedor, y);
+            doc.text('TOTAL', colX.total, y, { width: 80, align: 'right' });
+            doc.text('ESTADO', colX.estado, y);
+            doc.moveTo(startX, y + 10).lineTo(startX + tableWidth, y + 10).stroke();
+            return y + 15;
+        };
+
+        currentY = drawTableHeader(currentY);
+
+        let grandTotal = 0;
+        let rowCount = 0;
+
+        rows.forEach(row => {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = drawTableHeader(40);
+            }
+
+            doc.fontSize(7).font('Helvetica');
+            const colX = {
+                num: startX,
+                fecha: startX + 55,
+                venc: startX + 103,
+                dias: startX + 151,
+                proveedor: startX + 181,
+                total: startX + 365,
+                estado: startX + 455
+            };
+
+            doc.text(row.num_quedan || '---', colX.num, currentY, { width: 50 });
+            doc.text(row.fecha ? new Date(row.fecha).toLocaleDateString('es-SV') : '---', colX.fecha, currentY, { width: 46 });
+            doc.text(row.fecha_vencimiento ? new Date(row.fecha_vencimiento).toLocaleDateString('es-SV') : '---', colX.venc, currentY, { width: 46 });
+            const dias = parseInt(row.dias_credito) || 0;
+            doc.text(dias > 0 ? String(dias) : '—', colX.dias, currentY, { width: 28, align: 'center' });
+            doc.text(row.provider_nombre?.toUpperCase() || '---', colX.proveedor, currentY, { width: 180, truncate: true });
+            doc.text(`$${parseFloat(row.total || 0).toFixed(2)}`, colX.total, currentY, { width: 80, align: 'right' });
+
+            // Estado badge
+            const statusColors = {
+                'PENDIENTE': '#f59e0b',
+                'SOLICITADO': '#3b82f6',
+                'ENTREGADO': '#22c55e'
+            };
+            doc.font('Helvetica-Bold').fillColor(statusColors[row.status] || '#6b7280');
+            doc.text(row.status || '---', colX.estado, currentY);
+            doc.fillColor('black');
+            doc.font('Helvetica');
+
+            grandTotal += parseFloat(row.total || 0);
+            rowCount++;
+            currentY += 14;
+        });
+
+        // Total row
+        doc.moveTo(startX, currentY).lineTo(startX + tableWidth, currentY).stroke();
+        currentY += 10;
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.text('TOTAL GENERAL:', startX + 320, currentY, { width: 50, align: 'right' });
+        doc.text(`$${grandTotal.toFixed(2)}`, startX + 400, currentY, { width: 110, align: 'right' });
+        currentY += 15;
+        doc.fontSize(7).font('Helvetica').fillColor('#6b7280');
+        doc.text(`Total de quedanes: ${rowCount}`, startX, currentY);
+        doc.fillColor('black');
+
+        doc.end();
+
+    } catch (error) {
+        console.error('Error al generar reporte de quedanes:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Error al generar reporte de quedanes: ' + error.message });
+        }
+    }
+};
+
 module.exports = {
     getQuedans,
     getQuedanById,
@@ -504,5 +692,6 @@ module.exports = {
     deleteQuedan,
     deliverQuedan,
     requestQuedan,
-    revertQuedan
+    revertQuedan,
+    getQuedanReportPDF
 };

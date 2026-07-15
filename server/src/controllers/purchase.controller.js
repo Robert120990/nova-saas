@@ -108,6 +108,7 @@ const createPurchase = async (req, res) => {
         tipo_documento_id, condicion_operacion_id, observaciones,
         total_nosujeta, total_exenta, total_gravada, 
         iva, retencion, percepcion, fovial, cotrans, monto_total,
+        dias_credito, fecha_vencimiento,
         period_year, period_month,
         items 
     } = req.body;
@@ -127,22 +128,24 @@ const createPurchase = async (req, res) => {
 
         // 1. Insertar Cabecera
         const [headerResult] = await connection.query(`
-            INSERT INTO purchase_headers 
-            (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
+             INSERT INTO purchase_headers 
+             (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
+              tipo_documento_id, condicion_operacion_id, observaciones,
+              dias_credito, fecha_vencimiento,
+              total_nosujeta, total_exenta, total_gravada, 
+              iva, retencion, percepcion, fovial, cotrans, monto_total,
+              documento_afectado, fecha_afectada,
+              period_year, period_month)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         `, [
+             companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
              tipo_documento_id, condicion_operacion_id, observaciones,
-             total_nosujeta, total_exenta, total_gravada, 
-             iva, retencion, percepcion, fovial, cotrans, monto_total,
-             documento_afectado, fecha_afectada,
-             period_year, period_month)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-            companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
-            tipo_documento_id, condicion_operacion_id, observaciones,
-            total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
-            req.body.documento_afectado || null, req.body.fecha_afectada || null,
-            period_year, period_month
-        ]);
+             dias_credito || 0, fecha_vencimiento || null,
+             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
+             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
+             req.body.documento_afectado || null, req.body.fecha_afectada || null,
+             period_year, period_month
+         ]);
 
         const purchaseId = headerResult.insertId;
 
@@ -228,6 +231,7 @@ const updatePurchase = async (req, res) => {
         tipo_documento_id, condicion_operacion_id, observaciones,
         total_nosujeta, total_exenta, total_gravada, 
         iva, retencion, percepcion, fovial, cotrans, monto_total,
+        dias_credito, fecha_vencimiento,
         period_year, period_month,
         items 
     } = req.body;
@@ -281,6 +285,7 @@ const updatePurchase = async (req, res) => {
             UPDATE purchase_headers SET 
                 branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?,
                 tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
+                dias_credito = ?, fecha_vencimiento = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
                 iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, monto_total = ?,
                 documento_afectado = ?, fecha_afectada = ?,
@@ -289,6 +294,7 @@ const updatePurchase = async (req, res) => {
         `, [
             branch_id, provider_id, fecha, numero_documento,
             tipo_documento_id, condicion_operacion_id, observaciones,
+            dias_credito || 0, fecha_vencimiento || null,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
             req.body.documento_afectado || null, req.body.fecha_afectada || null,

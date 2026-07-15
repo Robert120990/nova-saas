@@ -30,7 +30,7 @@ const ProviderPendingDocumentsDetailedReport = () => {
 
     const { data: providers = [] } = useQuery({
         queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000 } })).data?.data || [],
+        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000, es_credito: '1' } })).data?.data || [],
     });
 
     const handleGenerateReport = async () => {

@@ -260,6 +260,7 @@ router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProv
 
 // Quedan
 const quedanController = require('../controllers/quedan.controller');
+router.get('/purchases/quedans/reports/pdf', quedanController.getQuedanReportPDF);
 router.get('/purchases/quedans', quedanController.getQuedans);
 router.post('/purchases/quedans', quedanController.createQuedan);
 router.get('/purchases/quedans/:id', quedanController.getQuedanById);

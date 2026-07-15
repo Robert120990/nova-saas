@@ -44,10 +44,10 @@ const Purchases = () => {
     const [editingId, setEditingId] = useState(null);
     
     // Header State
-    const [branchId, setBranchId] = useState('');
+    const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [providerId, setProviderId] = useState('');
     const [tipoDocId, setTipoDocId] = useState('03'); // Default CCF
-    const [condicionId, setCondicionId] = useState('01'); // Default Contado
+    const [condicionId, setCondicionId] = useState('1'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
     const [observaciones, setObservaciones] = useState('');
@@ -55,6 +55,10 @@ const Purchases = () => {
     // Credit Note Specific
     const [docAfectado, setDocAfectado] = useState('');
     const [fechaAfectada, setFechaAfectada] = useState('');
+
+    // Credit Terms
+    const [diasCredito, setDiasCredito] = useState(0);
+    const [fechaVencimiento, setFechaVencimiento] = useState('');
 
     // Items State
     const [selectedItems, setSelectedItems] = useState([]);
@@ -142,6 +146,32 @@ const Purchases = () => {
     const selectedProvider = useMemo(() => {
         return providers.find(p => p.id === parseInt(providerId));
     }, [providers, providerId]);
+
+    useEffect(() => {
+        if (!selectedProvider) return;
+        if (selectedProvider.es_credito) {
+            setCondicionId('2');
+        } else {
+            setCondicionId(prev => prev === '2' ? '1' : prev);
+        }
+    }, [selectedProvider]);
+
+    useEffect(() => {
+        if (condicionId === '2' && fecha && selectedProvider) {
+            const dias = Number(selectedProvider.dias_credito) || 0;
+            setDiasCredito(dias);
+            if (dias > 0) {
+                const d = new Date(fecha);
+                d.setDate(d.getDate() + dias);
+                setFechaVencimiento(d.toISOString().split('T')[0]);
+            } else {
+                setFechaVencimiento('');
+            }
+        } else if (condicionId !== '2') {
+            setDiasCredito(0);
+            setFechaVencimiento('');
+        }
+    }, [condicionId, fecha, selectedProvider]);
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
@@ -395,6 +425,7 @@ const Purchases = () => {
     const resetForm = () => {
         setSelectedItems([]); setNumeroDoc(''); setObservaciones('');
         setDocAfectado(''); setFechaAfectada('');
+        setDiasCredito(0); setFechaVencimiento('');
         setManualRetencion(0); setManualPercepcion(0); setManualNosujeta(0); setManualExenta(0);
         setIsEditing(false); setEditingId(null);
     };
@@ -513,6 +544,7 @@ const Purchases = () => {
         const payload = {
             branch_id: branchId, provider_id: providerId, fecha, numero_documento: numeroDoc,
             tipo_documento_id: tipoDocId, condicion_operacion_id: condicionId, observaciones,
+            dias_credito: diasCredito, fecha_vencimiento: fechaVencimiento || null,
             total_nosujeta: totals.nosujeta, total_exenta: totals.exenta, total_gravada: totals.gravada,
             iva: totals.iva, retencion: totals.retencion, percepcion: totals.percepcion, 
             fovial: totals.fovial, cotrans: totals.cotrans, monto_total: totals.total,
@@ -560,6 +592,8 @@ const Purchases = () => {
             setCondicionId(detail.condicion_operacion_id);
             setNumeroDoc(detail.numero_documento);
             setFecha(new Date(detail.fecha).toISOString().split('T')[0]);
+            setDiasCredito(parseInt(detail.dias_credito) || 0);
+            setFechaVencimiento(detail.fecha_vencimiento ? new Date(detail.fecha_vencimiento).toISOString().split('T')[0] : '');
             setObservaciones(detail.observaciones || '');
             setDocAfectado(detail.documento_afectado || '');
             setFechaAfectada(detail.fecha_afectada ? new Date(detail.fecha_afectada).toISOString().split('T')[0] : '');
@@ -796,9 +830,19 @@ const Purchases = () => {
                                 <div className="md:col-span-1">
                                     <label className={labelCls}>Condición Pago</label>
                                     <select value={condicionId} onChange={(e) => setCondicionId(e.target.value)} className={inputCls}>
-                                        {condiciones.map(c => <option key={c.code} value={c.code}>{c.description.toUpperCase()}</option>)}
+                                        {condiciones.map(c => <option key={c.code} value={c.code} disabled={c.code === '2' && !selectedProvider?.es_credito}>{c.description.toUpperCase()}</option>)}
                                     </select>
                                 </div>
+
+                                {condicionId === '2' && (
+                                    <div className="md:col-span-1 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100">
+                                        <label className="block text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Vencimiento</label>
+                                        <input type="date" value={fechaVencimiento} readOnly className={`${inputCls} border-indigo-100 cursor-not-allowed`} />
+                                        {diasCredito > 0 && (
+                                            <span className="text-[7px] font-black text-indigo-400 mt-0.5 block">+{diasCredito} días crédito</span>
+                                        )}
+                                    </div>
+                                )}
                                 
                                 {tipoDocId === '06' && (
                                     <>

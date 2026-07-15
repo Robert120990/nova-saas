@@ -18,12 +18,14 @@ import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import { useAuth } from '../context/AuthContext';
 
 const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '—';
 
 const ProviderStatement = () => {
-    const [selectedBranchId, setSelectedBranchId] = useState('');
+    const { user } = useAuth();
+    const [selectedBranchId, setSelectedBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [selectedProviderId, setSelectedProviderId] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -38,7 +40,7 @@ const ProviderStatement = () => {
 
     const { data: providers = [] } = useQuery({
         queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000 } })).data?.data || []
+        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000, es_credito: '1' } })).data?.data || []
     });
 
     // Pestaña 1: Estado de Cuenta (Movimientos)
