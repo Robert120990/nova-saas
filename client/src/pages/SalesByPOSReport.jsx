@@ -78,6 +78,36 @@ const SalesByPOSReport = () => {
         link.remove();
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const params = {
+                start_date: filters.start_date,
+                end_date: filters.end_date,
+                branch_id: filters.branch_id,
+                format: 'excel'
+            };
+            const response = await axios.get('/api/sales/reports/pos/pdf', {
+                params,
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { 
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Ventas_POS.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte exportado a Excel correctamente');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Error al exportar a Excel');
+        }
+    };
+
     return (
         <ReportLayout
             title="Ventas por POS"
@@ -87,6 +117,7 @@ const SalesByPOSReport = () => {
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
+            onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.start_date && filters.end_date)}
         >
             {/* Branch Selection */}

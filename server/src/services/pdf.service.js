@@ -697,9 +697,10 @@ const generateDailySalesReportPDF = (data) => {
             const startX = 20;
             const tableTop = doc.y;
             const colWidths = {
-                fecha: 42, tipo: 80, doc: 120, cond: 32, cliente: 178,
-                grav: 42, exen: 42, iva: 35, fov: 32, cot: 32, ret: 35, perc: 35, total: 45
+                fecha: 42, tipo: 55, doc: 170, cond: 30, cliente: 255,
+                grav: 30, exen: 30, iva: 22, fov: 20, cot: 20, ret: 22, perc: 22, total: 32
             };
+            const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
 
             const drawTableHeader = () => {
                 const y = doc.y;
@@ -720,7 +721,7 @@ const generateDailySalesReportPDF = (data) => {
                 doc.text('Total', x, y, { align: 'right', width: colWidths.total });
                 
                 doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 750, doc.y).stroke();
+                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
                 doc.moveDown(0.5);
                 doc.font('Helvetica').fontSize(7);
             };
@@ -767,10 +768,10 @@ const generateDailySalesReportPDF = (data) => {
             });
 
             doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 750, doc.y).stroke();
+            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
             doc.moveDown(1);
             
-            // Totals row (fixed alignment)
+            // Totals row
             doc.font('Helvetica-Bold');
             const totalsY = doc.y;
             let tX = startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente;
@@ -925,14 +926,15 @@ const generateSalesByPOSPDF = (data) => {
             doc.moveDown(1.5);
 
             const startX = 30;
+            const totalWidth = 710;
             const colWidths = {
-                fecha: 55,
-                tipo: 80,
-                numero: 90,
-                cond: 70,
-                cliente: 180,
-                fiscal: 150,
-                total: 80
+                fecha: 40,
+                tipo: 55,
+                numero: 130,
+                cond: 30,
+                cliente: 260,
+                fiscal: 130,
+                total: 65
             };
 
             const drawTableHeader = (y) => {
@@ -947,7 +949,7 @@ const generateSalesByPOSPDF = (data) => {
                 doc.text('TOTAL', x, y, { align: 'right', width: colWidths.total });
                 
                 doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 730, doc.y).stroke();
+                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
                 doc.moveDown(0.5);
                 doc.font('Helvetica').fontSize(7);
                 return doc.y;
@@ -964,8 +966,8 @@ const generateSalesByPOSPDF = (data) => {
                     if (currentPOS !== null) {
                         // Print POS Subtotal
                         doc.font('Helvetica-Bold').fontSize(8);
-                        doc.text(`SUBTOTAL ${currentPOS}:`, startX + 500, doc.y, { width: 150, align: 'right' });
-                        doc.text(formatVal(posTotal), startX + 650, doc.y - 8, { width: colWidths.total, align: 'right' });
+                        doc.text(`SUBTOTAL ${currentPOS}:`, startX + totalWidth - colWidths.total - 150, doc.y, { width: 150, align: 'right' });
+                        doc.text(formatVal(posTotal), startX + totalWidth - colWidths.total, doc.y - 8, { width: colWidths.total, align: 'right' });
                         doc.moveDown(1);
                         posTotal = 0;
                     }
@@ -1023,18 +1025,18 @@ const generateSalesByPOSPDF = (data) => {
                 if (index === data.data.length - 1) {
                     doc.moveDown(0.5);
                     doc.font('Helvetica-Bold').fontSize(8);
-                    doc.text(`SUBTOTAL ${currentPOS}:`, startX + 500, doc.y, { width: 150, align: 'right' });
-                    doc.text(formatVal(posTotal), startX + 650, doc.y - 8, { width: colWidths.total, align: 'right' });
+                    doc.text(`SUBTOTAL ${currentPOS}:`, startX + totalWidth - colWidths.total - 150, doc.y, { width: 150, align: 'right' });
+                    doc.text(formatVal(posTotal), startX + totalWidth - colWidths.total, doc.y - 8, { width: colWidths.total, align: 'right' });
                 }
             });
 
             // Grand Total Footer
             doc.moveDown(1.5);
-            doc.moveTo(startX, doc.y).lineTo(startX + 730, doc.y).stroke();
+            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
             doc.moveDown(0.5);
             doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('TOTAL GENERAL:', startX + 500, doc.y, { width: 150, align: 'right' });
-            doc.text(formatVal(grandTotal), startX + 650, doc.y - 10, { width: colWidths.total, align: 'right' });
+            doc.text('TOTAL GENERAL:', startX + totalWidth - colWidths.total - 150, doc.y, { width: 150, align: 'right' });
+            doc.text(formatVal(grandTotal), startX + totalWidth - colWidths.total, doc.y - 10, { width: colWidths.total, align: 'right' });
 
             doc.end();
         } catch (err) { reject(err); }

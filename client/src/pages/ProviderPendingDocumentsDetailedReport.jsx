@@ -91,6 +91,36 @@ const ProviderPendingDocumentsDetailedReport = () => {
         link.remove();
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const params = { 
+                branch_id: selectedBranch,
+                cutoffDate,
+                provider_id: selectedProvider,
+                format: 'excel' 
+            };
+            const response = await axios.get('/api/cxp/reports/pending-detailed/pdf', {
+                params,
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { 
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Documentos_Pendientes_CXP.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte exportado a Excel correctamente');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Error al exportar a Excel');
+        }
+    };
+
     return (
         <ReportLayout
             title="Documentos por Pagar"
@@ -100,6 +130,7 @@ const ProviderPendingDocumentsDetailedReport = () => {
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
+            onExportExcel={handleExportExcel}
             canGenerate={Boolean(selectedBranch && cutoffDate)}
         >
             {/* Branch Selection */}

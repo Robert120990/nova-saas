@@ -67,6 +67,35 @@ const BalanceComprobacion = () => {
         link.remove();
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const params = {
+                year: filters.year,
+                month: filters.month || undefined,
+                format: 'excel'
+            };
+            const response = await axios.get('/api/accounting/reports/balance-comprobacion', {
+                params,
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { 
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Balance_Comprobacion.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte exportado a Excel correctamente');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Error al exportar a Excel');
+        }
+    };
+
     return (
         <ReportLayout
             title="Balance de Comprobación"
@@ -76,6 +105,7 @@ const BalanceComprobacion = () => {
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
+            onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.year)}
         >
             <div className="grid grid-cols-2 gap-3">

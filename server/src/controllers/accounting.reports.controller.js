@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const PDFDocument = require('pdfkit');
+const excelService = require('../services/excel.service');
 
 // === HELPERS ===
 
@@ -96,6 +97,12 @@ function fmt(num) {
     return `$${parseFloat(num || 0).toFixed(2)}`;
 }
 
+function buildExcelResponse(res, rows, columns, filename) {
+    return excelService.createExcelBuffer({
+        sheets: [{ name: 'Reporte', columns, data: rows }]
+    }).then(buffer => excelService.sendExcelResponse(res, buffer, filename));
+}
+
 // === REPORTE 1: LIBRO DIARIO ===
 
 const getLibroDiario = async (req, res) => {
@@ -116,6 +123,29 @@ const getLibroDiario = async (req, res) => {
             WHERE e.company_id = ? AND e.status = 'posted' AND e.date BETWEEN ? AND ?
             ORDER BY e.date, e.id, l.id
         `, [req.company_id, start_date, end_date]);
+
+        if (req.query.format === 'excel') {
+            const rowsForExcel = entries.map(r => ({
+                fecha: formatDate(r.date),
+                numero: r.number || '---',
+                tipo: r.entry_type || '',
+                cuenta: r.account_code || '',
+                nombre_cuenta: r.account_name || '',
+                descripcion: r.line_desc || '',
+                debito: parseFloat(r.debit || 0),
+                credito: parseFloat(r.credit || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Fecha', key: 'fecha', width: 12 },
+                { header: 'Número', key: 'numero', width: 14 },
+                { header: 'Tipo', key: 'tipo', width: 12 },
+                { header: 'Cuenta', key: 'cuenta', width: 12 },
+                { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 25 },
+                { header: 'Descripción', key: 'descripcion', width: 30 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+            ], `Libro_Diario_${start_date}_${end_date}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Libro Diario', `Período: ${start_date} al ${end_date}`);
@@ -221,6 +251,27 @@ const getLibroDiarioMayor = async (req, res) => {
             WHERE e.company_id = ? AND e.status = 'posted' AND e.date BETWEEN ? AND ?
             ORDER BY a.code, e.date, e.id
         `, [req.company_id, start_date, end_date]);
+
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                cuenta: r.account_code || '',
+                nombre: r.account_name || '',
+                fecha: formatDate(r.date),
+                numero: r.number || '---',
+                descripcion: r.entry_desc || '',
+                debito: parseFloat(r.debit || 0),
+                credito: parseFloat(r.credit || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Cuenta', key: 'cuenta', width: 12 },
+                { header: 'Nombre', key: 'nombre', width: 25 },
+                { header: 'Fecha', key: 'fecha', width: 12 },
+                { header: 'Número', key: 'numero', width: 14 },
+                { header: 'Descripción', key: 'descripcion', width: 30 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+            ], `Libro_Diario_Mayor_${start_date}_${end_date}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Libro Diario Mayor', `Período: ${start_date} al ${end_date}`);
@@ -349,6 +400,49 @@ const getLibroMayor = async (req, res) => {
             ORDER BY a.code, e.date, e.id
         `, params);
 
+        if (req.query.format === 'excel') {
+            const openMap = {};
+            openBalances.forEach(o => { openMap[o.id] = parseFloat(o.balance || 0); });
+            const runningMap = { ...openMap };
+
+            const rowsForExcel = [];
+
+            movements.forEach(r => {
+                if (!runningMap[r.id]) runningMap[r.id] = parseFloat(openMap[r.id] || 0);
+
+                const debit = parseFloat(r.debit || 0);
+                const credit = parseFloat(r.credit || 0);
+
+                if (r.nature === 'debit') {
+                    runningMap[r.id] = runningMap[r.id] + debit - credit;
+                } else {
+                    runningMap[r.id] = runningMap[r.id] + credit - debit;
+                }
+
+                rowsForExcel.push({
+                    cuenta: `${r.code} - ${r.name}`,
+                    nombre: r.name || '',
+                    fecha: formatDate(r.date),
+                    numero: r.number || '---',
+                    descripcion: r.entry_desc || '',
+                    debito: debit.toFixed(2),
+                    credito: credit.toFixed(2),
+                    saldo: runningMap[r.id].toFixed(2)
+                });
+            });
+
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Cuenta', key: 'cuenta', width: 20 },
+                { header: 'Nombre', key: 'nombre', width: 25 },
+                { header: 'Fecha', key: 'fecha', width: 12 },
+                { header: 'Número', key: 'numero', width: 14 },
+                { header: 'Descripción', key: 'descripcion', width: 30 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+                { header: 'Saldo', key: 'saldo', width: 14 },
+            ], `Libro_Mayor_${start_date}_${end_date}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Libro Mayor', `Período: ${start_date} al ${end_date}`);
 
@@ -453,6 +547,19 @@ const getEstadoResultados = async (req, res) => {
 
         const periodText = month ? `${year} - Mes ${month}` : `Año ${year}`;
 
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                codigo: r.code || '',
+                nombre_cuenta: r.name || '',
+                saldo: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 40 },
+                { header: 'Saldo', key: 'saldo', width: 16 },
+            ], `Estado_Resultados_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Estado de Resultados', `Período: ${periodText}`);
 
@@ -556,6 +663,19 @@ const getBalanceGeneral = async (req, res) => {
 
         const periodText = month ? `${year} - Mes ${month}` : `Año ${year}`;
 
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                codigo: r.code || '',
+                nombre_cuenta: r.name || '',
+                saldo: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 40 },
+                { header: 'Saldo', key: 'saldo', width: 16 },
+            ], `Balance_General_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Balance General', `Período: ${periodText}`);
 
@@ -651,6 +771,23 @@ const getAnexoBalance = async (req, res) => {
             ORDER BY a.account_type_id, a.code
         `, [...params, req.company_id]);
 
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                codigo: r.code || '',
+                nombre_cuenta: r.name || '',
+                debitos: parseFloat(r.total_debit || 0),
+                creditos: parseFloat(r.total_credit || 0),
+                saldo: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 35 },
+                { header: 'Débitos', key: 'debitos', width: 14 },
+                { header: 'Créditos', key: 'creditos', width: 14 },
+                { header: 'Saldo', key: 'saldo', width: 14 },
+            ], `Anexo_Balance_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Anexo al Balance General', `Período: ${periodText}`);
 
@@ -732,6 +869,23 @@ const getAuxiliarOperaciones = async (req, res) => {
             ORDER BY a.account_type_id, a.code
         `, [start_date, end_date, req.company_id]);
 
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                codigo: r.code || '',
+                nombre_cuenta: r.name || '',
+                debitos: parseFloat(r.total_debit || 0),
+                creditos: parseFloat(r.total_credit || 0),
+                saldo: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 35 },
+                { header: 'Débitos', key: 'debitos', width: 14 },
+                { header: 'Créditos', key: 'creditos', width: 14 },
+                { header: 'Saldo', key: 'saldo', width: 14 },
+            ], `Auxiliar_Operaciones_${start_date}_${end_date}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Auxiliar de Operaciones', `Período: ${start_date} al ${end_date}`);
 
@@ -811,6 +965,23 @@ const getBalanceComprobacion = async (req, res) => {
             HAVING total_debit > 0 OR total_credit > 0
             ORDER BY a.code
         `, [...params, req.company_id]);
+
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                codigo: r.code || '',
+                nombre_cuenta: r.name || '',
+                debito: parseFloat(r.total_debit || 0),
+                credito: parseFloat(r.total_credit || 0),
+                saldo: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 35 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+                { header: 'Saldo', key: 'saldo', width: 14 },
+            ], `Balance_Comprobacion_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Balance de Comprobación', `Período: ${periodText}`);
@@ -894,6 +1065,27 @@ const getListadoPartidas = async (req, res) => {
             WHERE e.company_id = ? AND e.date BETWEEN ? AND ? ${typeFilter}
             ORDER BY e.date, e.id
         `, params);
+
+        if (req.query.format === 'excel') {
+            const rowsForExcel = rows.map(r => ({
+                fecha: formatDate(r.date),
+                numero: r.number || '---',
+                tipo: r.entry_type_name || '',
+                descripcion: r.description || '',
+                debito: parseFloat(r.total_debit || 0),
+                credito: parseFloat(r.total_credit || 0),
+                estado: r.status === 'posted' ? 'CONTABILIZADO' : r.status === 'draft' ? 'BORRADOR' : 'ANULADO',
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Fecha', key: 'fecha', width: 12 },
+                { header: 'Número', key: 'numero', width: 14 },
+                { header: 'Tipo', key: 'tipo', width: 14 },
+                { header: 'Descripción', key: 'descripcion', width: 35 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+                { header: 'Estado', key: 'estado', width: 16 },
+            ], `Listado_Partidas_${start_date}_${end_date}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Listado de Partidas', `Período: ${start_date} al ${end_date}`);
@@ -1006,6 +1198,27 @@ const getCambiosPatrimonio = async (req, res) => {
 
         const openMap = {};
         openRows.forEach(o => { openMap[o.code] = parseFloat(o.opening || 0); });
+
+        if (req.query.format === 'excel') {
+            const openMap = {};
+            openRows.forEach(o => { openMap[o.code] = parseFloat(o.opening || 0); });
+            const rowsForExcel = rows.map(r => ({
+                codigo: r.code || '',
+                cuenta: r.name || '',
+                saldo_inicial: openMap[r.code] || 0,
+                debitos: parseFloat(r.total_debit || 0),
+                creditos: parseFloat(r.total_credit || 0),
+                saldo_final: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Cuenta', key: 'cuenta', width: 35 },
+                { header: 'S. Inicial', key: 'saldo_inicial', width: 14 },
+                { header: 'Débitos', key: 'debitos', width: 14 },
+                { header: 'Créditos', key: 'creditos', width: 14 },
+                { header: 'S. Final', key: 'saldo_final', width: 14 },
+            ], `Cambios_Patrimonio_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Estado de Cambios en el Patrimonio Neto', `Período: ${periodText}`);
@@ -1145,6 +1358,45 @@ const getFlujoEfectivo = async (req, res) => {
             GROUP BY a.account_type_id
         `, [startDate, endDate, req.company_id]);
 
+        if (req.query.format === 'excel') {
+            const movMap = {};
+            movements.forEach(m => { movMap[m.account_type_id] = m; });
+            const getNet = (typeId) => {
+                const m = movMap[typeId];
+                if (!m) return 0;
+                if (m.nature === 'debit') return parseFloat(m.total_credit) - parseFloat(m.total_debit);
+                return parseFloat(m.total_debit) - parseFloat(m.total_credit);
+            };
+            const opIncome = getNet(4);
+            const opCost = getNet(5);
+            const opExpense = getNet(6);
+            const operatingFlow = opIncome + opCost + opExpense;
+            const investingFlow = getNet(1);
+            const financingFlow = getNet(3) + getNet(2);
+            const netFlow = operatingFlow + investingFlow + financingFlow;
+            const beginBal = parseFloat(beginCash.balance || 0);
+            const endBal = parseFloat(endCash.balance || 0);
+            const rowsForExcel = [
+                { concepto: 'ACTIVIDADES DE OPERACIÓN', monto: operatingFlow },
+                { concepto: '  Ingresos', monto: opIncome },
+                { concepto: '  Costos', monto: opCost },
+                { concepto: '  Gastos', monto: opExpense },
+                { concepto: 'ACTIVIDADES DE INVERSIÓN', monto: investingFlow },
+                { concepto: '  Activos no corrientes', monto: investingFlow },
+                { concepto: 'ACTIVIDADES DE FINANCIAMIENTO', monto: financingFlow },
+                { concepto: '  Pasivos (financiamiento)', monto: getNet(2) },
+                { concepto: '  Patrimonio', monto: getNet(3) },
+                { concepto: 'RESUMEN', monto: 0 },
+                { concepto: '  Saldo inicial de efectivo', monto: beginBal },
+                { concepto: '  Variación neta del período', monto: netFlow },
+                { concepto: '  Saldo final de efectivo', monto: endBal },
+            ];
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Concepto', key: 'concepto', width: 40 },
+                { header: 'Monto', key: 'monto', width: 16 },
+            ], `Flujo_Efectivo_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Estado de Flujo de Efectivo', `Período: ${periodText}`);
 
@@ -1272,6 +1524,31 @@ const getBalanceComparativo = async (req, res) => {
         const prevMap = {};
         prevRows.forEach(r => { prevMap[r.code] = parseFloat(r.balance || 0); });
 
+        if (req.query.format === 'excel') {
+            const rowsForExcel = currentRows.map(r => {
+                const curr = parseFloat(r.balance || 0);
+                const prev = prevMap[r.code] || 0;
+                const vari = curr - prev;
+                const pct = prev !== 0 ? (vari / Math.abs(prev)) * 100 : 0;
+                return {
+                    codigo: r.code || '',
+                    nombre: r.name || '',
+                    actual: curr,
+                    anterior: prev,
+                    variacion: vari,
+                    porcentaje: pct,
+                };
+            });
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Nombre', key: 'nombre', width: 30 },
+                { header: periodText, key: 'actual', width: 14 },
+                { header: String(prevYear), key: 'anterior', width: 14 },
+                { header: 'Variación', key: 'variacion', width: 14 },
+                { header: '%', key: 'porcentaje', width: 12 },
+            ], `Balance_Comparativo_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
+
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Balance General Comparativo', `Período: ${periodText} vs ${prevYear}`);
 
@@ -1382,6 +1659,45 @@ const getCedulaAuditoria = async (req, res) => {
               AND e.date BETWEEN ? AND ?
             ORDER BY e.date, e.id
         `, [account_id, req.company_id, start_date, end_date]);
+
+        if (req.query.format === 'excel') {
+            const isDebitNature = account.nature === 'debit';
+            let running = parseFloat(opening.balance || 0);
+            const rowsForExcel = [];
+            rowsForExcel.push({
+                fecha: 'SALDO INICIAL',
+                numero: '',
+                tipo: '',
+                descripcion: '',
+                debito: 0,
+                credito: 0,
+                saldo: running,
+            });
+            for (const row of movements) {
+                const d = parseFloat(row.debit || 0);
+                const c = parseFloat(row.credit || 0);
+                if (isDebitNature) running += d - c;
+                else running += c - d;
+                rowsForExcel.push({
+                    fecha: formatDate(row.date),
+                    numero: row.number || '---',
+                    tipo: row.entry_type || '',
+                    descripcion: row.description || row.line_desc || '',
+                    debito: d,
+                    credito: c,
+                    saldo: running,
+                });
+            }
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Fecha', key: 'fecha', width: 14 },
+                { header: 'Número', key: 'numero', width: 14 },
+                { header: 'Tipo', key: 'tipo', width: 12 },
+                { header: 'Descripción', key: 'descripcion', width: 30 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+                { header: 'Saldo', key: 'saldo', width: 14 },
+            ], `Cedula_Auditoria_${account.code}_${start_date}_${end_date}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Cédula de Auditoría', `Cuenta: ${account.code} - ${account.name}`);
@@ -1504,6 +1820,26 @@ const getRetenciones = async (req, res) => {
             GROUP BY a.id
             ORDER BY a.code
         `, [...params, req.company_id]);
+
+        if (req.query.format === 'excel') {
+            if (retencionAccounts.length === 0) {
+                return res.status(400).json({ message: 'No hay cuentas de retenciones configuradas' });
+            }
+            const rowsForExcel = movements.map(r => ({
+                codigo: r.code || '',
+                cuenta: r.name || '',
+                debito: parseFloat(r.total_debit || 0),
+                credito: parseFloat(r.total_credit || 0),
+                saldo: parseFloat(r.balance || 0),
+            }));
+            return buildExcelResponse(res, rowsForExcel, [
+                { header: 'Código', key: 'codigo', width: 14 },
+                { header: 'Cuenta', key: 'cuenta', width: 35 },
+                { header: 'Débito', key: 'debito', width: 14 },
+                { header: 'Crédito', key: 'credito', width: 14 },
+                { header: 'Saldo', key: 'saldo', width: 14 },
+            ], `Retenciones_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+        }
 
         buildPDF(res, (doc) => {
             renderHeader(doc, company, 'Reporte de Retenciones (IVA/ISR)', `Período: ${periodText}`);

@@ -5,6 +5,7 @@ const {
     generateCustomerBalancesPDF,
     generatePaymentReceiptPDF
 } = require('../services/pdf.service');
+const excelService = require('../services/excel.service');
 
 
 /**
@@ -793,6 +794,25 @@ const getCustomerBalancesReport = async (req, res) => {
             total_general: rows.reduce((acc, r) => acc + parseFloat(r.saldo), 0)
         };
 
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Cliente: r.nombre,
+                'DUI/NIT': r.dui_nit,
+                NRC: r.nrc,
+                Saldo: parseFloat(r.saldo).toFixed(2)
+            }));
+            excelData.push({ Cliente: 'TOTAL GENERAL', 'DUI/NIT': '', NRC: '', Saldo: rows.reduce((acc, r) => acc + parseFloat(r.saldo), 0).toFixed(2) });
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Saldos Clientes', columns: [
+                    { header: 'Cliente', key: 'Cliente', width: 40 },
+                    { header: 'DUI/NIT', key: 'DUI/NIT', width: 20 },
+                    { header: 'NRC', key: 'NRC', width: 15 },
+                    { header: 'Saldo', key: 'Saldo', width: 15 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Saldos_Clientes_${endDate}.xlsx`);
+        }
+
         const pdfBuffer = await generateCustomerBalancesPDF(pdfData);
 
 
@@ -892,6 +912,30 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
             customers: grouped,
             grandTotal
         };
+
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Cliente: r.customer_name,
+                Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                Días: r.dias,
+                Tipo: r.tipo,
+                Documento: r.documento,
+                Monto: parseFloat(r.monto).toFixed(2),
+                Saldo: parseFloat(r.saldo).toFixed(2)
+            }));
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Documentos Pendientes', columns: [
+                    { header: 'Cliente', key: 'Cliente', width: 35 },
+                    { header: 'Fecha', key: 'Fecha', width: 14 },
+                    { header: 'Días', key: 'Días', width: 8 },
+                    { header: 'Tipo', key: 'Tipo', width: 18 },
+                    { header: 'Documento', key: 'Documento', width: 22 },
+                    { header: 'Monto', key: 'Monto', width: 15 },
+                    { header: 'Saldo', key: 'Saldo', width: 15 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Documentos_Pendientes_${cutoffDate}.xlsx`);
+        }
 
         const { generatePendingDocumentsDetailedPDF } = require('../services/pdf.service');
         const pdfBuffer = await generatePendingDocumentsDetailedPDF(pdfData);

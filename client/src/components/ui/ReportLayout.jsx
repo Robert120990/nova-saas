@@ -3,7 +3,8 @@ import {
     FileText, 
     Download, 
     Loader2, 
-    BarChart3
+    BarChart3,
+    FileSpreadsheet
 } from 'lucide-react';
 
 /**
@@ -19,6 +20,7 @@ import {
  * @param {function} onDownload - Función al presionar descargar
  * @param {boolean} canGenerate - Si el botón de generar está habilitado
  * @param {string} generateButtonText - Texto del botón de generar
+ * @param {function} onExportExcel - Función al presionar exportar a Excel
  */
 const ReportLayout = ({
     title,
@@ -30,7 +32,8 @@ const ReportLayout = ({
     onGenerate,
     onDownload,
     canGenerate = true,
-    generateButtonText = "Generar Reporte"
+    generateButtonText = "Generar Reporte",
+    onExportExcel
 }) => {
     return (
         <div className="max-w-[1400px] mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-700">
@@ -76,6 +79,16 @@ const ReportLayout = ({
                                 >
                                     <Download size={18} />
                                     Descargar PDF
+                                </button>
+                            )}
+
+                            {pdfUrl && onExportExcel && (
+                                <button 
+                                    onClick={onExportExcel}
+                                    className="w-full py-4 bg-emerald-50 text-emerald-700 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-emerald-100 hover:bg-emerald-100 transition-all flex items-center justify-center gap-3"
+                                >
+                                    <FileSpreadsheet size={18} />
+                                    Exportar Excel
                                 </button>
                             )}
                         </div>

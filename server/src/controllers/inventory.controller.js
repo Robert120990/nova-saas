@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const pdfService = require('../services/pdf.service');
+const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 
 const getInventory = async (req, res) => {
@@ -602,6 +603,31 @@ const getInventoryStockReport = async (req, res) => {
             products: rows
         };
 
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Reporte',
+                    columns: [
+                        { header: 'Código', key: 'codigo', width: 15 },
+                        { header: 'Producto', key: 'nombre', width: 40 },
+                        { header: 'Categoría', key: 'categoria', width: 20 },
+                        { header: 'Stock', key: 'stock', width: 10 },
+                        { header: 'Costo', key: 'costo', width: 15 },
+                        { header: 'Precio Venta', key: 'precio_venta', width: 15 }
+                    ],
+                    data: rows.map(r => ({
+                        codigo: r.codigo,
+                        nombre: r.nombre,
+                        categoria: r.categoria,
+                        stock: parseFloat(r.stock).toFixed(2),
+                        costo: parseFloat(r.costo).toFixed(2),
+                        precio_venta: parseFloat(r.precio_venta).toFixed(2)
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'reporte-stock.xlsx');
+        }
+
         const pdfBuffer = await pdfService.generateStockReportPDF(reportData);
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -706,6 +732,35 @@ const getInventoryMovementsReport = async (req, res) => {
             endDate,
             products: filteredRows
         };
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Reporte',
+                    columns: [
+                        { header: 'Código', key: 'codigo', width: 15 },
+                        { header: 'Producto', key: 'nombre', width: 40 },
+                        { header: 'Categoría', key: 'categoria', width: 20 },
+                        { header: 'Costo', key: 'costo', width: 15 },
+                        { header: 'Inicial', key: 'inicial', width: 10 },
+                        { header: 'Entradas', key: 'entradas', width: 10 },
+                        { header: 'Salidas', key: 'salidas', width: 10 },
+                        { header: 'Final', key: 'final', width: 10 }
+                    ],
+                    data: filteredRows.map(r => ({
+                        codigo: r.codigo,
+                        nombre: r.nombre,
+                        categoria: r.categoria,
+                        costo: parseFloat(r.costo).toFixed(2),
+                        inicial: parseFloat(r.inicial).toFixed(2),
+                        entradas: parseFloat(r.entradas).toFixed(2),
+                        salidas: parseFloat(r.salidas).toFixed(2),
+                        final: parseFloat(r.final).toFixed(2)
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'reporte-movimientos.xlsx');
+        }
 
         const pdfBuffer = await pdfService.generateMovementsReportPDF(reportData);
 

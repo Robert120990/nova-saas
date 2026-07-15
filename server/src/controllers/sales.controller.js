@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
+const excelService = require('../services/excel.service');
 
 const dteTypeNames = {
     '01': 'Factura',
@@ -676,6 +677,49 @@ const exportSalesByCategoryPDF = async (req, res) => {
             }));
         }
 
+        if (req.query.format === 'excel') {
+            const sheetData = [];
+            reportData.categories.forEach(cat => {
+                if (reportData.isDetailed && cat.productos) {
+                    cat.productos.forEach(prod => {
+                        sheetData.push({
+                            categoria: cat.categoria,
+                            producto: prod.producto,
+                            unidades: parseFloat(prod.unidades || 0).toFixed(2),
+                            monto: parseFloat(prod.monto || 0).toFixed(2),
+                            rendimiento: parseFloat(prod.rendimiento || 0).toFixed(2),
+                            porcentaje: '',
+                        });
+                    });
+                } else {
+                    sheetData.push({
+                        categoria: cat.categoria,
+                        producto: '',
+                        unidades: parseFloat(cat.total_unidades || 0).toFixed(2),
+                        monto: parseFloat(cat.total_venta || 0).toFixed(2),
+                        rendimiento: parseFloat(cat.rendimiento || 0).toFixed(2),
+                        porcentaje: parseFloat(cat.porcentaje_ventas || 0).toFixed(2) + '%',
+                    });
+                }
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Categorías',
+                    columns: [
+                        { header: 'Categoría', key: 'categoria', width: 25 },
+                        { header: 'Producto', key: 'producto', width: 30 },
+                        { header: 'Unidades', key: 'unidades', width: 14 },
+                        { header: 'Monto', key: 'monto', width: 16 },
+                        { header: 'Rendimiento', key: 'rendimiento', width: 16 },
+                        { header: '% Ventas', key: 'porcentaje', width: 12 },
+                    ],
+                    data: sheetData
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Ventas_Categoria_${start_date}.xlsx`);
+        }
+
         const pdfBuffer = await pdfService.generateSalesByCategoryPDF(reportData);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=Ventas_Categoria_${start_date}.pdf`);
@@ -856,6 +900,45 @@ const exportDailySalesPDF = async (req, res) => {
             total_general: totals.total
         };
 
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Ventas Diarias',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Cliente', key: 'cliente', width: 30 },
+                        { header: 'Tipo Doc', key: 'tipo', width: 16 },
+                        { header: 'Documento', key: 'documento', width: 20 },
+                        { header: 'Condición', key: 'condicion', width: 12 },
+                        { header: 'Gravadas', key: 'gravadas', width: 14 },
+                        { header: 'Exentas', key: 'exentas', width: 14 },
+                        { header: 'IVA', key: 'iva', width: 14 },
+                        { header: 'FOVIAL', key: 'fovial', width: 14 },
+                        { header: 'COTRANS', key: 'cotrans', width: 14 },
+                        { header: 'Retención', key: 'retencion', width: 14 },
+                        { header: 'Percepción', key: 'percepcion', width: 14 },
+                        { header: 'Total', key: 'total', width: 16 },
+                    ],
+                    data: rows.map(r => ({
+                        fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                        cliente: r.cliente,
+                        tipo: r.tipo,
+                        documento: r.documento,
+                        condicion: r.condicion,
+                        gravadas: parseFloat(r.gravadas || 0).toFixed(2),
+                        exentas: parseFloat(r.exentas || 0).toFixed(2),
+                        iva: parseFloat(r.iva || 0).toFixed(2),
+                        fovial: parseFloat(r.fovial || 0).toFixed(2),
+                        cotrans: parseFloat(r.cotrans || 0).toFixed(2),
+                        retencion: parseFloat(r.retencion || 0).toFixed(2),
+                        percepcion: parseFloat(r.percepcion || 0).toFixed(2),
+                        total: parseFloat(r.total || 0).toFixed(2),
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Ventas_Diarias_${start_date}_al_${end_date}.xlsx`);
+        }
+
         const pdfBuffer = await pdfService.generateDailySalesReportPDF(reportData);
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -922,6 +1005,47 @@ const getSalesReportPDF = async (req, res) => {
         sql += " ORDER BY customer_name ASC, h.fecha_emision ASC, h.id ASC";
 
         const [rows] = await pool.query(sql, params);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Ventas',
+                    columns: [
+                        { header: 'Cliente', key: 'customer_name', width: 30 },
+                        { header: 'Sucursal', key: 'branch_nombre', width: 20 },
+                        { header: 'Fecha', key: 'fecha_emision', width: 14 },
+                        { header: 'Tipo Doc', key: 'tipo_doc_nombre', width: 16 },
+                        { header: 'No. Documento', key: 'numero_control', width: 20 },
+                        { header: 'Condición', key: 'condicion_nombre', width: 12 },
+                        { header: 'Gravada', key: 'gravada', width: 14 },
+                        { header: 'Exenta', key: 'exenta', width: 14 },
+                        { header: 'IVA', key: 'iva', width: 14 },
+                        { header: 'Retención', key: 'retencion', width: 14 },
+                        { header: 'Percepción', key: 'percepcion', width: 14 },
+                        { header: 'FOVIAL', key: 'fovial', width: 14 },
+                        { header: 'COTRANS', key: 'cotrans', width: 14 },
+                        { header: 'Total', key: 'total', width: 16 },
+                    ],
+                    data: rows.map(r => ({
+                        customer_name: r.customer_name,
+                        branch_nombre: r.branch_nombre,
+                        fecha_emision: new Date(r.fecha_emision).toLocaleDateString('es-SV'),
+                        tipo_doc_nombre: r.tipo_doc_nombre,
+                        numero_control: r.numero_control,
+                        condicion_nombre: r.condicion_nombre,
+                        gravada: parseFloat(r.total_gravada || 0).toFixed(2),
+                        exenta: parseFloat(r.total_exenta || 0).toFixed(2),
+                        iva: parseFloat(r.total_iva || 0).toFixed(2),
+                        retencion: parseFloat(r.total_retencion || 0).toFixed(2),
+                        percepcion: parseFloat(r.total_percepcion || 0).toFixed(2),
+                        fovial: parseFloat(r.total_fovial || 0).toFixed(2),
+                        cotrans: parseFloat(r.total_cotrans || 0).toFixed(2),
+                        total: parseFloat(r.total_pagar || 0).toFixed(2),
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Reporte_Ventas_${req.query.start_date}_al_${req.query.end_date}.xlsx`);
+        }
 
         const PDFDocument = require('pdfkit');
         const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
@@ -1184,6 +1308,35 @@ const exportSalesByPOSPDF = async (req, res) => {
             endDate: end_date,
             data: rows
         };
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Ventas por POS',
+                    columns: [
+                        { header: 'POS', key: 'pos_name', width: 20 },
+                        { header: 'Fecha', key: 'fecha_emision', width: 14 },
+                        { header: 'Cliente', key: 'cliente_nombre', width: 30 },
+                        { header: 'No. Documento', key: 'numero_control', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor_nombre', width: 20 },
+                        { header: 'Gravado', key: 'total_gravado', width: 14 },
+                        { header: 'IVA', key: 'total_iva', width: 14 },
+                        { header: 'Total', key: 'total_pagar', width: 16 },
+                    ],
+                    data: rows.map(r => ({
+                        pos_name: r.pos_name,
+                        fecha_emision: new Date(r.fecha_emision).toLocaleDateString('es-SV'),
+                        cliente_nombre: r.cliente_nombre || 'Consumidor Final',
+                        numero_control: r.numero_control || '',
+                        vendedor_nombre: r.vendedor_nombre,
+                        total_gravado: parseFloat(r.total_gravado || 0).toFixed(2),
+                        total_iva: parseFloat(r.total_iva || 0).toFixed(2),
+                        total_pagar: parseFloat(r.total_pagar || 0).toFixed(2),
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Ventas_POS_${start_date}.xlsx`);
+        }
 
         const pdfBuffer = await pdfService.generateSalesByPOSPDF(reportData);
         res.setHeader('Content-Type', 'application/pdf');

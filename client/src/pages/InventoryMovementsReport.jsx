@@ -110,6 +110,39 @@ const InventoryMovementsReport = () => {
         link.remove();
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const params = { 
+                branch_id: selectedBranch,
+                startDate,
+                endDate,
+                format: 'excel'
+            };
+            if (selectedCategories.length > 0) {
+                params.category_ids = selectedCategories.join(',');
+            }
+            const response = await axios.get('/api/inventory/movements-report', {
+                params,
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { 
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Reporte_Movimientos.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte exportado a Excel correctamente');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Error al exportar a Excel');
+        }
+    };
+
     return (
         <ReportLayout
             title="Reporte de Movimientos"
@@ -119,6 +152,7 @@ const InventoryMovementsReport = () => {
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
+            onExportExcel={handleExportExcel}
             canGenerate={Boolean(selectedBranch && startDate && endDate)}
         >
             {/* Branch Selection */}

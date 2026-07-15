@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const pdfService = require('../services/pdf.service');
+const excelService = require('../services/excel.service');
 
 exports.getReporteVentas = async (req, res) => {
     try {
@@ -296,6 +297,68 @@ exports.getFuelInventoryPDF = async (req, res) => {
             rows
         };
 
+        if (req.query.format === 'excel') {
+            const sheetData = [];
+
+            // Initial inventory row
+            sheetData.push({
+                fecha: 'INVENTARIO INICIAL',
+                venta_auto: '',
+                venta_full: '',
+                venta_master: '',
+                precio_auto: '',
+                precio_full: '',
+                precio_master: '',
+                inventario: inventario_inicial.toFixed(2),
+                recarga_manual: '',
+                recarga_compra: '',
+                total_venta: '',
+                precio_promedio: '',
+                dif_diaria: ''
+            });
+
+            rows.forEach(r => {
+                sheetData.push({
+                    fecha: r.fecha,
+                    venta_auto: parseFloat(r.venta_auto || 0).toFixed(2),
+                    venta_full: parseFloat(r.venta_full || 0).toFixed(2),
+                    venta_master: parseFloat(r.venta_master || 0).toFixed(2),
+                    precio_auto: parseFloat(r.precio_auto || 0).toFixed(4),
+                    precio_full: parseFloat(r.precio_full || 0).toFixed(4),
+                    precio_master: parseFloat(r.precio_master || 0).toFixed(4),
+                    inventario: parseFloat(r.inventario || 0).toFixed(2),
+                    recarga_manual: parseFloat(r.recarga_manual || 0).toFixed(2),
+                    recarga_compra: parseFloat(r.recarga_compra || 0).toFixed(2),
+                    total_venta: parseFloat(r.total_venta || 0).toFixed(2),
+                    precio_promedio: parseFloat(r.precio_promedio || 0).toFixed(4),
+                    dif_diaria: parseFloat(r.dif_diaria || 0).toFixed(2)
+                });
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: fuelLabel,
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 20 },
+                        { header: 'Vta. Auto', key: 'venta_auto', width: 12 },
+                        { header: 'Vta. Full', key: 'venta_full', width: 12 },
+                        { header: 'Vta. Master', key: 'venta_master', width: 12 },
+                        { header: 'P. Auto', key: 'precio_auto', width: 12 },
+                        { header: 'P. Full', key: 'precio_full', width: 12 },
+                        { header: 'P. Master', key: 'precio_master', width: 12 },
+                        { header: 'Inventario', key: 'inventario', width: 14 },
+                        { header: 'Rec. Manual', key: 'recarga_manual', width: 14 },
+                        { header: 'Rec. Compra', key: 'recarga_compra', width: 14 },
+                        { header: 'Total Vta.', key: 'total_venta', width: 12 },
+                        { header: 'Precio Prom.', key: 'precio_promedio', width: 12 },
+                        { header: 'Dif. Diaria', key: 'dif_diaria', width: 12 },
+                    ],
+                    data: sheetData
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Inventario_${fuelLabel}_${start_date}.xlsx`);
+        }
+
         const pdfBuffer = await pdfService.generateFuelInventoryPDF(reportData);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=Inventario_${fuelLabel}_${start_date}.pdf`);
@@ -420,6 +483,54 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
             totales,
             diferencias: { diesel: dif_diesel, regular: dif_regular, super: dif_super, total: dif_total }
         };
+
+        if (req.query.format === 'excel') {
+            const sheetData = rows.map(r => ({
+                fecha: r.fecha instanceof Date ? r.fecha.toLocaleDateString('es-SV') : String(r.fecha).slice(0, 10),
+                lect_diesel: parseFloat(r.lect_diesel || 0).toFixed(2),
+                vta_diesel: parseFloat(r.vta_diesel || 0).toFixed(2),
+                dif_diesel: parseFloat(r.dif_diesel || 0).toFixed(2),
+                lect_regular: parseFloat(r.lect_regular || 0).toFixed(2),
+                vta_regular: parseFloat(r.vta_regular || 0).toFixed(2),
+                dif_regular: parseFloat(r.dif_regular || 0).toFixed(2),
+                lect_super: parseFloat(r.lect_super || 0).toFixed(2),
+                vta_super: parseFloat(r.vta_super || 0).toFixed(2),
+                dif_super: parseFloat(r.dif_super || 0).toFixed(2),
+            }));
+
+            sheetData.push({
+                fecha: 'TOTALES',
+                lect_diesel: totales.lect_diesel.toFixed(2),
+                vta_diesel: totales.vta_diesel.toFixed(2),
+                dif_diesel: totales.dif_diesel.toFixed(2),
+                lect_regular: totales.lect_regular.toFixed(2),
+                vta_regular: totales.vta_regular.toFixed(2),
+                dif_regular: totales.dif_regular.toFixed(2),
+                lect_super: totales.lect_super.toFixed(2),
+                vta_super: totales.vta_super.toFixed(2),
+                dif_super: totales.dif_super.toFixed(2),
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Galonaje',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Lect. Diesel', key: 'lect_diesel', width: 14 },
+                        { header: 'Vta. Diesel', key: 'vta_diesel', width: 14 },
+                        { header: 'Dif. Diesel', key: 'dif_diesel', width: 14 },
+                        { header: 'Lect. Regular', key: 'lect_regular', width: 14 },
+                        { header: 'Vta. Regular', key: 'vta_regular', width: 14 },
+                        { header: 'Dif. Regular', key: 'dif_regular', width: 14 },
+                        { header: 'Lect. Super', key: 'lect_super', width: 14 },
+                        { header: 'Vta. Super', key: 'vta_super', width: 14 },
+                        { header: 'Dif. Super', key: 'dif_super', width: 14 },
+                    ],
+                    data: sheetData
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Galonaje_Vendido_${start_date}.xlsx`);
+        }
 
         const pdfBuffer = await pdfService.generateGalonajeVendidoPDF(reportData);
         res.setHeader('Content-Type', 'application/pdf');
@@ -626,6 +737,40 @@ exports.getCloseoutDetailPDF = async (req, res) => {
             columns,
             rows
         };
+
+        if (req.query.format === 'excel') {
+            const excelColumns = columns.map(c => ({
+                header: c.label,
+                key: c.accessor,
+                width: Math.max(Math.round(c.w / 7), 10)
+            }));
+
+            const excelData = rows.map(r => {
+                const rowData = {};
+                columns.forEach(c => {
+                    const val = r[c.accessor];
+                    if (c.format === 'date' && val) {
+                        rowData[c.accessor] = val instanceof Date
+                            ? val.toLocaleDateString('es-SV')
+                            : new Date(val).toLocaleDateString('es-SV');
+                    } else if (c.format === 'money') {
+                        rowData[c.accessor] = parseFloat(val || 0).toFixed(2);
+                    } else {
+                        rowData[c.accessor] = val ?? '';
+                    }
+                });
+                return rowData;
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: tipoNombres[tipo_reporte],
+                    columns: excelColumns,
+                    data: excelData
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Detalle_Cierre_${tipo_reporte}_${start_date}.xlsx`);
+        }
 
         const pdfBuffer = await pdfService.generateCloseoutDetailPDF(reportData);
         res.setHeader('Content-Type', 'application/pdf');

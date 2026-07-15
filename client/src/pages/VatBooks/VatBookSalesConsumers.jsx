@@ -86,6 +86,31 @@ const VatBookSalesConsumers = () => {
         link.remove();
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const params = { ...filters, format: 'excel' };
+            const response = await axios.get('/api/vat-books/sales-consumers-pdf', {
+                params,
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { 
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Libro_Ventas_Consumidores.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte exportado a Excel correctamente');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Error al exportar a Excel');
+        }
+    };
+
     const months = [
         { id: '1', name: 'Enero' }, { id: '2', name: 'Febrero' }, { id: '3', name: 'Marzo' },
         { id: '4', name: 'Abril' }, { id: '5', name: 'Mayo' }, { id: '6', name: 'Junio' },
@@ -104,6 +129,7 @@ const VatBookSalesConsumers = () => {
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
+            onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.year && filters.month)}
         >
             {/* Sucursal */}

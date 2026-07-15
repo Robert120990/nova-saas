@@ -95,6 +95,37 @@ const GasCloseoutDetailReport = () => {
         link.remove();
     };
 
+    const handleExportExcel = async () => {
+        try {
+            const params = {
+                start_date: filters.start_date,
+                end_date: filters.end_date,
+                branch_id: filters.branch_id,
+                tipo_reporte: filters.tipo_reporte,
+                format: 'excel'
+            };
+            const response = await axios.get('/api/gas-station/reports/closeout-detail/pdf', {
+                params,
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { 
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Detalle_Cierre.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte exportado a Excel correctamente');
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            toast.error('Error al exportar a Excel');
+        }
+    };
+
     return (
         <ReportLayout
             title="Detalle del Cierre"
@@ -104,6 +135,7 @@ const GasCloseoutDetailReport = () => {
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
+            onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.start_date && filters.end_date && filters.tipo_reporte)}
         >
             {/* Branch */}

@@ -33,6 +33,7 @@ const customerDiscountController = require('../controllers/customerDiscount.cont
 const customerBranchController = require('../controllers/customerBranch.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
 const accountingController = require('../controllers/accounting.controller');
+const accountingReportsController = require('../controllers/accounting.reports.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
@@ -445,6 +446,22 @@ router.post('/accounting/opening', accountingController.performOpening);
 router.get('/accounting/settings', accountingController.getSettings);
 router.post('/accounting/settings', accountingController.saveSettings);
 router.post('/accounting/import', accountingController.importAccounts);
+
+// Accounting Reports
+router.get('/accounting/reports/libro-diario', accountingReportsController.getLibroDiario);
+router.get('/accounting/reports/libro-diario-mayor', accountingReportsController.getLibroDiarioMayor);
+router.get('/accounting/reports/libro-mayor', accountingReportsController.getLibroMayor);
+router.get('/accounting/reports/estado-resultados', accountingReportsController.getEstadoResultados);
+router.get('/accounting/reports/balance-general', accountingReportsController.getBalanceGeneral);
+router.get('/accounting/reports/anexo-balance', accountingReportsController.getAnexoBalance);
+router.get('/accounting/reports/auxiliar-operaciones', accountingReportsController.getAuxiliarOperaciones);
+router.get('/accounting/reports/balance-comprobacion', accountingReportsController.getBalanceComprobacion);
+router.get('/accounting/reports/listado-partidas', accountingReportsController.getListadoPartidas);
+router.get('/accounting/reports/cambios-patrimonio', accountingReportsController.getCambiosPatrimonio);
+router.get('/accounting/reports/flujo-efectivo', accountingReportsController.getFlujoEfectivo);
+router.get('/accounting/reports/balance-comparativo', accountingReportsController.getBalanceComparativo);
+router.get('/accounting/reports/cedula-auditoria', accountingReportsController.getCedulaAuditoria);
+router.get('/accounting/reports/retenciones', accountingReportsController.getRetenciones);
 
 // AI Assistant
 router.use('/ai', aiRoutes);

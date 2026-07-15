@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const mailer = require('../services/mailer.service');
 const { generateProviderStatementPDF, generateProviderAgingPDF, generateProviderBalancesPDF } = require('../services/pdf.service');
+const excelService = require('../services/excel.service');
 
 
 /**
@@ -896,6 +897,25 @@ const getProviderBalancesReport = async (req, res) => {
             total_general: rows.reduce((acc, r) => acc + parseFloat(r.saldo), 0)
         };
 
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Proveedor: r.nombre,
+                NIT: r.dui_nit,
+                NRC: r.nrc,
+                Saldo: parseFloat(r.saldo).toFixed(2)
+            }));
+            excelData.push({ Proveedor: 'TOTAL GENERAL', NIT: '', NRC: '', Saldo: rows.reduce((acc, r) => acc + parseFloat(r.saldo), 0).toFixed(2) });
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Saldos Proveedores', columns: [
+                    { header: 'Proveedor', key: 'Proveedor', width: 40 },
+                    { header: 'NIT', key: 'NIT', width: 20 },
+                    { header: 'NRC', key: 'NRC', width: 15 },
+                    { header: 'Saldo', key: 'Saldo', width: 15 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Saldos_Proveedores_${endDate}.xlsx`);
+        }
+
         const pdfBuffer = await generateProviderBalancesPDF(pdfData);
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -1011,6 +1031,30 @@ const exportProviderPendingDocumentsDetailedPDF = async (req, res) => {
             providers: grouped,
             grandTotal
         };
+
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Proveedor: r.provider_name,
+                Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                Días: r.dias,
+                Tipo: r.tipo,
+                Documento: r.documento,
+                Monto: parseFloat(r.monto).toFixed(2),
+                Saldo: parseFloat(r.saldo).toFixed(2)
+            }));
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Documentos Pendientes', columns: [
+                    { header: 'Proveedor', key: 'Proveedor', width: 35 },
+                    { header: 'Fecha', key: 'Fecha', width: 14 },
+                    { header: 'Días', key: 'Días', width: 8 },
+                    { header: 'Tipo', key: 'Tipo', width: 18 },
+                    { header: 'Documento', key: 'Documento', width: 22 },
+                    { header: 'Monto', key: 'Monto', width: 15 },
+                    { header: 'Saldo', key: 'Saldo', width: 15 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Documentos_Pendientes_Pagar_${cutoffDate}.xlsx`);
+        }
 
         const { generateProviderPendingDocumentsDetailedPDF } = require('../services/pdf.service');
         const pdfBuffer = await generateProviderPendingDocumentsDetailedPDF(pdfData);

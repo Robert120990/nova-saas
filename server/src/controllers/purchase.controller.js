@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const PDFDocument = require('pdfkit');
+const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 
 /**
@@ -600,6 +601,47 @@ const getPurchaseReportPDF = async (req, res) => {
         sql += " ORDER BY p.nombre ASC, ph.fecha ASC";
 
         const [rows] = await pool.query(sql, params);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Reporte',
+                    columns: [
+                        { header: 'Proveedor', key: 'proveedor', width: 25 },
+                        { header: 'Sucursal', key: 'sucursal', width: 20 },
+                        { header: 'Fecha', key: 'fecha', width: 15 },
+                        { header: 'Tipo Doc', key: 'tipo_doc', width: 12 },
+                        { header: 'Documento', key: 'documento', width: 15 },
+                        { header: 'Condición', key: 'condicion', width: 12 },
+                        { header: 'Gravada', key: 'gravada', width: 12 },
+                        { header: 'Exenta', key: 'exenta', width: 12 },
+                        { header: 'IVA', key: 'iva', width: 10 },
+                        { header: 'Retención', key: 'retencion', width: 12 },
+                        { header: 'Percepción', key: 'percepcion', width: 12 },
+                        { header: 'FOVIAL', key: 'fovial', width: 10 },
+                        { header: 'COTRANS', key: 'cotrans', width: 10 },
+                        { header: 'Total', key: 'total', width: 12 }
+                    ],
+                    data: rows.map(r => ({
+                        proveedor: r.provider_nombre,
+                        sucursal: r.branch_nombre,
+                        fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                        tipo_doc: r.tipo_doc_nombre,
+                        documento: r.numero_documento,
+                        condicion: r.condicion_nombre,
+                        gravada: parseFloat(r.total_gravada || 0).toFixed(2),
+                        exenta: parseFloat(r.total_exenta || 0).toFixed(2),
+                        iva: parseFloat(r.iva || 0).toFixed(2),
+                        retencion: parseFloat(r.retencion || 0).toFixed(2),
+                        percepcion: parseFloat(r.percepcion || 0).toFixed(2),
+                        fovial: parseFloat(r.fovial || 0).toFixed(2),
+                        cotrans: parseFloat(r.cotrans || 0).toFixed(2),
+                        total: parseFloat(r.monto_total || 0).toFixed(2)
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'reporte-compras.xlsx');
+        }
 
         // 3. Generar PDF (LANDSCAPE)
         const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });

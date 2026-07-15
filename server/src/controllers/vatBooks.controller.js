@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const PDFDocument = require('pdfkit');
+const excelService = require('../services/excel.service');
 
 /**
  * Extreme defensive parsing: Ensures everything is a string or number as expected
@@ -122,6 +123,36 @@ const getVatBookPurchasesPDF = async (req, res) => {
         `;
         const [rows] = await pool.query(query, params);
 
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                'Tipo Doc': r.tipo_doc_nombre || '',
+                'No. Documento': r.numero_documento || '',
+                Proveedor: r.provider_nombre || 'S/N',
+                NIT: r.provider_nit || '',
+                NRC: r.provider_nrc || '',
+                Exento: n(r.total_exenta).toFixed(2),
+                Neto: n(r.total_gravada).toFixed(2),
+                IVA: n(r.iva).toFixed(2),
+                Total: n(r.monto_total).toFixed(2)
+            }));
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Libro Compras', columns: [
+                    { header: 'Fecha', key: 'Fecha', width: 14 },
+                    { header: 'Tipo Doc', key: 'Tipo Doc', width: 16 },
+                    { header: 'No. Documento', key: 'No. Documento', width: 20 },
+                    { header: 'Proveedor', key: 'Proveedor', width: 35 },
+                    { header: 'NIT', key: 'NIT', width: 18 },
+                    { header: 'NRC', key: 'NRC', width: 15 },
+                    { header: 'Exento', key: 'Exento', width: 14 },
+                    { header: 'Neto', key: 'Neto', width: 14 },
+                    { header: 'IVA', key: 'IVA', width: 14 },
+                    { header: 'Total', key: 'Total', width: 14 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Libro_Compras_${month}_${year}.xlsx`);
+        }
+
         const buffer = await generatePdfBuffer((doc) => {
             // Header
             doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
@@ -221,6 +252,36 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
         `;
         const [rows] = await pool.query(query, params);
 
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Fecha: new Date(r.fecha_emision).toLocaleDateString('es-SV'),
+                'Tipo Doc': 'Crédito Fiscal',
+                'No. Documento': r.numero_control || '---',
+                Cliente: r.customer_nombre || 'CLIENTE S/N',
+                NIT: '',
+                NRC: r.customer_nrc || '',
+                Exento: n(r.total_exento).toFixed(2),
+                Neto: n(r.total_gravado).toFixed(2),
+                IVA: n(r.total_iva).toFixed(2),
+                Total: n(r.total_pagar).toFixed(2)
+            }));
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Libro CCF', columns: [
+                    { header: 'Fecha', key: 'Fecha', width: 14 },
+                    { header: 'Tipo Doc', key: 'Tipo Doc', width: 16 },
+                    { header: 'No. Documento', key: 'No. Documento', width: 22 },
+                    { header: 'Cliente', key: 'Cliente', width: 35 },
+                    { header: 'NIT', key: 'NIT', width: 18 },
+                    { header: 'NRC', key: 'NRC', width: 15 },
+                    { header: 'Exento', key: 'Exento', width: 14 },
+                    { header: 'Neto', key: 'Neto', width: 14 },
+                    { header: 'IVA', key: 'IVA', width: 14 },
+                    { header: 'Total', key: 'Total', width: 14 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Libro_CCF_${month}_${year}.xlsx`);
+        }
+
         const buffer = await generatePdfBuffer((doc) => {
             doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
             doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
@@ -317,6 +378,34 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             ORDER BY fecha ASC
         `;
         const [rows] = await pool.query(query, params);
+
+        if (req.query.format === 'excel') {
+            const excelData = rows.map(r => ({
+                Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                'Tipo Doc': 'Factura',
+                'No. Documento': `${r.num_desde || '---'} - ${r.num_hasta || '---'}`,
+                Cliente: 'CONSUMIDOR FINAL',
+                NIT: '',
+                Exento: n(r.t_exe).toFixed(2),
+                Neto: n(r.t_grav).toFixed(2),
+                IVA: n(r.t_iva).toFixed(2),
+                Total: n(r.t_pagar).toFixed(2)
+            }));
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{ name: 'Libro FAC', columns: [
+                    { header: 'Fecha', key: 'Fecha', width: 14 },
+                    { header: 'Tipo Doc', key: 'Tipo Doc', width: 14 },
+                    { header: 'No. Documento', key: 'No. Documento', width: 24 },
+                    { header: 'Cliente', key: 'Cliente', width: 30 },
+                    { header: 'NIT', key: 'NIT', width: 18 },
+                    { header: 'Exento', key: 'Exento', width: 14 },
+                    { header: 'Neto', key: 'Neto', width: 14 },
+                    { header: 'IVA', key: 'IVA', width: 14 },
+                    { header: 'Total', key: 'Total', width: 14 }
+                ], data: excelData }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Libro_FAC_${month}_${year}.xlsx`);
+        }
 
         const buffer = await generatePdfBuffer((doc) => {
             // Header completo
