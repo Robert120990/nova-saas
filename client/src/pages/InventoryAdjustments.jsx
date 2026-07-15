@@ -33,15 +33,17 @@ import autoTable from 'jspdf-autotable';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import { useAuth } from '../context/AuthContext';
 
 const InventoryAdjustments = () => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
     const barcodeInputRef = useRef(null);
     
     // Form State
-    const [branchId, setBranchId] = useState('');
+    const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [tipo, setTipo] = useState('ENTRADA');
     const [motivoId, setMotivoId] = useState('');
     const [numero, setNumero] = useState('');

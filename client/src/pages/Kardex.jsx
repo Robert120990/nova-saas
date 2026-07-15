@@ -27,8 +27,10 @@ import autoTable from 'jspdf-autotable';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import { useAuth } from '../context/AuthContext';
 
 const Kardex = () => {
+    const { user } = useAuth();
     const formatDateTime = (dateString) => {
         if (!dateString) return '---';
         const date = new Date(dateString);
@@ -43,7 +45,7 @@ const Kardex = () => {
         }).format(date);
     };
 
-    const [branchId, setBranchId] = useState('');
+    const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [productId, setProductId] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
