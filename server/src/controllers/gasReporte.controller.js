@@ -782,3 +782,252 @@ exports.getCloseoutDetailPDF = async (req, res) => {
         res.status(500).json({ message: 'Error al generar reporte detalle de cierre' });
     }
 };
+
+exports.getFuelSalesSummaryPDF = async (req, res) => {
+    const { start_date, end_date, branch_id } = req.query;
+    const companyId = req.company_id;
+
+    try {
+        if (!companyId) return res.status(401).json({ message: 'No session' });
+        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
+
+        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
+        const companyInfo = companyRows[0] || { razon_social: 'Empresa', nit: '' };
+
+        let branchName = 'Todas';
+        if (branch_id && branch_id !== 'all') {
+            const [br] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (br.length > 0) branchName = br[0].nombre;
+        }
+
+        const branchFilter = branch_id && branch_id !== 'all' ? 'AND c.branch_id = ?' : '';
+        const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        const [rows] = await pool.query(`
+            SELECT
+                c.fecha_turno,
+                r.codigo_producto,
+                r.descripcion_producto,
+                SUM(r.lectura_actual - r.lectura_anterior - COALESCE(r.calibracion, 0)) AS galones,
+                SUM((r.lectura_actual - r.lectura_anterior - COALESCE(r.calibracion, 0)) * r.precio) AS monto
+            FROM gas_station_closeout_readings r
+            JOIN gas_station_closeouts c ON c.id = r.closeout_id
+            WHERE c.company_id = ?
+                AND c.fecha_turno BETWEEN ? AND ?
+                AND c.estado IN ('cerrado', 'reabierto')
+                ${branchFilter}
+            GROUP BY c.fecha_turno, r.codigo_producto, r.descripcion_producto
+            ORDER BY c.fecha_turno ASC, r.codigo_producto ASC
+        `, [companyId, start_date, end_date, ...branchParams]);
+
+        const grouped = {};
+        for (const r of rows) {
+            const fecha = r.fecha_turno instanceof Date
+                ? r.fecha_turno.toISOString().slice(0, 10)
+                : String(r.fecha_turno).slice(0, 10);
+            if (!grouped[fecha]) grouped[fecha] = [];
+            grouped[fecha].push(r);
+        }
+
+        if (req.query.format === 'excel') {
+            const sheetData = [];
+            for (const [fecha, items] of Object.entries(grouped)) {
+                let totalGalones = 0, totalMonto = 0;
+                for (const r of items) {
+                    sheetData.push({
+                        fecha,
+                        codigo_producto: r.codigo_producto,
+                        descripcion_producto: r.descripcion_producto,
+                        galones: parseFloat(r.galones || 0),
+                        monto: parseFloat(r.monto || 0)
+                    });
+                    totalGalones += parseFloat(r.galones || 0);
+                    totalMonto += parseFloat(r.monto || 0);
+                }
+                sheetData.push({
+                    fecha,
+                    codigo_producto: '',
+                    descripcion_producto: 'TOTAL DIARIO',
+                    galones: totalGalones,
+                    monto: totalMonto
+                });
+            }
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'GLN Vendidos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 15 },
+                        { header: 'Codigo', key: 'codigo_producto', width: 12 },
+                        { header: 'Descripcion', key: 'descripcion_producto', width: 30 },
+                        { header: 'Galones', key: 'galones', width: 12 },
+                        { header: 'Monto', key: 'monto', width: 14 },
+                    ],
+                    data: sheetData
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Resumen_GLN_Vendidos_${start_date}_${end_date}.xlsx`);
+        }
+
+        const pdfBuffer = await buildFuelSalesSummaryPDF(companyInfo, branchName, start_date, end_date, grouped);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Resumen_GLN_Vendidos_${start_date}_${end_date}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error en getFuelSalesSummaryPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte resumen de galones vendidos' });
+    }
+};
+
+function buildFuelSalesSummaryPDF(companyInfo, branchName, startDate, endDate, grouped) {
+    const PDFDocument = require('pdfkit');
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+            const chunks = [];
+            doc.on('data', chunk => chunks.push(chunk));
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+
+            const pageWidth = doc.page.width - 80;
+            let currentY = 40;
+
+            const drawHeader = () => {
+                doc.fontSize(14).font('Helvetica-Bold').text(companyInfo.razon_social || '', { align: 'center' });
+                doc.fontSize(8).font('Helvetica').text(`NIT: ${companyInfo.nit || ''}`, { align: 'center' });
+                doc.moveDown(0.3);
+                doc.fontSize(12).font('Helvetica-Bold').text('RESUMEN DE GLN VENDIDOS', { align: 'center' });
+                doc.fontSize(8).font('Helvetica').text(`Período: ${fmtDate(startDate)} - ${fmtDate(endDate)}`, { align: 'center' });
+                doc.fontSize(8).font('Helvetica').text(`Sucursal: ${branchName}`, { align: 'center' });
+                doc.moveDown(0.5);
+                currentY = doc.y;
+            };
+
+            const colX = {
+                fecha: 40,
+                codigo: 165,
+                descripcion: 225,
+                galones: 400,
+                monto: 475,
+            };
+
+            const colW = {
+                fecha: 125,
+                codigo: 60,
+                descripcion: 175,
+                galones: 75,
+                monto: 97,
+            };
+
+            const drawTableHeader = (y) => {
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b');
+                doc.text('FECHA', colX.fecha, y, { width: colW.fecha });
+                doc.text('CODIGO', colX.codigo, y, { width: colW.codigo });
+                doc.text('DESCRIPCION', colX.descripcion, y, { width: colW.descripcion });
+                doc.text('GALONES', colX.galones, y, { width: colW.galones, align: 'right' });
+                doc.text('MONTO', colX.monto, y, { width: colW.monto, align: 'right' });
+                doc.moveDown(0.3);
+                return doc.y + 2;
+            };
+
+            const drawLine = (y) => {
+                doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(40, y).lineTo(pageWidth + 40, y).stroke();
+            };
+
+            drawHeader();
+            drawLine(currentY);
+            currentY += 8;
+
+            let firstDate = true;
+            const allEntries = Object.entries(grouped);
+            let grandGalones = 0, grandMonto = 0;
+
+            for (let di = 0; di < allEntries.length; di++) {
+                const [fecha, items] = allEntries[di];
+                let dayGalones = 0, dayMonto = 0;
+
+                if (currentY > 680) {
+                    doc.addPage();
+                    currentY = 40;
+                    drawHeader();
+                    drawLine(currentY);
+                    currentY += 8;
+                }
+
+                if (!firstDate) currentY += 4;
+
+                currentY = drawTableHeader(currentY);
+                currentY += 3;
+
+                for (const r of items) {
+                    if (currentY > 720) {
+                        doc.addPage();
+                        currentY = 40;
+                        drawHeader();
+                        drawLine(currentY);
+                        currentY += 8;
+                        currentY = drawTableHeader(currentY);
+                        currentY += 3;
+                    }
+
+                    const gal = parseFloat(r.galones || 0);
+                    const mto = parseFloat(r.monto || 0);
+                    dayGalones += gal;
+                    dayMonto += mto;
+
+                    doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+                    doc.text(fmtDate(r.fecha_turno || fecha), colX.fecha, currentY, { width: colW.fecha });
+                    doc.text(r.codigo_producto || '', colX.codigo, currentY, { width: colW.codigo });
+                    doc.text(r.descripcion_producto || '', colX.descripcion, currentY, { width: colW.descripcion });
+                    doc.text(gal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), colX.galones, currentY, { width: colW.galones, align: 'right' });
+                    doc.text('$' + mto.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), colX.monto, currentY, { width: colW.monto, align: 'right' });
+                    currentY = doc.y + 2;
+                }
+
+                grandGalones += dayGalones;
+                grandMonto += dayMonto;
+
+                drawLine(currentY);
+                currentY += 2;
+
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+                doc.text(`$ ${dayMonto.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, colX.monto, currentY, { width: colW.monto, align: 'right' });
+                doc.text(`${dayGalones.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, colX.galones, currentY, { width: colW.galones, align: 'right' });
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b');
+                doc.text(`TOTAL DIARIO`, colX.fecha, currentY);
+                currentY = doc.y + 6;
+                firstDate = false;
+            }
+
+            drawLine(currentY);
+            currentY += 4;
+
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e293b');
+            doc.text('TOTAL GENERAL', colX.fecha, currentY);
+            doc.text(`${grandGalones.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, colX.galones, currentY, { width: colW.galones, align: 'right' });
+            doc.text(`$ ${grandMonto.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, colX.monto, currentY, { width: colW.monto, align: 'right' });
+
+            currentY = doc.y + 15;
+            doc.fontSize(7).font('Helvetica').fillColor('#94a3b8');
+            doc.text(`Generado el ${fmtDateTime(new Date().toISOString())}`, { align: 'center' });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+function fmtDate(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+}
+
+function fmtDateTime(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}:${String(dt.getSeconds()).padStart(2, '0')}`;
+}

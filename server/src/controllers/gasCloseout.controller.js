@@ -2480,3 +2480,202 @@ exports.generarComplementaria = async (req, res) => {
         res.status(500).json({ message: error.message || 'Error al generar complementaria' });
     }
 };
+
+// === Accumulated Daily Closeout Print Data ===
+
+exports.getAccumulatedDayPrintData = async (req, res) => {
+    try {
+        const { fecha, branch_id } = req.query;
+
+        if (!fecha || !branch_id) {
+            return res.status(400).json({ message: 'fecha y branch_id son requeridos' });
+        }
+
+        const [closeouts] = await pool.query(`
+            SELECT co.*, c.razon_social as company_name, c.nit as company_nit,
+                   c.nombre_comercial as company_commercial_name,
+                   b.nombre as branch_name, b.direccion as branch_address,
+                   b.telefono as branch_phone
+            FROM gas_station_closeouts co
+            JOIN companies c ON c.id = co.company_id
+            JOIN branches b ON b.id = co.branch_id
+            WHERE co.fecha_turno = ? AND co.branch_id = ? AND co.company_id = ?
+            ORDER BY co.numero_turno ASC
+        `, [fecha, branch_id, req.company_id]);
+
+        if (closeouts.length === 0) {
+            return res.status(404).json({ message: 'No hay cierres para esta fecha y sucursal' });
+        }
+
+        const base = closeouts[0];
+        const closeoutIds = closeouts.map(c => c.id);
+
+        // Build synthetic accumulated closeout
+        const accumulated = {
+            ...base,
+            id: null,
+            numero_turno: 'ACUMULADO',
+            total_venta: 0,
+            total_venta_efectivo: 0,
+            total_venta_tarjeta: 0,
+            total_venta_credito: 0,
+            total_venta_vale: 0,
+            total_venta_anticipos: 0,
+            total_venta_diesel: 0,
+            total_venta_regular: 0,
+            total_venta_premium: 0,
+            total_efectivo: 0,
+            total_ajuste_pos: 0,
+            diferencia: 0,
+            created_at: null,
+            updated_at: null
+        };
+
+        for (const c of closeouts) {
+            accumulated.total_venta += Number(c.total_venta || 0);
+            accumulated.total_venta_efectivo += Number(c.total_venta_efectivo || 0);
+            accumulated.total_venta_tarjeta += Number(c.total_venta_tarjeta || 0);
+            accumulated.total_venta_credito += Number(c.total_venta_credito || 0);
+            accumulated.total_venta_vale += Number(c.total_venta_vale || 0);
+            accumulated.total_venta_anticipos += Number(c.total_venta_anticipos || 0);
+            accumulated.total_venta_diesel += Number(c.total_venta_diesel || 0);
+            accumulated.total_venta_regular += Number(c.total_venta_regular || 0);
+            accumulated.total_venta_premium += Number(c.total_venta_premium || 0);
+            accumulated.total_efectivo += Number(c.total_efectivo || 0);
+            accumulated.total_ajuste_pos += Number(c.total_ajuste_pos || 0);
+            accumulated.diferencia += Number(c.diferencia || 0);
+        }
+
+        // Aggregate readings across all closeouts
+        const placeholders = closeoutIds.map(() => '?').join(',');
+        const [allReadings] = await pool.query(`
+            SELECT * FROM gas_station_closeout_readings
+            WHERE closeout_id IN (${placeholders})
+            ORDER BY codigo_pistola ASC
+        `, closeoutIds);
+
+        const aggrReadings = {};
+        for (const r of allReadings) {
+            const key = r.nozzle_id;
+            if (aggrReadings[key]) {
+                aggrReadings[key].lectura_actual = Number(r.lectura_actual || 0);
+                aggrReadings[key].calibracion += Number(r.calibracion || 0);
+                aggrReadings[key].total_galones += Number(r.total_galones || 0);
+                aggrReadings[key].total_venta += Number(r.total_venta || 0);
+                aggrReadings[key].total_venta_efectivo += Number(r.total_venta_efectivo || 0);
+                aggrReadings[key].total_venta_tarjeta += Number(r.total_venta_tarjeta || 0);
+                aggrReadings[key].total_venta_credito += Number(r.total_venta_credito || 0);
+                aggrReadings[key].total_venta_vale += Number(r.total_venta_vale || 0);
+                aggrReadings[key].total_venta_anticipos += Number(r.total_venta_anticipos || 0);
+            } else {
+                aggrReadings[key] = {
+                    ...r,
+                    lectura_anterior: Number(r.lectura_anterior || 0),
+                    lectura_actual: Number(r.lectura_actual || 0),
+                    calibracion: Number(r.calibracion || 0),
+                    total_galones: Number(r.total_galones || 0),
+                    total_venta: Number(r.total_venta || 0),
+                    total_venta_efectivo: Number(r.total_venta_efectivo || 0),
+                    total_venta_tarjeta: Number(r.total_venta_tarjeta || 0),
+                    total_venta_credito: Number(r.total_venta_credito || 0),
+                    total_venta_vale: Number(r.total_venta_vale || 0),
+                    total_venta_anticipos: Number(r.total_venta_anticipos || 0)
+                };
+            }
+        }
+        const readings = Object.values(aggrReadings);
+
+        // Tank readings - get last for each tank
+        let tankReadings = [];
+        try {
+            const [allTankReadings] = await pool.query(`
+                SELECT tr.*, t.capacidad
+                FROM gas_station_closeout_tank_readings tr
+                JOIN gas_station_tanks t ON tr.tank_id = t.id
+                WHERE tr.closeout_id IN (${placeholders})
+                ORDER BY tr.codigo_tanque ASC, tr.closeout_id ASC
+            `, closeoutIds);
+
+            const lastTank = {};
+            for (const tr of allTankReadings) {
+                lastTank[tr.tank_id] = tr;
+            }
+            tankReadings = Object.values(lastTank);
+        } catch (e) { /* table may not exist */ }
+
+        // Despachadores - aggregate
+        const [allDespachadores] = await pool.query(`
+            SELECT cd.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            FROM gas_station_closeout_despachadores cd
+            JOIN gas_station_despachadores d ON d.id = cd.despachador_id
+            WHERE cd.closeout_id IN (${placeholders})
+        `, closeoutIds);
+
+        const aggrDesp = {};
+        for (const d of allDespachadores) {
+            const key = d.despachador_id;
+            if (aggrDesp[key]) {
+                aggrDesp[key].total_venta += Number(d.total_venta || 0);
+                aggrDesp[key].total_no_percibido += Number(d.total_no_percibido || 0);
+                aggrDesp[key].total_entregado += Number(d.total_entregado || 0);
+            } else {
+                aggrDesp[key] = { ...d };
+            }
+        }
+        const despachadores = Object.values(aggrDesp);
+
+        const aggregateRows = async (table) => {
+            const [rows] = await pool.query(
+                `SELECT * FROM ${table} WHERE closeout_id IN (${placeholders}) ORDER BY id ASC`,
+                closeoutIds
+            );
+            return rows;
+        };
+
+        const gastos = await aggregateRows('gas_station_closeout_expenses');
+        const remesas = await aggregateRows('gas_station_closeout_remesas');
+        const cupones = await aggregateRows('gas_station_closeout_cupones');
+        const descuentos = await aggregateRows('gas_station_closeout_descuentos');
+        const adelantos = await aggregateRows('gas_station_closeout_adelantos');
+        const lubricantes = await aggregateRows('gas_station_closeout_lubricant_readings');
+        const tarjetas = await aggregateRows('gas_station_closeout_tarjetas');
+        const creditos = await aggregateRows('gas_station_closeout_creditos');
+        const vales = await aggregateRows('gas_station_closeout_vales');
+        let anticiposDesp = [];
+        try {
+            [anticiposDesp] = await pool.query(
+                `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id IN (${placeholders}) ORDER BY id ASC`,
+                closeoutIds
+            );
+        } catch (e) { /* table may not exist */ }
+
+        let nozzleAssignments = [];
+        try {
+            [nozzleAssignments] = await pool.query(
+                `SELECT * FROM gas_station_closeout_despachador_nozzles WHERE closeout_id IN (${placeholders})`,
+                closeoutIds
+            );
+        } catch (e) { /* table may not exist */ }
+
+        res.json({
+            closeout: accumulated,
+            readings,
+            tankReadings,
+            despachadores,
+            despachadorNozzleAssignments: nozzleAssignments,
+            gastos: gastos.map(e => ({ ...e, proveedor: e.proveedor_nombre || e.proveedor })),
+            remesas,
+            cupones,
+            descuentos,
+            adelantos,
+            lubricantes,
+            tarjetas,
+            creditos,
+            vales,
+            anticiposDesp
+        });
+    } catch (error) {
+        console.error('Error getAccumulatedDayPrintData:', error);
+        res.status(500).json({ message: 'Error al obtener datos de cierre acumulado' });
+    }
+};

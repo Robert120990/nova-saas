@@ -84,6 +84,8 @@ import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
 import FuelInventoryReport from './pages/FuelInventoryReport';
 import GalonajeVendidoReport from './pages/GalonajeVendidoReport';
 import GasRemesaDeliveries from './pages/GasRemesaDeliveries';
+import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
+import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
 
 // RRHH Pages
 import Afps from './pages/rh/Afps';
@@ -240,6 +242,8 @@ function App() {
                         <Route path="/gas-station/reporte-detalle-cierre" element={<GasCloseoutDetailReport />} />
                         <Route path="/gas-station/reporte-inventario-combustible" element={<FuelInventoryReport />} />
                         <Route path="/gas-station/galonaje-vendido" element={<GalonajeVendidoReport />} />
+                        <Route path="/gas-station/reporte-acumulado-diario" element={<GasAccumulatedDailyReport />} />
+                        <Route path="/gas-station/reporte-resumen-gln-vendidos" element={<FuelSalesSummaryReport />} />
 
                         {/* RRHH */}
                         <Route path="/rh/afps" element={<Afps />} />

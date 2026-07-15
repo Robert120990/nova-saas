@@ -8,6 +8,15 @@ const SCOPE_COLORS = {
     'Branches': 'bg-amber-100 text-amber-700',
     'ConnectedUsers': 'bg-cyan-100 text-cyan-700',
     'db.schema.js': 'bg-violet-100 text-violet-700',
+    'feat': 'bg-emerald-100 text-emerald-700',
+    'fix': 'bg-rose-100 text-rose-700',
+    'refactor': 'bg-blue-100 text-blue-700',
+    'docs': 'bg-amber-100 text-amber-700',
+    'chore': 'bg-slate-100 text-slate-700',
+    'style': 'bg-purple-100 text-purple-700',
+    'test': 'bg-teal-100 text-teal-700',
+    'perf': 'bg-orange-100 text-orange-700',
+    'ci': 'bg-cyan-100 text-cyan-700',
 };
 
 const getScopeColor = (scope) => {

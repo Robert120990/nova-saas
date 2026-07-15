@@ -144,7 +144,7 @@ export function buildCloseoutPrintHtml(data) {
         const monto = diff * r.precio;
         html += `<tr>
             <td class="mono">${escHtml(r.codigo_pistola)}</td>
-            <td>${escHtml(r.codigo_producto)}<br><span style="font-size:9px;color:#94a3b8;">${escHtml(r.descripcion_producto)}</span></td>
+            <td>${escHtml(r.codigo_producto)} <span style="font-size:9px;color:#94a3b8;">${escHtml(r.descripcion_producto)}</span></td>
             <td class="right mono">$${parseFloat(r.precio).toFixed(2)}</td>
             <td class="right mono">${parseFloat(r.lectura_anterior).toFixed(5)}</td>
             <td class="right mono">${parseFloat(r.lectura_actual).toFixed(5)}</td>

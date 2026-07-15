@@ -499,6 +499,7 @@ router.delete('/gas-station/tanks/:id', tankController.deleteTank);
 router.post('/gas-station/closeouts/init', gasCloseoutController.initCloseout);
 router.post('/gas-station/closeouts/:id/tank-readings/init', gasCloseoutController.initTankReadings);
 router.get('/gas-station/closeouts/last-turno', gasCloseoutController.getLastTurno);
+router.get('/gas-station/closeouts/print-day', gasCloseoutController.getAccumulatedDayPrintData);
 router.get('/gas-station/closeouts', gasCloseoutController.getCloseouts);
 router.get('/gas-station/closeouts/:id', gasCloseoutController.getCloseout);
 router.patch('/gas-station/closeouts/:closeoutId/readings/batch', gasCloseoutController.batchUpdateReadings);
@@ -617,6 +618,7 @@ router.get('/gas-station/reports/fuel-inventory/pdf', gasReporteController.getFu
 
 // Gas Station - Reporte Galonaje Vendido
 router.get('/gas-station/reports/galonaje-vendido/pdf', gasReporteController.getGalonajeVendidoPDF);
+router.get('/gas-station/reports/fuel-sales-summary/pdf', gasReporteController.getFuelSalesSummaryPDF);
 
 // Gas Station - Remesa Deliveries
 router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);

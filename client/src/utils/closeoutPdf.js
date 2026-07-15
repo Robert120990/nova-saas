@@ -2,9 +2,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { buildCloseoutPrintHtml } from './closeoutPrint';
 
-export async function downloadCloseoutPdf(data) {
-    const html = buildCloseoutPrintHtml(data);
-
+async function pdfFromHtml(html) {
     const container = document.createElement('div');
     container.innerHTML = html;
     container.style.position = 'absolute';
@@ -25,15 +23,12 @@ export async function downloadCloseoutPdf(data) {
         });
 
         const imgData = canvas.toDataURL('image/png');
-
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
-
         const margin = 10;
         const contentWidth = pdfWidth - margin * 2;
         const contentHeight = pdfHeight - margin * 2;
-
         const fullHeight = (canvas.height / canvas.width) * contentWidth;
         let pos = 0;
 
@@ -43,10 +38,22 @@ export async function downloadCloseoutPdf(data) {
             pos += contentHeight;
         }
 
-        const blob = pdf.output('blob');
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        return pdf.output('blob');
     } finally {
         document.body.removeChild(container);
     }
+}
+
+export async function downloadCloseoutPdf(data) {
+    const html = buildCloseoutPrintHtml(data);
+    const blob = await pdfFromHtml(html);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+}
+
+export async function generateCloseoutPdfBlob(data) {
+    const html = buildCloseoutPrintHtml(data);
+    const blob = await pdfFromHtml(html);
+    const url = URL.createObjectURL(blob);
+    return url;
 }
