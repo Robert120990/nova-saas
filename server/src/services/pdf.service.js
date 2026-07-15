@@ -2514,8 +2514,9 @@ const generateCloseoutDetailPDF = (data) => {
 
             const fmtDate = (d) => {
                 if (!d) return '—';
+                if (typeof d === 'string' && d.length >= 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
                 const dt = new Date(d);
-                return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+                return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
             };
             const fmtVal = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
 
@@ -2615,8 +2616,9 @@ const generateFuelInventoryPDF = (data) => {
 
             const fmtDate = (d) => {
                 if (!d) return '—';
+                if (typeof d === 'string' && d.length >= 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
                 const dt = new Date(d);
-                return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+                return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
             };
             const fmtVal = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
             const fmtGal = (v) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2775,8 +2777,9 @@ const generateGalonajeVendidoPDF = (data) => {
 
             const fmtDate = (d) => {
                 if (!d) return '—';
+                if (typeof d === 'string' && d.length >= 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
                 const dt = new Date(d);
-                return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+                return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
             };
             const fmtGal = (v) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

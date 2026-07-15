@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
-import { ChevronDown, ChevronRight, ChevronLeft, Menu, X, Save, Eye, EyeOff } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X, Save, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useMenuItems } from "../../hooks/useMenuItems";
 
-const Sidebar = () => {
+const Sidebar = ({ onOpenSearch }) => {
     const { user, updateUser } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -169,13 +169,22 @@ const Sidebar = () => {
                     )}
                 </div>
                 
-                <button 
-                    onClick={() => setIsCollapsed(!isCollapsed)}
-                    className={`p-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all hover:bg-indigo-600/20 hover:border-indigo-500/50 ${isCollapsed ? 'mt-2' : ''}`}
-                    title={isCollapsed ? "Expandir" : "Contraer"}
-                >
-                    {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
-                </button>
+                <div className={`flex items-center gap-1 ${isCollapsed ? 'flex-col mt-2' : ''}`}>
+                    <button
+                        onClick={onOpenSearch}
+                        className="p-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all hover:bg-indigo-600/20 hover:border-indigo-500/50"
+                        title="Buscar menú (Ctrl+K)"
+                    >
+                        <Search size={18} />
+                    </button>
+                    <button 
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className="p-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all hover:bg-indigo-600/20 hover:border-indigo-500/50"
+                        title={isCollapsed ? "Expandir" : "Contraer"}
+                    >
+                        {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+                    </button>
+                </div>
             </div>
 
             {!isCollapsed && (

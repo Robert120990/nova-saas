@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
     Plus, Trash2, Save, X, ChevronRight, ChevronDown, Eye, EyeOff,
-    ArrowUp, ArrowDown, Settings
+    ArrowUp, ArrowDown, Settings, Search, Minimize2, Maximize2
 } from 'lucide-react';
 import iconMap from '../config/iconMap';
 
@@ -14,6 +14,8 @@ const MenuItems = () => {
     const queryClient = useQueryClient();
     const [editingId, setEditingId] = useState(null);
     const [creating, setCreating] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [collapsedGroups, setCollapsedGroups] = useState(new Set());
     const [form, setForm] = useState({ label: '', path: '', icon: 'Settings', parent_id: null, sort_order: 0, is_active: true, hide_in_menu: false, permission_key: '' });
 
     const { data: items = [], isLoading } = useQuery({
@@ -21,7 +23,68 @@ const MenuItems = () => {
         queryFn: async () => (await axios.get('/api/menu-items')).data,
     });
 
-    const tree = buildTree(items);
+    const tree = useMemo(() => buildTree(items), [items]);
+    const totalItems = items.length;
+
+    const { matchedIds, forceExpandIds, matchCount } = useMemo(() => {
+        if (!searchTerm.trim()) return { matchedIds: new Set(), forceExpandIds: new Set(), matchCount: 0 };
+
+        const query = searchTerm.toLowerCase().trim();
+        const matched = new Set();
+        items.forEach(item => {
+            const label = (item.label || '').toLowerCase();
+            const path = (item.path || '').toLowerCase();
+            const perm = (item.permission_key || '').toLowerCase();
+            if (label.includes(query) || path.includes(query) || perm.includes(query)) {
+                matched.add(item.id);
+            }
+        });
+
+        const parentMap = {};
+        items.forEach(i => { parentMap[i.id] = i.parent_id; });
+
+        const ancestors = new Set();
+        matched.forEach(id => {
+            let current = parentMap[id];
+            while (current) {
+                ancestors.add(current);
+                current = parentMap[current];
+            }
+        });
+
+        return { matchedIds: matched, forceExpandIds: ancestors, matchCount: matched.size };
+    }, [searchTerm, items]);
+
+    const isSearching = searchTerm.trim().length > 0;
+
+    const toggleCollapse = useCallback((id) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    }, []);
+
+    const expandAll = useCallback(() => setCollapsedGroups(new Set()), []);
+    const collapseAll = useCallback(() => {
+        const ids = new Set();
+        items.forEach(item => {
+            const children = items.filter(i => i.parent_id === item.id);
+            if (children.length > 0) ids.add(item.id);
+        });
+        setCollapsedGroups(ids);
+    }, [items]);
+
+    const hasMatchingDescendant = useCallback((item) => {
+        if (!item.children || item.children.length === 0) return false;
+        return item.children.some(child =>
+            matchedIds.has(child.id) || hasMatchingDescendant(child)
+        );
+    }, [matchedIds]);
 
     const saveMutation = useMutation({
         mutationFn: async (data) => {
@@ -112,16 +175,60 @@ const MenuItems = () => {
     return (
         <div className="h-[calc(100vh-90px)] flex gap-6 p-2">
             <div className="flex-1 bg-[#0f172a] rounded-2xl border border-slate-800/50 flex flex-col shadow-2xl overflow-hidden">
-                <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]/20">
+                <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]/20 flex-wrap gap-3">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-500/10 rounded-lg">
                             <Settings size={20} className="text-indigo-400" />
                         </div>
                         <h2 className="text-xl font-bold text-white tracking-tight">Menú del Sistema</h2>
                     </div>
-                    <button onClick={handleNew} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/20 active:scale-95">
-                        <Plus size={18} /> Nuevo Item
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button onClick={handleNew} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/20 active:scale-95">
+                            <Plus size={18} /> Nuevo Item
+                        </button>
+                    </div>
+                </div>
+
+                <div className="px-6 py-3 border-b border-slate-800/30 flex items-center gap-3 flex-wrap">
+                    <div className="relative flex-1 min-w-[250px]">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            placeholder="Buscar por nombre, ruta o permiso..."
+                            className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl pl-10 pr-4 py-2 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={expandAll}
+                            className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all hover:bg-indigo-600/20 hover:border-indigo-500/50"
+                            title="Expandir todo"
+                        >
+                            <Maximize2 size={16} />
+                        </button>
+                        <button
+                            onClick={collapseAll}
+                            className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all hover:bg-indigo-600/20 hover:border-indigo-500/50"
+                            title="Colapsar todo"
+                        >
+                            <Minimize2 size={16} />
+                        </button>
+                    </div>
+                    <div className="text-[11px] font-medium text-slate-500 whitespace-nowrap">
+                        {isSearching
+                            ? `${matchCount} de ${totalItems} items`
+                            : `${totalItems} items`}
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
@@ -141,6 +248,12 @@ const MenuItems = () => {
                                 onMove={handleMove}
                                 isSaving={saveMutation.isPending}
                                 depth={0}
+                                searchTerm={searchTerm}
+                                matchedIds={matchedIds}
+                                forceExpandIds={forceExpandIds}
+                                collapsedGroups={collapsedGroups}
+                                onToggleCollapse={toggleCollapse}
+                                hasMatchingDescendant={hasMatchingDescendant}
                             />
                         ))}
                     </div>
@@ -161,23 +274,50 @@ const MenuItems = () => {
     );
 };
 
-function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, onCancel, onDelete, onMove, isSaving, depth }) {
+function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, onCancel, onDelete, onMove, isSaving, depth, searchTerm, matchedIds, forceExpandIds, collapsedGroups, onToggleCollapse, hasMatchingDescendant }) {
     const isEditing = editingId === item.id;
     const Icon = iconMap[item.icon_name || item.icon] || iconMap.Circle;
+    const hasChildren = item.children && item.children.length > 0;
+    const isSearching = searchTerm && searchTerm.trim().length > 0;
+    const itemMatches = matchedIds.has(item.id);
+    const isForceExpanded = forceExpandIds.has(item.id);
+    const isCollapsed = !isSearching && !isForceExpanded && collapsedGroups.has(item.id);
+    const hasMatchInDescendants = hasChildren && hasMatchingDescendant(item);
+
+    const shouldShow = !isSearching || itemMatches || hasMatchInDescendants;
+    if (!shouldShow) return null;
 
     return (
         <div>
             <div
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all group ${isEditing ? 'bg-indigo-600/10 border border-indigo-600/20' : 'hover:bg-white/5 border border-transparent'}`}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all group border ${
+                    isEditing
+                        ? 'bg-indigo-600/10 border-indigo-600/20'
+                        : itemMatches
+                        ? 'bg-indigo-500/10 border-indigo-500/30 ring-1 ring-indigo-500/20'
+                        : hasMatchInDescendants
+                        ? 'bg-white/3 border-slate-700/30'
+                        : 'hover:bg-white/5 border-transparent'
+                }`}
                 style={{ paddingLeft: `${16 + depth * 24}px` }}
             >
+                {hasChildren && (
+                    <button
+                        onClick={() => onToggleCollapse(item.id)}
+                        className="p-0.5 text-slate-500 hover:text-white transition-colors shrink-0"
+                    >
+                        {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                )}
+                {!hasChildren && <span className="w-[18px] shrink-0" />}
+
                 {isEditing ? (
                     <EditForm item={item} form={form} setForm={setForm} allItems={allItems} onSave={onSave} onCancel={onCancel} isSaving={isSaving} />
                 ) : (
                     <>
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <Icon size={16} className="text-slate-500 shrink-0" />
-                            <span className="text-sm font-bold text-white truncate">{item.label}</span>
+                            <Icon size={16} className={`shrink-0 ${itemMatches ? 'text-indigo-400' : 'text-slate-500'}`} />
+                            <span className={`text-sm font-bold truncate ${itemMatches ? 'text-indigo-200' : 'text-white'}`}>{item.label}</span>
                             {item.path && <span className="text-[10px] font-mono text-slate-500 truncate hidden lg:block">{item.path}</span>}
                             {item.permission_key && <span className="text-[10px] font-mono text-indigo-400/60 truncate hidden xl:block">{item.permission_key}</span>}
                         </div>
@@ -203,7 +343,8 @@ function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, on
                     </>
                 )}
             </div>
-            {item.children && item.children.length > 0 && (
+
+            {hasChildren && !isCollapsed && (
                 <div>
                     {item.children.map(child => (
                         <TreeNode
@@ -220,8 +361,20 @@ function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, on
                             onMove={onMove}
                             isSaving={isSaving}
                             depth={depth + 1}
+                            searchTerm={searchTerm}
+                            matchedIds={matchedIds}
+                            forceExpandIds={forceExpandIds}
+                            collapsedGroups={collapsedGroups}
+                            onToggleCollapse={onToggleCollapse}
+                            hasMatchingDescendant={hasMatchingDescendant}
                         />
                     ))}
+                </div>
+            )}
+
+            {hasChildren && isCollapsed && !isSearching && (
+                <div className="text-[10px] text-slate-600 px-4 py-0.5" style={{ paddingLeft: `${16 + (depth + 1) * 24}px` }}>
+                    {item.children.length} items ocultos
                 </div>
             )}
         </div>

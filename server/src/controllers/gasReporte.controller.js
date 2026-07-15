@@ -150,11 +150,10 @@ exports.getFuelInventoryPDF = async (req, res) => {
             ORDER BY c.fecha_turno, n.tipo
         `, [companyId, start_date, end_date, fuelType, ...branchParams]);
 
-        // Tank inventory (last closeout per day)
+        // Tank inventory (last closeout per day) — only lectura_actual from the latest turn
         const [tankRows] = await pool.query(`
             SELECT c.fecha_turno,
-                SUM(tr.lectura_actual) AS inventario_final,
-                SUM(tr.recarga) AS recarga_manual
+                SUM(tr.lectura_actual) AS inventario_final
             FROM gas_station_closeout_tank_readings tr
             JOIN gas_station_closeouts c ON tr.closeout_id = c.id
             JOIN gas_station_tanks t ON tr.tank_id = t.id
@@ -174,6 +173,22 @@ exports.getFuelInventoryPDF = async (req, res) => {
             GROUP BY c.fecha_turno
             ORDER BY c.fecha_turno
         `, [companyId, start_date, end_date, fuelType, ...branchParams, companyId, ...branchParams]);
+
+        // Tank recargas (ALL closeouts per day accumulated)
+        const [recargaRows] = await pool.query(`
+            SELECT c.fecha_turno,
+                SUM(tr.recarga) AS recarga_manual
+            FROM gas_station_closeout_tank_readings tr
+            JOIN gas_station_closeouts c ON tr.closeout_id = c.id
+            JOIN gas_station_tanks t ON tr.tank_id = t.id
+            WHERE c.company_id = ?
+                AND c.fecha_turno BETWEEN ? AND ?
+                AND c.estado IN ('cerrado', 'reabierto')
+                AND t.tipo_combustible = ?
+                ${branchFilter}
+            GROUP BY c.fecha_turno
+            ORDER BY c.fecha_turno
+        `, [companyId, start_date, end_date, fuelType, ...branchParams]);
 
         // Purchase quantities per day
         const [purchaseRows] = await pool.query(`
@@ -239,11 +254,17 @@ exports.getFuelInventoryPDF = async (req, res) => {
             dateMap[fecha][`precio_${key}`] = parseFloat(row.precio) || 0;
         }
 
-        // Process tank inventory
+        // Process tank inventory (lectura_actual from last closeout of the day)
         for (const row of tankRows) {
             const fecha = row.fecha_turno.toISOString().slice(0, 10);
             if (!dateMap[fecha]) dateMap[fecha] = { fecha, venta_auto: 0, venta_full: 0, venta_master: 0, precio_auto: 0, precio_full: 0, precio_master: 0, inventario: 0, recarga_manual: 0, recarga_compra: 0, costo: costo };
             dateMap[fecha].inventario = parseFloat(row.inventario_final) || 0;
+        }
+
+        // Process recargas (accumulated from ALL closeouts of the day)
+        for (const row of recargaRows) {
+            const fecha = row.fecha_turno.toISOString().slice(0, 10);
+            if (!dateMap[fecha]) dateMap[fecha] = { fecha, venta_auto: 0, venta_full: 0, venta_master: 0, precio_auto: 0, precio_full: 0, precio_master: 0, inventario: 0, recarga_manual: 0, recarga_compra: 0, costo: costo };
             dateMap[fecha].recarga_manual += parseFloat(row.recarga_manual) || 0;
         }
 
