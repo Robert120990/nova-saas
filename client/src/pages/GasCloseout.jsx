@@ -131,7 +131,7 @@ const GasCloseout = () => {
             setLubricantReadings(editData.lubricantReadings || []);
             setCloseoutDespachadores(editData.despachadores || []);
             setDespachadorNozzleAssignments(editData.despachadorNozzleAssignments || []);
-            setGastos(editData.gastos || []);
+            setGastos((editData.gastos || []).map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
             setRemesas(editData.remesas || []);
             setCupones(editData.cupones || []);
             setDescuentos(editData.descuentos || []);
@@ -541,114 +541,13 @@ const GasCloseout = () => {
         lubricantReadings.reduce((s, r) => s + (parseFloat(r.total) || 0), 0),
     [lubricantReadings]);
 
-    const { data: existingExpenses } = useQuery({
-        queryKey: ['gas-closeout-expenses', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/expenses`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingExpenses) setGastos(existingExpenses.map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
-    }, [existingExpenses]);
-
-    const { data: existingRemesas } = useQuery({
-        queryKey: ['gas-closeout-remesas', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/remesas`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingRemesas) setRemesas(existingRemesas);
-    }, [existingRemesas]);
-
-    const { data: existingCupones } = useQuery({
-        queryKey: ['gas-closeout-cupones', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/cupones`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingCupones) setCupones(existingCupones);
-    }, [existingCupones]);
-
-    const { data: existingDescuentos } = useQuery({
-        queryKey: ['gas-closeout-descuentos', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/descuentos`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingDescuentos) setDescuentos(existingDescuentos);
-    }, [existingDescuentos]);
-
-    const { data: existingAdelantos } = useQuery({
-        queryKey: ['gas-closeout-adelantos', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/adelantos`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingAdelantos) setAdelantos(existingAdelantos);
-    }, [existingAdelantos]);
-
-    const { data: existingTarjetas } = useQuery({
-        queryKey: ['gas-closeout-tarjetas', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/tarjetas`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingTarjetas) setTarjetas(existingTarjetas);
-    }, [existingTarjetas]);
-
-    const { data: existingCreditos } = useQuery({
-        queryKey: ['gas-closeout-creditos', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/creditos`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingCreditos) setCreditos(existingCreditos);
-    }, [existingCreditos]);
-
-    const { data: existingVales } = useQuery({
-        queryKey: ['gas-closeout-vales', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/vales`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingVales) setVales(existingVales);
-    }, [existingVales]);
-
-    const { data: existingAnticiposDesp } = useQuery({
-        queryKey: ['gas-closeout-anticipos-desp', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/anticipos-desp`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingAnticiposDesp) setAnticiposDesp(existingAnticiposDesp);
-    }, [existingAnticiposDesp]);
-
     const saveLubricantesMutation = useMutation({
         mutationFn: (readings) => axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings }),
         onSuccess: (res) => {
             setLubricantReadings(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-lubricantes', closeoutId] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lubricantes')
     });
-
-    const { data: existingLubricantes } = useQuery({
-        queryKey: ['gas-closeout-lubricantes', closeoutId],
-        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${closeoutId}/lubricantes`)).data,
-        enabled: !!closeoutId
-    });
-
-    useEffect(() => {
-        if (existingLubricantes) setLubricantReadings(existingLubricantes);
-    }, [existingLubricantes]);
 
     const { data: providersData } = useQuery({
         queryKey: ['providers-all'],

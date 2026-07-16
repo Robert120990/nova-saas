@@ -383,7 +383,65 @@ exports.getCloseout = async (req, res) => {
             );
         } catch { }
 
-        res.json({ ...closeouts[0], readings, tankReadings, despachadores, despachadorNozzleAssignments });
+        const [gastos] = await pool.query(
+            `SELECT e.*, p.nombre as proveedor_nombre FROM gas_station_closeout_expenses e
+             LEFT JOIN providers p ON e.provider_id = p.id
+             WHERE e.closeout_id = ? ORDER BY e.id ASC`, [id]
+        );
+
+        const [remesas] = await pool.query(
+            `SELECT * FROM gas_station_closeout_remesas WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [cupones] = await pool.query(
+            `SELECT * FROM gas_station_closeout_cupones WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [descuentos] = await pool.query(
+            `SELECT * FROM gas_station_closeout_descuentos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [adelantos] = await pool.query(
+            `SELECT * FROM gas_station_closeout_adelantos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [tarjetas] = await pool.query(
+            `SELECT * FROM gas_station_closeout_tarjetas WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [creditos] = await pool.query(
+            `SELECT * FROM gas_station_closeout_creditos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [vales] = await pool.query(
+            `SELECT * FROM gas_station_closeout_vales WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [anticiposDesp] = await pool.query(
+            `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        const [lubricantes] = await pool.query(
+            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`, [id]
+        );
+
+        res.json({
+            ...closeouts[0],
+            readings,
+            tankReadings,
+            despachadores,
+            despachadorNozzleAssignments,
+            gastos: gastos.map(e => ({ ...e, proveedor: e.proveedor_nombre || e.proveedor })),
+            remesas,
+            cupones,
+            descuentos,
+            adelantos,
+            tarjetas,
+            creditos,
+            vales,
+            anticipos_despachadores: anticiposDesp,
+            lubricantReadings: lubricantes
+        });
     } catch (error) {
         console.error('Error getCloseout:', error);
         res.status(500).json({ message: 'Error al obtener cierre de lecturas' });
