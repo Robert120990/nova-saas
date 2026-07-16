@@ -390,7 +390,10 @@ exports.getCloseout = async (req, res) => {
         );
 
         const [remesas] = await pool.query(
-            `SELECT * FROM gas_station_closeout_remesas WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT r.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+             FROM gas_station_closeout_remesas r
+             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+             WHERE r.closeout_id = ? ORDER BY r.id ASC`, [id]
         );
 
         const [cupones] = await pool.query(

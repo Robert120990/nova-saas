@@ -649,7 +649,7 @@ const GasCloseout = () => {
 <style>
     @page { margin: 0; }
     * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 6mm 4mm; color: #1e293b; font-size: 10px; width: 80mm; max-width: 80mm; border: 1px solid #000; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 6mm 4mm; color: #1e293b; font-size: 10px; width: 76mm; max-width: 76mm; border: 1px solid #000; }
     .header { text-align: center; margin-bottom: 6px; }
     .header h2 { font-size: 13px; margin: 0 0 2px; }
     .header .sub { font-size: 9px; color: #64748b; }
@@ -663,7 +663,7 @@ const GasCloseout = () => {
     .barcode-wrap { text-align: center; margin: 6px 0; }
     .barcode-wrap svg { max-width: 100%; height: auto; }
     @media print {
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80mm; max-width: 80mm; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 76mm; max-width: 76mm; }
     }
 </style></head><body>
     <div class="header">
