@@ -1065,6 +1065,9 @@ const GasCloseout = () => {
         return Object.values(map);
     }, [nozzlesData]);
 
+    const fuelTypeNames = { 3: 'DIESEL', 1: 'REGULAR', 2: 'SUPER' };
+    const fuelTypeOrder = ['DIESEL', 'REGULAR', 'SUPER'];
+
     const summaryByProduct = useMemo(() => {
         const map = {};
         readings.forEach(r => {
@@ -1090,6 +1093,42 @@ const GasCloseout = () => {
         totalLectura: readings.reduce((s, r) => s + (r.lectura_actual - r.lectura_anterior - r.calibracion), 0),
         totalMonto: readings.reduce((s, r) => s + ((r.lectura_actual - r.lectura_anterior - r.calibracion) * r.precio), 0)
     }), [readings]);
+
+    const lectVsTanqComparison = useMemo(() => {
+        const lectByType = {};
+        const tanqByType = {};
+
+        readings.forEach(r => {
+            const t = r.tipo_combustible;
+            if (!t || t === 0) return;
+            if (!lectByType[t]) lectByType[t] = 0;
+            lectByType[t] += r.lectura_actual - r.lectura_anterior - (r.calibracion || 0);
+        });
+
+        tankReadings.forEach(r => {
+            const t = r.tipo_combustible;
+            if (!t || t === 0) return;
+            if (!tanqByType[t]) tanqByType[t] = 0;
+            tanqByType[t] += (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
+        });
+
+        return fuelTypeOrder.map(name => {
+            const t = Object.keys(fuelTypeNames).find(k => fuelTypeNames[k] === name);
+            if (!t) return null;
+            const lect = lectByType[t] || 0;
+            const tanq = tanqByType[t] || 0;
+            const diff = lect - tanq;
+            const pct = lect > 0 ? (Math.abs(diff) / lect) * 100 : 0;
+            return {
+                tipo: name,
+                vendidoLect: lect,
+                vendidoTanq: tanq,
+                diferencia: diff,
+                pctDiferencia: pct,
+                alertLevel: diff === 0 ? 'none' : pct <= 3 ? 'warning' : 'danger'
+            };
+        }).filter(Boolean);
+    }, [readings, tankReadings]);
 
     const handleInit = (e) => {
         e.preventDefault();
@@ -1678,54 +1717,105 @@ const GasCloseout = () => {
                                     </table>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div className="px-4 py-2 border-b border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Lecturas de Tanques</h3>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50">
-                                                <th className="px-3 py-1.5">Tanque</th>
-                                                <th className="px-3 py-1.5 text-right w-28">Lect. Ant.</th>
-                                                <th className="px-3 py-1.5 text-right w-24">Recarga</th>
-                                                <th className="px-3 py-1.5 text-right w-28">Lect. Actual</th>
-                                                <th className="px-3 py-1.5 text-right w-28">Venta (Difer.)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-50 text-xs">
-                                            {tankReadings.length === 0 && (
+                            <div className="flex gap-4">
+                                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-4 py-2 border-b border-slate-100">
+                                        <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Lecturas de Tanques</h3>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50">
+                                                    <th className="px-3 py-1.5">Tanque</th>
+                                                    <th className="px-3 py-1.5 text-right w-28">Lect. Ant.</th>
+                                                    <th className="px-3 py-1.5 text-right w-24">Recarga</th>
+                                                    <th className="px-3 py-1.5 text-right w-28">Lect. Actual</th>
+                                                    <th className="px-3 py-1.5 text-right w-28">Venta (Difer.)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50 text-xs">
+                                                {tankReadings.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                            No hay lecturas de tanques registradas.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                                {tankReadings.map(r => {
+                                                    const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
+                                                    return (
+                                                        <tr key={r.tank_id || r.id} className="hover:bg-slate-50 transition-colors">
+                                                            <td className="px-3 py-1.5 whitespace-nowrap">
+                                                                <span className="font-medium text-slate-800">{r.codigo_tanque}</span>
+                                                                <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_tanque}</span>
+                                                            </td>
+                                                            <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.lectura_anterior || 0).toFixed(5)}</td>
+                                                            <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.recarga || 0).toFixed(5)}</td>
+                                                            <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.lectura_actual || 0).toFixed(5)}</td>
+                                                            <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-600">{diferencia.toFixed(5)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                                 <tr>
-                                                    <td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                        No hay lecturas de tanques registradas.
+                                                    <td colSpan={2} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono text-slate-600">{tankReadings.reduce((s, r) => s + (r.recarga || 0), 0).toFixed(5)}</td>
+                                                    <td className="px-3 py-1.5"></td>
+                                                    <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{tankReadings.reduce((s, r) => s + ((r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0)), 0).toFixed(5)}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div className="flex-none bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-4 py-2 border-b border-slate-100">
+                                        <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Comparación Lectura vs Tanque</h3>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50">
+                                                    <th className="px-3 py-1.5">Tipo</th>
+                                                    <th className="px-3 py-1.5 text-right">Vendido Lect.</th>
+                                                    <th className="px-3 py-1.5 text-right">Vendido Tanq.</th>
+                                                    <th className="px-3 py-1.5 text-right">Diferencia</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50 text-xs">
+                                                {lectVsTanqComparison.map(row => (
+                                                    <tr key={row.tipo} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="px-3 py-1.5 font-bold text-slate-800">{row.tipo}</td>
+                                                        <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{row.vendidoLect.toFixed(2)}</td>
+                                                        <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{row.vendidoTanq.toFixed(2)}</td>
+                                                        <td className={`px-3 py-1.5 text-right font-mono font-bold rounded-xl ${
+                                                            row.alertLevel === 'none'
+                                                                ? 'text-slate-400'
+                                                                : row.alertLevel === 'warning'
+                                                                    ? 'text-amber-600 bg-amber-50/50'
+                                                                    : 'text-red-600 bg-red-50 ring-1 ring-red-300 animate-pulse shadow-sm'
+                                                        }`}>
+                                                            {row.diferencia.toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
+                                                <tr>
+                                                    <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono text-indigo-600">
+                                                        {lectVsTanqComparison.reduce((s, r) => s + r.vendidoLect, 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-right font-mono text-indigo-600">
+                                                        {lectVsTanqComparison.reduce((s, r) => s + r.vendidoTanq, 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-900">
+                                                        {lectVsTanqComparison.reduce((s, r) => s + r.diferencia, 0).toFixed(2)}
                                                     </td>
                                                 </tr>
-                                            )}
-                                            {tankReadings.map(r => {
-                                                const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
-                                                return (
-                                                    <tr key={r.tank_id || r.id} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="px-3 py-1.5">
-                                                            <span className="font-medium text-slate-800">{r.codigo_tanque}</span>
-                                                            <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_tanque}</span>
-                                                        </td>
-                                                        <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.lectura_anterior || 0).toFixed(5)}</td>
-                                                        <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.recarga || 0).toFixed(5)}</td>
-                                                        <td className="px-3 py-1.5 text-right font-mono text-slate-600">{(r.lectura_actual || 0).toFixed(5)}</td>
-                                                        <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-600">{diferencia.toFixed(5)}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                        <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
-                                            <tr>
-                                                <td colSpan={2} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-slate-600">{tankReadings.reduce((s, r) => s + (r.recarga || 0), 0).toFixed(5)}</td>
-                                                <td></td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{tankReadings.reduce((s, r) => s + ((r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0)), 0).toFixed(5)}</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
+                                            </tfoot>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

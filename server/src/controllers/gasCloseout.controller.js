@@ -115,7 +115,7 @@ exports.initCloseout = async (req, res) => {
         const [nozzles] = await pool.query(`
             SELECT n.id as nozzle_id, n.codigo as codigo_pistola,
                    p.id as product_id, p.codigo as codigo_producto, p.nombre as descripcion_producto,
-                   p.precio_unitario
+                   p.precio_unitario, p.tipo_combustible
             FROM gas_station_nozzles n
             JOIN products p ON n.product_id = p.id
             WHERE n.company_id = ? AND (n.branch_id = ? OR (? IS NULL AND n.branch_id IS NULL))
@@ -147,6 +147,7 @@ exports.initCloseout = async (req, res) => {
                 codigo_producto: n.codigo_producto,
                 descripcion_producto: n.descripcion_producto,
                 precio: n.precio_unitario,
+                tipo_combustible: n.tipo_combustible,
                 lectura_anterior,
                 lectura_actual: lectura_anterior,
                 calibracion: 0,
@@ -156,7 +157,7 @@ exports.initCloseout = async (req, res) => {
         }
 
         const [tanks] = await pool.query(
-            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))`,
+            `SELECT id as tank_id, codigo, descripcion, capacidad, tipo_combustible FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))`,
             [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
         );
 
@@ -185,6 +186,7 @@ exports.initCloseout = async (req, res) => {
                 codigo_tanque: t.codigo,
                 descripcion_tanque: t.descripcion,
                 capacidad: parseFloat(t.capacidad),
+                tipo_combustible: t.tipo_combustible,
                 lectura_anterior,
                 recarga: 0,
                 lectura_actual: lectura_anterior,
@@ -218,7 +220,7 @@ exports.initTankReadings = async (req, res) => {
         );
         if (existing[0].cnt > 0) {
             const [rows] = await pool.query(`
-                SELECT tr.*, t.capacidad
+                SELECT tr.*, t.capacidad, t.tipo_combustible
                 FROM gas_station_closeout_tank_readings tr
                 JOIN gas_station_tanks t ON tr.tank_id = t.id
                 WHERE tr.closeout_id = ?
@@ -228,7 +230,7 @@ exports.initTankReadings = async (req, res) => {
         }
 
         const [tanks] = await pool.query(
-            `SELECT id as tank_id, codigo, descripcion, capacidad FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))`,
+            `SELECT id as tank_id, codigo, descripcion, capacidad, tipo_combustible FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))`,
             [req.company_id, req.user.branch_id || null, req.user.branch_id || null]
         );
 
@@ -257,6 +259,7 @@ exports.initTankReadings = async (req, res) => {
                 codigo_tanque: t.codigo,
                 descripcion_tanque: t.descripcion,
                 capacidad: parseFloat(t.capacidad),
+                tipo_combustible: t.tipo_combustible,
                 lectura_anterior,
                 recarga: 0,
                 lectura_actual: 0,
@@ -346,15 +349,17 @@ exports.getCloseout = async (req, res) => {
         }
 
         const [readings] = await pool.query(`
-            SELECT * FROM gas_station_closeout_readings
-            WHERE closeout_id = ?
-            ORDER BY codigo_pistola ASC
+            SELECT r.*, p.tipo_combustible
+            FROM gas_station_closeout_readings r
+            JOIN products p ON r.product_id = p.id
+            WHERE r.closeout_id = ?
+            ORDER BY r.codigo_pistola ASC
         `, [id]);
 
         let tankReadings = [];
         try {
             [tankReadings] = await pool.query(`
-                SELECT tr.*, t.capacidad
+                SELECT tr.*, t.capacidad, t.tipo_combustible
                 FROM gas_station_closeout_tank_readings tr
                 JOIN gas_station_tanks t ON tr.tank_id = t.id
                 WHERE tr.closeout_id = ?
@@ -2027,13 +2032,16 @@ exports.getCloseoutPrintData = async (req, res) => {
         }
 
         const [readings] = await pool.query(
-            `SELECT * FROM gas_station_closeout_readings WHERE closeout_id = ? ORDER BY codigo_pistola ASC`, [id]
+            `SELECT r.*, p.tipo_combustible
+             FROM gas_station_closeout_readings r
+             JOIN products p ON r.product_id = p.id
+             WHERE r.closeout_id = ? ORDER BY r.codigo_pistola ASC`, [id]
         );
 
         let tankReadings = [];
         try {
             [tankReadings] = await pool.query(`
-                SELECT tr.*, t.capacidad
+                SELECT tr.*, t.capacidad, t.tipo_combustible
                 FROM gas_station_closeout_tank_readings tr
                 JOIN gas_station_tanks t ON tr.tank_id = t.id
                 WHERE tr.closeout_id = ?
