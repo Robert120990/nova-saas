@@ -63,48 +63,7 @@ const createSale = async (req, res) => {
             if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
         }
 
-        let dteInfo = {};
-        let dteResult = null;
-        if (company && company.dte_active) {
-            // Enriquecer el payload con datos de catálogo y terminal
-            const dtePayload = {
-                ...req.body,
-                emisor_adicional: {
-                    descActividad: company.actividad_economica,
-                    codPuntoVentaMH: codPuntoVentaMH
-                }
-            };
-
-            // Asegurar que el branch_id y user_id lleguen al dte-api si no vienen en el header
-            if (!header.branch_id) header.branch_id = req.user.branch_id;
-            if (!header.user_id) header.user_id = req.user.id;
-
-            dteResult = await dteService.emitDTE(company, dtePayload);
-            if (dteResult.success) {
-                dteInfo = dteResult.data;
-            } else if (!dteResult.skip) {
-                // Si el DTE falló pero tenemos un código de generación, significa que se registró el rechazo.
-                // No abortamos la venta, la guardamos vinculada al código generado para permitir reintentos.
-                if (dteResult.codigo_generacion) {
-                    // Metadatos para sales_headers (solo columnas existentes)
-                    dteInfo = { 
-                        codigo_generacion: dteResult.codigo_generacion,
-                        numero_control: dteResult.numero_control,
-                        sello_recepcion: dteResult.data?.sello_recepcion || null,
-                        fh_procesamiento: dteResult.data?.fh_procesamiento || null
-                    };
-                    console.warn(`[SalesController] Venta persistida con DTE Rechazado: ${dteResult.codigo_generacion}`);
-                } else {
-                    // Si no hay código de generación, fue un error crítico antes de crear el DTE
-                    console.error('[SalesController] DTE Schema Error Details:', JSON.stringify(dteResult.details, null, 2));
-                    const err = new Error('Error crítico en DTE: ' + (dteResult.error || 'Error desconocido'));
-                    err.details = dteResult.details || null;
-                    throw err;
-                }
-            }
-        }
-
-        // 1. Insertar Cabecera de Venta
+        // 1. Insertar Cabecera de Venta (sin DTE aún)
         const [saleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
             company_id: req.company_id,
             branch_id: req.user.branch_id,
@@ -131,17 +90,14 @@ const createSale = async (req, res) => {
             total_pagar: header.total_pagar || 0,
             payment_condition: header.payment_condition || 1,
             observaciones: header.observaciones || null,
-            // Campos de Exportación (FEX - 11)
             export_item_type: header.export_item_type || null,
             fiscal_enclosure: header.fiscal_enclosure || null,
             export_regime: header.export_regime || null,
             dest_country_code: header.dest_country_code || null,
-            // Campos de Remisión (NR - 04)
             remission_type: header.remission_type || null,
             transporter_name: header.transporter_name || null,
             vehicle_plate: header.vehicle_plate || null,
             cliente_nombre: header.cliente_nombre || null,
-            ...dteInfo, // Fusionar metadatos de DTE (codigo_generacion, sello_recepcion, etc.)
             created_at: new Date()
         }]);
         const saleId = saleResult.insertId;
@@ -162,7 +118,6 @@ const createSale = async (req, res) => {
                 tributos: JSON.stringify(item.tributos || [])
             }]);
 
-            // Si es un COMBO, reducir stock de sus componentes
             if (item.combo_id) {
                 const [comboItems] = await connection.query(
                     'SELECT product_id, quantity FROM product_combo_items WHERE combo_id = ?', 
@@ -171,17 +126,14 @@ const createSale = async (req, res) => {
 
                 for (const ci of comboItems) {
                     const totalQty = ci.quantity * item.cantidad;
-                    // Resolver ID efectivo para inventario
                     const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
                     
                     if (header.dte_type !== '04') {
-                        // Actualizar Stock de los componentes
                         await connection.query(
                             'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
                             [totalQty, effectiveProductId, req.user.branch_id]
                         );
 
-                        // Registrar Movimiento en Kardex para cada componente
                         await connection.query('INSERT INTO inventory_movements SET ?', [{
                             company_id: req.company_id,
                             branch_id: req.user.branch_id,
@@ -195,18 +147,14 @@ const createSale = async (req, res) => {
                     }
                 }
             } else if (item.product_id) {
-                // Producto normal
-                // Resolver ID efectivo para inventario
                 const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
                 
                 if (header.dte_type !== '04') {
-                    // Actualizar Stock
                     await connection.query(
                         'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
                         [item.cantidad, effectiveProductId, req.user.branch_id]
                     );
 
-                    // Registrar Movimiento en Kardex
                     await connection.query('INSERT INTO inventory_movements SET ?', [{
                         company_id: req.company_id,
                         branch_id: req.user.branch_id,
@@ -233,7 +181,7 @@ const createSale = async (req, res) => {
             }
         }
 
-        // 4. Documentos Vinculados (Para Notas de Crédito / Remisiones / Retención)
+        // 4. Documentos Vinculados
         if (linkedDocuments && linkedDocuments.length > 0) {
             for (const doc of linkedDocuments) {
                 await connection.query('INSERT INTO sales_linked_documents SET ?', [{
@@ -246,27 +194,67 @@ const createSale = async (req, res) => {
             }
         }
 
+        // 5. Emitir DTE (después de guardar la venta para evitar DTEs huérfanos)
+        let dteInfo = {};
+        let dteResult = null;
+        if (company && company.dte_active) {
+            const dtePayload = {
+                ...req.body,
+                sale_id: saleId,
+                emisor_adicional: {
+                    descActividad: company.actividad_economica,
+                    codPuntoVentaMH: codPuntoVentaMH
+                }
+            };
+
+            if (!header.branch_id) header.branch_id = req.user.branch_id;
+            if (!header.user_id) header.user_id = req.user.id;
+
+            dteResult = await dteService.emitDTE(company, dtePayload);
+            if (dteResult.success) {
+                dteInfo = dteResult.data;
+            } else if (!dteResult.skip) {
+                if (dteResult.codigo_generacion) {
+                    dteInfo = { 
+                        codigo_generacion: dteResult.codigo_generacion,
+                        numero_control: dteResult.numero_control,
+                        sello_recepcion: dteResult.data?.sello_recepcion || null,
+                        fh_procesamiento: dteResult.data?.fh_procesamiento || null
+                    };
+                    console.warn(`[SalesController] Venta persistida con DTE Rechazado: ${dteResult.codigo_generacion}`);
+                } else {
+                    console.error('[SalesController] DTE Schema Error Details:', JSON.stringify(dteResult.details, null, 2));
+                    const err = new Error('Error crítico en DTE: ' + (dteResult.error || 'Error desconocido'));
+                    err.details = dteResult.details || null;
+                    throw err;
+                }
+            }
+        }
+
+        // 6. Vincular datos del DTE a la venta (dentro de la transacción)
+        if (dteInfo.codigo_generacion) {
+            await connection.query('UPDATE sales_headers SET ? WHERE id = ?', [{
+                codigo_generacion: dteInfo.codigo_generacion,
+                numero_control: dteInfo.numero_control || null,
+                sello_recepcion: dteInfo.sello_recepcion || null,
+                fh_procesamiento: dteInfo.fh_procesamiento || null
+            }, saleId]);
+
+            await connection.query(
+                'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
+                [saleId, dteInfo.codigo_generacion, req.company_id]
+            );
+        }
+
         await connection.commit();
 
-        // 5. Vincular venta_id en la tabla dtes y enviar correo de notificación (Solo si fue exitoso)
-        if (dteInfo.codigo_generacion) {
-            const isSuccessful = dteResult && dteResult.success;
+        // 7. Enviar correo de notificación (async, después del commit)
+        if (dteInfo.codigo_generacion && dteResult && dteResult.success) {
             (async () => {
                 try {
-                    // 1. Vincular venta_id
-                    await pool.query(
-                        'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
-                        [saleId, dteInfo.codigo_generacion, req.company_id]
-                    );
-                    
-                    // 2. Enviar correo SOLO si fue aceptado por Hacienda
-                    if (isSuccessful) {
-                        await mailerService.sendDTEEmail(saleId, req.company_id);
-                    } else {
-                        console.log(`[PostSaleProcess] Venta ${saleId}: DTE rechazado/pendiente, se omite envío de correo al cliente.`);
-                    }
+                    await mailerService.sendDTEEmail(saleId, req.company_id);
                 } catch (err) {
-                    console.error(`[PostSaleProcess] Error en proceso posterior de venta ${saleId}:`, err.message);
+                    console.error(`[PostSaleProcess] Error al enviar correo para venta ${saleId}:`, err.message);
                 }
             })();
         }

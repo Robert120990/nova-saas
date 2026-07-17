@@ -761,6 +761,8 @@ const SalesTerminal = () => {
     };
 
     const handleProcessSale = () => {
+        if (processSale.isPending) return;
+
         // 1. Validaciones Básicas
         if (tipoDte !== '07' && cart.length === 0) {
             return toast.error('El carrito está vacío');
