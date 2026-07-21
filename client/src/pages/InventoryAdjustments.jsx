@@ -34,6 +34,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
+import Money from '../components/ui/Money';
 
 const InventoryAdjustments = () => {
     const { user } = useAuth();
@@ -489,11 +490,11 @@ const InventoryAdjustments = () => {
                                 <div>
                                     <div className="flex justify-between items-center text-[10px] opacity-60 uppercase font-black mb-2">
                                         <span>Items: {selectedItems.length}</span>
-                                        <span>Subtotal: ${totalAjuste.toFixed(2)}</span>
+                                        <span>Subtotal: <Money value={totalAjuste} /></span>
                                     </div>
                                     <div className="flex justify-between items-center border-t border-white/10 pt-4">
                                         <span className="text-sm font-bold opacity-80 uppercase tracking-widest">Total Ajuste</span>
-                                        <span className="text-2xl font-black">${totalAjuste.toFixed(2)}</span>
+                                        <span className="text-2xl font-black"><Money value={totalAjuste} /></span>
                                     </div>
                                 </div>
                                 <button 
@@ -575,7 +576,7 @@ const InventoryAdjustments = () => {
                                     <div>
                                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1 text-right pr-1 italic">Total</label>
                                         <div className="w-full px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-black text-indigo-600 text-right h-[34px] flex items-center justify-end">
-                                            ${(parseFloat(quickCant || 0) * parseFloat(quickCosto || 0)).toFixed(2)}
+                                            <Money value={parseFloat(quickCant || 0) * parseFloat(quickCosto || 0)} />
                                         </div>
                                     </div>
                                     <button 
@@ -642,7 +643,7 @@ const InventoryAdjustments = () => {
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-1.5 text-right">
-                                                        <span className="text-xs font-black text-slate-900">${item.total.toFixed(2)}</span>
+                                                        <span className="text-xs font-black text-slate-900"><Money value={item.total} /></span>
                                                     </td>
                                                     <td className="px-6 py-1.5 text-right">
                                                         <button 
@@ -1051,15 +1052,15 @@ const AdjustmentDetailModal = ({ adjustment, onClose }) => {
                                         <div className="text-[11px] font-mono text-slate-400">{item.codigo}</div>
                                     </td>
                                     <td className="px-6 py-4 text-center font-black">{item.cantidad}</td>
-                                    <td className="px-6 py-4 text-right font-medium text-slate-500">${item.costo.toFixed(2)}</td>
-                                    <td className="px-6 py-4 text-right font-black text-slate-900">${item.total.toFixed(2)}</td>
+                                    <td className="px-6 py-4 text-right font-medium text-slate-500"><Money value={item.costo} /></td>
+                                    <td className="px-6 py-4 text-right font-black text-slate-900"><Money value={item.total} /></td>
                                 </tr>
                             ))}
                         </tbody>
                         <tfoot className="bg-slate-50 font-black border-t-2 border-slate-100">
                             <tr>
                                 <td colSpan="3" className="px-6 py-4 text-right uppercase text-[10px] text-slate-500 tracking-widest">Total Movimiento</td>
-                                <td className="px-6 py-4 text-right text-lg text-slate-900">${detail?.items?.reduce((sum, i) => sum + i.total, 0).toFixed(2)}</td>
+                                <td className="px-6 py-4 text-right text-lg text-slate-900"><Money value={detail?.items?.reduce((sum, i) => sum + i.total, 0)} /></td>
                             </tr>
                         </tfoot>
                     </table>

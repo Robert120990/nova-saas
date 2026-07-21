@@ -12,6 +12,7 @@ import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 const today = () => new Date().toISOString().split('T')[0];
 const formatDate = (dateStr) => {
@@ -457,7 +458,7 @@ const Quedan = () => {
                                 {c.provider_nombre}
                             </td>
                             <td className="px-5 py-1 font-black text-slate-900 text-[10px]">
-                                ${parseFloat(c.total || 0).toFixed(2)}
+                                <Money value={c.total || 0} />
                             </td>
                             <td className="px-5 py-1">
                                 <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'ENTREGADO' ? 'bg-emerald-50 text-emerald-600' : c.status === 'SOLICITADO' ? 'bg-violet-50 text-violet-600' : 'bg-amber-50 text-amber-600'}`}>
@@ -625,12 +626,12 @@ const Quedan = () => {
                                                     {item.tipo}
                                                 </span>
                                             </td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.gravadas) || 0).toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.iva) || 0).toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.retencion) || 0).toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.percepcion) || 0).toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right">${(parseFloat(item.exentas) || 0).toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${recalcItemTotal(item).toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.gravadas) || 0} /></td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.iva) || 0} /></td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.retencion) || 0} /></td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.percepcion) || 0} /></td>
+                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.exentas) || 0} /></td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={recalcItemTotal(item)} /></td>
                                             <td className="py-2 px-2">
                                                 <div className="flex gap-1">
                                                     <button onClick={() => openEditItem(item._key)}
@@ -650,12 +651,12 @@ const Quedan = () => {
                                     <tfoot>
                                         <tr className="border-t-2 border-slate-300 bg-slate-50">
                                             <td colSpan="3" className="py-2 px-2 text-[10px] font-black text-slate-600 uppercase">Totales</td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${totals.gravadas.toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${totals.iva.toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${totals.retencion.toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${totals.percepcion.toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right">${totals.exentas.toFixed(2)}</td>
-                                            <td className="py-2 px-2 text-[12px] font-black text-indigo-600 text-right">${totals.total.toFixed(2)}</td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={totals.gravadas} /></td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={totals.iva} /></td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={totals.retencion} /></td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={totals.percepcion} /></td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={totals.exentas} /></td>
+                                            <td className="py-2 px-2 text-[12px] font-black text-indigo-600 text-right"><Money value={totals.total} /></td>
                                             <td></td>
                                         </tr>
                                     </tfoot>
@@ -751,7 +752,7 @@ const Quedan = () => {
                     <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100 flex items-center justify-between">
                         <span className="text-[11px] font-bold text-slate-500 uppercase">Total</span>
                         <span className="text-lg font-black text-indigo-600">
-                            ${recalcItemTotal(itemForm).toFixed(2)}
+                            <Money value={recalcItemTotal(itemForm)} />
                         </span>
                     </div>
                     <div className="flex justify-end gap-3 pt-2">

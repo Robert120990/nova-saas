@@ -25,6 +25,7 @@ import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 const today = () => new Date().toISOString().split('T')[0];
 const formatDate = (dateStr) => {
@@ -373,7 +374,7 @@ const PurchaseChecks = () => {
                                 {c.provider_nombre}
                             </td>
                             <td className="px-5 py-3 font-black text-slate-900 text-[10px]">
-                                ${parseFloat(c.monto).toFixed(2)}
+                                <Money value={c.monto} />
                             </td>
                             <td className="px-5 py-3">
                                 <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${c.destino === 'P' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>

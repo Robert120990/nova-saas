@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
+import Money from '../components/ui/Money';
 
 const CashClosing = () => {
     const queryClient = useQueryClient();
@@ -243,7 +244,7 @@ const CashClosing = () => {
                         </div>
                         <div className="text-right">
                             <span className="text-[9px] font-black uppercase text-slate-400">Fondo Inicial</span>
-                            <p className="text-sm font-black text-slate-900">${parseFloat(shift.opening_balance).toFixed(2)}</p>
+                            <p className="text-sm font-black text-slate-900"><Money value={shift.opening_balance} /></p>
                         </div>
                     </div>
                     <div className="text-xs font-bold text-slate-600 mb-2">
@@ -398,10 +399,10 @@ const CashClosing = () => {
                                             <span className="text-xs font-black text-slate-500 uppercase tracking-wider">{shift.pos_name}</span>
                                         </td>
                                         <td className="px-8 py-6 text-right tabular-nums">
-                                            <span className="text-sm font-bold text-slate-700">${parseFloat(shift.expected_cash || 0).toFixed(2)}</span>
+                                            <span className="text-sm font-bold text-slate-700"><Money value={shift.expected_cash || 0} /></span>
                                         </td>
                                         <td className="px-8 py-6 text-right tabular-nums">
-                                            <span className="text-sm font-bold text-slate-700">${parseFloat(shift.actual_cash || 0).toFixed(2)}</span>
+                                            <span className="text-sm font-bold text-slate-700"><Money value={shift.actual_cash || 0} /></span>
                                         </td>
                                         <td className="px-8 py-6 text-right tabular-nums">
                                             <span className={`text-sm font-black flex items-center justify-end gap-1 ${parseFloat(shift.actual_cash - shift.expected_cash) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -597,7 +598,7 @@ const CashClosing = () => {
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center text-sm font-bold text-slate-400 italic">
                                             <span>Saldo Inicial (Fondo)</span>
-                                            <span>${(parseFloat(shiftSummary.opening_balance) || 0).toFixed(2)}</span>
+                                            <span><Money value={shiftSummary.opening_balance || 0} /></span>
                                         </div>
                                         
                                         {/* Detalle Dinámico de Métodos */}
@@ -605,7 +606,7 @@ const CashClosing = () => {
                                             <div key={method.code} className="flex justify-between items-center text-sm font-bold text-slate-400 italic">
                                                 <span>{method.name}</span>
                                                 <span className={method.code === '01' ? 'text-emerald-500' : 'text-indigo-400'}>
-                                                    +${parseFloat(method.total || 0).toFixed(2)}
+                                                    +<Money value={method.total || 0} />
                                                 </span>
                                             </div>
                                         ))}
@@ -833,11 +834,11 @@ const CashClosing = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left">
                                     <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest block mb-1">Esperado en Caja</span>
-                                    <span className="text-lg font-black text-slate-900">${(parseFloat(shiftSummary.expected) || 0).toFixed(2)}</span>
+                                    <span className="text-lg font-black text-slate-900"><Money value={shiftSummary.expected || 0} /></span>
                                 </div>
                                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left border-l-4 border-l-indigo-500">
                                     <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest block mb-1">Contado Físico</span>
-                                    <span className="text-lg font-black text-slate-900">${(parseFloat(shiftSummary.actual) || 0).toFixed(2)}</span>
+                                    <span className="text-lg font-black text-slate-900"><Money value={shiftSummary.actual || 0} /></span>
                                 </div>
                             </div>
 
@@ -845,7 +846,7 @@ const CashClosing = () => {
                             <div className={`p-4 rounded-2xl flex justify-between items-center ${parseFloat(shiftSummary.difference) >= 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
                                 <span className="text-xs font-black uppercase tracking-[0.2em]">Diferencia</span>
                                 <span className="text-2xl font-black tabular-nums">
-                                    {parseFloat(shiftSummary.difference) > 0 ? '+' : ''}${(parseFloat(shiftSummary.difference) || 0).toFixed(2)}
+                                    {parseFloat(shiftSummary.difference) > 0 ? '+' : ''}<Money value={shiftSummary.difference || 0} />
                                 </span>
                             </div>
 
@@ -858,7 +859,7 @@ const CashClosing = () => {
                                     {shiftSummary.methods?.map(m => (
                                         <div key={m.code} className="flex justify-between items-center text-sm font-bold">
                                             <span className="text-slate-500 italic">{m.name}</span>
-                                            <span className="text-slate-900">${parseFloat(m.total || 0).toFixed(2)}</span>
+                                            <span className="text-slate-900"><Money value={m.total || 0} /></span>
                                         </div>
                                     ))}
                                     {(!shiftSummary.methods || shiftSummary.methods.length === 0) && <p className="text-[10px] text-slate-300 italic">No se registraron ventas</p>}
@@ -873,13 +874,13 @@ const CashClosing = () => {
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 p-2 rounded-lg">
                                             <span>Otros Ingresos</span>
-                                            <span>+${(parseFloat(shiftSummary.total_incomes) || 0).toFixed(2)}</span>
+                                            <span>+<Money value={shiftSummary.total_incomes || 0} /></span>
                                         </div>
                                         <div className="px-1 space-y-1">
                                             {shiftSummary.incomes?.map((inc, i) => (
                                                 <div key={i} className="flex justify-between text-[10px] font-bold text-slate-400">
                                                     <span className="truncate pr-4">{inc.description} <span className="opacity-50 font-normal">({inc.method || 'Efectivo'})</span></span>
-                                                    <span className="shrink-0">+${parseFloat(inc.amount).toFixed(2)}</span>
+                                                    <span className="shrink-0">+<Money value={inc.amount} /></span>
                                                 </div>
                                             ))}
                                         </div>
@@ -889,13 +890,13 @@ const CashClosing = () => {
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center text-[10px] font-black text-rose-500 uppercase tracking-widest bg-rose-50 p-2 rounded-lg">
                                             <span>Gastos Administrativos</span>
-                                            <span>-${(parseFloat(shiftSummary.total_expenses) || 0).toFixed(2)}</span>
+                                            <span>-<Money value={shiftSummary.total_expenses || 0} /></span>
                                         </div>
                                         <div className="px-1 space-y-1">
                                             {shiftSummary.expenses?.map((exp, i) => (
                                                 <div key={i} className="flex justify-between text-[10px] font-bold text-slate-400">
                                                     <span className="truncate pr-4">{exp.description}</span>
-                                                    <span className="shrink-0">-${parseFloat(exp.amount).toFixed(2)}</span>
+                                                    <span className="shrink-0">-<Money value={exp.amount} /></span>
                                                 </div>
                                             ))}
                                         </div>

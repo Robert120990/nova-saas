@@ -125,3 +125,5 @@ MySQL migrations. Key tables: `companies`, `branches`, `products`, `customers`, 
 - Input content: `text-[13px] font-medium`
 - Color palette: Indigo/Slate with `rounded-xl` or `rounded-2xl` borders
 - All UI text in Spanish
+- **Todos los montos monetarios deben usar el componente `<Money>` de `components/ui/Money.jsx`**. No renderizar `$X.XX` directamente con `parseFloat().toFixed(2)`. Esto asegura que el permiso `view_amounts` funcione globalmente para ocultar montos según el rol del usuario.
+- **Para inputs de montos usar `<MoneyInput>`** (named export de `components/ui/Money.jsx`). Reemplaza `<input type="number" value={...}>` con `<MoneyInput value={...} onChange={...}>` para que el valor también se oculte si el usuario no tiene permiso `view_amounts`.

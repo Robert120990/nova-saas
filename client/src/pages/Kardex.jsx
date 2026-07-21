@@ -28,6 +28,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
+import Money from '../components/ui/Money';
 
 const Kardex = () => {
     const { user } = useAuth();
@@ -343,7 +344,7 @@ const Kardex = () => {
                                         <div className="flex items-center gap-4 text-right shrink-0">
                                             <div className="flex flex-col items-end">
                                                 <span className="text-[9px] font-black text-slate-400 uppercase">Precio</span>
-                                                <span className="text-sm font-black text-slate-900">${parseFloat(p.precio_unitario || 0).toFixed(2)}</span>
+                                                <span className="text-sm font-black text-slate-900"><Money value={p.precio_unitario} /></span>
                                             </div>
                                             <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
                                                 <Maximize2 size={16} />
@@ -447,12 +448,12 @@ const Kardex = () => {
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="text-sm font-bold text-slate-900">
-                                        ${mov.precio_venta ? parseFloat(mov.precio_venta).toFixed(2) : parseFloat(mov.current_price).toFixed(2)}
+                                        <Money value={mov.precio_venta ? parseFloat(mov.precio_venta) : parseFloat(mov.current_price)} />
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="text-sm font-bold text-slate-600">
-                                        ${parseFloat(productCosto).toFixed(2)}
+                                        <Money value={productCosto} />
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">

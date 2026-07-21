@@ -7,6 +7,7 @@ import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Search, Banknote } from 'lucide-react';
+import { MoneyInput } from '../../components/ui/Money';
 
 const SalarioMinimo = () => {
     const queryClient = useQueryClient();
@@ -126,7 +127,7 @@ const SalarioMinimo = () => {
                         </div>
                         <div className="md:col-span-2">
                             <label className={lbl}>Monto ($)</label>
-                            <input name="monto" type="number" step="0.01" min="0" defaultValue={selected?.monto} required placeholder="0.00" className={cls} />
+                            <MoneyInput name="monto" step="0.01" min="0" defaultValue={selected?.monto} required placeholder="0.00" className={cls} />
                         </div>
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">

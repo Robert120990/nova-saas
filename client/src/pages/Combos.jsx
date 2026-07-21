@@ -7,6 +7,7 @@ import { Plus, Edit, Trash2, Barcode, Search, Package, Info, AlertCircle, Trash 
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
+import Money from '../components/ui/Money';
 
 const Combos = () => {
     const queryClient = useQueryClient();
@@ -234,7 +235,7 @@ const Combos = () => {
                                 </div>
                             </td>
                             <td className="px-6 py-4">
-                                <div className="text-sm font-black text-indigo-600">${parseFloat(c.price).toFixed(2)}</div>
+                                <div className="text-sm font-black text-indigo-600"><Money value={c.price} /></div>
                                 <div className="text-[9px] text-slate-400 uppercase font-black tracking-widest">IVA Incluido</div>
                             </td>
                             <td className="px-6 py-4 flex gap-2">
@@ -316,7 +317,7 @@ const Combos = () => {
                             </div>
                             <div className="mt-2 flex justify-between items-center px-1">
                                 <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Sugerido (Suma):</span>
-                                <span className="text-xs font-bold text-slate-500">${suggestedPrice.toFixed(2)}</span>
+                                <span className="text-xs font-bold text-slate-500"><Money value={suggestedPrice} /></span>
                             </div>
                         </div>
 
@@ -361,7 +362,7 @@ const Combos = () => {
                                                 <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-700">{p.nombre}</span>
                                                 <span className="text-[10px] text-slate-400 font-mono">{p.codigo}</span>
                                             </div>
-                                            <span className="text-xs font-black text-indigo-600">${parseFloat(p.precio_unitario).toFixed(2)}</span>
+                                            <span className="text-xs font-black text-indigo-600"><Money value={p.precio_unitario} /></span>
                                         </button>
                                     ))}
                                 </div>
@@ -380,7 +381,7 @@ const Combos = () => {
                                     <div key={item.product_id} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-4 group">
                                         <div className="flex-1">
                                             <div className="text-xs font-bold text-slate-700">{item.name}</div>
-                                            <div className="text-[10px] text-slate-400 font-medium">Unitario: ${parseFloat(item.price).toFixed(2)}</div>
+                                            <div className="text-[10px] text-slate-400 font-medium">Unitario: <Money value={item.price} /></div>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <div className="flex flex-col items-end">

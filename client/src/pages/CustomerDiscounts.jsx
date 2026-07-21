@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 const CustomerDiscounts = () => {
     const queryClient = useQueryClient();
@@ -217,7 +218,7 @@ const CustomerDiscounts = () => {
                                         </td>
                                         <td className="px-8 py-4 text-right">
                                             <span className="text-sm font-black text-indigo-600">
-                                                {d.discount_type === 'PORCENTAJE' ? `${d.discount_value}%` : `$${parseFloat(d.discount_value).toFixed(2)}`}
+                                                {d.discount_type === 'PORCENTAJE' ? `${d.discount_value}%` : <Money value={d.discount_value} />}
                                             </span>
                                         </td>
                                         <td className="px-8 py-4 text-center">

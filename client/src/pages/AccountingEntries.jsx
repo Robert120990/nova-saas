@@ -7,6 +7,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
+import Money from '../components/ui/Money';
 
 const AccountingEntries = () => {
     const queryClient = useQueryClient();
@@ -159,8 +160,8 @@ const AccountingEntries = () => {
                         <td className="px-6 py-3 text-xs">{e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '—'}</td>
                         <td className="px-6 py-3 text-xs">{e.entry_type_name}</td>
                         <td className="px-6 py-3 text-xs text-slate-600 max-w-xs truncate">{e.description}</td>
-                        <td className="px-6 py-3 font-bold text-xs text-emerald-600">${parseFloat(e.total_debit).toFixed(2)}</td>
-                        <td className="px-6 py-3 font-bold text-xs text-rose-600">${parseFloat(e.total_credit).toFixed(2)}</td>
+                        <td className="px-6 py-3 font-bold text-xs text-emerald-600"><Money value={e.total_debit} /></td>
+                        <td className="px-6 py-3 font-bold text-xs text-rose-600"><Money value={e.total_credit} /></td>
                         <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600' : e.status === 'voided' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}</span></td>
                         <td className="px-6 py-3">
                             <div className="flex gap-2">
@@ -314,8 +315,8 @@ const AccountingEntries = () => {
                                                 <span className="ml-2 text-slate-700">{accounts.find(a => a.id == line.account_id)?.name || '?'}</span>
                                             </td>
                                             <td className="px-3 py-2 text-[10px] text-slate-500">{line.description}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold text-emerald-600 text-right">{parseFloat(line.debit) > 0 ? `$${parseFloat(line.debit).toFixed(2)}` : ''}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold text-rose-600 text-right">{parseFloat(line.credit) > 0 ? `$${parseFloat(line.credit).toFixed(2)}` : ''}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold text-emerald-600 text-right">{parseFloat(line.debit) > 0 ? <Money value={line.debit} /> : ''}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold text-rose-600 text-right">{parseFloat(line.credit) > 0 ? <Money value={line.credit} /> : ''}</td>
                                             <td className="px-3 py-2">
                                                 <button type="button" onClick={() => removeLine(idx)} className="p-1 text-rose-300 hover:text-rose-600"><Trash2 size={14} /></button>
                                             </td>
@@ -326,7 +327,7 @@ const AccountingEntries = () => {
                         )}
                         <div className="flex justify-between text-xs font-bold mt-3 pt-3 border-t">
                             <span className={balanced ? 'text-emerald-600' : 'text-rose-600'}>{balanced ? '✓ Cuadra' : '✗ No cuadra'}</span>
-                            <span>Débito: <b className="text-emerald-600">${totalDebit.toFixed(2)}</b> | Crédito: <b className="text-rose-600">${totalCredit.toFixed(2)}</b></span>
+                            <span>Débito: <b className="text-emerald-600"><Money value={totalDebit} /></b> | Crédito: <b className="text-rose-600"><Money value={totalCredit} /></b></span>
                         </div>
                     </div>
 
@@ -356,12 +357,12 @@ const AccountingEntries = () => {
                                     <tr key={i} className="border-b border-slate-50">
                                         <td className="py-2 text-xs font-bold">{l.account_code} - {l.account_name}</td>
                                         <td className="py-2 text-xs text-slate-500">{l.description}</td>
-                                        <td className="py-2 text-xs font-bold text-emerald-600 text-right">${parseFloat(l.debit).toFixed(2)}</td>
-                                        <td className="py-2 text-xs font-bold text-rose-600 text-right">${parseFloat(l.credit).toFixed(2)}</td>
+                                        <td className="py-2 text-xs font-bold text-emerald-600 text-right"><Money value={l.debit} /></td>
+                                        <td className="py-2 text-xs font-bold text-rose-600 text-right"><Money value={l.credit} /></td>
                                     </tr>
                                 ))}
                             </tbody>
-                            <tfoot><tr className="font-bold text-xs"><td colSpan={2} className="pt-2">Totales</td><td className="pt-2 text-emerald-600 text-right">${parseFloat(viewEntry.total_debit).toFixed(2)}</td><td className="pt-2 text-rose-600 text-right">${parseFloat(viewEntry.total_credit).toFixed(2)}</td></tr></tfoot>
+                            <tfoot><tr className="font-bold text-xs"><td colSpan={2} className="pt-2">Totales</td><td className="pt-2 text-emerald-600 text-right"><Money value={viewEntry.total_debit} /></td><td className="pt-2 text-rose-600 text-right"><Money value={viewEntry.total_credit} /></td></tr></tfoot>
                         </table>
                     </div>
                 )}

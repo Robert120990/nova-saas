@@ -28,6 +28,7 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 // Helper for date formatting DD/MM/YYYY
 const formatDate = (dateStr) => {
@@ -571,7 +572,7 @@ const Expenses = () => {
                                                         {item.tax_type}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-2 text-right font-black text-slate-900">${parseFloat(item.total).toFixed(2)}</td>
+                                                <td className="py-3 px-2 text-right font-black text-slate-900"><Money value={item.total} /></td>
                                                 <td className="py-3 px-2 text-right">
                                                     <button onClick={() => removeItem(item.id)} className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100">
                                                         <Trash2 size={12} />
@@ -610,11 +611,11 @@ const Expenses = () => {
                             <div className="space-y-3 text-right">
                                 <div className="flex flex-col items-end py-1">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Total Gravada</span>
-                                    <span className="font-mono text-sm font-black italic text-white">${totals.gravada.toFixed(2)}</span>
+                                    <span className="font-mono text-sm font-black italic text-white"><Money value={totals.gravada} /></span>
                                 </div>
                                 <div className="flex flex-col items-end py-1 border-b border-white/5 pb-3">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Total Exento/NoSuj</span>
-                                    <span className="font-mono text-sm font-black italic text-white">${(totals.exenta + totals.nosujeta).toFixed(2)}</span>
+                                    <span className="font-mono text-sm font-black italic text-white"><Money value={totals.exenta + totals.nosujeta} /></span>
                                 </div>
                                 
                                 <div className="space-y-2">
@@ -686,7 +687,7 @@ const Expenses = () => {
                                     <div className="flex flex-col items-end gap-1">
                                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">TOTAL A PAGAR</span>
                                         <span className="text-4xl font-black italic tracking-tighter text-indigo-400 underline decoration-white/20 underline-offset-8">
-                                            ${totals.total.toFixed(2)}
+                                            <Money value={totals.total} />
                                         </span>
                                     </div>
                                 </div>
@@ -739,7 +740,7 @@ const Expenses = () => {
                                 <td className="py-4 px-4 max-w-[200px] truncate">{e.provider_nombre}</td>
                                 <td className="py-4 px-4 text-indigo-500">{e.tipo_documento_nombre}</td>
                                 <td className="py-4 px-4">{e.numero_documento}</td>
-                                <td className="py-4 px-4 font-black">${parseFloat(e.monto_total).toFixed(2)}</td>
+                                <td className="py-4 px-4 font-black"><Money value={e.monto_total} /></td>
                                 <td className="py-4 px-4">
                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
                                         e.status === 'activo' || e.status === 'ACTIVO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
@@ -830,7 +831,7 @@ const Expenses = () => {
                                                     <tr key={it.id} className="text-[11px] font-bold text-slate-600">
                                                         <td className="py-3 px-4 uppercase">{it.description}</td>
                                                         <td className="py-3 px-4 text-indigo-500 font-black">{expenseTypes.find(t=>t.id===it.expense_type_id)?.name.toUpperCase()}</td>
-                                                        <td className="py-3 px-4 text-right font-black text-slate-900">${parseFloat(it.total).toFixed(2)}</td>
+                                                        <td className="py-3 px-4 text-right font-black text-slate-900"><Money value={it.total} /></td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -842,16 +843,16 @@ const Expenses = () => {
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-xl">
                                                     <span className="text-[8px] font-black text-slate-400">IVA</span>
-                                                    <span className="text-[10px] font-bold font-mono">${parseFloat(expenseDetail.iva).toFixed(2)}</span>
+                                                    <span className="text-[10px] font-bold font-mono"><Money value={expenseDetail.iva} /></span>
                                                 </div>
                                                 <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-xl">
                                                     <span className="text-[8px] font-black text-slate-400">RET.</span>
-                                                    <span className="text-[10px] font-bold font-mono">${parseFloat(expenseDetail.retencion).toFixed(2)}</span>
+                                                    <span className="text-[10px] font-bold font-mono"><Money value={expenseDetail.retencion} /></span>
                                                 </div>
                                             </div>
                                             <div className="flex justify-between items-center px-4 py-2 bg-slate-900 rounded-2xl text-white">
                                                 <span className="text-[9px] font-black text-slate-400 tracking-widest italic animate-pulse">TOTAL PAGADO</span>
-                                                <span className="text-xl font-black italic tracking-tighter text-indigo-400 group-hover:underline underline-offset-4">${parseFloat(expenseDetail.monto_total).toFixed(2)}</span>
+                                                <span className="text-xl font-black italic tracking-tighter text-indigo-400 group-hover:underline underline-offset-4"><Money value={expenseDetail.monto_total} /></span>
                                             </div>
                                         </div>
                                     </div>

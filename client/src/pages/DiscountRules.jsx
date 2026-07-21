@@ -7,6 +7,7 @@ import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
+import Money from '../components/ui/Money';
 
 const DiscountRules = () => {
     const { user } = useAuth();
@@ -121,7 +122,7 @@ const DiscountRules = () => {
                             </span>
                         </td>
                         <td className="px-6 py-4 font-bold text-sm">
-                            {rule.discount_type === 'percentage' ? `${parseFloat(rule.discount_value)}%` : `$${parseFloat(rule.discount_value).toFixed(2)}`}
+                            {rule.discount_type === 'percentage' ? `${parseFloat(rule.discount_value)}%` : <Money value={rule.discount_value} />}
                         </td>
                         <td className="px-6 py-4 text-xs text-slate-500">
                             {rule.start_date || rule.end_date ? (

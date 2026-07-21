@@ -8,6 +8,7 @@ import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3,
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 const today = () => new Date().toISOString().split('T')[0];
 const now = () => new Date().toTimeString().split(' ')[0].slice(0, 5);
@@ -331,7 +332,7 @@ const GasRemesaDeliveries = () => {
                                 <span className="text-xs font-bold font-mono text-indigo-600">{item.total_remesas}</span>
                             </td>
                             <td className="px-3 py-1">
-                                <span className="text-xs font-bold font-mono text-emerald-600">${parseFloat(item.monto_total || 0).toFixed(2)}</span>
+                                <span className="text-xs font-bold font-mono text-emerald-600"><Money value={item.monto_total} /></span>
                             </td>
                             <td className="px-3 py-1">
                                 {item.entregado ? (
@@ -449,7 +450,7 @@ const GasRemesaDeliveries = () => {
                                             {r.fecha_turno ? new Date(r.fecha_turno).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                         </td>
                                         <td className="px-3 py-2 text-slate-600">{r.despachador_descripcion || '—'}</td>
-                                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600">${parseFloat(r.monto || 0).toFixed(2)}</td>
+                                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600"><Money value={r.monto} /></td>
                                         <td className="px-3 py-2 text-center">
                                             <button onClick={() => handleRemoveRemesa(r.id)} className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><X size={14} /></button>
                                         </td>
@@ -460,7 +461,7 @@ const GasRemesaDeliveries = () => {
                                 <tfoot>
                                     <tr className="bg-slate-50">
                                         <td colSpan={5} className="px-3 py-2 text-[11px] font-bold text-slate-600 text-right">Total: {addedRemesas.length} remesas</td>
-                                        <td className="px-3 py-2 text-right font-mono font-bold text-lg text-indigo-600">${totalMonto.toFixed(2)}</td>
+                                        <td className="px-3 py-2 text-right font-mono font-bold text-lg text-indigo-600"><Money value={totalMonto} /></td>
                                         <td></td>
                                     </tr>
                                 </tfoot>
@@ -587,7 +588,7 @@ const GasRemesaDeliveries = () => {
                                                 {r.fecha_turno ? new Date(r.fecha_turno).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                             </td>
                                             <td className="px-3 py-2 text-slate-600">{r.despachador_descripcion || '—'}</td>
-                                            <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600">${parseFloat(r.monto || 0).toFixed(2)}</td>
+                                            <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600"><Money value={r.monto} /></td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -652,7 +653,7 @@ const RemesaSelectRows = ({ remesas, addedIds, onSelect }) => {
                             {r.fecha_turno ? new Date(r.fecha_turno).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                         </td>
                         <td className="px-2 py-1.5 text-slate-600">{r.despachador_descripcion || '—'}</td>
-                        <td className="px-2 py-1.5 text-right font-mono font-bold text-emerald-600">${parseFloat(r.monto || 0).toFixed(2)}</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-emerald-600"><Money value={r.monto} /></td>
                     </tr>
                 );
             })}

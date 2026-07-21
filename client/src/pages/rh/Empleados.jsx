@@ -8,6 +8,7 @@ import SearchableSelect from '../../components/ui/SearchableSelect';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
 import { IMaskInput } from 'react-imask';
+import { MoneyInput } from '../../components/ui/Money';
 import {
     Plus, Edit, Trash2, Search, Users,
     UserCircle, Briefcase, Wallet, ScrollText, CalendarX,
@@ -736,7 +737,7 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
                             <label className={labelCls}>Valor</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">$</span>
-                                <input type="number" step="0.01" value={formData.valor} onChange={e => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })} required className={`${fieldCls} pl-7`} />
+                                <MoneyInput step="0.01" value={formData.valor} onChange={e => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })} required className={`${fieldCls} pl-7`} />
                             </div>
                         </div>
                     </div>

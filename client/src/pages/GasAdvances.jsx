@@ -8,6 +8,7 @@ import { Plus, Edit, Trash2, Search, Banknote } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 const GasAdvances = () => {
     const queryClient = useQueryClient();
@@ -144,16 +145,16 @@ const GasAdvances = () => {
                                     <span className="text-xs font-mono text-slate-500">{item.nrc || '-'}</span>
                                 </td>
                                 <td className="px-3 py-1">
-                                    <span className="font-mono font-bold text-xs text-emerald-600">${parseFloat(item.monto).toFixed(2)}</span>
+                                    <span className="font-mono font-bold text-xs text-emerald-600"><Money value={item.monto} /></span>
                                 </td>
                                 <td className="px-3 py-1">
                                     <span className={`font-mono font-bold text-xs ${parseFloat(item.monto_disponible) > 0 ? 'text-indigo-600' : 'text-slate-400'}`}>
-                                        ${parseFloat(item.monto_disponible).toFixed(2)}
+                                        <Money value={item.monto_disponible} />
                                     </span>
                                 </td>
                                 <td className="px-3 py-1">
                                     <span className={`font-mono font-bold text-xs ${usado > 0 ? 'text-amber-600' : 'text-slate-300'}`}>
-                                        ${usado.toFixed(2)}
+                                        <Money value={usado} />
                                     </span>
                                 </td>
                                 <td className="px-3 py-1 flex gap-1">

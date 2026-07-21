@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
+import Money, { MoneyInput } from '../components/ui/Money';
 import * as XLSX from 'xlsx';
 
 const parseDecimal = (value) => {
@@ -1528,9 +1529,9 @@ const GasCloseout = () => {
                                                 <tr key={p.codigo_producto} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-3 py-1.5 font-mono font-bold text-slate-800">{p.codigo_producto}</td>
                                                     <td className="px-3 py-1.5 text-slate-600">{p.descripcion_producto}</td>
-                                                    <td className="px-3 py-1.5 text-right font-mono text-slate-700">${parseFloat(p.precio).toFixed(2)}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono text-slate-700"><Money value={p.precio} /></td>
                                                     <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-600">{p.total_lectura.toFixed(5)}</td>
-                                                    <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-900">${p.total_monto.toFixed(2)}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-900"><Money value={p.total_monto} /></td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1538,7 +1539,7 @@ const GasCloseout = () => {
                                             <tr>
                                                 <td colSpan={3} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{totals.totalLectura.toFixed(5)}</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-slate-900">${totals.totalMonto.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-slate-900"><Money value={totals.totalMonto} /></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -1559,19 +1560,19 @@ const GasCloseout = () => {
                                         <tbody className="divide-y divide-slate-50 text-xs">
                                             <tr className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-3 py-1.5 text-slate-600">Combustible (Ventas)</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-emerald-600">${totals.totalMonto.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-emerald-600"><Money value={totals.totalMonto} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-3 py-1.5 text-slate-600">Lubricantes</td>
                                                 <td className={`px-3 py-1.5 text-right font-mono ${lubricantTotal > 0 ? 'font-bold text-emerald-600' : 'text-slate-400'}`}>
-                                                    ${lubricantTotal.toFixed(2)}
+                                                    <Money value={lubricantTotal} />
                                                 </td>
                                             </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Ingresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-emerald-600">${(totals.totalMonto + lubricantTotal).toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-emerald-600"><Money value={totals.totalMonto + lubricantTotal} /></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -1590,45 +1591,45 @@ const GasCloseout = () => {
                                         <tbody className="divide-y divide-slate-50 text-xs">
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Créditos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${creditosTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={creditosTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Vales</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${valesTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={valesTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Anticipos Desp.</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: anticiposDespTotal > 0 ? '#dc2626' : '#94a3b8' }}>${anticiposDespTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: anticiposDespTotal > 0 ? '#dc2626' : '#94a3b8' }}><Money value={anticiposDespTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Gastos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${gastosTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={gastosTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Remesas</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${remesasTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={remesasTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Cupones</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${cuponesTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={cuponesTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Descuentos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${descuentosTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={descuentosTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Adelantos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${adelantosTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={adelantosTotal} /></td>
                                             </tr>
                                             <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Tarjetas</td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600">${tarjetasTotal.toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={tarjetasTotal} /></td>
                                             </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Egresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-red-600">${(gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal).toFixed(2)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-red-600"><Money value={gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal} /></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -1742,7 +1743,7 @@ const GasCloseout = () => {
                                 <div className="px-4 py-3 flex items-center justify-between">
                                     <span className="text-xs font-medium text-slate-500">Faltante / Sobrante del turno</span>
                                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black font-mono shadow-sm ${diferenciaTotal >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
-                                        ${diferenciaTotal.toFixed(2)}
+                                        <Money value={diferenciaTotal} />
                                     </span>
                                 </div>
                             </div>
@@ -1810,12 +1811,12 @@ const GasCloseout = () => {
                                                                 <span className="text-slate-600">{d.nombre}</span>
                                                             )}
                                                         </td>
-                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-600">${venta.toFixed(2)}</td>
-                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-red-600">${noPercibido.toFixed(2)}</td>
-                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-amber-600">${entregado.toFixed(2)}</td>
+                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-600"><Money value={venta} /></td>
+                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-red-600"><Money value={noPercibido} /></td>
+                                                        <td className="px-1.5 py-1 text-right font-mono font-bold text-amber-600"><Money value={entregado} /></td>
                                                         <td className="px-1.5 py-1 text-right">
                                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black font-mono shadow-sm ${diferencia >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
-                                                                ${diferencia.toFixed(2)}
+                                                                <Money value={diferencia} />
                                                             </span>
                                                         </td>
                                                     </tr>
@@ -1951,7 +1952,7 @@ const GasCloseout = () => {
                                                         <span className="font-medium text-slate-800">{r.codigo_producto}</span>
                                                         <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_producto}</span>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap">${parseFloat(r.precio).toFixed(2)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap"><Money value={r.precio} /></td>
                                                     <td className="px-1.5 py-0.5 text-right">
                                                         {editAnterior ? (
                                                             <input
@@ -2001,7 +2002,7 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap">{diferencia.toFixed(5)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap">${monto.toFixed(2)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap"><Money value={monto} /></td>
                                                 </tr>
                                             );
                                         })}
@@ -2253,8 +2254,7 @@ const GasCloseout = () => {
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
-                                                    <input
-                                                        type="number"
+                                                    <MoneyInput
                                                         step="0.01"
                                                         value={g.valor || ''}
                                                         onChange={(e) => handleGastoChange(g.id, 'valor', parseFloat(e.target.value) || 0)}
@@ -2289,7 +2289,7 @@ const GasCloseout = () => {
                                         </button>
                                         <div className="flex items-center gap-4">
                                             <span className="text-xs text-slate-500">
-                                                Total Gastos: <strong className="text-red-600 font-mono text-sm">${gastosTotal.toFixed(2)}</strong>
+                                                Total Gastos: <strong className="text-red-600 font-mono text-sm"><Money value={gastosTotal} /></strong>
                                             </span>
                                             <button
                                                 onClick={() => saveExpensesMutation.mutate(gastos)}
@@ -2387,8 +2387,7 @@ const GasCloseout = () => {
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
-                                                    <input
-                                                        type="number"
+                                                    <MoneyInput
                                                         step="0.01"
                                                         value={r.monto || ''}
                                                         onChange={(e) => handleRemesaChange(r.id, 'monto', parseFloat(e.target.value) || 0)}
@@ -2432,7 +2431,7 @@ const GasCloseout = () => {
                                         </button>
                                         <div className="flex items-center gap-4">
                                             <span className="text-xs text-slate-500">
-                                                Total Remesas: <strong className="text-red-600 font-mono text-sm">${remesasTotal.toFixed(2)}</strong>
+                                                Total Remesas: <strong className="text-red-600 font-mono text-sm"><Money value={remesasTotal} /></strong>
                                             </span>
                                             <button
                                                 onClick={() => saveRemesasMutation.mutate(remesas)}
@@ -2551,8 +2550,7 @@ const GasCloseout = () => {
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
-                                                    <input
-                                                        type="number"
+                                                    <MoneyInput
                                                         step="0.01"
                                                         value={c.monto || ''}
                                                         onChange={(e) => handleCuponChange(c.id, 'monto', parseFloat(e.target.value) || 0)}
@@ -2587,7 +2585,7 @@ const GasCloseout = () => {
                                         </button>
                                         <div className="flex items-center gap-4">
                                             <span className="text-xs text-slate-500">
-                                                Total Cupones: <strong className="text-red-600 font-mono text-sm">${cuponesTotal.toFixed(2)}</strong>
+                                                Total Cupones: <strong className="text-red-600 font-mono text-sm"><Money value={cuponesTotal} /></strong>
                                             </span>
                                             <button
                                                 onClick={() => saveCuponesMutation.mutate(cupones)}
@@ -2721,8 +2719,7 @@ const GasCloseout = () => {
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
-                                                    <input
-                                                        type="number"
+                                                    <MoneyInput
                                                         step="0.01"
                                                         value={d.valor ?? ''}
                                                         onChange={(e) => handleDescuentoChange(d.id, 'valor', e.target.value)}
@@ -2733,7 +2730,7 @@ const GasCloseout = () => {
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
-                                                    <span className="font-mono font-bold text-slate-900">${((parseFloat(d.cantidad) || 0) * (parseFloat(d.valor) || 0)).toFixed(2)}</span>
+                                                    <span className="font-mono font-bold text-slate-900"><Money value={(parseFloat(d.cantidad) || 0) * (parseFloat(d.valor) || 0)} /></span>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-center">
                                                     {estado !== 'cerrado' && (
@@ -2760,7 +2757,7 @@ const GasCloseout = () => {
                                         </button>
                                         <div className="flex items-center gap-4">
                                             <span className="text-xs text-slate-500">
-                                                Total Descuentos: <strong className="text-red-600 font-mono text-sm">${descuentosTotal.toFixed(2)}</strong>
+                                                Total Descuentos: <strong className="text-red-600 font-mono text-sm"><Money value={descuentosTotal} /></strong>
                                             </span>
                                             <button
                                                 onClick={() => saveDescuentosMutation.mutate(descuentos)}
@@ -2841,8 +2838,7 @@ const GasCloseout = () => {
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right">
-                                                    <input
-                                                        type="number"
+                                                    <MoneyInput
                                                         step="0.01"
                                                         value={a.monto ?? ''}
                                                         onChange={(e) => handleAdelantoChange(a.id, 'monto', e.target.value)}
@@ -2877,7 +2873,7 @@ const GasCloseout = () => {
                                         </button>
                                         <div className="flex items-center gap-4">
                                             <span className="text-xs text-slate-500">
-                                                Total Adelantos: <strong className="text-red-600 font-mono text-sm">${adelantosTotal.toFixed(2)}</strong>
+                                                Total Adelantos: <strong className="text-red-600 font-mono text-sm"><Money value={adelantosTotal} /></strong>
                                             </span>
                                             <button
                                                 onClick={() => saveAdelantosMutation.mutate(adelantos)}
@@ -3006,15 +3002,14 @@ const GasCloseout = () => {
                                                         </select>
                                                     </td>
                                                     <td className="px-1.5 py-1">
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            min="0"
-                                                            value={t.monto}
-                                                            onChange={(e) => handleTarjetaChange(t.id, 'monto', parseFloat(e.target.value) || 0)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
+                                                    <MoneyInput
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={t.monto}
+                                                        onChange={(e) => handleTarjetaChange(t.id, 'monto', parseFloat(e.target.value) || 0)}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                    />
                                                     </td>
                                                     {estado === 'abierto' && (
                                                         <td className="px-1.5 py-1 text-center">
@@ -3046,7 +3041,7 @@ const GasCloseout = () => {
                                                         </button>
                                                         <div className="flex items-center gap-4">
                                                             <span className="text-xs text-slate-500">
-                                                                Total Tarjetas: <strong className="text-red-600 font-mono text-sm">${tarjetasTotal.toFixed(2)}</strong>
+                                                                Total Tarjetas: <strong className="text-red-600 font-mono text-sm"><Money value={tarjetasTotal} /></strong>
                                                             </span>
                                                             <button
                                                                 onClick={() => saveTarjetasMutation.mutate(tarjetas)}
@@ -3156,9 +3151,9 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-800">{ventas.toFixed(5)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700">${parseFloat(r.precio || 0).toFixed(2)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700"><Money value={parseFloat(r.precio || 0)} /></td>
                                                     <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900">
-                                                        ${total.toFixed(2)}
+                                                        <Money value={total} />
                                                     </td>
                                                 </tr>
                                             );
@@ -3168,7 +3163,7 @@ const GasCloseout = () => {
                                         <tr>
                                             <td colSpan={7} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Lubricantes</td>
                                             <td className="px-3 py-1.5 text-right font-mono text-indigo-600">
-                                                ${lubricantTotal.toFixed(2)}
+                                                <Money value={lubricantTotal} />
                                             </td>
                                         </tr>
                                     </tfoot>
@@ -3329,7 +3324,6 @@ const GasCloseout = () => {
                                             </tr>
                                         )}
                                         {creditos.map(c => {
-                                            const itemPrecio = parseFloat(c.cantidad) > 0 ? (parseFloat(c.monto) / parseFloat(c.cantidad)).toFixed(2) : '0.00';
                                             return (
                                                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-1.5 py-1">
@@ -3420,23 +3414,22 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
-                                                        ${itemPrecio}
+                                                        {parseFloat(c.cantidad) > 0 ? <Money value={parseFloat(c.monto) / parseFloat(c.cantidad)} /> : <Money value={0} />}
                                                     </td>
                                                     <td className="px-1.5 py-1">
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            min="0"
-                                                            value={c.monto}
-                                                            onChange={(e) => {
-                                                                const monto = parseFloat(e.target.value) || 0;
-                                                                handleCreditoChange(c.id, 'monto', monto);
-                                                                const cant = parseFloat(c.cantidad) || 0;
-                                                                handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
+                                                    <MoneyInput
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={c.monto}
+                                                        onChange={(e) => {
+                                                            const monto = parseFloat(e.target.value) || 0;
+                                                            handleCreditoChange(c.id, 'monto', monto);
+                                                            const cant = parseFloat(c.cantidad) || 0;
+                                                            handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                        }}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                    />
                                                     </td>
                                                     <td className="px-1.5 py-1">
                                                         <input
@@ -3488,7 +3481,7 @@ const GasCloseout = () => {
                                                         </button>
                                                         <div className="flex items-center gap-4">
                                                             <span className="text-xs text-slate-500">
-                                                                Total Créditos: <strong className="text-red-600 font-mono text-sm">${creditosTotal.toFixed(2)}</strong>
+                                                                Total Créditos: <strong className="text-red-600 font-mono text-sm"><Money value={creditosTotal} /></strong>
                                                             </span>
                                                             <button
                                                                 onClick={() => saveCreditosMutation.mutate(creditos)}
@@ -3555,7 +3548,6 @@ const GasCloseout = () => {
                                             </tr>
                                         )}
                                         {vales.map(v => {
-                                            const itemPrecio = parseFloat(v.cantidad) > 0 ? (parseFloat(v.monto) / parseFloat(v.cantidad)).toFixed(2) : '0.00';
                                             return (
                                                 <tr key={v.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-1.5 py-1">
@@ -3646,23 +3638,22 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
-                                                        ${itemPrecio}
+                                                        {parseFloat(v.cantidad) > 0 ? <Money value={parseFloat(v.monto) / parseFloat(v.cantidad)} /> : <Money value={0} />}
                                                     </td>
                                                     <td className="px-1.5 py-1">
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            min="0"
-                                                            value={v.monto}
-                                                            onChange={(e) => {
-                                                                const monto = parseFloat(e.target.value) || 0;
-                                                                handleValeChange(v.id, 'monto', monto);
-                                                                const cant = parseFloat(v.cantidad) || 0;
-                                                                handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
+                                                    <MoneyInput
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={v.monto}
+                                                        onChange={(e) => {
+                                                            const monto = parseFloat(e.target.value) || 0;
+                                                            handleValeChange(v.id, 'monto', monto);
+                                                            const cant = parseFloat(v.cantidad) || 0;
+                                                            handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                        }}
+                                                        disabled={estado === 'cerrado'}
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
+                                                    />
                                                     </td>
                                                     <td className="px-1.5 py-1">
                                                         <input
@@ -3714,7 +3705,7 @@ const GasCloseout = () => {
                                                         </button>
                                                         <div className="flex items-center gap-4">
                                                             <span className="text-xs text-slate-500">
-                                                                Total Vales: <strong className="text-red-600 font-mono text-sm">${valesTotal.toFixed(2)}</strong>
+                                                                Total Vales: <strong className="text-red-600 font-mono text-sm"><Money value={valesTotal} /></strong>
                                                             </span>
                                                             <button
                                                                 onClick={() => saveValesMutation.mutate(vales)}
@@ -3782,16 +3773,16 @@ const GasCloseout = () => {
                                                     <tr key={i} className={`hover:bg-slate-50 transition-colors ${parseFloat(row.diferencia_monto) > 0 ? 'bg-amber-50/50' : ''}`}>
                                                         <td className="px-2 py-1 font-bold text-slate-700">{row.codigo_producto}</td>
                                                         <td className="px-2 py-1 text-slate-600">{row.descripcion_producto}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">${parseFloat(row.precio).toFixed(2)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700"><Money value={parseFloat(row.precio)} /></td>
                                                         <td className="px-2 py-1 text-right font-mono text-slate-700">{parseFloat(row.lectura_galones).toFixed(5)}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">${parseFloat(row.lectura_monto).toFixed(2)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700"><Money value={parseFloat(row.lectura_monto)} /></td>
                                                         <td className="px-2 py-1 text-right font-mono text-slate-700">{parseFloat(row.venta_galones).toFixed(5)}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">${parseFloat(row.venta_monto).toFixed(2)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700"><Money value={parseFloat(row.venta_monto)} /></td>
                                                         <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_galones) > 0 ? 'text-red-600' : parseFloat(row.diferencia_galones) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
                                                             {parseFloat(row.diferencia_galones).toFixed(5)}
                                                         </td>
                                                         <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_monto) > 0 ? 'text-red-600' : parseFloat(row.diferencia_monto) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                                            ${parseFloat(row.diferencia_monto).toFixed(2)}
+                                                            <Money value={parseFloat(row.diferencia_monto)} />
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -3800,14 +3791,14 @@ const GasCloseout = () => {
                                                 <tr>
                                                     <td colSpan={3} className="px-2 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
                                                     <td className="px-2 py-1.5 text-right font-mono text-slate-800">{diferenciasData.totales.lectura_galones.toFixed(5)}</td>
-                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">${diferenciasData.totales.lectura_monto.toFixed(2)}</td>
+                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={diferenciasData.totales.lectura_monto} /></td>
                                                     <td className="px-2 py-1.5 text-right font-mono text-slate-800">{diferenciasData.totales.venta_galones.toFixed(5)}</td>
-                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">${diferenciasData.totales.venta_monto.toFixed(2)}</td>
+                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={diferenciasData.totales.venta_monto} /></td>
                                                     <td className={`px-2 py-1.5 text-right font-mono ${diferenciasData.totales.diferencia_galones > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                                                         {diferenciasData.totales.diferencia_galones.toFixed(5)}
                                                     </td>
                                                     <td className={`px-2 py-1.5 text-right font-mono ${diferenciasData.totales.diferencia_monto > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                        ${diferenciasData.totales.diferencia_monto.toFixed(2)}
+                                                        <Money value={diferenciasData.totales.diferencia_monto} />
                                                     </td>
                                                 </tr>
                                             </tfoot>
@@ -3815,7 +3806,7 @@ const GasCloseout = () => {
                                         <div className="mt-4 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                                             <span className="text-xs text-slate-500">
                                                 Diferencias Positivas: <strong className="text-red-600 font-mono">
-                                                    ${(diferenciasData.totales.diferencia_monto > 0 ? diferenciasData.totales.diferencia_monto : 0).toFixed(2)}
+                                                    <Money value={diferenciasData.totales.diferencia_monto > 0 ? diferenciasData.totales.diferencia_monto : 0} />
                                                 </strong>
                                             </span>
                                             <button
@@ -3880,7 +3871,6 @@ const GasCloseout = () => {
                                             </tr>
                                         )}
                                         {anticiposDesp.map(a => {
-                                            const itemPrecio = parseFloat(a.cantidad) > 0 ? (parseFloat(a.monto) / parseFloat(a.cantidad)).toFixed(2) : '0.00';
                                             const excedeSaldo = parseFloat(a.monto) > 0 && parseFloat(a.saldo_disponible) > 0 && parseFloat(a.monto) > parseFloat(a.saldo_disponible);
                                             return (
                                                 <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
@@ -3906,7 +3896,7 @@ const GasCloseout = () => {
                                                     <td className="px-1.5 py-1 text-center font-mono font-bold text-xs">
                                                         {a.cliente_id ? (
                                                             <span className={`${parseFloat(a.saldo_disponible) && parseFloat(a.monto) > parseFloat(a.saldo_disponible) ? 'text-red-600' : 'text-indigo-600'}`}>
-                                                                ${parseFloat(a.saldo_disponible || 0).toFixed(2)}
+                                                                <Money value={parseFloat(a.saldo_disponible || 0)} />
                                                             </span>
                                                         ) : (
                                                             <span className="text-slate-300">---</span>
@@ -3981,23 +3971,22 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
-                                                        ${itemPrecio}
+                                                        {parseFloat(a.cantidad) > 0 ? <Money value={parseFloat(a.monto) / parseFloat(a.cantidad)} /> : <Money value={0} />}
                                                     </td>
                                                     <td className="px-1.5 py-1">
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            min="0"
-                                                            value={a.monto}
-                                                            onChange={(e) => {
-                                                                const monto = parseFloat(e.target.value) || 0;
-                                                                handleAnticipoChange(a.id, 'monto', monto);
-                                                                const cant = parseFloat(a.cantidad) || 0;
-                                                                handleAnticipoChange(a.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={`w-full bg-white border rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono ${excedeSaldo ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
-                                                        />
+                                                    <MoneyInput
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={a.monto}
+                                                        onChange={(e) => {
+                                                            const monto = parseFloat(e.target.value) || 0;
+                                                            handleAnticipoChange(a.id, 'monto', monto);
+                                                            const cant = parseFloat(a.cantidad) || 0;
+                                                            handleAnticipoChange(a.id, 'precio', cant > 0 ? monto / cant : 0);
+                                                        }}
+                                                        disabled={estado === 'cerrado'}
+                                                        className={`w-full bg-white border rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono ${excedeSaldo ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
+                                                    />
                                                     </td>
                                                     <td className="px-1.5 py-1">
                                                         <input
@@ -4049,7 +4038,7 @@ const GasCloseout = () => {
                                                         </button>
                                                         <div className="flex items-center gap-4">
                                                             <span className="text-xs text-slate-500">
-                                                                Total Anticipos: <strong className="text-red-600 font-mono text-sm">${anticiposDespTotal.toFixed(2)}</strong>
+                                                                Total Anticipos: <strong className="text-red-600 font-mono text-sm"><Money value={anticiposDespTotal} /></strong>
                                                             </span>
                                                             <button
                                                                 onClick={() => saveAnticiposDespMutation.mutate(anticiposDesp)}

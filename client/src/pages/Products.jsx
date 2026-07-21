@@ -7,6 +7,7 @@ import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Sea
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
+import Money, { MoneyInput } from '../components/ui/Money';
 
 const Products = () => {
     const queryClient = useQueryClient();
@@ -229,7 +230,7 @@ const Products = () => {
                                 <div className="text-[10px] text-slate-500 truncate max-w-xs">{p.descripcion}</div>
                             </td>
                             <td className="px-3 py-1">
-                                <div className="text-xs font-bold text-slate-900">${parseFloat(p.precio_unitario).toFixed(2)}</div>
+                                <div className="text-xs font-bold text-slate-900"><Money value={p.precio_unitario} /></div>
                                 <div className="text-[9px] text-indigo-500 font-bold uppercase">
                                     {p.category_name || 'Sin Categoría'}
                                 </div>
@@ -336,7 +337,7 @@ const Products = () => {
                                     <label className={labelCls}>Precio Unitario</label>
                                     <div className="relative">
                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">$</span>
-                                        <input name="precio_unitario" type="number" step="0.0001" defaultValue={selectedProduct?.precio_unitario} required className={`${fieldCls} pl-7`} />
+                                        <MoneyInput name="precio_unitario" step="0.0001" defaultValue={selectedProduct?.precio_unitario} required className={`${fieldCls} pl-7`} />
                                     </div>
                                 </div>
                                 <div>

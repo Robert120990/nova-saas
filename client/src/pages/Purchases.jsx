@@ -34,6 +34,7 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money, { MoneyInput } from '../components/ui/Money';
 
 const Purchases = () => {
     const { user } = useAuth();
@@ -939,7 +940,7 @@ const Purchases = () => {
                                                     <input type="number" value={item.cantidad} onChange={(e) => updateItem(item.product_id, 'cantidad', parseFloat(e.target.value))} className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" />
                                                 </td>
                                                 <td className="px-5 py-1.5">
-                                                    <input type="number" value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', parseFloat(e.target.value))} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
+                                                    <MoneyInput value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', parseFloat(e.target.value))} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
                                                 </td>
                                                 <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]">${item.total.toFixed(2)}</td>
                                                 <td className="px-5 py-1.5 text-right">
@@ -993,7 +994,7 @@ const Purchases = () => {
                                         <div className="flex flex-col gap-1">
                                             <span className="text-[8px] font-black text-rose-400 uppercase text-[Spanish]">Retención ({(taxSettings?.retencion_rate || 1)}%)</span>
                                             <div className="relative group">
-                                                <input type="number" step="0.01" value={totals.retencion.toFixed(2)} onChange={(e) => setManualRetencion(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-rose-500 group-hover:bg-white/10" />
+                                                <MoneyInput step="0.01" value={totals.retencion.toFixed(2)} onChange={(e) => setManualRetencion(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-rose-500 group-hover:bg-white/10" />
                                                 <Settings size={8} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-rose-400" />
                                             </div>
                                         </div>
@@ -1002,7 +1003,7 @@ const Purchases = () => {
                                         <div className="flex flex-col gap-1">
                                             <span className="text-[8px] font-black text-emerald-400 uppercase text-[Spanish]">Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span>
                                             <div className="relative group">
-                                                <input type="number" step="0.01" value={totals.percepcion.toFixed(2)} onChange={(e) => setManualPercepcion(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-emerald-500 group-hover:bg-white/10" />
+                                                <MoneyInput step="0.01" value={totals.percepcion.toFixed(2)} onChange={(e) => setManualPercepcion(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-emerald-500 group-hover:bg-white/10" />
                                                 <Settings size={8} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-emerald-400" />
                                             </div>
                                         </div>
@@ -1016,7 +1017,7 @@ const Purchases = () => {
                                     </div>
                                     <div className="space-y-1">
                                         <span className="text-[8px] font-black text-slate-500 uppercase text-[Spanish]">Exenta</span>
-                                        <input type="number" step="0.01" value={totals.exenta.toFixed(2)} onChange={(e) => setManualExenta(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none" />
+                                        <MoneyInput step="0.01" value={totals.exenta.toFixed(2)} onChange={(e) => setManualExenta(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none" />
                                     </div>
                                 </div>
 
@@ -1078,7 +1079,7 @@ const Purchases = () => {
                                     <td className="px-5 py-3"><span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase">{c.tipo_documento_nombre}</span></td>
                                     <td className="px-5 py-3 text-[9px] font-bold text-slate-400">{new Date(c.fecha).toLocaleDateString()}</td>
                                     <td className="px-5 py-3 text-[10px] font-bold text-slate-600 uppercase">{c.provider_nombre}</td>
-                                    <td className="px-5 py-3 font-black text-slate-900 text-[10px]">${parseFloat(c.monto_total).toFixed(2)}</td>
+                                    <td className="px-5 py-3 font-black text-slate-900 text-[10px]"><Money value={c.monto_total} /></td>
                                     <td className="px-5 py-3">
                                         <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
                                     </td>
@@ -1202,8 +1203,8 @@ const Purchases = () => {
                                                         <tr key={idx} className="text-[10px] font-bold text-slate-600">
                                                             <td className="px-4 py-2 uppercase italic">{item.nombre}</td>
                                                             <td className="px-4 py-2 text-right font-black text-slate-800">{parseFloat(item.cantidad).toFixed(2)}</td>
-                                                            <td className="px-4 py-2 text-right text-slate-400">${parseFloat(item.precio_unitario).toFixed(2)}</td>
-                                                            <td className="px-4 py-2 text-right font-black text-indigo-600">${parseFloat(item.total).toFixed(2)}</td>
+                                                            <td className="px-4 py-2 text-right text-slate-400"><Money value={item.precio_unitario} /></td>
+                                                            <td className="px-4 py-2 text-right font-black text-indigo-600"><Money value={item.total} /></td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -1216,7 +1217,7 @@ const Purchases = () => {
                                             <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Monto Total Invertido</p>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase italic">Incluye impuestos registrados</p>
                                         </div>
-                                        <p className="text-2xl font-black tracking-tighter text-indigo-600">${parseFloat(purchaseDetail.monto_total).toFixed(2)}</p>
+                                        <p className="text-2xl font-black tracking-tighter text-indigo-600"><Money value={purchaseDetail.monto_total} /></p>
                                     </div>
                                 </>
                             )}

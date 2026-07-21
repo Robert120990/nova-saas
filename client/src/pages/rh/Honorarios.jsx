@@ -8,6 +8,7 @@ import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Search, FileSignature } from 'lucide-react';
+import { MoneyInput } from '../../components/ui/Money';
 
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
@@ -247,7 +248,7 @@ const Honorarios = () => {
                     <div className="grid grid-cols-3 gap-3">
                         <div>
                             <label className={labelCls}>Monto ($)</label>
-                            <input type="number" value={monto || ''} onChange={e => setMonto(parseFloat(e.target.value) || 0)} step="0.01" min="0" className={fieldCls} />
+                            <MoneyInput value={monto || ''} onChange={e => setMonto(parseFloat(e.target.value) || 0)} step="0.01" min="0" className={fieldCls} />
                         </div>
                         <div>
                             <label className={labelCls}>Renta ISR (10%)</label>

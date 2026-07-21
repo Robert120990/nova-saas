@@ -12,6 +12,7 @@ import {
     Terminal, FileJson, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
     MoreHorizontal, ChevronDown, Building2
 } from 'lucide-react';
+import Money from '../components/ui/Money';
 
 const formatDateTime = (dateStr) => {
     if (!dateStr || dateStr === 'N/A') return 'N/A 00:00';
@@ -505,7 +506,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                 </div>
                             </td>
                             <td className="px-4 py-1 font-black text-slate-900 text-[12.5px]">
-                                ${parseFloat(sale.total_pagar).toFixed(2)}
+                                <Money value={sale.total_pagar} />
                             </td>
                             <td className="px-6 py-1 text-right">
                                 <div className="flex justify-end">
@@ -735,8 +736,8 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                             <tr key={idx} className="text-xs">
                                                 <td className="py-3 px-2 font-bold text-slate-700">{item.descripcion}</td>
                                                 <td className="py-3 px-2 text-center font-black text-slate-900">{item.cantidad}</td>
-                                                <td className="py-3 px-2 text-right font-medium text-slate-600">${parseFloat(item.precio_unitario).toFixed(2)}</td>
-                                                <td className="py-3 px-2 text-right font-medium text-rose-500">-${parseFloat(item.monto_descuento || 0).toFixed(2)}</td>
+                                                <td className="py-3 px-2 text-right font-medium text-slate-600"><Money value={item.precio_unitario} /></td>
+                                                <td className="py-3 px-2 text-right font-medium text-rose-500">-<Money value={item.monto_descuento || 0} /></td>
                                                 <td className="py-3 px-2 text-right font-black text-slate-900">
                                                     ${((item.cantidad * item.precio_unitario) - (item.monto_descuento || 0)).toFixed(2)}
                                                 </td>
@@ -761,7 +762,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                                 <Banknote size={14} className="text-emerald-500" />
                                                 {pay.metodo_pago === '01' ? 'Efectivo' : 'Tarjeta/Transferencia'}
                                             </div>
-                                            <span className="font-black text-slate-900">${parseFloat(pay.monto).toFixed(2)}</span>
+                                            <span className="font-black text-slate-900"><Money value={pay.monto} /></span>
                                         </div>
                                     ))}
                                 </div>
@@ -769,16 +770,16 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
 
                             <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl space-y-4">
                                 <div className="space-y-2 opacity-80 text-[10px] font-bold uppercase tracking-wider">
-                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>Gravada</span><span>${parseFloat(saleDetail.total_gravado).toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>IVA</span><span>${parseFloat(saleDetail.total_iva).toFixed(2)}</span></div>
-                                    {parseFloat(saleDetail.fovial) > 0 && <div className="flex justify-between border-b border-white/10 pb-1"><span>FOVIAL</span><span>${parseFloat(saleDetail.fovial).toFixed(2)}</span></div>}
-                                    {parseFloat(saleDetail.cotrans) > 0 && <div className="flex justify-between border-b border-white/10 pb-1"><span>COTRANS</span><span>${parseFloat(saleDetail.cotrans).toFixed(2)}</span></div>}
-                                    {parseFloat(saleDetail.total_exento) > 0 && <div className="flex justify-between border-b border-white/10 pb-1"><span>Exenta</span><span>${parseFloat(saleDetail.total_exento).toFixed(2)}</span></div>}
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>Retención</span><span>-${parseFloat(saleDetail.iva_retenido || 0).toFixed(2)}</span></div>
+                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>Gravada</span><span><Money value={saleDetail.total_gravado} /></span></div>
+                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>IVA</span><span><Money value={saleDetail.total_iva} /></span></div>
+                                    {parseFloat(saleDetail.fovial) > 0 && <div className="flex justify-between border-b border-white/10 pb-1"><span>FOVIAL</span><span><Money value={saleDetail.fovial} /></span></div>}
+                                    {parseFloat(saleDetail.cotrans) > 0 && <div className="flex justify-between border-b border-white/10 pb-1"><span>COTRANS</span><span><Money value={saleDetail.cotrans} /></span></div>}
+                                    {parseFloat(saleDetail.total_exento) > 0 && <div className="flex justify-between border-b border-white/10 pb-1"><span>Exenta</span><span><Money value={saleDetail.total_exento} /></span></div>}
+                                    <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>Retención</span><span>-<Money value={saleDetail.iva_retenido || 0} /></span></div>
                                 </div>
                                 <div className="flex items-end justify-between">
                                     <span className="text-[10px] font-black uppercase text-indigo-400">Total Pagado</span>
-                                    <span className="text-4xl font-black tracking-tighter">${parseFloat(saleDetail.total_pagar).toFixed(2)}</span>
+                                    <span className="text-4xl font-black tracking-tighter"><Money value={saleDetail.total_pagar} /></span>
                                 </div>
                             </div>
                         </div>

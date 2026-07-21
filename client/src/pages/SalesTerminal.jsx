@@ -29,6 +29,7 @@ import Modal from '../components/ui/Modal';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
+import Money, { MoneyInput } from '../components/ui/Money';
 
 const SalesTerminal = () => {
     const navigate = useNavigate();
@@ -1683,7 +1684,7 @@ const SalesTerminal = () => {
                                                         <div className="font-bold text-xs text-slate-700">${(tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : parseFloat(item.precio || 0)).toFixed(2)}</div>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs">-${parseFloat(item.descuento || 0).toFixed(2)}</td>
+                                                <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs">-<Money value={item.descuento || 0} /></td>
                                                 <td className="px-4 py-4 text-right font-black text-slate-900 text-xs">
                                                     ${(tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))).toFixed(2)}
                                                 </td>
@@ -1832,8 +1833,7 @@ const SalesTerminal = () => {
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Monto a Recibir</label>
-                                        <input 
-                                            type="number"
+                                        <MoneyInput 
                                             value={currentPayment.monto}
                                             onChange={(e) => setCurrentPayment({...currentPayment, monto: e.target.value})}
                                             placeholder="0.00"
@@ -1928,7 +1928,7 @@ const SalesTerminal = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-6">
-                                            <span className="text-xl font-black text-slate-900 tracking-tight">${parseFloat(p.monto).toFixed(2)}</span>
+                                            <span className="text-xl font-black text-slate-900 tracking-tight"><Money value={p.monto} /></span>
                                             <button onClick={() => setPayments(payments.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={20} /></button>
                                         </div>
                                     </div>
@@ -1987,7 +1987,7 @@ const SalesTerminal = () => {
                                         <div className="flex-1 min-w-0">
                                             <div className="font-bold text-slate-900 text-sm truncate leading-tight">{c.name}</div>
                                             <div className="text-[10px] font-mono text-slate-400 font-bold uppercase">{c.barcode}</div>
-                                            <div className="font-black text-amber-700 mt-0.5">${parseFloat(c.price || 0).toFixed(2)}</div>
+                                            <div className="font-black text-amber-700 mt-0.5"><Money value={c.price || 0} /></div>
                                         </div>
                                     </button>
                                 ))}
@@ -1999,7 +1999,7 @@ const SalesTerminal = () => {
                                         <div className="flex-1 min-w-0">
                                             <div className="font-bold text-slate-900 text-sm truncate leading-tight">{p.nombre}</div>
                                             <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">{p.codigo}</div>
-                                            <div className="font-black mt-0.5 text-slate-700">${parseFloat(p.precio_unitario || 0).toFixed(2)}</div>
+                                            <div className="font-black mt-0.5 text-slate-700"><Money value={p.precio_unitario || 0} /></div>
                                         </div>
                                     </button>
                                 ))}
@@ -2079,7 +2079,7 @@ const SalesTerminal = () => {
                                                                 {sale.tipo_documento_name} - {sale.numero_control || sale.dte_control || sale.codigo_generacion || `ID: ${sale.id}`}
                                                             </div>
                                                             <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
-                                                                {new Date(sale.fecha_emision).toLocaleDateString()} • TOTAL: ${parseFloat(sale.total_pagar).toFixed(2)}
+                                                                {new Date(sale.fecha_emision).toLocaleDateString()} • TOTAL: <Money value={sale.total_pagar} />
                                                             </div>
                                                         </div>
                                                         <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
+import Money from '../components/ui/Money';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,11 +52,11 @@ const DetailsModal = ({ doc, onClose }) => {
                     <div className="space-y-6">
                         <div>
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Monto Original</span>
-                            <span className="text-lg font-black text-slate-800 underline tracking-tighter decoration-rose-200">${parseFloat(doc.total_original || 0).toFixed(2)}</span>
+                            <span className="text-lg font-black text-slate-800 underline tracking-tighter decoration-rose-200"><Money value={doc.total_original || 0} /></span>
                         </div>
                         <div>
                             <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest block mb-1">Saldo Pendiente</span>
-                            <span className="text-lg font-black text-rose-600 underline tracking-tighter decoration-rose-500">${parseFloat(doc.saldo_pendiente || 0).toFixed(2)}</span>
+                            <span className="text-lg font-black text-rose-600 underline tracking-tighter decoration-rose-500"><Money value={doc.saldo_pendiente || 0} /></span>
                         </div>
                     </div>
                     <div className="space-y-6">
@@ -99,7 +100,7 @@ const ViewModal = ({ paymentId, onClose }) => {
                                 </div>
                                 <div>
                                     <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest block mb-1">Monto Pagado</span>
-                                    <span className="text-3xl font-black text-slate-900 tracking-tighter">${parseFloat(pay.monto || 0).toFixed(2)}</span>
+                                    <span className="text-3xl font-black text-slate-900 tracking-tighter"><Money value={pay.monto || 0} /></span>
                                 </div>
                             </div>
                             <div className="space-y-6 text-right">
@@ -354,7 +355,7 @@ const AddProviderPayment = () => {
                                 </div>
                                 <div>
                                     <h3 className="text-[10px] font-black uppercase tracking-widest text-rose-100 italic">Saldo Pendiente</h3>
-                                    <p className="text-xl font-black leading-tight tracking-tighter">${parseFloat(statementData.total_balance || 0).toFixed(2)}</p>
+                                    <p className="text-xl font-black leading-tight tracking-tighter"><Money value={statementData.total_balance || 0} /></p>
                                 </div>
                            </div>
                            <div className="text-right hidden md:block border-l border-white/20 pl-4 border-solid">
@@ -395,7 +396,7 @@ const AddProviderPayment = () => {
                                             </td>
                                             <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">{formatDate(d.fecha)}</td>
                                             <td className="px-6 py-4 text-right">
-                                                <span className="text-xs font-black text-slate-900 tracking-tighter">${parseFloat(d.originalSaldo || 0).toFixed(2)}</span>
+                                                <span className="text-xs font-black text-slate-900 tracking-tighter"><Money value={d.originalSaldo || 0} /></span>
                                             </td>
                                             <td className="px-6 py-4 text-right pr-10">
                                                  <div className="flex items-center justify-end gap-2">
@@ -495,7 +496,7 @@ const AddProviderPayment = () => {
                                                 <span className="text-[9px] font-bold text-rose-300 uppercase tracking-widest truncate max-w-[120px]">{p.proveedor_nombre}</span>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-4 text-right font-black text-slate-900 tracking-tighter text-xs underline decoration-rose-100">${parseFloat(p.monto || 0).toFixed(2)}</td>
+                                        <td className="px-8 py-4 text-right font-black text-slate-900 tracking-tighter text-xs underline decoration-rose-100"><Money value={p.monto || 0} /></td>
                                         <td className="px-8 py-4 text-center"><span className={`px-2 py-0.5 rounded-xl text-[8px] font-black uppercase border shadow-sm ${metodoBadge(p.metodo_pago)}`}>{p.metodo_pago}</span></td>
                                         <td className="px-8 py-4">
                                             <div className="flex items-center justify-end gap-1">

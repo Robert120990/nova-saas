@@ -19,6 +19,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
+import Money from '../components/ui/Money';
 
 const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '—';
@@ -260,7 +261,7 @@ const ProviderStatement = () => {
                         </div>
                         <div>
                             <h3 className="text-[9px] font-black uppercase tracking-widest text-rose-100">Deuda Total Pendiente</h3>
-                            <p className="text-2xl font-black leading-tight">${parseFloat(totalBalance).toFixed(2)}</p>
+                            <p className="text-2xl font-black leading-tight"><Money value={totalBalance} /></p>
                         </div>
                     </div>
                 </div>
@@ -315,9 +316,9 @@ const ProviderStatement = () => {
                                                 m.concepto === 'COMPRA' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
                                             }`}>{m.concepto}</span>
                                         </td>
-                                        <td className="px-8 py-4 text-xs font-black text-rose-500">{m.cargo > 0 ? `+ ${fmt(m.cargo)}` : ''}</td>
-                                        <td className="px-8 py-4 text-xs font-black text-emerald-500">{m.abono > 0 ? `- ${fmt(m.abono)}` : ''}</td>
-                                        <td className="px-8 py-4 text-xs font-black text-slate-900 bg-slate-50/30">{fmt(m.balance)}</td>
+                                        <td className="px-8 py-4 text-xs font-black text-rose-500">{m.cargo > 0 ? <span>+ <Money value={m.cargo} /></span> : ''}</td>
+                                        <td className="px-8 py-4 text-xs font-black text-emerald-500">{m.abono > 0 ? <span>- <Money value={m.abono} /></span> : ''}</td>
+                                        <td className="px-8 py-4 text-xs font-black text-slate-900 bg-slate-50/30"><Money value={m.balance} /></td>
                                     </tr>
                                 )}
                             />
@@ -363,24 +364,24 @@ const ProviderStatement = () => {
                                             <td className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase">{fmtDate(d.fecha)}</td>
                                             <td className="px-6 py-3 text-[10px] font-black text-rose-500 font-mono tracking-tighter">{d.documento}</td>
                                             <td className="px-6 py-3 text-[10px] font-black text-slate-900 uppercase">{d.tipo}</td>
-                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d0_30 > 0 ? fmt(d.d0_30) : '—'}</td>
-                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d31_60 > 0 ? fmt(d.d31_60) : '—'}</td>
-                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d61_90 > 0 ? fmt(d.d61_90) : '—'}</td>
-                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d91_180 > 0 ? fmt(d.d91_180) : '—'}</td>
-                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d181_365 > 0 ? fmt(d.d181_365) : '—'}</td>
-                                            <td className="px-4 py-3 text-[10px] font-bold text-right text-rose-600">{d.d365_plus > 0 ? fmt(d.d365_plus) : '—'}</td>
+                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d0_30 > 0 ? <Money value={d.d0_30} /> : '—'}</td>
+                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d31_60 > 0 ? <Money value={d.d31_60} /> : '—'}</td>
+                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d61_90 > 0 ? <Money value={d.d61_90} /> : '—'}</td>
+                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d91_180 > 0 ? <Money value={d.d91_180} /> : '—'}</td>
+                                            <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d181_365 > 0 ? <Money value={d.d181_365} /> : '—'}</td>
+                                            <td className="px-4 py-3 text-[10px] font-bold text-right text-rose-600">{d.d365_plus > 0 ? <Money value={d.d365_plus} /> : '—'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot className="bg-rose-50/30 border-t-2 border-rose-100/50">
                                     <tr className="font-black text-[10px] text-rose-600 italic">
                                         <td colSpan={3} className="px-6 py-4 text-xs uppercase tracking-widest text-rose-900">Totales Saldo</td>
-                                        <td className="px-4 py-4 text-right">{fmt(agingData.totals.t0_30)}</td>
-                                        <td className="px-4 py-4 text-right">{fmt(agingData.totals.t31_60)}</td>
-                                        <td className="px-4 py-4 text-right">{fmt(agingData.totals.t61_90)}</td>
-                                        <td className="px-4 py-4 text-right">{fmt(agingData.totals.t91_180)}</td>
-                                        <td className="px-4 py-4 text-right">{fmt(agingData.totals.t181_365)}</td>
-                                        <td className="px-4 py-4 text-right">{fmt(agingData.totals.t365_plus)}</td>
+                                        <td className="px-4 py-4 text-right"><Money value={agingData.totals.t0_30} /></td>
+                                        <td className="px-4 py-4 text-right"><Money value={agingData.totals.t31_60} /></td>
+                                        <td className="px-4 py-4 text-right"><Money value={agingData.totals.t61_90} /></td>
+                                        <td className="px-4 py-4 text-right"><Money value={agingData.totals.t91_180} /></td>
+                                        <td className="px-4 py-4 text-right"><Money value={agingData.totals.t181_365} /></td>
+                                        <td className="px-4 py-4 text-right"><Money value={agingData.totals.t365_plus} /></td>
                                     </tr>
                                 </tfoot>
                             </table>
