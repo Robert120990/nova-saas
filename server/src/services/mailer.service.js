@@ -341,6 +341,8 @@ module.exports = {
     sendProviderStatementEmail,
     sendPaymentReceiptEmail,
     sendProviderPaymentReceiptEmail,
+    getSMTPSettings,
+    createTransporter,
     sendMail,
     // Aliases or specific reports can be added below
     sendCustomerAgingEmail: async (pdfData, branchId, toEmail) => {

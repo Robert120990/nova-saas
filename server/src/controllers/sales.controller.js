@@ -2316,6 +2316,180 @@ const editDTEItems = async (req, res) => {
     }
 };
 
+const getPublicDTEInfo = async (req, res) => {
+    const { codigo } = req.params;
+    try {
+        const [dte] = await pool.query(
+            `SELECT d.tipo_dte, d.numero_control, d.status, d.ambiente, d.sello_recepcion, d.fh_procesamiento,
+                    h.fecha_emision, h.total_pagar,
+                    comp.razon_social as company_name,
+                    b.nombre as branch_name,
+                    COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as receptor_nombre,
+                    c.nit as receptor_nit, c.nrc as receptor_nrc,
+                    c.direccion as receptor_direccion
+             FROM dtes d
+             LEFT JOIN sales_headers h ON d.codigo_generacion = h.codigo_generacion
+             LEFT JOIN companies comp ON h.company_id = comp.id
+             LEFT JOIN branches b ON h.branch_id = b.id
+             LEFT JOIN customers c ON h.customer_id = c.id
+             WHERE d.codigo_generacion = ?`,
+            [codigo]
+        );
+        if (dte.length === 0) {
+            return res.status(404).json({ encontrado: false, message: 'DTE no encontrado' });
+        }
+        res.json({ encontrado: true, ...dte[0] });
+    } catch (error) {
+        console.error('[GetPublicDTEInfo] Error:', error);
+        res.status(500).json({ message: 'Error al obtener información del DTE' });
+    }
+};
+
+const getPublicDTEJson = async (req, res) => {
+    const { codigo } = req.params;
+    try {
+        const [dte] = await pool.query(
+            'SELECT json_original, numero_control FROM dtes WHERE codigo_generacion = ?',
+            [codigo]
+        );
+        if (dte.length === 0) {
+            return res.status(404).json({ message: 'DTE no encontrado' });
+        }
+        const json = typeof dte[0].json_original === 'string' ? JSON.parse(dte[0].json_original) : dte[0].json_original;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=DTE-${dte[0].numero_control}.json`);
+        res.json(json);
+    } catch (error) {
+        console.error('[GetPublicDTEJson] Error:', error);
+        res.status(500).json({ message: 'Error al obtener JSON del DTE' });
+    }
+};
+
+const sendPublicDTEEmail = async (req, res) => {
+    const { codigo } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: 'El correo electrónico es requerido' });
+    }
+
+    try {
+        const [rows] = await pool.query(
+            `SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
+                    c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                    b.nombre as branch_name, cat.description as tipo_documento_name
+             FROM dtes d
+             JOIN sales_headers h ON d.codigo_generacion = h.codigo_generacion
+             JOIN companies c ON h.company_id = c.id
+             JOIN branches b ON h.branch_id = b.id
+             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+             WHERE d.codigo_generacion = ?`,
+            [codigo]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'DTE no encontrado' });
+        }
+
+        const venta = rows[0];
+        const dteJson = typeof venta.json_original === 'string' ? JSON.parse(venta.json_original) : venta.json_original;
+
+        if (!dteJson) {
+            return res.status(400).json({ message: 'El DTE no tiene JSON original' });
+        }
+
+        const dteNames = {
+            '01': 'Factura', '03': 'Crédito Fiscal', '04': 'Nota de Remisión',
+            '05': 'Nota de Crédito', '06': 'Nota de Débito', '07': 'Comprobante de Retención',
+            '08': 'Comprobante de Liquidación', '09': 'Documento Contable de Liquidación',
+            '11': 'Factura de Exportación', '14': 'Factura de Sujeto Excluido', '15': 'Comprobante de Donación'
+        };
+        const tipoNombre = dteNames[venta.tipo_documento] || 'Documento Tributario';
+
+        const reportData = {
+            emisor: {
+                nombre: venta.company_name,
+                nit: venta.company_nit,
+                nrc: venta.company_nrc,
+                descActividad: dteJson.emisor?.descActividad,
+                direccion: dteJson.emisor?.direccion,
+                telefono: dteJson.emisor?.telefono,
+                correo: dteJson.emisor?.correo,
+                departamento_nombre: 'SS',
+                municipio_nombre: 'SS'
+            },
+            receptor: {
+                nombre: dteJson.receptor?.nombre,
+                nit: dteJson.receptor?.nit,
+                nrc: dteJson.receptor?.nrc || null,
+                numDocumento: dteJson.receptor?.numDocumento,
+                direccion: dteJson.receptor?.direccion
+            },
+            dte: {
+                tipoDte: dteJson.identificacion?.tipoDte,
+                tipoDteNombre: tipoNombre,
+                codigoGeneracion: dteJson.identificacion?.codigoGeneracion,
+                numeroControl: venta.numero_control,
+                selloRecepcion: venta.sello_recepcion
+            },
+            venta: {
+                fecha_emision: dteJson.identificacion?.fecEmi,
+                hora_emision: dteJson.identificacion?.horEmi,
+                condicion_operacion: dteJson.resumen?.condicionOperacion,
+                total_gravado: dteJson.resumen?.totalGravada || 0,
+                total_iva: dteJson.resumen?.totalIva || (dteJson.resumen?.tributos?.find(t => t.codigo === '20')?.valor || 0),
+                total_descuento: dteJson.resumen?.descuNoExenta || 0,
+                total_pagar: dteJson.resumen?.totalPagar || 0,
+                total_letras: dteJson.resumen?.totalLetras || '',
+                fovial: parseFloat(venta.fovial) || 0,
+                cotrans: parseFloat(venta.cotrans) || 0,
+                tributos: dteJson.resumen?.tributos || []
+            },
+            items: (dteJson.cuerpoDocumento || []).map(item => ({
+                cantidad: item.cantidad || 1,
+                descripcion: item.descripcion || '',
+                precioUnitario: item.precioUni || 0,
+                montoDescuento: item.montoDescu || 0,
+                totalItem: item.ventaGravada || 0
+            }))
+        };
+
+        const pdfBuffer = await pdfService.generateRTEE(reportData);
+
+        const smtp = await mailerService.getSMTPSettings(venta.branch_id, venta.company_id);
+        const transporter = mailerService.createTransporter(smtp);
+
+        await transporter.sendMail({
+            from: `"${smtp.from_name}" <${smtp.from_email}>`,
+            to: email,
+            subject: `${tipoNombre} Electrónica - ${venta.company_name}`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
+                    <h2 style="color: #4f46e5; text-align: center;">Su documento electrónico está listo</h2>
+                    <p>Estimado(a) <b>${dteJson.receptor?.nombre || 'cliente'}</b>,</p>
+                    <p>Adjunto encontrará su <b>${tipoNombre}</b> electrónica con número de control <b>${venta.numero_control}</b>.</p>
+                    <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+                        <span style="font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total a Pagar</span>
+                        <div style="font-size: 24px; font-weight: 800; color: #1e293b;">$${parseFloat(venta.total_pagar).toFixed(2)}</div>
+                    </div>
+                    <p style="font-size: 13px; color: #666;">Se incluyen dos archivos: la representación gráfica (PDF) y el archivo de datos (JSON) para su registro legal.</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
+                </div>
+            `,
+            attachments: [
+                { filename: `DTE-${venta.numero_control}.pdf`, content: pdfBuffer },
+                { filename: `DTE-${venta.numero_control}.json`, content: JSON.stringify(dteJson, null, 2) }
+            ]
+        });
+
+        res.json({ success: true, message: 'Correo enviado correctamente' });
+    } catch (error) {
+        console.error('[SendPublicDTEEmail] Error:', error);
+        res.status(500).json({ message: 'Error al enviar correo', error: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -2329,6 +2503,9 @@ module.exports = {
     exportSalesByPOSPDF,
     exportRTEE,
     getPublicRTEE,
+    getPublicDTEInfo,
+    getPublicDTEJson,
+    sendPublicDTEEmail,
     checkExistingCR,
     getContingencyStatus,
     startContingency,

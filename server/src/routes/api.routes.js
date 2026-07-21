@@ -74,6 +74,9 @@ const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.co
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
 router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
+router.get('/public/dte/:codigo/info', salesController.getPublicDTEInfo);
+router.get('/public/dte/:codigo/json', salesController.getPublicDTEJson);
+router.post('/public/dte/:codigo/send-email', salesController.sendPublicDTEEmail);
 
 // Routes
 router.use(verifyToken);

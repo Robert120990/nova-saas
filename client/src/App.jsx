@@ -7,6 +7,7 @@ import { ConfirmProvider } from './context/ConfirmContext';
 
 // Pages
 import Login from './pages/Login';
+import PublicDTE from './pages/PublicDTE';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
 import Branches from './pages/Branches';
@@ -148,6 +149,7 @@ function App() {
             <AuthProvider>
                 <Routes>
                     <Route path="/login" element={<Login />} />
+                    <Route path="/dte" element={<PublicDTE />} />
                     
                     {/* Protected Shell */}
                     <Route element={<ProtectedRoute />}>
