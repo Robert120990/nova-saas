@@ -4,7 +4,7 @@ import axios from 'axios';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 import Table from '../components/ui/Table';
-import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3 } from 'lucide-react';
+import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3, Printer, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -114,6 +114,16 @@ const GasRemesaDeliveries = () => {
             if (showDetailModal) setShowDetailModal(false);
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al eliminar entrega'),
+    });
+
+    const entregarMutation = useMutation({
+        mutationFn: (id) => axios.put(`/api/gas-station/remesa-deliveries/${id}/entregar`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
+            toast.success('Entrega marcada como entregada');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al marcar entrega'),
     });
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -231,6 +241,30 @@ const GasRemesaDeliveries = () => {
         setShowDetailModal(true);
     };
 
+    const handleMarkEntregado = async (id) => {
+        const ok = await confirm({
+            title: '¿Marcar como entregada?',
+            message: 'Una vez marcada, no se podrá editar ni eliminar la entrega.',
+            confirmLabel: 'Sí, marcar entregada',
+            variant: 'info',
+        });
+        if (ok) entregarMutation.mutate(id);
+    };
+
+    const handlePrintPdf = async (id) => {
+        try {
+            const response = await axios.get(`/api/gas-station/remesa-deliveries/${id}/pdf`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+            toast.error('Error al generar PDF');
+        }
+    };
+
     const totalMonto = useMemo(() =>
         addedRemesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0),
         [addedRemesas]
@@ -274,7 +308,7 @@ const GasRemesaDeliveries = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Fecha', 'Hora', 'Responsable', 'Comentario', 'No. Remesas', 'Monto Total', 'Acciones']}
+                    headers={['Fecha', 'Hora', 'Responsable', 'Comentario', 'No. Remesas', 'Monto Total', 'Estado', 'Acciones']}
                     data={deliveries}
                     isLoading={listLoading}
                     renderRow={(item) => (
@@ -299,10 +333,23 @@ const GasRemesaDeliveries = () => {
                             <td className="px-3 py-1">
                                 <span className="text-xs font-bold font-mono text-emerald-600">${parseFloat(item.monto_total || 0).toFixed(2)}</span>
                             </td>
+                            <td className="px-3 py-1">
+                                {item.entregado ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold text-[10px] rounded-lg"><CheckCircle size={11} /> Entregado</span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 font-bold text-[10px] rounded-lg">Pendiente</span>
+                                )}
+                            </td>
                             <td className="px-3 py-1 flex gap-1">
                                 <button onClick={() => handleViewDetail(item.id)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle"><Eye size={15} /></button>
-                                <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
-                                <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
+                                <button onClick={() => handlePrintPdf(item.id)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Imprimir PDF"><Printer size={15} /></button>
+                                {!item.entregado && (
+                                    <>
+                                        <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
+                                        <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
+                                        <button onClick={() => handleMarkEntregado(item.id)} className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors" title="Marcar entregada"><CheckCircle size={15} /></button>
+                                    </>
+                                )}
                             </td>
                         </tr>
                     )}
@@ -504,10 +551,20 @@ const GasRemesaDeliveries = () => {
                                 <span className="text-[13px] font-medium">{deliveryDetail.responsable || '—'}</span>
                             </div>
                             <div>
-                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Comentario</span>
-                                <span className="text-[13px] font-medium">{deliveryDetail.comentario || '—'}</span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Estado</span>
+                                {deliveryDetail.entregado ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold text-[11px] rounded-lg mt-1"><CheckCircle size={13} /> Entregado</span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 font-bold text-[11px] rounded-lg mt-1">Pendiente</span>
+                                )}
                             </div>
                         </div>
+                        {deliveryDetail.comentario && (
+                            <div className="px-4 -mt-3">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Comentario</span>
+                                <span className="text-[13px] font-medium">{deliveryDetail.comentario}</span>
+                            </div>
+                        )}
                         <div className="overflow-x-auto border border-slate-200 rounded-xl">
                             <table className="w-full text-left border-separate border-spacing-0">
                                 <thead>
@@ -536,13 +593,21 @@ const GasRemesaDeliveries = () => {
                                 </tbody>
                             </table>
                         </div>
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-2">
                             <button
-                                onClick={() => { setShowDetailModal(false); openEditForm(deliveryDetail.id); }}
-                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all"
+                                onClick={() => handlePrintPdf(deliveryDetail.id)}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all"
                             >
-                                <Edit3 size={14} /> Editar
+                                <Printer size={14} /> Imprimir PDF
                             </button>
+                            {!deliveryDetail.entregado && (
+                                <button
+                                    onClick={() => { setShowDetailModal(false); openEditForm(deliveryDetail.id); }}
+                                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all"
+                                >
+                                    <Edit3 size={14} /> Editar
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}

@@ -626,6 +626,8 @@ router.get('/gas-station/remesa-deliveries', gasRemesaDeliveryController.getDeli
 router.post('/gas-station/remesa-deliveries', gasRemesaDeliveryController.createDelivery);
 router.put('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.updateDelivery);
 router.get('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.getDelivery);
+router.put('/gas-station/remesa-deliveries/:id/entregar', gasRemesaDeliveryController.entregarDelivery);
+router.get('/gas-station/remesa-deliveries/:id/pdf', gasRemesaDeliveryController.getDeliveryPdf);
 router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
 
 // RRHH - AFPs

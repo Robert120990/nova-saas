@@ -125,11 +125,14 @@ exports.updateDelivery = async (req, res) => {
         const { fecha, hora, responsable, comentario, remesa_ids } = req.body;
 
         const [deliveries] = await pool.query(
-            `SELECT id FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (deliveries.length === 0) {
             return res.status(404).json({ message: 'Entrega no encontrada' });
+        }
+        if (deliveries[0].entregado) {
+            return res.status(400).json({ message: 'No se puede editar una entrega ya marcada como entregada' });
         }
 
         if (!fecha || !hora) {
@@ -269,12 +272,15 @@ exports.deleteDelivery = async (req, res) => {
         const { id } = req.params;
 
         const [deliveries] = await pool.query(
-            `SELECT id FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
 
         if (deliveries.length === 0) {
             return res.status(404).json({ message: 'Entrega no encontrada' });
+        }
+        if (deliveries[0].entregado) {
+            return res.status(400).json({ message: 'No se puede eliminar una entrega ya marcada como entregada' });
         }
 
         await pool.query(
@@ -288,5 +294,232 @@ exports.deleteDelivery = async (req, res) => {
     } catch (error) {
         console.error('Error deleteDelivery:', error);
         res.status(500).json({ message: 'Error al eliminar entrega' });
+    }
+};
+
+exports.entregarDelivery = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [deliveries] = await pool.query(
+            `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+
+        if (deliveries.length === 0) {
+            return res.status(404).json({ message: 'Entrega no encontrada' });
+        }
+        if (deliveries[0].entregado) {
+            return res.status(400).json({ message: 'La entrega ya está marcada como entregada' });
+        }
+
+        await pool.query(
+            `UPDATE gas_station_remesa_deliveries SET entregado = 1 WHERE id = ?`,
+            [id]
+        );
+
+        const [delivery] = await pool.query(`
+            SELECT d.*,
+                   COUNT(r.id) as total_remesas,
+                   COALESCE(SUM(r.monto), 0) as monto_total
+            FROM gas_station_remesa_deliveries d
+            LEFT JOIN gas_station_closeout_remesas r ON d.id = r.entrega_id
+            WHERE d.id = ?
+            GROUP BY d.id
+        `, [id]);
+
+        res.json(delivery[0]);
+    } catch (error) {
+        console.error('Error entregarDelivery:', error);
+        res.status(500).json({ message: 'Error al marcar entrega como entregada' });
+    }
+};
+
+exports.getDeliveryPdf = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [deliveries] = await pool.query(
+            `SELECT * FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+
+        if (deliveries.length === 0) {
+            return res.status(404).json({ message: 'Entrega no encontrada' });
+        }
+
+        const delivery = deliveries[0];
+
+        const [remesas] = await pool.query(
+            `SELECT r.*, c.numero_turno, c.fecha_turno,
+                    d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+             FROM gas_station_closeout_remesas r
+             JOIN gas_station_closeouts c ON r.closeout_id = c.id
+             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+             WHERE r.entrega_id = ?
+             ORDER BY r.id ASC`,
+            [id]
+        );
+
+        const [companyRows] = await pool.query(
+            `SELECT razon_social, nit, nrc, direccion FROM companies WHERE id = ?`,
+            [req.company_id]
+        );
+        const company = companyRows[0] || {};
+
+        let branchName = '';
+        if (delivery.branch_id) {
+            const [branchRows] = await pool.query(
+                `SELECT nombre FROM branches WHERE id = ?`,
+                [delivery.branch_id]
+            );
+            branchName = branchRows[0]?.nombre || '';
+        }
+
+        let cuentaBancaria = '';
+        const [settingsRows] = await pool.query(
+            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND branch_id ${delivery.branch_id ? '= ?' : 'IS NULL'} AND setting_key = 'cuenta_bancaria_pista'`,
+            delivery.branch_id ? [req.company_id, delivery.branch_id] : [req.company_id]
+        );
+        if (settingsRows.length > 0) {
+            cuentaBancaria = settingsRows[0].setting_value || '';
+        }
+
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => {
+            const pdfBuffer = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `inline; filename=entrega_${id}.pdf`);
+            res.send(pdfBuffer);
+        });
+
+        const pageWidth = doc.page.width - 80;
+        const leftMargin = 40;
+        const rightMargin = leftMargin + pageWidth;
+
+        const fmtDate = (d) => {
+            if (!d) return '';
+            const dt = new Date(d);
+            return dt.toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
+
+        const fmtMoney = (n) => `$${(parseFloat(n) || 0).toFixed(2)}`;
+
+        let y = 40;
+
+        doc.fontSize(14).font('Helvetica-Bold').text(company.razon_social || '', leftMargin, y, { align: 'center' });
+        y = doc.y + 4;
+        if (company.nit) {
+            doc.fontSize(8).font('Helvetica').text(`NIT: ${company.nit}`, { align: 'center' });
+            y = doc.y + 2;
+        }
+        if (company.direccion) {
+            doc.fontSize(8).font('Helvetica').text(company.direccion, { align: 'center' });
+            y = doc.y + 2;
+        }
+        doc.fontSize(10).font('Helvetica-Bold').text('ENTREGA DE REMESAS', { align: 'center' });
+        y = doc.y + 12;
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b');
+        doc.text('FECHA:', leftMargin, y, { continued: true });
+        doc.font('Helvetica').fillColor('#000000').text(` ${fmtDate(delivery.fecha)}`, { continued: true });
+        doc.font('Helvetica-Bold').fillColor('#64748b').text('    HORA:', { continued: true });
+        doc.font('Helvetica').fillColor('#000000').text(` ${delivery.hora || ''}`);
+        y = doc.y + 2;
+
+        doc.font('Helvetica-Bold').fillColor('#64748b');
+        doc.text('RESPONSABLE:', leftMargin, y, { continued: true });
+        doc.font('Helvetica').fillColor('#000000').text(` ${delivery.responsable || '—'}`);
+        y = doc.y + 2;
+
+        if (delivery.comentario) {
+            doc.font('Helvetica-Bold').fillColor('#64748b');
+            doc.text('COMENTARIO:', leftMargin, y, { continued: true });
+            doc.font('Helvetica').fillColor('#000000').text(` ${delivery.comentario}`);
+            y = doc.y + 2;
+        }
+
+        if (branchName) {
+            doc.font('Helvetica-Bold').fillColor('#64748b');
+            doc.text('SUCURSAL:', leftMargin, y, { continued: true });
+            doc.font('Helvetica').fillColor('#000000').text(` ${branchName}`);
+            y = doc.y + 2;
+        }
+
+        y += 8;
+
+        doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(leftMargin, y).lineTo(rightMargin, y).stroke();
+        y += 10;
+
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b');
+        const colX = {
+            codigo: leftMargin,
+            documento: leftMargin + 90,
+            turno: leftMargin + 195,
+            fechaTurno: leftMargin + 260,
+            despachador: leftMargin + 340,
+            monto: rightMargin - 70,
+        };
+        doc.text('CODIGO', colX.codigo, y);
+        doc.text('DOCUMENTO', colX.documento, y);
+        doc.text('TURNO', colX.turno, y);
+        doc.text('FECHA TURNO', colX.fechaTurno, y);
+        doc.text('DESPACHADOR', colX.despachador, y);
+        doc.text('MONTO', colX.monto, y, { align: 'right' });
+        y = doc.y + 8;
+
+        doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(leftMargin, y).lineTo(rightMargin, y).stroke();
+        y += 6;
+
+        doc.fontSize(8).font('Helvetica').fillColor('#000000');
+        let total = 0;
+
+        for (const r of remesas) {
+            if (y > 700) {
+                doc.addPage();
+                y = 40;
+            }
+
+            const monto = parseFloat(r.monto || 0);
+            total += monto;
+
+            doc.text(r.codigo || `#${r.id}`, colX.codigo, y, { width: 85 });
+            doc.text(r.documento || '—', colX.documento, y, { width: 100 });
+            doc.text(`#${r.numero_turno || ''}`, colX.turno, y, { width: 60 });
+            doc.text(r.fecha_turno ? fmtDate(r.fecha_turno) : '—', colX.fechaTurno, y, { width: 75 });
+            doc.text(r.despachador_descripcion || '—', colX.despachador, y, { width: 130 });
+            doc.text(fmtMoney(monto), colX.monto, y, { align: 'right', width: 70 });
+            y = doc.y + 4;
+        }
+
+        y += 4;
+        doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(leftMargin, y).lineTo(rightMargin, y).stroke();
+        y += 8;
+
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000000');
+        doc.text(`Total Remesas: ${remesas.length}`, leftMargin, y);
+        doc.text(`Total: ${fmtMoney(total)}`, rightMargin - 150, y, { align: 'right', width: 150 });
+
+        y = doc.y + 14;
+
+        if (cuentaBancaria) {
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b');
+            doc.text('CUENTA BANCARIA:', leftMargin, y, { continued: true });
+            doc.font('Helvetica').fillColor('#000000').text(` ${cuentaBancaria}`);
+            y = doc.y + 8;
+        }
+
+        y = doc.page.height - 50;
+        doc.fontSize(7).font('Helvetica').fillColor('#94a3b8');
+        doc.text(`Generado: ${new Date().toLocaleString('es-SV')}`, leftMargin, y, { align: 'center' });
+
+        doc.end();
+    } catch (error) {
+        console.error('Error getDeliveryPdf:', error);
+        res.status(500).json({ message: 'Error al generar PDF de entrega' });
     }
 };
