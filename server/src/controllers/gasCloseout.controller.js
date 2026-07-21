@@ -83,9 +83,10 @@ exports.initCloseout = async (req, res) => {
         }
 
         const savedNozzleAssignments = [];
-        if (Array.isArray(nozzle_assignments) && nozzle_assignments.length > 0) {
-            for (const a of nozzle_assignments) {
-                if (!a.despachador_id || !Array.isArray(a.nozzle_ids)) continue;
+        const validAssignments = (Array.isArray(nozzle_assignments) ? nozzle_assignments : [])
+            .filter(a => a.despachador_id && Array.isArray(a.nozzle_ids) && a.nozzle_ids.length > 0);
+        if (validAssignments.length > 0) {
+            for (const a of validAssignments) {
                 for (const nid of a.nozzle_ids) {
                     await pool.query(
                         `INSERT INTO gas_station_closeout_despachador_nozzles (closeout_id, despachador_id, nozzle_id) VALUES (?, ?, ?)`,
@@ -99,8 +100,8 @@ exports.initCloseout = async (req, res) => {
             if (savedIds.length > 0) {
                 const [liveAssignments] = await pool.query(
                     `SELECT despachador_id, nozzle_id FROM gas_station_despachador_nozzles
-                     WHERE company_id = ? AND despachador_id IN (?)`,
-                    [req.company_id, savedIds]
+                     WHERE company_id = ? AND despachador_id IN (?) AND (branch_id = ? OR branch_id IS NULL)`,
+                    [req.company_id, savedIds, req.user.branch_id || null]
                 );
                 for (const a of liveAssignments) {
                     await pool.query(

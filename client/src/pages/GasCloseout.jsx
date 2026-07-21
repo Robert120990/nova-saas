@@ -1056,6 +1056,9 @@ const GasCloseout = () => {
         }
         const name = sellers.find(s => s.id === parseInt(sellerId))?.nombre || '';
         setSellerName(name);
+        const sourceAssignments = despachadorNozzleAssignments.length > 0
+            ? despachadorNozzleAssignments
+            : liveNozzleAssignments;
         initMutation.mutate({
             seller_id: parseInt(sellerId),
             seller_name: name,
@@ -1065,7 +1068,7 @@ const GasCloseout = () => {
             despachadores: closeoutDespachadores,
             nozzle_assignments: closeoutDespachadores.map(d => ({
                 despachador_id: d.despachador_id,
-                nozzle_ids: despachadorNozzleAssignments
+                nozzle_ids: sourceAssignments
                     .filter(a => a.despachador_id === d.despachador_id)
                     .map(a => a.nozzle_id)
             }))

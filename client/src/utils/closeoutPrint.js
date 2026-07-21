@@ -22,7 +22,7 @@ export function buildCloseoutPrintHtml(data) {
     for (const d of despachadores) {
         const did = d.despachador_id;
         const assignedNozzles = despachadorNozzleAssignments
-            .filter(a => a.despachador_id === did)
+            .filter(a => parseInt(a.despachador_id) === did)
             .map(a => a.nozzle_id);
         let ventaTotal = 0;
         for (const r of readings) {
