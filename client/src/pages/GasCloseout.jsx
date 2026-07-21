@@ -192,6 +192,11 @@ const GasCloseout = () => {
         queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data || []
     });
 
+    const { data: gasSettings } = useQuery({
+        queryKey: ['gas-station-settings'],
+        queryFn: () => axios.get('/api/gas-station/settings').then(r => r.data),
+    });
+
     const despachadorVentas = useMemo(() => {
         if (!despachadorNozzleAssignments.length || !readings.length) return {};
         const map = {};
@@ -616,15 +621,21 @@ const GasCloseout = () => {
 
     const handleAddRemesaRow = () => {
         const tempId = Date.now();
-        setRemesas(prev => [...prev, {
-            id: tempId,
-            codigo: `REM-${closeoutId}-${prev.length + 1}`,
-            documento: '',
-            descripcion: '',
-            despachador_id: '',
-            tipo_operacion: 'venta_combustible',
-            monto: 0
-        }]);
+        setRemesas(prev => {
+            const maxDoc = prev.reduce((max, r) => {
+                const num = parseInt(r.documento, 10);
+                return !isNaN(num) && num > max ? num : max;
+            }, 0);
+            return [...prev, {
+                id: tempId,
+                codigo: `REM-${closeoutId}-${prev.length + 1}`,
+                documento: String(maxDoc + 1).padStart(2, '0'),
+                descripcion: '',
+                despachador_id: '',
+                tipo_operacion: 'venta_combustible',
+                monto: 0
+            }];
+        });
     };
 
     const handleRemesaChange = (id, field, value) => {
@@ -643,6 +654,7 @@ const GasCloseout = () => {
     const handlePrintRemesaLabel = (remesa) => {
         const companyName = user?.company_name || '';
         const branchName = user?.branch_name || '';
+        const cuentaBancaria = gasSettings?.cuenta_bancaria_pista || '';
         const barcodeValue = `${remesa.codigo || remesa.id}|${remesa.id}`;
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remesa</title>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3/dist/JsBarcode.all.min.js"><\/script>
@@ -701,6 +713,12 @@ const GasCloseout = () => {
         <div class="label">Monto</div>
         <div class="value monto">$${parseFloat(remesa.monto || 0).toFixed(2)}</div>
     </div>
+    ${cuentaBancaria ? `
+    <hr class="divider">
+    <div style="text-align:center;">
+        <div class="label">Cuenta Bancaria</div>
+        <div style="font-size:11px;font-weight:600;color:#1e293b;">${escHtml(cuentaBancaria)}</div>
+    </div>` : ''}
     <script>
         try {
             JsBarcode("#barcode", ${JSON.stringify(barcodeValue)}, {
