@@ -36,6 +36,13 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 
+const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+};
+
 const Purchases = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -195,9 +202,9 @@ const Purchases = () => {
     });
 
     const { data: purchasesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
-        queryKey: ['purchases', historySearch, historyPage],
+        queryKey: ['purchases', historySearch, historyPage, branchId],
         queryFn: async () => (await axios.get('/api/purchases', { 
-            params: { search: historySearch, page: historyPage, limit } 
+            params: { search: historySearch, page: historyPage, limit, branch_id: branchId || undefined }
         })).data,
         enabled: activeTab === 'historial'
     });
@@ -1072,18 +1079,18 @@ const Purchases = () => {
                             compact={true}
                             renderRow={(c) => (
                                 <tr key={c.id} className="hover:bg-slate-50 border-b border-slate-50 last:border-0 grow">
-                                    <td className="px-5 py-3 font-black text-slate-800 text-[10px] uppercase tracking-tighter">
+                                    <td className="px-5 py-1 font-black text-slate-800 text-[10px] uppercase tracking-tighter">
                                         {c.numero_documento}
                                         {c.documento_afectado && <div className="text-[7px] text-rose-500 flex items-center gap-1 mt-0.5">REF: {c.documento_afectado}</div>}
                                     </td>
-                                    <td className="px-5 py-3"><span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase">{c.tipo_documento_nombre}</span></td>
-                                    <td className="px-5 py-3 text-[9px] font-bold text-slate-400">{new Date(c.fecha).toLocaleDateString()}</td>
-                                    <td className="px-5 py-3 text-[10px] font-bold text-slate-600 uppercase">{c.provider_nombre}</td>
-                                    <td className="px-5 py-3 font-black text-slate-900 text-[10px]"><Money value={c.monto_total} /></td>
-                                    <td className="px-5 py-3">
+                                    <td className="px-5 py-1"><span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase">{c.tipo_documento_nombre}</span></td>
+                                    <td className="px-5 py-1 text-[9px] font-bold text-slate-400">{formatDate(c.fecha)}</td>
+                                    <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase">{c.provider_nombre}</td>
+                                    <td className="px-5 py-1 font-black text-slate-900 text-[10px]"><Money value={c.monto_total} /></td>
+                                    <td className="px-5 py-1">
                                         <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
                                     </td>
-                                    <td className="px-5 py-3 text-right">
+                                    <td className="px-5 py-1 text-right">
                                         <div className="flex justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingPurchase(c)} 
