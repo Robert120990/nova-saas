@@ -258,6 +258,7 @@ REGLAS DE MULTI-TENENCIA:
 - id, company_id, branch_id, provider_id, usuario_id
 - fecha DATE, numero_documento
 - tipo_documento_id VARCHAR, condicion_operacion_id VARCHAR
+- dias_credito INT, fecha_vencimiento DATE
 - total_nosujeta, total_exenta, total_gravada DECIMAL
 - iva, retencion, percepcion, fovial, cotrans DECIMAL
 - monto_total DECIMAL

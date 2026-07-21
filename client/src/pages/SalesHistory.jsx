@@ -78,6 +78,9 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     });
     const [retransmitLoading, setRetransmitLoading] = useState(false);
     const [menuState, setMenuState] = useState(null);
+    const [isEditDTEModalOpen, setIsEditDTEModalOpen] = useState(false);
+    const [editableItems, setEditableItems] = useState([]);
+    const [editDTESaving, setEditDTESaving] = useState(false);
     const limit = 10;
 
     const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading } = useQuery({
@@ -221,6 +224,46 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
         } finally {
             setRetransmitLoading(false);
         }
+    };
+
+    const handleEditDTEItems = async (sale) => {
+        try {
+            const { data: detail } = await axios.get(`/api/sales/${sale.id}`);
+            const itemsNoCodigo = (detail.items || []).filter(i => !i.product_id);
+            setEditableItems(itemsNoCodigo.map(i => ({ sales_item_id: i.id, descripcion: i.descripcion, cantidad: i.cantidad })));
+            setSelectedSaleId(sale.id);
+            setIsEditDTEModalOpen(true);
+        } catch (error) {
+            toast.error('Error al cargar los items de la venta');
+        }
+    };
+
+    const handleEditDTESave = async () => {
+        setEditDTESaving(true);
+        try {
+            await axios.put(`/api/sales/${selectedSaleId}/edit-dte-items`, { items: editableItems });
+            toast.success('Items actualizados correctamente. Reenviando correo al cliente...');
+            setIsEditDTEModalOpen(false);
+            queryClient.invalidateQueries(['sales-history']);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al actualizar items');
+        } finally {
+            setEditDTESaving(false);
+        }
+    };
+
+    const handleEditDTEAddItem = () => {
+        setEditableItems(prev => [...prev, { sales_item_id: null, descripcion: '', cantidad: 1 }]);
+    };
+
+    const handleEditDTEDeleteItem = (index) => {
+        setEditableItems(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleEditDTEChange = (index, field, value) => {
+        setEditableItems(prev => prev.map((item, i) =>
+            i === index ? { ...item, [field]: field === 'cantidad' ? parseFloat(value) || 0 : value } : item
+        ));
     };
 
     const handleRegenerateDTE = (sale) => {
@@ -561,6 +604,13 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                                         <button onClick={() => { handleResendEmail(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform"><Send size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Reenviar Correo</span>
+                                                        </button>
+                                                    )}
+
+                                                    {sale.dte_status === 'ACCEPTED' && (
+                                                        <button onClick={() => { handleEditDTEItems(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                            <div className="p-1.5 bg-sky-50 text-sky-600 rounded-lg group-hover:scale-110 transition-transform"><FileText size={14} /></div>
+                                                            <span className="text-xs font-bold text-slate-600">Editar Items</span>
                                                         </button>
                                                     )}
 
@@ -1084,6 +1134,89 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Modal de Editar Items DTE */}
+            <Modal
+                isOpen={isEditDTEModalOpen}
+                onClose={() => setIsEditDTEModalOpen(false)}
+                title="Editar Items del DTE"
+                maxWidth="max-w-2xl"
+            >
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2 p-3 bg-sky-50 text-sky-700 rounded-2xl border border-sky-100 text-[10px] font-black uppercase tracking-widest">
+                        <Info size={16} />
+                        Solo se muestran items sin código de producto. Los cambios solo afectan la descripción en el PDF y JSON del DTE.
+                    </div>
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                                <th className="py-2 px-2">Descripción</th>
+                                <th className="py-2 px-2 w-20 text-center">Cant.</th>
+                                <th className="py-2 px-2 w-16 text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {editableItems.map((item, idx) => (
+                                <tr key={idx} className="text-xs">
+                                    <td className="py-1.5 px-2">
+                                        <input
+                                            type="text"
+                                            value={item.descripcion}
+                                            onChange={(e) => handleEditDTEChange(idx, 'descripcion', e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 transition-all text-[13px] font-medium"
+                                        />
+                                    </td>
+                                    <td className="py-1.5 px-2">
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={item.cantidad}
+                                            onChange={(e) => handleEditDTEChange(idx, 'cantidad', e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 transition-all text-[13px] font-medium text-center"
+                                        />
+                                    </td>
+                                    <td className="py-1.5 px-2 text-center">
+                                        <button
+                                            onClick={() => handleEditDTEDeleteItem(idx)}
+                                            className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <button
+                        onClick={handleEditDTEAddItem}
+                        className="flex items-center gap-2 px-4 py-2 text-sky-600 font-black text-xs uppercase tracking-widest hover:bg-sky-50 rounded-2xl transition-all"
+                    >
+                        + Agregar Item
+                    </button>
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                        <button
+                            onClick={() => setIsEditDTEModalOpen(false)}
+                            className="px-6 py-2.5 text-slate-500 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
+                            disabled={editDTESaving}
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleEditDTESave}
+                            className="px-8 py-2.5 bg-sky-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all flex items-center gap-2 disabled:opacity-50"
+                            disabled={editDTESaving}
+                        >
+                            {editDTESaving ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <FileText size={16} />
+                            )}
+                            Guardar
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

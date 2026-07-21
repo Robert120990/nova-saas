@@ -847,6 +847,7 @@ const SalesTerminal = () => {
                 return {
                     num_item: idx + 1,
                     product_id: item.isManual ? null : item.id,
+                    codigo: item.codigo || null,
                     descripcion: item.nombre,
                     cantidad: item.cantidad,
                     precio_unitario: item.precio,

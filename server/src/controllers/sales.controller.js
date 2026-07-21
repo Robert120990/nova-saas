@@ -456,9 +456,9 @@ const getSaleById = async (req, res) => {
             try { sale.respuesta_hacienda = JSON.parse(sale.respuesta_hacienda); } catch (e) {}
         }
 
-        const [items] = await pool.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
-        const [payments] = await pool.query('SELECT * FROM sales_payments WHERE sale_id = ?', [id]);
-        const [linkedDocs] = await pool.query('SELECT * FROM sales_linked_documents WHERE sale_id = ?', [id]);
+        const [items] = await pool.query('SELECT * FROM sales_items WHERE sale_id = ? ORDER BY id ASC', [id]);
+        const [payments] = await pool.query('SELECT * FROM sales_payments WHERE sale_id = ? ORDER BY id ASC', [id]);
+        const [linkedDocs] = await pool.query('SELECT * FROM sales_linked_documents WHERE sale_id = ? ORDER BY id ASC', [id]);
 
         res.json({
             ...sale,
@@ -2125,6 +2125,197 @@ const regenerateDTE = async (req, res) => {
     }
 };
 
+const editDTEItems = async (req, res) => {
+    const { id } = req.params;
+    const { items } = req.body;
+
+    if (!Array.isArray(items)) {
+        return res.status(400).json({ message: 'items es requerido' });
+    }
+
+    try {
+        const [sales] = await pool.query(
+            `SELECT h.*, d.status as dte_status, d.json_original
+             FROM sales_headers h
+             JOIN dtes d ON (h.id = d.venta_id OR (h.codigo_generacion IS NOT NULL AND h.codigo_generacion = d.codigo_generacion)) AND h.company_id = d.company_id
+             WHERE h.id = ? AND h.company_id = ?`,
+            [id, req.company_id]
+        );
+
+        if (sales.length === 0) {
+            return res.status(404).json({ message: 'Venta no encontrada' });
+        }
+
+        const sale = sales[0];
+
+        if (sale.estado === 'anulado') {
+            return res.status(400).json({ message: 'La venta está anulada' });
+        }
+
+        if (sale.dte_status !== 'ACCEPTED') {
+            return res.status(400).json({ message: 'Solo se pueden editar DTE aceptados' });
+        }
+
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            const [existingItems] = await connection.query(
+                'SELECT id, codigo FROM sales_items WHERE sale_id = ? ORDER BY id ASC',
+                [id]
+            );
+
+            const existingWithoutCodigo = existingItems.filter(i => !i.codigo);
+            const existingIds = existingWithoutCodigo.map(i => i.id);
+
+            const incomingIds = items
+                .filter(i => i.sales_item_id)
+                .map(i => i.sales_item_id);
+
+            const toDelete = existingIds.filter(eid => !incomingIds.includes(eid));
+
+            // Delete removed items
+            if (toDelete.length > 0) {
+                await connection.query(
+                    `DELETE FROM sales_items WHERE id IN (${toDelete.map(() => '?').join(',')}) AND codigo IS NULL`,
+                    toDelete
+                );
+            }
+
+            // Update existing items without codigo
+            for (const item of items) {
+                if (item.sales_item_id) {
+                    await connection.query(
+                        `UPDATE sales_items SET descripcion = ? WHERE id = ? AND codigo IS NULL AND sale_id = ?`,
+                        [item.descripcion, item.sales_item_id, id]
+                    );
+                }
+            }
+
+            // Insert new items without codigo
+            for (const item of items) {
+                if (!item.sales_item_id) {
+                    await connection.query('INSERT INTO sales_items SET ?', [{
+                        sale_id: parseInt(id),
+                        product_id: null,
+                        codigo: null,
+                        descripcion: item.descripcion,
+                        cantidad: item.cantidad || 1,
+                        precio_unitario: 0,
+                        monto_descuento: 0,
+                        venta_gravada: 0,
+                        venta_exenta: 0,
+                        tributos: '[]'
+                    }]);
+                }
+            }
+
+            // Read updated items
+            const [updatedItems] = await connection.query(
+                'SELECT * FROM sales_items WHERE sale_id = ? ORDER BY id ASC',
+                [id]
+            );
+
+            // Update json_original
+            const json = typeof sale.json_original === 'string' ? JSON.parse(sale.json_original) : sale.json_original;
+            const originalCuerpo = json.cuerpoDocumento || [];
+
+            const origWithCodigo = [];
+            const origWithoutCodigo = [];
+            originalCuerpo.forEach((entry) => {
+                if (entry.codigo) {
+                    origWithCodigo.push(entry);
+                } else {
+                    origWithoutCodigo.push(entry);
+                }
+            });
+
+            const updWithCodigo = [];
+            const updWithoutCodigo = [];
+            updatedItems.forEach(item => {
+                if (item.codigo) {
+                    updWithCodigo.push(item);
+                } else {
+                    updWithoutCodigo.push(item);
+                }
+            });
+
+            const newCuerpo = [];
+            let withIdx = 0;
+            let withoutIdx = 0;
+
+            for (const origEntry of originalCuerpo) {
+                if (origEntry.codigo) {
+                    const upd = updWithCodigo[withIdx];
+                    if (upd) {
+                        newCuerpo.push({ ...origEntry });
+                    }
+                    withIdx++;
+                } else {
+                    const upd = updWithoutCodigo[withoutIdx];
+                    if (upd) {
+                        newCuerpo.push({
+                            ...origEntry,
+                            descripcion: upd.descripcion,
+                            cantidad: parseFloat(upd.cantidad),
+                        });
+                    }
+                    withoutIdx++;
+                }
+            }
+
+            // Append new items not in original
+            while (withoutIdx < updWithoutCodigo.length) {
+                const upd = updWithoutCodigo[withoutIdx];
+                newCuerpo.push({
+                    numItem: 0,
+                    tipoItem: 1,
+                    numeroDocumento: null,
+                    codigo: null,
+                    codTributo: null,
+                    descripcion: upd.descripcion,
+                    cantidad: parseFloat(upd.cantidad),
+                    uniMedida: 59,
+                    precioUni: 0,
+                    montoDescu: 0,
+                    ventaNoSuj: 0,
+                    ventaExenta: 0,
+                    ventaGravada: 0,
+                    tributos: null,
+                    psv: 0,
+                    noGravado: 0
+                });
+                withoutIdx++;
+            }
+
+            newCuerpo.forEach((entry, idx) => { entry.numItem = idx + 1; });
+            json.cuerpoDocumento = newCuerpo;
+
+            await connection.query(
+                'UPDATE dtes SET json_original = ? WHERE venta_id = ? AND company_id = ?',
+                [JSON.stringify(json), id, req.company_id]
+            );
+
+            await connection.commit();
+            connection.release();
+
+            // Send email asynchronously
+            mailerService.sendDTEEmail(id, req.company_id).catch(err => {
+                console.error('[editDTEItems] Error sending email:', err);
+            });
+
+            res.json({ success: true, message: 'Items actualizados correctamente' });
+        } catch (err) {
+            await connection.rollback();
+            connection.release();
+            throw err;
+        }
+    } catch (error) {
+        console.error('[editDTEItems] Error:', error);
+        res.status(500).json({ message: 'Error al editar items del DTE', error: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -2144,6 +2335,7 @@ module.exports = {
     stopContingency,
     getDTEJson,
     resendDTEEmail,
+    editDTEItems,
     voidSale,
     retransmitSaleDTE,
     regenerateDTE,
