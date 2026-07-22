@@ -33,7 +33,7 @@ const GasRemesaDeliveries = () => {
     const [showSearchModal, setShowSearchModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [searchPage, setSearchPage] = useState(1);
-    const [searchSelectedIds, setSearchSelectedIds] = useState(new Set());
+    const [searchSelectedRemesas, setSearchSelectedRemesas] = useState([]);
 
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedDeliveryId, setSelectedDeliveryId] = useState(null);
@@ -193,10 +193,9 @@ const GasRemesaDeliveries = () => {
         if (e.key === 'Enter') { e.preventDefault(); handleScanAdd(); }
     };
 
-    const handleSelectRemesas = (selectedIds) => {
-        const toAdd = pendingRemesas.filter(r => selectedIds.includes(r.id));
+    const handleSelectRemesas = (selectedRemesas) => {
         const alreadyAdded = new Set(addedRemesas.map(r => r.id));
-        const newOnes = toAdd.filter(r => !alreadyAdded.has(r.id));
+        const newOnes = selectedRemesas.filter(r => !alreadyAdded.has(r.id));
         if (newOnes.length === 0) {
             toast.warning('Las remesas seleccionadas ya fueron agregadas');
             return;
@@ -204,7 +203,7 @@ const GasRemesaDeliveries = () => {
         setAddedRemesas(prev => [...prev, ...newOnes]);
         setShowSearchModal(false);
         setSearchTerm('');
-        setSearchSelectedIds(new Set());
+        setSearchSelectedRemesas([]);
         toast.success(`${newOnes.length} remesa(s) agregada(s)`);
     };
 
@@ -411,7 +410,7 @@ const GasRemesaDeliveries = () => {
                         </div>
                         <button onClick={handleScanAdd} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs rounded-xl border border-indigo-200 transition-all">Agregar</button>
                         <button
-                            onClick={() => { setSearchPage(1); setSearchTerm(''); setSearchSelectedIds(new Set()); setShowSearchModal(true); }}
+                            onClick={() => { setSearchPage(1); setSearchTerm(''); setSearchSelectedRemesas([]); setShowSearchModal(true); }}
                             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-all"
                         >
                             <Search size={14} />
@@ -485,7 +484,7 @@ const GasRemesaDeliveries = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={showSearchModal} onClose={() => { setShowSearchModal(false); setSearchSelectedIds(new Set()); }} title="Buscar Remesas Pendientes" maxWidth="max-w-4xl">
+            <Modal isOpen={showSearchModal} onClose={() => { setShowSearchModal(false); setSearchSelectedRemesas([]); }} title="Buscar Remesas Pendientes" maxWidth="max-w-4xl">
                 <div className="space-y-3">
                     <div className="relative">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -519,8 +518,8 @@ const GasRemesaDeliveries = () => {
                                 <RemesaSelectRows
                                     remesas={pendingRemesas}
                                     addedIds={new Set(addedRemesas.map(r => r.id))}
-                                    selectedIds={searchSelectedIds}
-                                    setSelectedIds={setSearchSelectedIds}
+                                    selectedRemesas={searchSelectedRemesas}
+                                    setSelectedRemesas={setSearchSelectedRemesas}
                                     onSelect={handleSelectRemesas}
                                 />
                             )}
@@ -621,28 +620,23 @@ const GasRemesaDeliveries = () => {
     );
 };
 
-const RemesaSelectRows = ({ remesas, addedIds, selectedIds, setSelectedIds, onSelect }) => {
-    const allSelectedOnPage = remesas.length > 0 && remesas.every(r => selectedIds.has(r.id));
+const RemesaSelectRows = ({ remesas, addedIds, selectedRemesas, setSelectedRemesas, onSelect }) => {
+    const allSelectedOnPage = remesas.length > 0 && remesas.every(r => selectedRemesas.some(s => s.id === r.id));
 
-    const toggle = (id) => {
-        setSelectedIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
+    const toggle = (remesa) => {
+        setSelectedRemesas(prev => {
+            const exists = prev.some(s => s.id === remesa.id);
+            if (exists) return prev.filter(s => s.id !== remesa.id);
+            return [...prev, remesa];
         });
     };
 
     const toggleAll = () => {
-        setSelectedIds(prev => {
-            const next = new Set(prev);
-            const pageIds = remesas.map(r => r.id);
-            if (allSelectedOnPage) {
-                pageIds.forEach(id => next.delete(id));
-            } else {
-                pageIds.forEach(id => next.add(id));
-            }
-            return next;
+        setSelectedRemesas(prev => {
+            const pageIds = new Set(remesas.map(r => r.id));
+            const filtered = prev.filter(s => !pageIds.has(s.id));
+            if (allSelectedOnPage) return filtered;
+            return [...filtered, ...remesas];
         });
     };
 
@@ -650,10 +644,11 @@ const RemesaSelectRows = ({ remesas, addedIds, selectedIds, setSelectedIds, onSe
         <>
             {remesas.map(r => {
                 const isAdded = addedIds.has(r.id);
+                const isSelected = selectedRemesas.some(s => s.id === r.id);
                 return (
                     <tr key={r.id} className={`text-[12px] hover:bg-slate-50 transition-colors ${isAdded ? 'opacity-50' : ''}`}>
                         <td className="px-2 py-1.5">
-                            <input type="checkbox" checked={isAdded || selectedIds.has(r.id)} disabled={isAdded} onChange={() => toggle(r.id)} className="accent-indigo-600 cursor-pointer" />
+                            <input type="checkbox" checked={isAdded || isSelected} disabled={isAdded} onChange={() => toggle(r)} className="accent-indigo-600 cursor-pointer" />
                         </td>
                         <td className="px-2 py-1.5 font-mono text-[11px] text-indigo-600">{r.codigo || r.id}</td>
                         <td className="px-2 py-1.5 font-medium">{r.documento || '—'}</td>
@@ -674,8 +669,8 @@ const RemesaSelectRows = ({ remesas, addedIds, selectedIds, setSelectedIds, onSe
                             Seleccionar todo ({remesas.length})
                         </label>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500">{selectedIds.size} seleccionadas</span>
-                            <button onClick={() => onSelect(Array.from(selectedIds))} disabled={selectedIds.size === 0} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20">Agregar Seleccionadas</button>
+                            <span className="text-xs text-slate-500">{selectedRemesas.length} seleccionadas</span>
+                            <button onClick={() => onSelect(selectedRemesas)} disabled={selectedRemesas.length === 0} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20">Agregar Seleccionadas</button>
                         </div>
                     </div>
                 </td>
