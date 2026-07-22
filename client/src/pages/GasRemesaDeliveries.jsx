@@ -33,6 +33,7 @@ const GasRemesaDeliveries = () => {
     const [showSearchModal, setShowSearchModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [searchPage, setSearchPage] = useState(1);
+    const [searchSelectedIds, setSearchSelectedIds] = useState(new Set());
 
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedDeliveryId, setSelectedDeliveryId] = useState(null);
@@ -203,6 +204,7 @@ const GasRemesaDeliveries = () => {
         setAddedRemesas(prev => [...prev, ...newOnes]);
         setShowSearchModal(false);
         setSearchTerm('');
+        setSearchSelectedIds(new Set());
         toast.success(`${newOnes.length} remesa(s) agregada(s)`);
     };
 
@@ -409,7 +411,7 @@ const GasRemesaDeliveries = () => {
                         </div>
                         <button onClick={handleScanAdd} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs rounded-xl border border-indigo-200 transition-all">Agregar</button>
                         <button
-                            onClick={() => { setSearchPage(1); setSearchTerm(''); setShowSearchModal(true); }}
+                            onClick={() => { setSearchPage(1); setSearchTerm(''); setSearchSelectedIds(new Set()); setShowSearchModal(true); }}
                             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-all"
                         >
                             <Search size={14} />
@@ -483,7 +485,7 @@ const GasRemesaDeliveries = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={showSearchModal} onClose={() => setShowSearchModal(false)} title="Buscar Remesas Pendientes" maxWidth="max-w-4xl">
+            <Modal isOpen={showSearchModal} onClose={() => { setShowSearchModal(false); setSearchSelectedIds(new Set()); }} title="Buscar Remesas Pendientes" maxWidth="max-w-4xl">
                 <div className="space-y-3">
                     <div className="relative">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -517,6 +519,8 @@ const GasRemesaDeliveries = () => {
                                 <RemesaSelectRows
                                     remesas={pendingRemesas}
                                     addedIds={new Set(addedRemesas.map(r => r.id))}
+                                    selectedIds={searchSelectedIds}
+                                    setSelectedIds={setSearchSelectedIds}
                                     onSelect={handleSelectRemesas}
                                 />
                             )}
@@ -617,8 +621,8 @@ const GasRemesaDeliveries = () => {
     );
 };
 
-const RemesaSelectRows = ({ remesas, addedIds, onSelect }) => {
-    const [selectedIds, setSelectedIds] = useState(new Set());
+const RemesaSelectRows = ({ remesas, addedIds, selectedIds, setSelectedIds, onSelect }) => {
+    const allSelectedOnPage = remesas.length > 0 && remesas.every(r => selectedIds.has(r.id));
 
     const toggle = (id) => {
         setSelectedIds(prev => {
@@ -630,11 +634,16 @@ const RemesaSelectRows = ({ remesas, addedIds, onSelect }) => {
     };
 
     const toggleAll = () => {
-        if (selectedIds.size === remesas.length) {
-            setSelectedIds(new Set());
-        } else {
-            setSelectedIds(new Set(remesas.map(r => r.id)));
-        }
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            const pageIds = remesas.map(r => r.id);
+            if (allSelectedOnPage) {
+                pageIds.forEach(id => next.delete(id));
+            } else {
+                pageIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
     };
 
     return (
@@ -661,7 +670,7 @@ const RemesaSelectRows = ({ remesas, addedIds, onSelect }) => {
                 <td colSpan={7} className="px-2 py-3">
                     <div className="flex items-center justify-between">
                         <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-                            <input type="checkbox" checked={selectedIds.size === remesas.length && remesas.length > 0} onChange={toggleAll} className="accent-indigo-600" />
+                            <input type="checkbox" checked={allSelectedOnPage} onChange={toggleAll} className="accent-indigo-600" />
                             Seleccionar todo ({remesas.length})
                         </label>
                         <div className="flex items-center gap-2">

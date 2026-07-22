@@ -1660,7 +1660,7 @@ const voidSale = async (req, res) => {
             const now = new Date();
             const localNow = new Date(now.toLocaleString("en-US", { timeZone: "America/El_Salvador" }));
 
-            const tipoDte = String(sale.tipo_dte || '01');
+            const tipoDte = String(sale.tipo_documento || '01');
             const emiDateParts = emissionDateStr.split('-');
             const emiYear = parseInt(emiDateParts[0], 10);
             const emiMonth = parseInt(emiDateParts[1], 10) - 1; // 0-indexed
