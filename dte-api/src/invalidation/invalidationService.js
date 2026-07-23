@@ -62,27 +62,51 @@ async function invalidateDTE(payload, companyId, user) {
 
     // Usar los códigos EXACTAMENTE como figuran en el DTE original firmado.
     // Hacienda valida que coincidan con los del documento a invalidar.
-    let codEstableMH = emisorOrig.codEstableMH;
-    if (!codEstableMH) {
+    // Schemas v2 (01,07,08,09,14,15) no tienen codEstableMH/codPuntoVentaMH.
+    // Schemas v3/v4 (03,04,05,06,11) sí los tienen.
+    const isV2Schema = ['01', '07', '08', '09', '14', '15'].includes(dte.tipo_dte);
+
+    let codEstableMH, codEstable, codPuntoVentaMH, codPuntoVenta;
+
+    if (isV2Schema) {
+        codEstable = emisorOrig.codEstable
+            || (branch.codigo ? String(branch.codigo).substring(0, 10) : null);
+
+        codPuntoVenta = emisorOrig.codPuntoVenta
+            || (pos.codigo ? String(pos.codigo).substring(0, 15) : null);
+
         codEstableMH = branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null;
         if (!codEstableMH) {
-            throw new Error('El DTE original no contiene código de establecimiento MH y la sucursal no tiene código MH configurado. Verifique los datos de la sucursal.');
+            throw new Error('La sucursal no tiene código MH configurado. Es requerido para invalidar.');
         }
-    }
 
-    const codEstable = emisorOrig.codEstable
-        || (branch.codigo ? String(branch.codigo).substring(0, 10) : null);
-
-    let codPuntoVentaMH = emisorOrig.codPuntoVentaMH;
-    if (!codPuntoVentaMH) {
         codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
         if (!codPuntoVentaMH) {
-            throw new Error('El DTE original no contiene código de punto de venta MH y el punto de venta no tiene código configurado. Verifique los datos del punto de venta.');
+            throw new Error('El punto de venta no tiene código configurado. Es requerido para invalidar.');
         }
-    }
+    } else {
+        codEstableMH = emisorOrig.codEstableMH;
+        if (!codEstableMH) {
+            codEstableMH = branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null;
+            if (!codEstableMH) {
+                throw new Error('El DTE original no tiene código de establecimiento MH y la sucursal no tiene código MH configurado.');
+            }
+        }
 
-    const codPuntoVenta = emisorOrig.codPuntoVenta
-        || (pos.codigo ? String(pos.codigo).substring(0, 15) : null);
+        codEstable = emisorOrig.codEstable
+            || (branch.codigo ? String(branch.codigo).substring(0, 10) : null);
+
+        codPuntoVentaMH = emisorOrig.codPuntoVentaMH;
+        if (!codPuntoVentaMH) {
+            codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
+            if (!codPuntoVentaMH) {
+                throw new Error('El DTE original no tiene código de punto de venta MH y el punto de venta no tiene código configurado.');
+            }
+        }
+
+        codPuntoVenta = emisorOrig.codPuntoVenta
+            || (pos.codigo ? String(pos.codigo).substring(0, 15) : null);
+    }
 
     // Datos del receptor — permitir null cuando sea consumidor final sin identificación
     const receptorTipoDoc = receptor.tipoDocumento !== undefined ? receptor.tipoDocumento : (receptor.nit ? '36' : null);
