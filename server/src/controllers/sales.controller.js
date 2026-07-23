@@ -290,9 +290,10 @@ const getSales = async (req, res) => {
     try {
         let sql = `
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
-            c.nit as customer_nit, c.nrc as customer_nrc,
+            c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
             COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.ambiente, d_c.ambiente, '00') as dte_ambiente, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
+            comp.nit as company_nit,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'
                 WHEN '03' THEN 'Crédito Fiscal'
@@ -307,6 +308,7 @@ const getSales = async (req, res) => {
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
             LEFT JOIN branches b ON h.branch_id = b.id
+            LEFT JOIN companies comp ON h.company_id = comp.id
             LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             WHERE h.company_id = ?
@@ -435,11 +437,13 @@ const getSaleById = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, b.nombre as branch_name,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name, 
             c.direccion as customer_address, c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
+            comp.nit as company_nit,
             COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error, COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN branches b ON h.branch_id = b.id
+            LEFT JOIN companies comp ON h.company_id = comp.id
             LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ?
@@ -1345,7 +1349,8 @@ const exportRTEE = async (req, res) => {
     try {
         // 1. Obtener datos detallados de la venta y DTE
         const [header] = await pool.query(
-            `SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
+            `SELECT h.*, h.estado as sale_estado,
+            s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
             COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
             COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
@@ -1354,7 +1359,7 @@ const exportRTEE = async (req, res) => {
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
             LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
-            WHERE h.id = ? AND h.company_id = ?`, [id, req.company_id]);
+            WHERE h.id = ? AND h.company_id = ? LIMIT 1`, [id, req.company_id]);
 
         if (header.length === 0) {
             return res.status(404).json({ message: 'Venta no encontrada' });
@@ -1454,12 +1459,13 @@ const exportRTEE = async (req, res) => {
             }))
         };
 
-        reportData.isVoided = venta.estado === 'anulado';
+        reportData.isVoided = (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=RTEE-${id}.pdf`);
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.send(pdfBuffer);
     } catch (error) {
         console.error('[ExportRTEE] Error:', error);
@@ -1575,12 +1581,13 @@ const getPublicRTEE = async (req, res) => {
             }))
         };
 
-        reportData.isVoided = venta.estado === 'anulado';
+        reportData.isVoided = (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=DTE-${codigo}.pdf`);
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.send(pdfBuffer);
     } catch (error) {
         console.error('[GetPublicRTEE] Error:', error);
@@ -1639,13 +1646,11 @@ const resendDTEEmail = async (req, res) => {
 const voidSale = async (req, res) => {
     const { id } = req.params;
     const { motivo, descripcion, nombreResponsable, tipDocResponsable, numDocResponsable, nombreSolicita, tipDocSolicita, numDocSolicita } = req.body;
-
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
+    let connection = null;
 
     try {
         // 1. Obtener la venta y configuración de empresa
-        const [sales] = await connection.query(`
+        const [sales] = await pool.query(`
             SELECT h.*, c.dte_active, c.razon_social
             FROM sales_headers h
             JOIN companies c ON h.company_id = c.id
@@ -1745,27 +1750,51 @@ const voidSale = async (req, res) => {
             }
         }
 
-        // 4. Actualizar estado de la venta
-        await connection.query('UPDATE sales_headers SET estado = "anulado" WHERE id = ?', [id]);
+        // 4. Actualizar estado de la venta INMEDIATAMENTE (fuera de transacción)
+        //    para evitar el escenario donde el DTE queda invalidado pero estado = ""
+        await pool.query('UPDATE sales_headers SET estado = "anulado" WHERE id = ?', [id]);
 
-        // 5. Restaurar Stock e Inventario
-        const [items] = await connection.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
-        
-        for (const item of items) {
-            if (item.combo_id) {
-                // Restaurar componentes de combo
-                const [comboItems] = await connection.query(
-                    'SELECT product_id, quantity FROM product_combo_items WHERE combo_id = ?', 
-                    [item.combo_id]
-                );
+        // 5. Restaurar Stock e Inventario (en su propia transacción)
+        //    Si falla, el estado ya quedó como "anulado" y el usuario puede corregir stock manualmente
+        connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
 
-                for (const ci of comboItems) {
-                    const totalQty = ci.quantity * item.cantidad;
-                    const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
-                    
+            const [items] = await connection.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
+
+            for (const item of items) {
+                if (item.combo_id) {
+                    const [comboItems] = await connection.query(
+                        'SELECT product_id, quantity FROM product_combo_items WHERE combo_id = ?',
+                        [item.combo_id]
+                    );
+
+                    for (const ci of comboItems) {
+                        const totalQty = ci.quantity * item.cantidad;
+                        const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
+
+                        await connection.query(
+                            'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?',
+                            [totalQty, effectiveProductId, sale.branch_id]
+                        );
+
+                        await connection.query('INSERT INTO inventory_movements SET ?', [{
+                            company_id: req.company_id,
+                            branch_id: sale.branch_id,
+                            product_id: effectiveProductId,
+                            tipo_movimiento: 'ENTRADA',
+                            cantidad: totalQty,
+                            tipo_documento: `Anulación Venta ${id} (COMBO)`,
+                            documento_id: id,
+                            created_at: new Date()
+                        }]);
+                    }
+                } else if (item.product_id) {
+                    const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
+
                     await connection.query(
                         'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?',
-                        [totalQty, effectiveProductId, sale.branch_id]
+                        [item.cantidad, effectiveProductId, sale.branch_id]
                     );
 
                     await connection.query('INSERT INTO inventory_movements SET ?', [{
@@ -1773,35 +1802,23 @@ const voidSale = async (req, res) => {
                         branch_id: sale.branch_id,
                         product_id: effectiveProductId,
                         tipo_movimiento: 'ENTRADA',
-                        cantidad: totalQty,
-                        tipo_documento: `Anulación Venta ${id} (COMBO)`,
+                        cantidad: item.cantidad,
+                        tipo_documento: `Anulación Venta ${id}`,
                         documento_id: id,
                         created_at: new Date()
                     }]);
                 }
-            } else if (item.product_id) {
-                // Producto normal
-                const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
-                
-                await connection.query(
-                    'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?',
-                    [item.cantidad, effectiveProductId, sale.branch_id]
-                );
-
-                await connection.query('INSERT INTO inventory_movements SET ?', [{
-                    company_id: req.company_id,
-                    branch_id: sale.branch_id,
-                    product_id: effectiveProductId,
-                    tipo_movimiento: 'ENTRADA',
-                    cantidad: item.cantidad,
-                    tipo_documento: `Anulación Venta ${id}`,
-                    documento_id: id,
-                    created_at: new Date()
-                }]);
             }
-        }
 
-        await connection.commit();
+            await connection.commit();
+        } catch (stockError) {
+            await connection.rollback();
+            console.error('[VoidSale] Error restaurando stock (la venta ya fue anulada):', stockError.message);
+            // No relanzar — la venta ya está anulada y el DTE invalidado correctamente
+        } finally {
+            connection.release();
+            connection = null;
+        }
 
         // 6. Notificación por Correo (Asíncrona, no bloquea la respuesta)
         if (sale.dte_active && sale.codigo_generacion) {
@@ -2433,7 +2450,7 @@ const sendPublicDTEEmail = async (req, res) => {
 
     try {
         const [rows] = await pool.query(
-            `SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
+            `SELECT h.*, d.status as dte_status, d.json_original, d.sello_recepcion, d.numero_control,
                     c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
                     b.nombre as branch_name, cat.description as tipo_documento_name
              FROM dtes d
@@ -2509,7 +2526,8 @@ const sendPublicDTEEmail = async (req, res) => {
                 precioUnitario: item.precioUni || 0,
                 montoDescuento: item.montoDescu || 0,
                 totalItem: item.ventaGravada || 0
-            }))
+            })),
+            isVoided: (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO'
         };
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);

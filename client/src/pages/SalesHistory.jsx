@@ -145,16 +145,30 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
 
     const handleOpenVoidModal = (sale) => {
         const user = JSON.parse(localStorage.getItem('user')) || {};
-        const tipDoc = '36'; // Default NIT
+
+        // Determinar tipo de documento del solicitante
+        let solTipDoc = '36';
+        let solNumDoc = '';
+        if (sale.customer_nit) {
+            solTipDoc = '36';
+            solNumDoc = sale.customer_nit;
+        } else if (sale.customer_dui) {
+            solTipDoc = '13';
+            solNumDoc = sale.customer_dui;
+        } else {
+            solTipDoc = '36';
+            solNumDoc = sale.company_nit || '';
+        }
+
         setVoidForm({
             ...voidForm,
             sale_id: sale.id,
             nombreResponsable: user.nombre || '',
-            tipDocResponsable: tipDoc,
-            numDocResponsable: formatNIT(user.nit || ''),
+            tipDocResponsable: '36',
+            numDocResponsable: formatNIT(sale.company_nit || ''),
             nombreSolicita: sale.customer_name || 'CLIENTE',
-            tipDocSolicita: '36',
-            numDocSolicita: ''
+            tipDocSolicita: solTipDoc,
+            numDocSolicita: solTipDoc === '36' ? formatNIT(solNumDoc) : formatDUI(solNumDoc)
         });
         setSelectedSaleId(sale.id);
         setIsVoidModalOpen(true);

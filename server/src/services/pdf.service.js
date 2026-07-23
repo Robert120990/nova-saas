@@ -1525,23 +1525,29 @@ const generateRTEE = (data) => {
             } // Fin standard (tipoDte !== '07')
 
             // --- Marca de Agua "ANULADO" ---
+            console.log('[generateRTEE DEBUG] data.isVoided:', data.isVoided);
             if (data.isVoided) {
                 const totalPages = doc.bufferedPageRange().count;
                 for (let i = 0; i < totalPages; i++) {
                     doc.switchToPage(i);
+                    const cx = doc.page.width / 2;
+                    const cy = doc.page.height / 2;
+
                     doc.save();
-                    doc.fillOpacity(0.15);
-                    doc.fontSize(80);
-                    doc.fillColor('red');
-                    
-                    // Rotar y dibujar en el centro
-                    doc.rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] });
-                    doc.text('ANULADO', 0, doc.page.height / 2 - 40, { 
-                        align: 'center', 
-                        width: doc.page.width 
-                    });
-                    
+
+                    // Resetear transformaciones y estilos
+                    doc.translate(cx, cy);
+                    doc.rotate(-45);
+
+                    doc.fillColor('red').fillOpacity(0.25);
+                    doc.fontSize(100).font('Helvetica-Bold');
+                    const textWidth = doc.widthOfString('ANULADO');
+                    doc.text('ANULADO', -textWidth / 2, -50);
+
                     doc.restore();
+
+                    // Resetear estado para no afectar contenido posterior
+                    doc.fillColor('black').fillOpacity(1);
                 }
             }
 
