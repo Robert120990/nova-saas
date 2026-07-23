@@ -292,7 +292,7 @@ const getSales = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
-            d.status as dte_status, d.numero_control as dte_control, COALESCE(d.ambiente, '00') as dte_ambiente, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
+            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.ambiente, d_c.ambiente, '00') as dte_ambiente, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'
                 WHEN '03' THEN 'Crédito Fiscal'
@@ -307,7 +307,8 @@ const getSales = async (req, res) => {
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
             LEFT JOIN branches b ON h.branch_id = b.id
-            LEFT JOIN dtes d ON (h.id = d.venta_id OR (h.codigo_generacion IS NOT NULL AND h.codigo_generacion = d.codigo_generacion)) AND h.company_id = d.company_id
+            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             WHERE h.company_id = ?
         `;
         const params = [req.company_id];
@@ -343,7 +344,7 @@ const getSales = async (req, res) => {
         }
 
         if (only_processed === 'true') {
-            sql += " AND d.status = 'ACCEPTED'";
+            sql += " AND (d_v.status = 'ACCEPTED' OR d_c.status = 'ACCEPTED')";
         }
 
         if (exclude_has_nc === 'true') {
@@ -354,7 +355,8 @@ const getSales = async (req, res) => {
                 AND (
                     (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
                     (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
-                    (ld.doc_number = d.numero_control COLLATE utf8mb4_unicode_ci AND d.numero_control IS NOT NULL AND d.numero_control != '') OR
+                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
+                    (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
                     (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
                 )
             )`;
@@ -388,7 +390,7 @@ const getSales = async (req, res) => {
         }
 
         if (only_processed === 'true') {
-            countSql += " AND EXISTS (SELECT 1 FROM dtes d2 WHERE (h.id = d2.venta_id OR (h.codigo_generacion IS NOT NULL AND h.codigo_generacion = d2.codigo_generacion)) AND d2.status = 'ACCEPTED')";
+            countSql += " AND (EXISTS (SELECT 1 FROM dtes d2 WHERE d2.venta_id = h.id AND d2.status = 'ACCEPTED') OR EXISTS (SELECT 1 FROM dtes d2 WHERE d2.codigo_generacion = h.codigo_generacion AND d2.status = 'ACCEPTED'))";
         }
 
         if (exclude_has_nc === 'true') {
@@ -433,12 +435,13 @@ const getSaleById = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, b.nombre as branch_name,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name, 
             c.direccion as customer_address, c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
-            d.status as dte_status, d.respuesta_hacienda, d.respuesta_hacienda as dte_error, d.json_original, d.sello_recepcion, d.fh_procesamiento
+            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error, COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN branches b ON h.branch_id = b.id
-            LEFT JOIN dtes d ON (h.id = d.venta_id OR (h.codigo_generacion IS NOT NULL AND h.codigo_generacion = d.codigo_generacion)) AND h.company_id = d.company_id
+            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ?
         `, [id, req.company_id]);
 
@@ -1343,13 +1346,14 @@ const exportRTEE = async (req, res) => {
         // 1. Obtener datos detallados de la venta y DTE
         const [header] = await pool.query(
             `SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
-            d.status as dte_status, d.numero_control as dte_control, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
-            d.json_original, d.sello_recepcion, d.fh_procesamiento
+            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
+            COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
-            LEFT JOIN dtes d ON (h.id = d.venta_id OR (h.codigo_generacion IS NOT NULL AND h.codigo_generacion = d.codigo_generacion)) AND h.company_id = d.company_id
+            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ?`, [id, req.company_id]);
 
         if (header.length === 0) {
@@ -2184,10 +2188,11 @@ const editDTEItems = async (req, res) => {
 
     try {
         const [sales] = await pool.query(
-            `SELECT h.*, d.status as dte_status, d.json_original
+            `SELECT h.*, COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.json_original, d_c.json_original) as json_original
              FROM sales_headers h
-             JOIN dtes d ON (h.id = d.venta_id OR (h.codigo_generacion IS NOT NULL AND h.codigo_generacion = d.codigo_generacion)) AND h.company_id = d.company_id
-             WHERE h.id = ? AND h.company_id = ?`,
+             LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
+             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+             WHERE h.id = ? AND h.company_id = ? AND (d_v.id IS NOT NULL OR d_c.id IS NOT NULL)`,
             [id, req.company_id]
         );
 
