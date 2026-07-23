@@ -100,9 +100,9 @@ const InventoryAdjustments = () => {
     });
 
     const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({
-        queryKey: ['inventory-adjustments', historySearch, historyPage],
+        queryKey: ['inventory-adjustments', historySearch, historyPage, user?.branch_id],
         queryFn: async () => (await axios.get('/api/inventory/adjustments', { 
-            params: { search: historySearch, page: historyPage, limit } 
+            params: { search: historySearch, page: historyPage, limit, branch_id: user?.branch_id } 
         })).data,
         enabled: activeTab === 'historial'
     });
@@ -702,45 +702,44 @@ const InventoryAdjustments = () => {
                             isLoading={loadingAdjustments}
                             renderRow={(a) => (
                                 <tr key={a.id} className={`hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 ${a.status === 'ANULADO' ? 'opacity-50 grayscale select-none' : ''}`}>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-mono font-black text-indigo-600">
-                                                AJ-{String(a.id).padStart(6, '0')}
-                                            </span>
-                                            {a.numero && <span className="text-[10px] text-slate-400 font-bold">{a.numero}</span>}
-                                        </div>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-mono font-black text-indigo-600 whitespace-nowrap">
+                                            AJ-{String(a.id).padStart(6, '0')}
+                                            {a.numero && <> <span className="text-slate-400 font-normal ml-1 mr-1">/</span> {a.numero} </>}
+                                        </span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-xs font-bold text-slate-600">{new Date(a.fecha).toLocaleString()}</span>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
+                                            {new Date(a.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })} 
+                                            {new Date(a.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                        </span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-xs font-bold text-slate-700">{a.branch_name}</span>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-700 truncate block max-w-[120px]">{a.branch_name}</span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-xs font-medium text-slate-500">{a.motivo_name}</span>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-medium text-slate-500 truncate block max-w-[200px]">{a.motivo_name}</span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-wider ${a.tipo === 'ENTRADA' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                            {a.tipo === 'ENTRADA' ? <ArrowUpCircle size={14} className="inline mr-1" /> : <ArrowDownCircle size={14} className="inline mr-1" />}
+                                    <td className="px-3 py-2">
+                                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black tracking-wider ${a.tipo === 'ENTRADA' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                                             {a.tipo}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className="bg-slate-100 px-2 py-1 rounded text-xs font-black text-slate-600">{a.items_count}</span>
+                                    <td className="px-3 py-2 text-center">
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-xs font-bold text-slate-600">{a.items_count}</span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded text-[9px] font-black tracking-tighter uppercase ${a.status === 'ANULADO' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                            {a.status === 'ANULADO' ? <AlertCircle size={10} className="inline mr-1" /> : <CheckCircle2 size={10} className="inline mr-1" />}
+                                    <td className="px-2 py-2">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-tighter uppercase ${a.status === 'ANULADO' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
                                             {a.status || 'COMPLETADO'}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-1">
+                                    <td className="px-2 py-2 text-right">
+                                        <div className="flex items-center justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingAdjustment(a)}
                                                 className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                             >
-                                                <Eye size={16} />
+                                                <Eye size={14} />
                                             </button>
                                             {a.status !== 'ANULADO' && (
                                                 <>
@@ -748,13 +747,13 @@ const InventoryAdjustments = () => {
                                                         onClick={() => setEditingAdjustment(a)}
                                                         className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                                                     >
-                                                        <Edit2 size={16} />
+                                                        <Edit2 size={14} />
                                                     </button>
                                                     <button 
                                                         onClick={() => handleVoidAdjustment(a.id)}
                                                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                     >
-                                                        <XCircle size={16} />
+                                                        <XCircle size={14} />
                                                     </button>
                                                 </>
                                             )}

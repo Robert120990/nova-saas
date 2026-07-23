@@ -95,9 +95,9 @@ const PhysicalInventory = () => {
     });
 
     const { data: historyData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
-        queryKey: ['physical-inventory-history', historySearch, historyPage],
+        queryKey: ['physical-inventory-history', historySearch, historyPage, user?.branch_id],
         queryFn: async () => (await axios.get('/api/inventory/physical', { 
-            params: { search: historySearch, page: historyPage, limit: historyLimit } 
+            params: { search: historySearch, page: historyPage, limit: historyLimit, branch_id: user?.branch_id } 
         })).data,
         enabled: activeTab === 'historial'
     });
@@ -848,52 +848,63 @@ const PhysicalInventory = () => {
                             data={historyData.data}
                             isLoading={loadingHistory}
                             renderRow={(inv) => (
-                                <tr key={inv.id} className="hover:bg-slate-50 transition-all border-b border-slate-50 last:border-0 text-sm">
-                                    <td className="px-8 py-5">
-                                        <span className="text-xs font-mono font-black text-indigo-500">INV-{String(inv.id).padStart(5, '0')}</span>
+                                <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0">
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-mono font-black text-indigo-500">
+                                            INV-{String(inv.id).padStart(5, '0')}
+                                        </span>
                                     </td>
-                                    <td className="px-8 py-5">
-                                        <span className="text-xs font-bold text-slate-600">{new Date(inv.fecha).toLocaleDateString()}</span>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
+                                            {new Date(inv.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })} 
+                                            {new Date(inv.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                        </span>
                                     </td>
-                                    <td className="px-8 py-5 font-black text-slate-700">{inv.branch_name}</td>
-                                    <td className="px-8 py-5 font-bold text-slate-600">{inv.responsable}</td>
-                                    <td className="px-8 py-5">
-                                        <span className="px-2 py-1 bg-slate-100 rounded text-xs font-black text-slate-500">{inv.items_count} Prod.</span>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-700 truncate block max-w-[120px]">{inv.branch_name}</span>
                                     </td>
-                                    <td className="px-8 py-5">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${inv.status === 'APLICADO' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-600 truncate block max-w-[120px]">{inv.responsable}</span>
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-xs font-black text-slate-500">{inv.items_count} Prod.</span>
+                                    </td>
+                                    <td className="px-2 py-2">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-widest uppercase ${inv.status === 'APLICADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                                             {inv.status}
                                         </span>
                                     </td>
-                                    <td className="px-8 py-5 text-right flex items-center justify-end gap-2">
-                                        <button
-                                            onClick={() => handleExportExcel(inv)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all text-[10px] font-black uppercase"
-                                            title="Exportar Detalle a Excel"
-                                        >
-                                            <FileSpreadsheet size={14} />
-                                        </button>
-                                        {inv.status === 'PENDIENTE' && (
-                                            <>
-                                                <button 
-                                                    onClick={() => handleResume(inv.id)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all text-[10px] font-black uppercase"
-                                                >
-                                                    <RefreshCw size={14} />
-                                                    Resumir
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDelete(inv.id)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-all text-[10px] font-black uppercase"
-                                                    title="Eliminar borrador"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </>
-                                        )}
-                                        <button className="p-2 text-slate-400 hover:text-indigo-600 transition-all">
-                                            <ChevronRight size={20} />
-                                        </button>
+                                    <td className="px-2 py-2 text-right">
+                                        <div className="flex items-center justify-end gap-1">
+                                            <button
+                                                onClick={() => handleExportExcel(inv)}
+                                                className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"
+                                                title="Exportar Detalle a Excel"
+                                            >
+                                                <FileSpreadsheet size={14} />
+                                            </button>
+                                            {inv.status === 'PENDIENTE' && (
+                                                <>
+                                                    <button 
+                                                        onClick={() => handleResume(inv.id)}
+                                                        className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors"
+                                                        title="Resumir"
+                                                    >
+                                                        <RefreshCw size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDelete(inv.id)}
+                                                        className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-colors"
+                                                        title="Eliminar borrador"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </>
+                                            )}
+                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle">
+                                                <ChevronRight size={16} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             )}

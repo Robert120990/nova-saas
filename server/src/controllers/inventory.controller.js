@@ -186,11 +186,15 @@ const createTransfer = async (req, res) => {
 
 const getTransfers = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15 } = req.query;
+        const { search, branch_id, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         const params = [req.company_id];
 
         let whereClause = 'WHERE t.company_id = ?';
+        if (branch_id) {
+            whereClause += ' AND (t.origen_branch_id = ? OR t.destino_branch_id = ?)';
+            params.push(branch_id, branch_id);
+        }
         if (search) {
             whereClause += ` AND (
                 b1.nombre LIKE ? OR 
@@ -350,11 +354,15 @@ const getProductsForPhysicalInventory = async (req, res) => {
 
 const getPhysicalInventories = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15 } = req.query;
+        const { search, branch_id, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         const params = [req.company_id];
 
         let whereClause = 'WHERE p.company_id = ?';
+        if (branch_id) {
+            whereClause += ' AND p.branch_id = ?';
+            params.push(branch_id);
+        }
         if (search) {
             whereClause += ` AND (p.responsable LIKE ? OR b.nombre LIKE ?)`;
             const searchTerm = `%${search}%`;

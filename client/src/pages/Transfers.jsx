@@ -35,7 +35,9 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 
+import { useAuth } from '../context/AuthContext';
 const Transfers = () => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState('nuevo');
@@ -96,9 +98,9 @@ const Transfers = () => {
         });
 
     const { data: transfersData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingTransfers } = useQuery({
-        queryKey: ['transfers', historySearch, historyPage],
+        queryKey: ['transfers', historySearch, historyPage, user?.branch_id],
         queryFn: async () => (await axios.get('/api/inventory/transfers', { 
-            params: { search: historySearch, page: historyPage, limit } 
+            params: { search: historySearch, page: historyPage, limit, branch_id: user?.branch_id } 
         })).data,
         enabled: activeTab === 'historial'
     });
@@ -570,50 +572,46 @@ const Transfers = () => {
                             isLoading={loadingTransfers}
                             renderRow={(t) => (
                                 <tr key={t.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <FileText size={14} className="text-indigo-600" />
-                                            <span className="text-xs font-mono font-black text-slate-700">
-                                                TR-{String(t.id).padStart(6, '0')}
-                                            </span>
-                                        </div>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-mono font-black text-indigo-600">
+                                            TR-{String(t.id).padStart(6, '0')}
+                                        </span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <Calendar size={14} />
-                                            <span className="text-xs font-bold text-[Spanish]">{new Date(t.fecha).toLocaleString()}</span>
-                                        </div>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
+                                            {new Date(t.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + new Date(t.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                        </span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-sm font-bold text-slate-700 text-[Spanish]">{t.origen_nombre}</div>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-700 truncate max-w-[120px] block">{t.origen_nombre}</span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-sm font-bold text-indigo-600 text-[Spanish]">{t.destino_nombre}</div>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-indigo-600 truncate max-w-[120px] block">{t.destino_nombre}</span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-xs font-medium text-slate-500 text-[Spanish]">{t.usuario_nombre}</div>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-medium text-slate-500 truncate block w-[150px]">{t.usuario_nombre}</span>
                                     </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className="bg-slate-100 px-2 py-1 rounded-lg text-xs font-bold text-slate-600">
+                                    <td className="px-3 py-2 text-center">
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-xs font-bold text-slate-600">
                                             {t.items_count}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                    <td className="px-2 py-2">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                                             t.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 
                                             t.status === 'ANULADO' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'
                                         }`}>
                                             {t.status}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-2">
+                                    <td className="px-2 py-2 text-right">
+                                        <div className="flex items-center justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingTransfer(t)}
-                                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                 title="Ver detalle"
                                             >
-                                                <Eye size={16} />
+                                                <Eye size={14} />
                                             </button>
                                             {t.status !== 'ANULADO' && (
                                                 <>
@@ -625,17 +623,17 @@ const Transfers = () => {
                                                             setActiveTab('nuevo');
                                                             toast.info('Cargando datos para corrección. No olvides anular el anterior si es necesario.');
                                                         }}
-                                                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                         title="Editar (Crear copia)"
                                                     >
-                                                        <Edit2 size={16} />
+                                                        <Edit2 size={14} />
                                                     </button>
                                                     <button 
                                                         onClick={() => handleAnnulTransfer(t.id)}
-                                                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                         title="Anular"
                                                     >
-                                                        <Ban size={16} />
+                                                        <Ban size={14} />
                                                     </button>
                                                 </>
                                             )}
