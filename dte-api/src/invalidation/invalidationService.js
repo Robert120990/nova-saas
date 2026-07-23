@@ -70,7 +70,7 @@ async function invalidateDTE(payload, companyId, user) {
 
     if (isV2Schema) {
         codEstable = emisorOrig.codEstable
-            || (branch.codigo ? String(branch.codigo).substring(0, 10) : null);
+            || (branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null);
 
         codPuntoVenta = emisorOrig.codPuntoVenta
             || (pos.codigo ? String(pos.codigo).substring(0, 15) : null);
@@ -94,7 +94,7 @@ async function invalidateDTE(payload, companyId, user) {
         }
 
         codEstable = emisorOrig.codEstable
-            || (branch.codigo ? String(branch.codigo).substring(0, 10) : null);
+            || (branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null);
 
         codPuntoVentaMH = emisorOrig.codPuntoVentaMH;
         if (!codPuntoVentaMH) {
