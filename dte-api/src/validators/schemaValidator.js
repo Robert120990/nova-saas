@@ -34,6 +34,36 @@ const schemaMap = {
 
 const validators = {};
 
+function tryLoadSchema(type) {
+    const relativePath = schemaMap[type];
+    if (!relativePath) {
+        console.warn(`No schema mapping for DTE type ${type}`);
+        return false;
+    }
+
+    const searchPaths = [
+        schemasDir,
+        path.resolve(__dirname, '../../../cumplientoDTE/svfe-json-schemas/svfe-json-schemas'),
+        path.resolve(__dirname, '../schemas'),
+    ];
+
+    for (const baseDir of searchPaths) {
+        const schemaPath = path.join(baseDir, relativePath);
+        if (fs.existsSync(schemaPath)) {
+            try {
+                const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+                validators[type] = ajv.compile(schema);
+                console.log(`Loaded validator for DTE type ${type} from ${schemaPath}`);
+                return true;
+            } catch (error) {
+                console.error(`Error compiling schema for type ${type} from ${schemaPath}:`, error.message);
+            }
+        }
+    }
+
+    return false;
+}
+
 function initValidators() {
     Object.keys(schemaMap).forEach(type => {
         try {
@@ -121,9 +151,13 @@ function translateError(err) {
 }
 
 function validateDTE(type, data) {
-    const validator = validators[type];
+    let validator = validators[type];
     if (!validator) {
-        throw new Error(`Validador no encontrado para el tipo de DTE: ${type}`);
+        if (tryLoadSchema(type)) {
+            validator = validators[type];
+        } else {
+            throw new Error(`Validador no encontrado para el tipo de DTE: ${type}`);
+        }
     }
 
     const isValid = validator(data);
