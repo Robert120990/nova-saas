@@ -25,9 +25,9 @@ const crtsDir = path.join(__dirname, '..', 'certificados-crt');
 const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 const logFile = fs.createWriteStream(path.join(logsDir, 'server.log'), { flags: 'a' });
-const skipSseLog = (req) => req.path.startsWith('/api/logs/stream/');
+morgan.token('safe-url', (req) => (req.originalUrl || req.url).replace(/([?&])token=[^&]+/g, '$1token=***'));
 
-app.use(morgan('dev', { stream: { write: (msg) => logFile.write(msg) }, skip: skipSseLog }));
+app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]', { stream: { write: (msg) => logFile.write(msg) } }));
 
 const _log = console.log;
 const _error = console.error;
@@ -40,7 +40,7 @@ console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(morgan('dev', { skip: skipSseLog }));
+app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]'));
 app.use('/uploads', express.static(uploadsDir));
 
 // Routes

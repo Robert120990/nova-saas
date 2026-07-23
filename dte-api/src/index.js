@@ -22,8 +22,9 @@ const PORT = process.env.PORT || 4005;
 const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 const logFile = fs.createWriteStream(path.join(logsDir, 'dte-api.log'), { flags: 'a' });
+morgan.token('safe-url', (req) => (req.originalUrl || req.url).replace(/([?&])token=[^&]+/g, '$1token=***'));
 
-app.use(morgan('dev', { stream: { write: (msg) => logFile.write(msg) } }));
+app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]', { stream: { write: (msg) => logFile.write(msg) } }));
 
 const _log = console.log;
 const _error = console.error;
@@ -35,7 +36,7 @@ console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(morgan('dev'));
+app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]'));
 
 // Initialization
 initValidators();

@@ -1048,7 +1048,7 @@ const GasCloseout = () => {
         }).filter(Boolean);
     }, [readings, tankReadings]);
 
-    const handleInit = (e) => {
+    const handleInit = async (e) => {
         e.preventDefault();
         if (!sellerId || !fechaTurno || !numeroTurno) {
             toast.error('Todos los campos son requeridos');
@@ -1059,14 +1059,42 @@ const GasCloseout = () => {
         const sourceAssignments = despachadorNozzleAssignments.length > 0
             ? despachadorNozzleAssignments
             : liveNozzleAssignments;
+
+        let targetDespachadores = closeoutDespachadores;
+
+        const assignedDespIds = [...new Set(sourceAssignments.map(a => a.despachador_id))];
+        const selectedIds = targetDespachadores.map(d => d.despachador_id);
+        const missingIds = assignedDespIds.filter(id => !selectedIds.includes(id));
+
+        if (missingIds.length > 0) {
+            const missingDesps = allDespachadores.filter(d => missingIds.includes(d.id));
+            const missingNames = missingDesps.map(d => `${d.codigo} — ${d.descripcion}`).join('\n');
+            const ok = await confirm({
+                title: 'Despachadores faltantes',
+                message: `Los siguientes despachadores tienen mangueras asignadas pero no están en el turno:\n\n${missingNames}\n\n¿Desea incluirlos automáticamente?`,
+                confirmLabel: 'Sí, incluirlos',
+                cancelLabel: 'No, cancelar',
+                variant: 'warning',
+            });
+            if (!ok) return;
+            targetDespachadores = [
+                ...closeoutDespachadores,
+                ...missingDesps.map(d => ({
+                    despachador_id: d.id,
+                    nombre: d.descripcion || d.codigo || ''
+                }))
+            ];
+            setCloseoutDespachadores(targetDespachadores);
+        }
+
         initMutation.mutate({
             seller_id: parseInt(sellerId),
             seller_name: name,
             fecha_turno: fechaTurno,
             numero_turno: numeroTurno,
             branch_id: user?.branch_id,
-            despachadores: closeoutDespachadores,
-            nozzle_assignments: closeoutDespachadores.map(d => ({
+            despachadores: targetDespachadores,
+            nozzle_assignments: targetDespachadores.map(d => ({
                 despachador_id: d.despachador_id,
                 nozzle_ids: sourceAssignments
                     .filter(a => a.despachador_id === d.despachador_id)
