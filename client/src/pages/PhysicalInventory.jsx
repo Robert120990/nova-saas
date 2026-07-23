@@ -743,43 +743,43 @@ const PhysicalInventory = () => {
                                         <table className="w-full text-left border-collapse">
                                         <thead>
                                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Producto</th>
-                                                <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sistema</th>
-                                                <th className="px-6 py-4 text-center text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50/30">Físico</th>
-                                                <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Dif.</th>
-                                                <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Costo</th>
-                                                <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Total</th>
+                                                <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Producto</th>
+                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sistema</th>
+                                                <th className="px-3 py-2 text-center text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50/30">Físico</th>
+                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Dif.</th>
+                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Costo</th>
+                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Total</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
                                             {paginatedItems.map((item) => (
-                                                <tr key={item.product_id} className="hover:bg-slate-50/50 transition-colors group text-sm">
-                                                    <td className="px-6 py-3">
+                                                <tr key={item.product_id} className="hover:bg-slate-50/50 transition-colors group text-xs">
+                                                    <td className="px-3 py-2">
                                                         <div className="flex flex-col">
                                                             <span className="text-[9px] font-mono font-black text-indigo-500 mb-0.5">#{item.codigo}</span>
-                                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[200px]">{item.nombre}</span>
+                                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[280px]">{item.nombre}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-3 text-right">
+                                                    <td className="px-3 py-2 text-right">
                                                         <span className="text-xs font-black text-slate-400">{item.stock_sistema}</span>
                                                     </td>
-                                                    <td className="px-6 py-3 bg-indigo-50/20">
+                                                    <td className="px-3 py-2 bg-indigo-50/20">
                                                         <input 
                                                             type="number"
                                                             value={item.stock_fisico}
                                                             onChange={(e) => handleItemChange(item.product_id, 'stock_fisico', e.target.value)}
-                                                            className="w-20 bg-white border border-indigo-100 rounded-lg px-2 py-1 text-center text-xs font-black text-indigo-700 outline-none focus:border-indigo-400 shadow-sm"
+                                                            className="w-16 bg-white border border-indigo-100 rounded-lg px-1.5 py-0.5 text-center text-xs font-black text-indigo-700 outline-none focus:border-indigo-400 shadow-sm"
                                                         />
                                                     </td>
-                                                    <td className="px-6 py-3 text-right">
+                                                    <td className="px-3 py-2 text-right">
                                                         <span className={`text-xs font-black ${item.diferencia === 0 ? 'text-slate-300' : item.diferencia > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                             {item.diferencia > 0 ? '+' : ''}{item.diferencia}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-3 text-right">
+                                                    <td className="px-3 py-2 text-right">
                                                         <span className="text-xs font-bold text-slate-400">${item.costo}</span>
                                                     </td>
-                                                    <td className="px-6 py-3 text-right">
+                                                    <td className="px-3 py-2 text-right">
                                                         <span className={`text-xs font-black ${item.total === 0 ? 'text-slate-300' : item.total > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                             ${Math.abs(item.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                         </span>
