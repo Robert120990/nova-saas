@@ -1640,6 +1640,7 @@ exports.saveTarjetas = async (req, res) => {
         }
 
         if (tarjetas && tarjetas.length > 0) {
+            const values = tarjetas.map(t => [
                 parseInt(id),
                 t.num_tarjeta || '',
                 t.num_autorizacion || '',
@@ -1995,6 +1996,7 @@ exports.saveAnticiposDesp = async (req, res) => {
         }
 
         if (anticipos && anticipos.length > 0) {
+            for (const a of anticipos) {
                     if (a.cliente_id && parseFloat(a.monto) > 0) {
                         const [available] = await connection.query(
                             `SELECT COALESCE(SUM(monto_disponible), 0) as total FROM gas_station_advances WHERE company_id = ? AND cliente_id = ?`,
