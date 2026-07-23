@@ -33,6 +33,17 @@ router.use(require('./middlewares/audit'));
 // Health check
 router.get('/health', (req, res) => res.json({ status: 'UP' }));
 
+// Reinicio seguro (requiere restart_key del .env)
+router.post('/restart', (req, res) => {
+    const key = req.body?.restart_key || req.headers['x-restart-key'];
+    if (!key || key !== process.env.RESTART_KEY) {
+        return res.status(401).json({ success: false, message: 'restart_key inválida' });
+    }
+    console.log('[Restart] Solicitado — reiniciando en 500ms...');
+    res.json({ success: true, message: 'Reiniciando servicio DTE...' });
+    setTimeout(() => process.exit(0), 500);
+});
+
 // DTE Endpoints
 router.post('/dte/emit', authMiddleware, tenantMiddleware, dteController.emit);
 router.post('/dte/generate', authMiddleware, tenantMiddleware, dteController.generate);
