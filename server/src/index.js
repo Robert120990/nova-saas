@@ -21,11 +21,26 @@ const crtsDir = path.join(__dirname, '..', 'certificados-crt');
     }
 });
 
+// File logger setup
+const logsDir = path.join(__dirname, '..', 'logs');
+if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+const logFile = fs.createWriteStream(path.join(logsDir, 'server.log'), { flags: 'a' });
+const skipSseLog = (req) => req.path.startsWith('/api/logs/stream/');
+
+app.use(morgan('dev', { stream: { write: (msg) => logFile.write(msg) }, skip: skipSseLog }));
+
+const _log = console.log;
+const _error = console.error;
+const _warn = console.warn;
+console.log = (...args) => { logFile.write(`[${new Date().toISOString()}] [LOG] ${args.join(' ')}\n`); _log.apply(console, args); };
+console.error = (...args) => { logFile.write(`[${new Date().toISOString()}] [ERROR] ${args.join(' ')}\n`); _error.apply(console, args); };
+console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN] ${args.join(' ')}\n`); _warn.apply(console, args); };
+
 // Middlewares
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(morgan('dev'));
+app.use(morgan('dev', { skip: skipSseLog }));
 app.use('/uploads', express.static(uploadsDir));
 
 // Routes

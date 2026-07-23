@@ -5,6 +5,8 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const { authMiddleware, tenantMiddleware } = require('./middlewares/auth');
@@ -15,6 +17,20 @@ const { initValidators } = require('./validators/schemaValidator');
 
 const app = express();
 const PORT = process.env.PORT || 4005;
+
+// File logger setup
+const logsDir = path.join(__dirname, '..', 'logs');
+if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+const logFile = fs.createWriteStream(path.join(logsDir, 'dte-api.log'), { flags: 'a' });
+
+app.use(morgan('dev', { stream: { write: (msg) => logFile.write(msg) } }));
+
+const _log = console.log;
+const _error = console.error;
+const _warn = console.warn;
+console.log = (...args) => { logFile.write(`[${new Date().toISOString()}] [LOG] ${args.join(' ')}\n`); _log.apply(console, args); };
+console.error = (...args) => { logFile.write(`[${new Date().toISOString()}] [ERROR] ${args.join(' ')}\n`); _error.apply(console, args); };
+console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN] ${args.join(' ')}\n`); _warn.apply(console, args); };
 
 // Middleware
 app.use(cors());

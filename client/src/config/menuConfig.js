@@ -302,6 +302,7 @@ export const menuConfig = [
         children: [
             { id: 'system-settings', label: 'Configuración del Sistema', path: '/configuracion/sistema', icon: Settings, permission: 'manage_system_settings' },
             { id: 'smtp', label: 'Configuración SMTP', path: '/configuracion/smtp', icon: Settings, permission: 'manage_smtp' },
+            { id: 'log-viewer', label: 'Visor de Logs', path: '/configuracion/logs', icon: ScrollText, permission: 'view_logs' },
         ]
     },
     {

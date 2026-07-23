@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 
 const verifyToken = (req, res, next) => {
-    console.log('[DEBUG] verifyToken hit for:', req.method, req.originalUrl);
+    console.log('[DEBUG] verifyToken hit for:', req.method, req.path);
     const authHeader = req.headers['authorization'];
     const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
 

@@ -792,4 +792,6 @@ router.put('/rh/planillas/:id', rhPlanillaController.updatePlanilla);
 router.delete('/rh/planillas/:id', rhPlanillaController.deletePlanilla);
 router.post('/rh/planillas/:id/pagar', rhPlanillaController.pagarPlanilla);
 
+router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
+
 module.exports = router;

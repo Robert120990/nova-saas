@@ -42,6 +42,7 @@ import DailySalesReport from './pages/DailySalesReport';
 import Contingency from './pages/Contingency';
 import Eret from './pages/Eret';
 import AuditLog from './pages/AuditLog';
+import LogViewer from './pages/LogViewer';
 import ConnectedUsers from './pages/ConnectedUsers';
 import Changelog from './pages/Changelog';
 import CashClosing from './pages/CashClosing';
@@ -167,6 +168,7 @@ function App() {
                         <Route path="/user-access" element={<UserAccess />} />
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
+                        <Route path="/configuracion/logs" element={<LogViewer />} />
                         <Route path="/admin/menu-items" element={<MenuItems />} />
                         <Route path="/inventario/traslados" element={<Transfers />} />
                         <Route path="/inventario/movimientos" element={<InventoryAdjustments />} />
