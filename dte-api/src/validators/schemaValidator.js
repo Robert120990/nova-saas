@@ -2,7 +2,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 // Esquemas actualizados (Fix whitespace) - 2026-04-10 01:08
 
 const ajv = new Ajv({ 
@@ -12,7 +12,7 @@ const ajv = new Ajv({
 });
 addFormats(ajv);
 
-const schemasDir = path.resolve(__dirname, process.env.SCHEMAS_PATH || '../../../cumplientoDTE/2026/svfe-json-schemas/svfe-json-schemas');
+const schemasDir = path.resolve(__dirname, process.env.SCHEMAS_PATH || '../../../cumplientoDTE/svfe-json-schemas/svfe-json-schemas');
 
 // Mapping of DTE type to schema filename (versioned 2026)
 const schemaMap = {
