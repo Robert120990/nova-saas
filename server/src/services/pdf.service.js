@@ -3354,6 +3354,117 @@ const generatePlanillaReciboPDF = (data) => {
     });
 };
 
+const generateInvalidationPDF = (invalidationJson) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER', bufferPages: true });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const id = invalidationJson.identificacion || {};
+            const emisor = invalidationJson.emisor || {};
+            const documento = invalidationJson.documento || {};
+            const motivo = invalidationJson.motivo || {};
+            const M = 40;
+            const pageW = doc.page.width - 80;
+
+            const tipoAnulacionNombres = {
+                1: 'Anulación Total por sustitución',
+                2: 'Anulación Total por no concretar operación',
+                3: 'Anulación Parcial'
+            };
+
+            // --- Header ---
+            doc.rect(M, 30, pageW, 18).fill('#991b1b');
+            doc.fillColor('white').fontSize(11).font('Helvetica-Bold')
+                .text('EVENTO DE INVALIDACIÓN DE DOCUMENTO TRIBUTARIO ELECTRÓNICO', M, 33, { align: 'center', width: pageW });
+            doc.fillColor('black');
+
+            // --- Identificación ---
+            let y = 65;
+            doc.fontSize(10).font('Helvetica-Bold').text('Identificación del Evento', M, y);
+            y = doc.y + 4;
+            doc.rect(M, y, pageW, 65).stroke();
+            doc.fontSize(8.5).font('Helvetica');
+            const idX = M + 8;
+
+            doc.font('Helvetica-Bold').text('Versión:', idX, y + 6);
+            doc.font('Helvetica').text(String(id.version || ''), idX + 80, y + 6);
+
+            doc.font('Helvetica-Bold').text('Ambiente:', idX, y + 20);
+            doc.font('Helvetica').text(id.ambiente === '01' ? 'PRODUCCIÓN' : 'PRUEBAS', idX + 80, y + 20);
+
+            doc.font('Helvetica-Bold').text('Código Generación:', idX, y + 34);
+            doc.font('Helvetica').text(id.codigoGeneracion || '', idX + 80, y + 34, { width: 400 });
+
+            doc.font('Helvetica-Bold').text('Fecha/Hora:', idX, y + 48);
+            doc.font('Helvetica').text(`${id.fecEmi || ''} ${id.horEmi || ''}`, idX + 80, y + 48);
+
+            // --- Emisor ---
+            y = doc.y + 12;
+            doc.fontSize(10).font('Helvetica-Bold').text('Emisor', M, y);
+            y = doc.y + 4;
+            doc.rect(M, y, pageW, 65).stroke();
+            doc.fontSize(8.5).font('Helvetica');
+            doc.font('Helvetica-Bold').text('NIT:', idX, y + 6);
+            doc.font('Helvetica').text(emisor.nit || '', idX + 80, y + 6);
+            doc.font('Helvetica-Bold').text('Nombre:', idX, y + 20);
+            doc.font('Helvetica').text(emisor.nombre || '', idX + 80, y + 20, { width: 400 });
+            doc.font('Helvetica-Bold').text('Cod.Establecimiento:', idX, y + 34);
+            doc.font('Helvetica').text(`${emisor.codEstableMH || ''} (${emisor.codEstable || ''})`, idX + 80, y + 34);
+            doc.font('Helvetica-Bold').text('Cod.Punto Venta:', idX, y + 48);
+            doc.font('Helvetica').text(`${emisor.codPuntoVentaMH || ''} (${emisor.codPuntoVenta || ''})`, idX + 80, y + 48);
+
+            // --- Documento Original ---
+            y = doc.y + 12;
+            doc.fontSize(10).font('Helvetica-Bold').text('Documento Original Invalidado', M, y);
+            y = doc.y + 4;
+            doc.rect(M, y, pageW, 80).stroke();
+            doc.fontSize(8.5).font('Helvetica');
+            doc.font('Helvetica-Bold').text('Tipo DTE:', idX, y + 6);
+            doc.font('Helvetica').text(documento.tipoDte || '', idX + 80, y + 6);
+            doc.font('Helvetica-Bold').text('Código Generación:', idX, y + 20);
+            doc.font('Helvetica').text(documento.codigoGeneracion || '', idX + 80, y + 20, { width: 400 });
+            doc.font('Helvetica-Bold').text('Número Control:', idX, y + 34);
+            doc.font('Helvetica').text(documento.numeroControl || '', idX + 80, y + 34, { width: 400 });
+            doc.font('Helvetica-Bold').text('Sello Recepción:', idX, y + 48);
+            doc.font('Helvetica').text(documento.selloRecibido || '', idX + 80, y + 48, { width: 400 });
+            doc.font('Helvetica-Bold').text('Fecha Emisión Doc.:', idX, y + 62);
+            doc.font('Helvetica').text(documento.fecEmi || '', idX + 80, y + 62);
+
+            // --- Motivo ---
+            y = doc.y + 12;
+            doc.fontSize(10).font('Helvetica-Bold').text('Motivo de Invalidación', M, y);
+            y = doc.y + 4;
+            const motivoBoxH = 100;
+            doc.rect(M, y, pageW, motivoBoxH).stroke();
+            doc.fontSize(8.5).font('Helvetica');
+            doc.font('Helvetica-Bold').text('Tipo Anulación:', idX, y + 6);
+            doc.font('Helvetica').text(tipoAnulacionNombres[motivo.tipoAnulacion] || String(motivo.tipoAnulacion || ''), idX + 100, y + 6, { width: 350 });
+            doc.font('Helvetica-Bold').text('Motivo:', idX, y + 22);
+            doc.font('Helvetica').text(motivo.motivoAnulacion || '', idX + 100, y + 22, { width: 350 });
+            doc.font('Helvetica-Bold').text('Responsable:', idX, y + 40);
+            doc.font('Helvetica').text(motivo.nombreResponsable || '', idX + 100, y + 40, { width: 350 });
+            doc.font('Helvetica-Bold').text('Doc. Responsable:', idX, y + 56);
+            doc.font('Helvetica').text(`${motivo.tipDocResponsable || ''}: ${motivo.numDocResponsable || ''}`, idX + 100, y + 56, { width: 350 });
+            doc.font('Helvetica-Bold').text('Solicitante:', idX, y + 72);
+            doc.font('Helvetica').text(`${motivo.nombreSolicita || ''} (${motivo.tipDocSolicita || ''}: ${motivo.numDocSolicita || ''})`, idX + 100, y + 72, { width: 350 });
+
+            // --- Footer ---
+            y = doc.y + 20;
+            doc.fontSize(7.5).font('Helvetica').fillColor('#94a3b8')
+                .text('Documento de Invalidación generado electrónicamente.', M, y, { align: 'center', width: pageW });
+            doc.text(`Código de Generación del Evento: ${id.codigoGeneracion || ''}`, M, doc.y + 2, { align: 'center', width: pageW });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 module.exports = {
     generateTransferPDF, 
     generateStatementPDF, 
@@ -3371,6 +3482,7 @@ module.exports = {
     generatePendingDocumentsDetailedPDF,
     generateProviderPendingDocumentsDetailedPDF,
     generateRTEE,
+    generateInvalidationPDF,
     generateVacacionPDF,
     generateLiquidacionPDF,
     generateFiniquitoPDF,

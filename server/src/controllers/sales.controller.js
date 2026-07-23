@@ -1454,6 +1454,8 @@ const exportRTEE = async (req, res) => {
             }))
         };
 
+        reportData.isVoided = venta.estado === 'anulado';
+
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -1572,6 +1574,8 @@ const getPublicRTEE = async (req, res) => {
                 ivaRetenido: item.ivaRetenido || 0,
             }))
         };
+
+        reportData.isVoided = venta.estado === 'anulado';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 

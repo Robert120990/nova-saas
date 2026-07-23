@@ -2,7 +2,8 @@ const nodemailer = require('nodemailer');
 const pool = require('../config/db');
 const { 
     generateAgingPDF,
-    generateRTEE
+    generateRTEE,
+    generateInvalidationPDF
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
@@ -622,10 +623,52 @@ module.exports = {
             };
 
             const pdfBuffer = await generateRTEE(reportData);
+
+            // 3. Obtener datos del evento de invalidación
+            const [invRows] = await pool.query(
+                'SELECT * FROM dte_invalidations WHERE codigo_generacion_dte = ? AND estado = "ACCEPTED" ORDER BY created_at DESC LIMIT 1',
+                [venta.codigo_generacion]
+            );
+            let invalidationPdfBuffer = null;
+            let invalidationJsonBuffer = null;
+            if (invRows.length > 0) {
+                const inv = invRows[0];
+                if (inv.json_enviado) {
+                    const jsonStr = typeof inv.json_enviado === 'string' ? inv.json_enviado : JSON.stringify(inv.json_enviado);
+                    invalidationJsonBuffer = Buffer.from(jsonStr, 'utf8');
+                    try {
+                        invalidationPdfBuffer = await generateInvalidationPDF(
+                            typeof inv.json_enviado === 'string' ? JSON.parse(inv.json_enviado) : inv.json_enviado
+                        );
+                    } catch (pdfErr) {
+                        console.error('[Mailer] Error generando PDF de invalidación:', pdfErr.message);
+                    }
+                }
+            }
+
             const smtp = await getSMTPSettings(venta.branch_id, venta.company_id);
             const transporter = createTransporter(smtp);
 
-            // 4. Enviar Email
+            // 4. Preparar adjuntos
+            const attachments = [
+                { filename: `ANULADO-DTE-${venta.numero_control}.pdf`, content: pdfBuffer }
+            ];
+            if (invalidationJsonBuffer) {
+                attachments.push({
+                    filename: `INVALIDACION-${venta.codigo_generacion}.json`,
+                    content: invalidationJsonBuffer,
+                    contentType: 'application/json'
+                });
+            }
+            if (invalidationPdfBuffer) {
+                attachments.push({
+                    filename: `INVALIDACION-${venta.codigo_generacion}.pdf`,
+                    content: invalidationPdfBuffer,
+                    contentType: 'application/pdf'
+                });
+            }
+
+            // 5. Enviar Email
             await transporter.sendMail({
                 from: `"${venta.company_name}" <${smtp.user}>`,
                 to: dteJson.receptor.correo,
@@ -635,7 +678,12 @@ module.exports = {
                         <h2 style="color: #dc2626; text-align: center;">Notificación de Invalidación de Documento</h2>
                         <p>Estimado(a) <b>${dteJson.receptor.nombre}</b>,</p>
                         <p>Le informamos que el documento <b>${reportData.dte.tipoDteNombre}</b> con número de control <b>${venta.numero_control}</b> ha sido <b>INVALIDADO (ANULADO)</b> ante el Ministerio de Hacienda.</p>
-                        <p>Adjunto encontrará la representación gráfica actualizada del documento con el sello de anulación correspondiente.</p>
+                        <p>Adjunto encontrará:</p>
+                        <ul>
+                            <li>Representación gráfica del documento anulado</li>
+                            <li>Documento de invalidación (PDF)</li>
+                            <li>Evento de invalidación (JSON)</li>
+                        </ul>
                         <div style="background: #ffffff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #fee2e2; text-align: center;">
                             <span style="font-size: 10px; color: #991b1b; font-weight: bold; text-transform: uppercase;">Estado del Documento</span>
                             <div style="font-size: 20px; font-weight: 800; color: #dc2626;">ANULADO / INVALIDADO</div>
@@ -645,9 +693,7 @@ module.exports = {
                         <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
                     </div>
                 `,
-                attachments: [
-                    { filename: `ANULADO-DTE-${venta.numero_control}.pdf`, content: pdfBuffer }
-                ]
+                attachments
             });
 
             console.log(`[Mailer] Notificación de invalidación enviada con éxito para Venta ID: ${saleId}`);
