@@ -30,6 +30,26 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.use('/api/auth', authRoutes);
+
+// Restart DTE API (reinicia proceso dte-api en puerto 5000)
+app.post('/api/restart', express.json(), async (req, res) => {
+    const key = req.body?.restart_key || req.headers['x-restart-key'];
+    if (!key || key !== 'novarestart2026') {
+        return res.status(401).json({ message: 'restart_key inválida' });
+    }
+    try {
+        const response = await fetch('http://localhost:5000/api/restart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ restart_key: key })
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (e) {
+        res.status(502).json({ message: 'Error conectando con dte-api: ' + e.message });
+    }
+});
+
 app.use('/api', apiRoutes);
 
 // Health check

@@ -6,6 +6,9 @@ module.exports = {
       script: 'src/index.js',
       instances: 1,
       exec_mode: 'fork',
+      watch: ['src', 'uploads', 'certificados-p12pfx', 'certificados-crt'],
+      watch_delay: 3000,
+      ignore_watch: ['node_modules', 'logs'],
       env: {
         NODE_ENV: 'production',
         PORT: 4000
@@ -24,6 +27,9 @@ module.exports = {
       script: 'src/index.js',
       instances: 1,
       exec_mode: 'fork',
+      watch: ['src', '.env'],
+      watch_delay: 3000,
+      ignore_watch: ['node_modules', 'logs'],
       env: {
         NODE_ENV: 'production',
         PORT: 5000
