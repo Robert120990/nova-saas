@@ -62,17 +62,24 @@ async function invalidateDTE(payload, companyId, user) {
 
     // Usar los códigos EXACTAMENTE como figuran en el DTE original firmado.
     // Hacienda valida que coincidan con los del documento a invalidar.
-    // Solo se usa fallback a branch/pos si el DTE original no tiene esos datos.
-    const codEstableMH = emisorOrig.codEstableMH
-        || (branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null)
-        || (branch.codigo ? String(branch.codigo).padStart(4, '0').substring(0, 4) : '0001');
+    let codEstableMH = emisorOrig.codEstableMH;
+    if (!codEstableMH) {
+        codEstableMH = branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null;
+        if (!codEstableMH) {
+            throw new Error('El DTE original no contiene código de establecimiento MH y la sucursal no tiene código MH configurado. Verifique los datos de la sucursal.');
+        }
+    }
 
     const codEstable = emisorOrig.codEstable
         || (branch.codigo ? String(branch.codigo).substring(0, 10) : null);
 
-    const codPuntoVentaMH = emisorOrig.codPuntoVentaMH
-        || (pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null)
-        || '0001';
+    let codPuntoVentaMH = emisorOrig.codPuntoVentaMH;
+    if (!codPuntoVentaMH) {
+        codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
+        if (!codPuntoVentaMH) {
+            throw new Error('El DTE original no contiene código de punto de venta MH y el punto de venta no tiene código configurado. Verifique los datos del punto de venta.');
+        }
+    }
 
     const codPuntoVenta = emisorOrig.codPuntoVenta
         || (pos.codigo ? String(pos.codigo).substring(0, 15) : null);
