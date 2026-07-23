@@ -881,8 +881,12 @@ exports.saveExpenses = async (req, res) => {
 
         await pool.query(`DELETE FROM gas_station_closeout_expenses WHERE closeout_id = ?`, [id]);
 
+        const invalidExpenses = expenses.filter(e => !e.despachador_id);
+        if (invalidExpenses.length > 0) {
+            return res.status(400).json({ message: 'Todos los gastos deben tener un despachador asignado' });
+        }
+
         if (expenses && expenses.length > 0) {
-            const providerIds = expenses.filter(e => e.provider_id).map(e => parseInt(e.provider_id));
             const providerMap = {};
             if (providerIds.length > 0) {
                 const [providers] = await pool.query(
@@ -1117,6 +1121,11 @@ exports.saveCupones = async (req, res) => {
         // REPLACE-ALL STRATEGY
         await pool.query(`DELETE FROM gas_station_closeout_cupones WHERE closeout_id = ?`, [id]);
 
+        const invalidCupones = cupones.filter(c => !c.despachador_id);
+        if (invalidCupones.length > 0) {
+            return res.status(400).json({ message: 'Todos los cupones deben tener un despachador asignado' });
+        }
+
         if (cupones && cupones.length > 0) {
             const distributorIds = cupones.filter(c => c.distribuidora_id).map(c => parseInt(c.distribuidora_id));
             const distributorMap = {};
@@ -1228,6 +1237,11 @@ exports.saveDescuentos = async (req, res) => {
         }
 
         await pool.query(`DELETE FROM gas_station_closeout_descuentos WHERE closeout_id = ?`, [id]);
+
+        const invalidDescuentos = descuentos.filter(d => !d.despachador_id);
+        if (invalidDescuentos.length > 0) {
+            return res.status(400).json({ message: 'Todos los descuentos deben tener un despachador asignado' });
+        }
 
         if (descuentos && descuentos.length > 0) {
             const clienteIds = descuentos.filter(d => d.cliente_id).map(d => parseInt(d.cliente_id));
@@ -1345,6 +1359,11 @@ exports.saveAdelantos = async (req, res) => {
         }
 
         await pool.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
+
+        const invalidAdelantos = adelantos.filter(a => !a.despachador_id);
+        if (invalidAdelantos.length > 0) {
+            return res.status(400).json({ message: 'Todos los adelantos deben tener un despachador asignado' });
+        }
 
         if (adelantos && adelantos.length > 0) {
             const values = adelantos.map(a => [
@@ -1615,8 +1634,12 @@ exports.saveTarjetas = async (req, res) => {
 
         await pool.query(`DELETE FROM gas_station_closeout_tarjetas WHERE closeout_id = ?`, [id]);
 
+        const invalidTarjetas = tarjetas.filter(t => !t.despachador_id);
+        if (invalidTarjetas.length > 0) {
+            return res.status(400).json({ message: 'Todas las tarjetas deben tener un despachador asignado' });
+        }
+
         if (tarjetas && tarjetas.length > 0) {
-            const values = tarjetas.map(t => [
                 parseInt(id),
                 t.num_tarjeta || '',
                 t.num_autorizacion || '',
@@ -1708,6 +1731,11 @@ exports.saveCreditos = async (req, res) => {
         }
 
         await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE closeout_id = ?`, [id]);
+
+        const invalidCreditos = creditos.filter(c => !c.despachador_id);
+        if (invalidCreditos.length > 0) {
+            return res.status(400).json({ message: 'Todos los créditos deben tener un despachador asignado' });
+        }
 
         if (creditos && creditos.length > 0) {
             const values = creditos.map(c => [
@@ -1807,6 +1835,11 @@ exports.saveVales = async (req, res) => {
         }
 
         await pool.query(`DELETE FROM gas_station_closeout_vales WHERE closeout_id = ?`, [id]);
+
+        const invalidVales = vales.filter(v => !v.despachador_id);
+        if (invalidVales.length > 0) {
+            return res.status(400).json({ message: 'Todos los vales deben tener un despachador asignado' });
+        }
 
         if (vales && vales.length > 0) {
             const values = vales.map(v => [
@@ -1956,8 +1989,12 @@ exports.saveAnticiposDesp = async (req, res) => {
 
             await connection.query(`DELETE FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`, [id]);
 
-            if (anticipos && anticipos.length > 0) {
-                for (const a of anticipos) {
+        const invalidAnticipos = anticipos.filter(a => !a.despachador_id);
+        if (invalidAnticipos.length > 0) {
+            return res.status(400).json({ message: 'Todos los anticipos deben tener un despachador asignado' });
+        }
+
+        if (anticipos && anticipos.length > 0) {
                     if (a.cliente_id && parseFloat(a.monto) > 0) {
                         const [available] = await connection.query(
                             `SELECT COALESCE(SUM(monto_disponible), 0) as total FROM gas_station_advances WHERE company_id = ? AND cliente_id = ?`,

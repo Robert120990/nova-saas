@@ -582,6 +582,9 @@ const GasCloseout = () => {
     };
 
     const handleAddGastoRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setGastos(prev => [...prev, {
             id: Date.now(),
             rubro: '',
@@ -591,7 +594,7 @@ const GasCloseout = () => {
             provider_id: '',
             proveedor: '',
             valor: 0,
-            despachador_id: ''
+            despachador_id: defaultDesp
         }]);
     };
 
@@ -743,6 +746,9 @@ const GasCloseout = () => {
     };
 
     const handleAddCuponRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setCupones(prev => [...prev, {
             id: Date.now(),
             cupon: '',
@@ -751,7 +757,7 @@ const GasCloseout = () => {
             producto_codigo: '',
             producto_descripcion: '',
             monto: 0,
-            despachador_id: ''
+            despachador_id: defaultDesp
         }]);
     };
 
@@ -768,6 +774,9 @@ const GasCloseout = () => {
     };
 
     const handleAddDescuentoRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setDescuentos(prev => [...prev, {
             id: Date.now(),
             documento: '',
@@ -778,7 +787,7 @@ const GasCloseout = () => {
             cantidad: 0,
             valor: 0,
             total: 0,
-            despachador_id: ''
+            despachador_id: defaultDesp
         }]);
     };
 
@@ -804,11 +813,14 @@ const GasCloseout = () => {
     };
 
     const handleAddAdelantoRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setAdelantos(prev => [...prev, {
             id: Date.now(),
             empleado: '',
             monto: 0,
-            despachador_id: ''
+            despachador_id: defaultDesp
         }]);
     };
 
@@ -825,12 +837,15 @@ const GasCloseout = () => {
     };
 
     const handleAddTarjetaRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setTarjetas(prev => [...prev, {
             id: Date.now(),
             num_tarjeta: '',
             num_autorizacion: '',
             pos_type_id: '',
-            despachador_id: '',
+            despachador_id: defaultDesp,
             tipo_operacion: 'venta_combustible',
             monto: 0
         }]);
@@ -849,6 +864,9 @@ const GasCloseout = () => {
     };
 
     const handleAddCreditoRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setCreditos(prev => [...prev, {
             id: Date.now(),
             documento: '',
@@ -857,7 +875,7 @@ const GasCloseout = () => {
             cliente_nombre: '',
             producto_codigo: '',
             producto_descripcion: '',
-            despachador_id: '',
+            despachador_id: defaultDesp,
             cantidad: 0,
             precio: 0,
             monto: 0,
@@ -879,6 +897,9 @@ const GasCloseout = () => {
     };
 
     const handleAddValeRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setVales(prev => [...prev, {
             id: Date.now(),
             documento: '',
@@ -887,7 +908,7 @@ const GasCloseout = () => {
             cliente_nombre: '',
             producto_codigo: '',
             producto_descripcion: '',
-            despachador_id: '',
+            despachador_id: defaultDesp,
             cantidad: 0,
             precio: 0,
             monto: 0,
@@ -923,6 +944,9 @@ const GasCloseout = () => {
     };
 
     const handleAddAnticipoRow = () => {
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setAnticiposDesp(prev => [...prev, {
             id: Date.now(),
             cliente_id: '',
@@ -932,7 +956,7 @@ const GasCloseout = () => {
             tipo_documento: 'FAC',
             producto_codigo: '',
             producto_descripcion: '',
-            despachador_id: '',
+            despachador_id: defaultDesp,
             cantidad: 0,
             precio: 0,
             monto: 0,
@@ -2170,7 +2194,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Proveedor</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Valor</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
@@ -2281,7 +2305,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                         {allDespachadores.map(d => (
                                                             <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                         ))}
@@ -2326,7 +2350,14 @@ const GasCloseout = () => {
                                                 Total Gastos: <strong className="text-red-600 font-mono text-sm"><Money value={gastosTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => saveExpensesMutation.mutate(gastos)}
+                                                onClick={() => {
+                                                    const sinDesp = gastos.filter(g => !g.despachador_id);
+                                                    if (sinDesp.length > 0) {
+                                                        toast.error('Todos los gastos deben tener un despachador asignado');
+                                                        return;
+                                                    }
+                                                    saveExpensesMutation.mutate(gastos);
+                                                }}
                                                 disabled={saveExpensesMutation.isPending}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                             >
@@ -2402,7 +2433,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}}
                                                         {allDespachadores.map(disp => (
                                                             <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
                                                         ))}
@@ -2516,7 +2547,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cupón</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Distribuidora</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
@@ -2584,7 +2615,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                         {allDespachadores.map(d => (
                                                             <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                         ))}
@@ -2629,7 +2660,14 @@ const GasCloseout = () => {
                                                 Total Cupones: <strong className="text-red-600 font-mono text-sm"><Money value={cuponesTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => saveCuponesMutation.mutate(cupones)}
+                                                onClick={() => {
+                                                    const sinDesp = cupones.filter(c => !c.despachador_id);
+                                                    if (sinDesp.length > 0) {
+                                                        toast.error('Todos los cupones deben tener un despachador asignado');
+                                                        return;
+                                                    }
+                                                    saveCuponesMutation.mutate(cupones);
+                                                }}
                                                 disabled={saveCuponesMutation.isPending}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                             >
@@ -2670,7 +2708,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Cliente</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Cantidad</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Valor</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Total</th>
@@ -2741,7 +2779,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                         {allDespachadores.map(disp => (
                                                             <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
                                                         ))}
@@ -2801,7 +2839,14 @@ const GasCloseout = () => {
                                                 Total Descuentos: <strong className="text-red-600 font-mono text-sm"><Money value={descuentosTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => saveDescuentosMutation.mutate(descuentos)}
+                                                onClick={() => {
+                                                    const sinDesp = descuentos.filter(d => !d.despachador_id);
+                                                    if (sinDesp.length > 0) {
+                                                        toast.error('Todos los descuentos deben tener un despachador asignado');
+                                                        return;
+                                                    }
+                                                    saveDescuentosMutation.mutate(descuentos);
+                                                }}
                                                 disabled={saveDescuentosMutation.isPending}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                             >
@@ -2840,7 +2885,7 @@ const GasCloseout = () => {
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Empleado</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
@@ -2872,7 +2917,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                         {allDespachadores.map(disp => (
                                                             <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
                                                         ))}
@@ -2917,7 +2962,14 @@ const GasCloseout = () => {
                                                 Total Adelantos: <strong className="text-red-600 font-mono text-sm"><Money value={adelantosTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => saveAdelantosMutation.mutate(adelantos)}
+                                                onClick={() => {
+                                                    const sinDesp = adelantos.filter(a => !a.despachador_id);
+                                                    if (sinDesp.length > 0) {
+                                                        toast.error('Todos los adelantos deben tener un despachador asignado');
+                                                        return;
+                                                    }
+                                                    saveAdelantosMutation.mutate(adelantos);
+                                                }}
                                                 disabled={saveAdelantosMutation.isPending}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                             >
@@ -2958,7 +3010,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Tarjeta</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Autorización</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Tipo POS</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Tipo Operación</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Monto</th>
                                             {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
@@ -3024,7 +3076,7 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                             {allDespachadores.map(d => (
                                                                 <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                             ))}
@@ -3085,7 +3137,14 @@ const GasCloseout = () => {
                                                                 Total Tarjetas: <strong className="text-red-600 font-mono text-sm"><Money value={tarjetasTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => saveTarjetasMutation.mutate(tarjetas)}
+                                                                onClick={() => {
+                                                                    const sinDesp = tarjetas.filter(t => !t.despachador_id);
+                                                                    if (sinDesp.length > 0) {
+                                                                        toast.error('Todas las tarjetas deben tener un despachador asignado');
+                                                                        return;
+                                                                    }
+                                                                    saveTarjetasMutation.mutate(tarjetas);
+                                                                }}
                                                                 disabled={saveTarjetasMutation.isPending}
                                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                                             >
@@ -3347,7 +3406,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Cliente</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
@@ -3432,7 +3491,7 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                             {allDespachadores.map(d => (
                                                                 <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                             ))}
@@ -3525,7 +3584,14 @@ const GasCloseout = () => {
                                                                 Total Créditos: <strong className="text-red-600 font-mono text-sm"><Money value={creditosTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => saveCreditosMutation.mutate(creditos)}
+                                                                onClick={() => {
+                                                                    const sinDesp = creditos.filter(c => !c.despachador_id);
+                                                                    if (sinDesp.length > 0) {
+                                                                        toast.error('Todos los créditos deben tener un despachador asignado');
+                                                                        return;
+                                                                    }
+                                                                    saveCreditosMutation.mutate(creditos);
+                                                                }}
                                                                 disabled={saveCreditosMutation.isPending}
                                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                                             >
@@ -3571,7 +3637,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Cliente</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
@@ -3656,7 +3722,7 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                             {allDespachadores.map(d => (
                                                                 <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                             ))}
@@ -3749,7 +3815,14 @@ const GasCloseout = () => {
                                                                 Total Vales: <strong className="text-red-600 font-mono text-sm"><Money value={valesTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => saveValesMutation.mutate(vales)}
+                                                                onClick={() => {
+                                                                    const sinDesp = vales.filter(v => !v.despachador_id);
+                                                                    if (sinDesp.length > 0) {
+                                                                        toast.error('Todos los vales deben tener un despachador asignado');
+                                                                        return;
+                                                                    }
+                                                                    saveValesMutation.mutate(vales);
+                                                                }}
                                                                 disabled={saveValesMutation.isPending}
                                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                                             >
@@ -3894,7 +3967,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Despachador</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
@@ -3989,7 +4062,7 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            <option value="">Sin despachador</option>
+                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                             {allDespachadores.map(d => (
                                                                 <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
                                                             ))}
@@ -4082,7 +4155,14 @@ const GasCloseout = () => {
                                                                 Total Anticipos: <strong className="text-red-600 font-mono text-sm"><Money value={anticiposDespTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => saveAnticiposDespMutation.mutate(anticiposDesp)}
+                                                                onClick={() => {
+                                                                    const sinDesp = anticiposDesp.filter(a => !a.despachador_id);
+                                                                    if (sinDesp.length > 0) {
+                                                                        toast.error('Todos los anticipos deben tener un despachador asignado');
+                                                                        return;
+                                                                    }
+                                                                    saveAnticiposDespMutation.mutate(anticiposDesp);
+                                                                }}
                                                                 disabled={saveAnticiposDespMutation.isPending}
                                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                                             >
