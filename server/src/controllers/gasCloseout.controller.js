@@ -1010,6 +1010,10 @@ exports.saveRemesas = async (req, res) => {
         await pool.query(`DELETE FROM gas_station_closeout_remesas WHERE closeout_id = ?`, [id]);
 
         if (remesas && remesas.length > 0) {
+            const invalid = remesas.filter(r => !r.despachador_id);
+            if (invalid.length > 0) {
+                return res.status(400).json({ message: 'Todas las remesas deben tener un despachador asignado' });
+            }
             const values = remesas.map((r, index) => {
                 let codigo = r.codigo || existingCodigos[r.id] || null;
                 if (!codigo) {

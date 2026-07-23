@@ -622,6 +622,9 @@ const GasCloseout = () => {
 
     const handleAddRemesaRow = () => {
         const tempId = Date.now();
+        const defaultDesp = closeoutDespachadores.length > 0
+            ? closeoutDespachadores[0].despachador_id
+            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
         setRemesas(prev => {
             const maxDoc = prev.reduce((max, r) => {
                 const num = parseInt(r.documento, 10);
@@ -632,7 +635,7 @@ const GasCloseout = () => {
                 codigo: `REM-${closeoutId}-${prev.length + 1}`,
                 documento: String(maxDoc + 1).padStart(2, '0'),
                 descripcion: '',
-                despachador_id: '',
+                despachador_id: defaultDesp,
                 tipo_operacion: 'venta_combustible',
                 monto: 0
             }];
@@ -2363,8 +2366,8 @@ const GasCloseout = () => {
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Código</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Tipo de Operación</th>
+<th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
+                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Tipo de Operación</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
@@ -2399,7 +2402,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">Sin despachador</option>
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                         {allDespachadores.map(disp => (
                                                             <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
                                                         ))}
@@ -2465,7 +2468,14 @@ const GasCloseout = () => {
                                                 Total Remesas: <strong className="text-red-600 font-mono text-sm"><Money value={remesasTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => saveRemesasMutation.mutate(remesas)}
+                                                onClick={() => {
+                                                    const sinDesp = remesas.filter(r => !r.despachador_id);
+                                                    if (sinDesp.length > 0) {
+                                                        toast.error('Todas las remesas deben tener un despachador asignado');
+                                                        return;
+                                                    }
+                                                    saveRemesasMutation.mutate(remesas);
+                                                }}
                                                 disabled={saveRemesasMutation.isPending}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
                                             >
