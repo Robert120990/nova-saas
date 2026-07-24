@@ -1,0 +1,16 @@
+# Caddyfile — Desarrollo local
+# Usar junto a npm run dev (Vite en :3000)
+# Ejecutar: caddy run --config Caddyfile.dev
+
+{
+    admin off
+}
+
+:443 {
+    tls internal
+    reverse_proxy localhost:3000
+}
+
+:80 {
+    redir https://{host}{uri}
+}

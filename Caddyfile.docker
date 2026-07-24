@@ -1,0 +1,13 @@
+# Caddyfile — Docker
+# Los servicios se resuelven por nombre de contenedor en la red interna
+
+sys.sipesv.com {
+    reverse_proxy /api/* server:4000
+    reverse_proxy /uploads/* server:4000
+    reverse_proxy /health server:4000
+    reverse_proxy server:4000
+}
+
+:80 {
+    redir https://sys.sipesv.com{uri} permanent
+}

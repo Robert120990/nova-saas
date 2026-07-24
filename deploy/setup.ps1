@@ -76,6 +76,35 @@ npm install -g serve
 pm2 --version
 
 # ============================================
+# 2b. Install Caddy (reverse proxy with HTTPS)
+# ============================================
+Write-Step "2b. Installing Caddy"
+
+if (-not (Test-Command "caddy")) {
+    if (Test-Command "winget") {
+        Write-Host "Installing Caddy via winget..."
+        winget install -e --id Caddy.Caddy --accept-source-agreements
+        $env:Path += ";$env:ProgramFiles\Caddy"
+    } else {
+        Write-Host "Downloading Caddy..."
+        $caddyUrl = "https://caddyserver.com/api/download?os=windows&arch=amd64"
+        $caddyZip = "$env:TEMP\caddy.zip"
+        $caddyDir = "$env:ProgramFiles\Caddy"
+        New-Item -ItemType Directory -Path $caddyDir -Force | Out-Null
+        Invoke-WebRequest -Uri $caddyUrl -OutFile $caddyZip
+        Expand-Archive -Path $caddyZip -DestinationPath $caddyDir -Force
+        Remove-Item $caddyZip -Force
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -notlike "*$caddyDir*") {
+            [Environment]::SetEnvironmentVariable("Path", "$userPath;$caddyDir", "User")
+        }
+        $env:Path += ";$caddyDir"
+    }
+}
+
+caddy version
+
+# ============================================
 # 3. Clone / Pull repository
 # ============================================
 Write-Step "3. Cloning repository"
@@ -165,7 +194,7 @@ pm2 startup
 # ============================================
 Write-Step "7. Configuring Windows Firewall"
 
-$ports = @(3000, 4000, 5000, 7777)
+$ports = @(80, 443, 3000, 4000, 5000, 7777)
 foreach ($port in $ports) {
     $ruleName = "nova-saas-port-$port"
     $exists = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
@@ -193,6 +222,8 @@ Write-Host "Services running:" -ForegroundColor Green
 pm2 status
 Write-Host "`nNext steps:" -ForegroundColor Yellow
 Write-Host "  1. Edit server/.env and dte-api/.env with your production secrets" -ForegroundColor Yellow
-Write-Host "  2. Restart services: pm2 restart all" -ForegroundColor Yellow
+Write-Host "  2. Restart all services: pm2 restart all" -ForegroundColor Yellow
 Write-Host "  3. Configure GitHub webhook -> http://SERVER_IP:7777/webhook" -ForegroundColor Yellow
 Write-Host "  4. Set WEBHOOK_SECRET in GitHub repo settings" -ForegroundColor Yellow
+Write-Host "  5. Verify Caddy: curl https://sys.sipesv.com" -ForegroundColor Yellow
+Write-Host "  6. Acceso HTTPS: https://sys.sipesv.com (HTTP sigue en puerto 4000)" -ForegroundColor Yellow

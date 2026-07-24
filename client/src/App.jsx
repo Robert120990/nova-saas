@@ -26,6 +26,7 @@ import MenuItems from './pages/MenuItems';
 import Transfers from './pages/Transfers';
 import InventoryAdjustments from './pages/InventoryAdjustments';
 import PhysicalInventory from './pages/PhysicalInventory';
+import ScanInventory from './pages/ScanInventory';
 import Kardex from './pages/Kardex';
 import Purchases from './pages/Purchases';
 import PurchasePeriod from './pages/PurchasePeriod';
@@ -151,6 +152,7 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/dte" element={<PublicDTE />} />
+                    <Route path="/scan/:token" element={<ScanInventory />} />
                     
                     {/* Protected Shell */}
                     <Route element={<ProtectedRoute />}>

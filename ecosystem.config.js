@@ -43,6 +43,21 @@ module.exports = {
       time: true
     },
     {
+      name: 'caddy',
+      cwd: '.',
+      script: 'caddy-pm2-wrapper.js',
+      env: {
+        NODE_ENV: 'production',
+        CADDY_CONFIG: 'Caddyfile'
+      },
+      max_restarts: 3,
+      restart_delay: 5000,
+      error_file: './logs/caddy-error.log',
+      out_file: './logs/caddy-out.log',
+      merge_logs: true,
+      time: true
+    },
+    {
       name: 'webhook',
       cwd: '.',
       script: 'webhook-server.js',

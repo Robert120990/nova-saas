@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { broadcastToCompany } = require('../services/websocket.service');
 const pdfService = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
@@ -436,6 +437,13 @@ const savePhysicalInventory = async (req, res) => {
         }
 
         await connection.commit();
+
+        if (req.company_id) {
+            broadcastToCompany(req.company_id, 'inventory_updated', {
+                physical_inventory_id: inventoryId
+            });
+        }
+
         res.json({ id: inventoryId, message: 'Inventario guardado' });
     } catch (error) {
         await connection.rollback();

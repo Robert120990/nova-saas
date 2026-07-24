@@ -22,6 +22,7 @@ const settingsController = require('../controllers/settings.controller');
 const aiRoutes = require('./ai.routes');
 const inventoryController = require('../controllers/inventory.controller');
 const inventoryAdjustmentController = require('../controllers/inventoryAdjustment.controller');
+const inventoryScanController = require('../controllers/inventoryScan.controller');
 const purchaseController = require('../controllers/purchase.controller');
 const salesController = require('../controllers/sales.controller');
 const periodController = require('../controllers/period.controller');
@@ -77,6 +78,10 @@ router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
 router.get('/public/dte/:codigo/info', salesController.getPublicDTEInfo);
 router.get('/public/dte/:codigo/json', salesController.getPublicDTEJson);
 router.post('/public/dte/:codigo/send-email', salesController.sendPublicDTEEmail);
+
+// Public scan routes (no auth required - accessed via QR token)
+router.get('/inventory/scan/:token', inventoryScanController.getScanSession);
+router.post('/inventory/scan/:token/submit', inventoryScanController.submitScan);
 
 // Routes
 router.use(verifyToken);
@@ -218,6 +223,13 @@ router.get('/inventory/physical/:id', inventoryController.getPhysicalInventoryDe
 router.post('/inventory/physical/save', inventoryController.savePhysicalInventory);
 router.post('/inventory/physical/:id/apply', inventoryController.applyPhysicalInventory);
 router.delete('/inventory/physical/:id', inventoryController.deletePhysicalInventory);
+
+// Physical Inventory - Scan Sessions (QR public access)
+router.post('/inventory/physical/:id/scan-session', inventoryScanController.createScanSession);
+router.get('/inventory/physical/:id/scans', inventoryScanController.getSessionScans);
+router.post('/inventory/physical/:id/apply-scans', inventoryScanController.applyScans);
+router.post('/inventory/physical/:id/reject-scans', inventoryScanController.rejectScans);
+router.delete('/inventory/physical/scan-session/:id', inventoryScanController.deleteScanSession);
 
 // Inventory
 router.get('/inventory', inventoryController.getInventory);

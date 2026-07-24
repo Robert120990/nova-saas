@@ -1,0 +1,11 @@
+# Caddyfile — Producción
+# Para desarrollo local usar Caddyfile.dev
+# Instalar Caddy: winget install --id Caddy.Caddy --source winget
+
+sys.sipesv.com {
+    reverse_proxy localhost:4000
+}
+
+:80 {
+    redir https://sys.sipesv.com{uri} permanent
+}

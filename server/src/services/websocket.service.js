@@ -1,5 +1,4 @@
 const WebSocket = require('ws');
-const url = require('url');
 
 // Almacén de clientes WebSocket conectados, agrupados por company_id
 // Estructura: { companyId: Set([ws, ws, ...]) }
@@ -35,11 +34,11 @@ function initWebSocket(server) {
 
     // Acoplar al servidor HTTP nativo
     server.on('upgrade', (request, socket, head) => {
-        const pathname = url.parse(request.url).pathname;
+        const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
 
-        if (pathname === '/ws/egg-industrial') {
+        if (pathname === '/ws/egg-industrial' || pathname === '/ws/inventory') {
             wss.handleUpgrade(request, socket, head, (ws) => {
-                wss.emit('connection', ws, request);
+                wss.emit('connection', ws, request, pathname);
             });
         } else {
             socket.destroy();
@@ -47,23 +46,27 @@ function initWebSocket(server) {
     });
 
     wss.on('connection', (ws, req) => {
-        const parameters = url.parse(req.url, true).query;
-        // Obtener company_id (por defecto 1 si no viene, para robustez)
+        const parameters = Object.fromEntries(new URL(req.url, `http://${req.headers.host}`).searchParams);
+
         const companyId = parseInt(parameters.company_id || '1');
 
-        console.log(`Cliente WebSocket conectado. Company ID: ${companyId}`);
-        
+        const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+
+        console.log(`Cliente WebSocket conectado. Company ID: ${companyId}, Path: ${pathname}`);
+
         // Asociar cliente a su compañía
         if (!companyClients.has(companyId)) {
             companyClients.set(companyId, new Set());
         }
         companyClients.get(companyId).add(ws);
 
-        // Enviar estado inicial inmediato al conectar
-        ws.send(JSON.stringify({
-            event: 'telemetry_initial',
-            data: telemetryState
-        }));
+        // Solo egg-industrial envía estado inicial de telemetría
+        if (pathname === '/ws/egg-industrial') {
+            ws.send(JSON.stringify({
+                event: 'telemetry_initial',
+                data: telemetryState
+            }));
+        }
 
         ws.on('message', (message) => {
             try {
@@ -221,7 +224,8 @@ function startTelemetrySimulation() {
 }
 
 function broadcastToCompany(companyId, event, data) {
-    const clients = companyClients.get(companyId);
+    const numericId = typeof companyId === 'string' ? parseInt(companyId) : companyId;
+    const clients = companyClients.get(numericId);
     if (!clients) return;
 
     const payload = JSON.stringify({ event, data });

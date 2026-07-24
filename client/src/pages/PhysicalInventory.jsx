@@ -25,7 +25,16 @@ import {
     FileSpreadsheet,
     FileText as FilePdf,
     TrendingUp,
-    Trash2
+    Trash2,
+    QrCode,
+    Copy,
+    Eye,
+    X,
+    Wifi,
+    Smartphone,
+    Check,
+    AlertTriangle,
+    List
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -35,6 +44,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
+import useWebSocket from '../hooks/useWebSocket';
 
 const PhysicalInventory = () => {
     const { user } = useAuth();
@@ -54,6 +64,7 @@ const PhysicalInventory = () => {
     const [isAutoSaving, setIsAutoSaving] = useState(false);
     const [loading, setLoading] = useState(false);
     const autoSaveTimerRef = useRef(null);
+    const userChangedRef = useRef(false);
 
     // Quick Add Bar State
     const [quickBarcode, setQuickBarcode] = useState('');
@@ -77,6 +88,18 @@ const PhysicalInventory = () => {
     // Category Filter Modal
     const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
+
+    // QR Scan Sessions
+    const [scanSessions, setScanSessions] = useState([]);
+    const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+    const [newSessionName, setNewSessionName] = useState('');
+    const [creatingSession, setCreatingSession] = useState(false);
+    const [qrPreviewSession, setQRPreviewSession] = useState(null);
+    const [isQRPreviewOpen, setIsQRPreviewOpen] = useState(false);
+    const [viewingScans, setViewingScans] = useState(null);
+    const [selectedScans, setSelectedScans] = useState([]);
+    const [applyingScans, setApplyingScans] = useState(false);
+    const [expandedProduct, setExpandedProduct] = useState(null);
 
     // Queries
     const { data: branches = [] } = useQuery({
@@ -161,6 +184,71 @@ const PhysicalInventory = () => {
         onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar inventario')
     });
 
+    // QR Scan Session Mutations
+    const createScanSessionMutation = useMutation({
+        mutationFn: async ({ inventoryId, nombre }) => 
+            (await axios.post(`/api/inventory/physical/${inventoryId}/scan-session`, { nombre_sesion: nombre })).data,
+        onSuccess: (data) => {
+            toast.success('Sesión QR creada');
+            setIsQRModalOpen(false);
+            setNewSessionName('');
+            loadScanSessions(data.physical_inventory_id);
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al crear sesión QR')
+    });
+
+    const loadScanSessions = async (invId = inventoryId) => {
+        if (!invId) return;
+        try {
+            const res = await axios.get(`/api/inventory/physical/${invId}/scans`);
+            setScanSessions(res.data.sessions || []);
+        } catch (err) {
+            console.error('Error loading scan sessions:', err);
+        }
+    };
+
+    const applyScansMutation = useMutation({
+        mutationFn: async ({ inventoryId, scanIds }) => 
+            (await axios.post(`/api/inventory/physical/${inventoryId}/apply-scans`, { scan_ids: scanIds })).data,
+        onSuccess: (data) => {
+            toast.success(data.message || 'Escaneos aplicados correctamente');
+            setViewingScans(null);
+            setSelectedScans([]);
+            loadScanSessions();
+            // Invalidate items to refresh the UI with updated stock_fisico
+            queryClient.invalidateQueries(['physical-inventory-history']);
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al aplicar escaneos'),
+        onSettled: () => setApplyingScans(false)
+    });
+
+    const rejectScansMutation = useMutation({
+        mutationFn: async ({ scanIds }) => 
+            (await axios.post(`/api/inventory/physical/${inventoryId}/reject-scans`, { scan_ids: scanIds })).data,
+        onSuccess: () => {
+            toast.success('Escaneos rechazados');
+            loadScanSessions();
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al rechazar escaneos')
+    });
+
+    const deleteScanSessionMutation = useMutation({
+        mutationFn: async (sessionId) => 
+            (await axios.delete(`/api/inventory/physical/scan-session/${sessionId}`)).data,
+        onSuccess: () => {
+            toast.success('Sesión eliminada');
+            loadScanSessions();
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar sesión')
+    });
+
+    // Load scan sessions when inventoryId changes
+    useEffect(() => {
+        if (inventoryId) {
+            loadScanSessions(inventoryId);
+        }
+    }, [inventoryId]);
+
     // F3 Keyboard Shortcut
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -173,6 +261,53 @@ const PhysicalInventory = () => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [branchId, activeTab]);
+
+    // WebSocket para tiempo real
+    const refreshInventoryItems = async (invId) => {
+        if (!invId) return;
+        try {
+            const response = await axios.get(`/api/inventory/physical/${invId}`);
+            const data = response.data;
+            const savedItems = (data.items || []).map(i => ({
+                ...i,
+                stock_fisico: i.stock_fisico === 0 ? '0' : (i.stock_fisico ?? ''),
+                diferencia: parseFloat(i.diferencia || 0),
+                total: parseFloat(i.total || 0)
+            }));
+            setItems(prev => {
+                const merged = savedItems.map(saved => {
+                    const local = prev.find(p => p.product_id === saved.product_id);
+                    if (local && local.stock_fisico !== '' && local.stock_fisico !== null && local.stock_fisico !== undefined) {
+                        return local;
+                    }
+                    return saved;
+                });
+                return merged;
+            });
+        } catch (err) {
+            console.error('Error refreshing inventory items:', err);
+        }
+    };
+
+    useWebSocket({
+        companyId: user?.company_id,
+        onMessage: (event, data) => {
+            if (data?.physical_inventory_id && data.physical_inventory_id !== inventoryId) return;
+            if (event === 'scan_submitted' || event === 'scans_rejected') {
+                loadScanSessions();
+            }
+            if (event === 'scans_applied') {
+                loadScanSessions();
+                queryClient.invalidateQueries(['physical-inventory-history']);
+            }
+            if (event === 'inventory_updated') {
+                if (inventoryId) {
+                    refreshInventoryItems(inventoryId);
+                    queryClient.invalidateQueries(['physical-inventory-history']);
+                }
+            }
+        }
+    });
 
     const handleBarcodeSubmit = async (e) => {
         if (e.key === 'Enter' && quickBarcode) {
@@ -195,6 +330,7 @@ const PhysicalInventory = () => {
     };
 
     const handleAddQuick = async () => {
+        userChangedRef.current = true;
         if (!quickProd || quickCant === '') return;
         
         const fis = parseFloat(quickCant);
@@ -267,9 +403,10 @@ const PhysicalInventory = () => {
         setTimeout(() => qtyInputRef.current?.focus(), 50);
     };
 
-    // Auto-save logic
+    // Auto-save logic (solo para cambios del usuario, no para actualizaciones vía WebSocket)
     useEffect(() => {
-        if (items.length > 0) {
+        if (items.length > 0 && userChangedRef.current) {
+            userChangedRef.current = false;
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
             autoSaveTimerRef.current = setTimeout(() => {
                 handleAutoSave();
@@ -450,6 +587,7 @@ const PhysicalInventory = () => {
     };
 
     const handleItemChange = (productId, field, value) => {
+        userChangedRef.current = true;
         setItems(prev => prev.map(item => {
             if (item.product_id === productId) {
                 const updated = { ...item, [field]: value };
@@ -470,6 +608,87 @@ const PhysicalInventory = () => {
         setItems([]);
         setObservaciones('');
         setBranchId(user?.branch_id || '');
+    };
+
+    // QR Scan Session Handlers
+    const handleCreateScanSession = () => {
+        if (!newSessionName.trim()) return toast.error('Ingrese un nombre para la sesión');
+        if (!inventoryId) return toast.error('Debe guardar el conteo primero');
+        createScanSessionMutation.mutate({ inventoryId, nombre: newSessionName.trim() });
+    };
+
+    const openQRPreview = (session) => {
+        const baseUrl = window.location.origin;
+        const qrUrl = `${baseUrl}/scan/${session.token}`;
+        setQRPreviewSession({ ...session, qrUrl });
+        setIsQRPreviewOpen(true);
+    };
+
+    const handleViewScans = (session) => {
+        const sessionWithScans = scanSessions.find(s => s.id === session.id);
+        if (sessionWithScans) {
+            setViewingScans(sessionWithScans);
+            setSelectedScans([]);
+            setExpandedProduct(null);
+        }
+    };
+
+    const handleApplySelectedScans = async () => {
+        if (selectedScans.length === 0) return toast.error('Seleccione al menos un escaneo');
+        setApplyingScans(true);
+        applyScansMutation.mutate({ inventoryId, scanIds: selectedScans });
+    };
+
+    const handleRejectSelectedScans = async () => {
+        if (selectedScans.length === 0) return toast.error('Seleccione al menos un escaneo');
+        rejectScansMutation.mutate({ scanIds: selectedScans });
+    };
+
+    const toggleScanSelect = (scanId) => {
+        setSelectedScans(prev => 
+            prev.includes(scanId) ? prev.filter(id => id !== scanId) : [...prev, scanId]
+        );
+    };
+
+    const toggleSelectAllScans = (scans) => {
+        const allIds = scans.map(s => s.id);
+        setSelectedScans(prev => 
+            prev.length === allIds.length ? [] : allIds
+        );
+    };
+
+    const groupedScans = React.useMemo(() => {
+        if (!viewingScans?.scans) return [];
+        const groups = {};
+        viewingScans.scans.forEach(scan => {
+            const key = scan.product_id;
+            if (!groups[key]) {
+                groups[key] = {
+                    product_id: scan.product_id,
+                    codigo: scan.codigo,
+                    nombre: scan.nombre,
+                    stock_sistema: parseFloat(scan.stock_sistema || 0),
+                    scans: [],
+                    acumulado: 0,
+                    total_escanes: 0
+                };
+            }
+            groups[key].scans.push(scan);
+            groups[key].acumulado += parseFloat(scan.cantidad_fisica || 0);
+            groups[key].total_escanes += 1;
+        });
+        return Object.values(groups);
+    }, [viewingScans]);
+
+    const handleDeleteScanSession = async (sessionId, e) => {
+        e.stopPropagation();
+        const ok = await confirm({
+            title: 'Eliminar sesión de escaneo',
+            message: 'Esta sesión se eliminará permanentemente. Solo se pueden eliminar sesiones sin escaneos.',
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger',
+        });
+        if (ok) deleteScanSessionMutation.mutate(sessionId);
     };
 
     const totalDiferencia = items.reduce((acc, i) => acc + (parseFloat(i.total) || 0), 0);
@@ -651,8 +870,95 @@ const PhysicalInventory = () => {
                                 </div>
                             </div>
                         )}
-                    </div>
 
+                        {/* QR Scan Sessions */}
+                        {inventoryId && (
+                            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl p-6 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                        <QrCode size={16} className="text-indigo-500" />
+                                        Escaneo Móvil
+                                    </h4>
+                                </div>
+                                
+                                {scanSessions.length === 0 ? (
+                                    <button
+                                        onClick={() => setIsQRModalOpen(true)}
+                                        className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-medium text-sm transition-colors flex items-center justify-center gap-2 border border-slate-200"
+                                    >
+                                        <Plus size={18} />
+                                        Crear sesión QR
+                                    </button>
+                                ) : (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                                        {scanSessions.map(session => (
+                                            <div key={session.id} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-sm font-bold text-slate-700 truncate">{session.nombre_sesion}</span>
+                                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded ${session.is_active ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                                        {session.is_active ? 'ACTIVA' : 'EXPIRADA'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-2">
+                                                    <span className="font-mono truncate flex-1">{window.location.origin}/scan/{session.token}</span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(`${window.location.origin}/scan/${session.token}`);
+                                                            toast.success('URL copiada');
+                                                        }}
+                                                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 transition-colors flex items-center gap-1"
+                                                        title="Copiar URL"
+                                                    >
+                                                        <Copy size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openQRPreview(session);
+                                                        }}
+                                                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 transition-colors flex items-center gap-1"
+                                                        title="Ver QR"
+                                                    >
+                                                        <Eye size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleViewScans(session);
+                                                        }}
+                                                        className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 rounded text-indigo-600 transition-colors flex items-center gap-1"
+                                                        title="Ver escaneos"
+                                                    >
+                                                        <List size={12} />
+                                                        <span className="text-[10px] font-bold">{session.scans?.length || 0}</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleDeleteScanSession(session.id, e)}
+                                                        className="px-2 py-1 bg-slate-100 hover:bg-red-100 rounded text-slate-400 hover:text-red-600 transition-colors flex items-center gap-1"
+                                                        title="Eliminar sesión"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                                    <span>{session.scans?.length || 0} escaneos</span>
+                                                    <span>•</span>
+                                                    <span>{new Date(session.created_at).toLocaleString('es-SV', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => setIsQRModalOpen(true)}
+                                            className="w-full py-2 px-4 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 font-medium text-sm transition-colors border border-slate-100"
+                                        >
+                                            <Plus size={16} className="inline-block mr-1" /> Nueva sesión
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     <div className="lg:col-span-3 space-y-6">
                         <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-xl p-4 transition-all ${!branchId ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
                             <div className="flex items-end gap-3">
@@ -743,27 +1049,28 @@ const PhysicalInventory = () => {
                                         <table className="w-full text-left border-collapse">
                                         <thead>
                                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                                <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Producto</th>
-                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sistema</th>
-                                                <th className="px-3 py-2 text-center text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50/30">Físico</th>
-                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Dif.</th>
-                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Costo</th>
-                                                <th className="px-3 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Total</th>
+                                                <th className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Código</th>
+                                                <th className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Producto</th>
+                                                <th className="px-3 py-1 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sistema</th>
+                                                <th className="px-3 py-1 text-center text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em] bg-indigo-50/30">Físico</th>
+                                                <th className="px-3 py-1 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Dif.</th>
+                                                <th className="px-3 py-1 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Costo</th>
+                                                <th className="px-3 py-1 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Total</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
                                             {paginatedItems.map((item) => (
                                                 <tr key={item.product_id} className="hover:bg-slate-50/50 transition-colors group text-xs">
-                                                    <td className="px-3 py-2">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[9px] font-mono font-black text-indigo-500 mb-0.5">#{item.codigo}</span>
-                                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[280px]">{item.nombre}</span>
-                                                        </div>
+                                                    <td className="px-3 py-1">
+                                                        <span className="text-xs font-mono font-black text-indigo-500">#{item.codigo}</span>
                                                     </td>
-                                                    <td className="px-3 py-2 text-right">
+                                                    <td className="px-3 py-1">
+                                                        <span className="text-xs font-bold text-slate-700 truncate block max-w-[280px]">{item.nombre}</span>
+                                                    </td>
+                                                    <td className="px-3 py-1 text-right">
                                                         <span className="text-xs font-black text-slate-400">{item.stock_sistema}</span>
                                                     </td>
-                                                    <td className="px-3 py-2 bg-indigo-50/20">
+                                                    <td className="px-3 py-1 bg-indigo-50/20">
                                                         <input 
                                                             type="number"
                                                             value={item.stock_fisico}
@@ -771,15 +1078,15 @@ const PhysicalInventory = () => {
                                                             className="w-16 bg-white border border-indigo-100 rounded-lg px-1.5 py-0.5 text-center text-xs font-black text-indigo-700 outline-none focus:border-indigo-400 shadow-sm"
                                                         />
                                                     </td>
-                                                    <td className="px-3 py-2 text-right">
+                                                    <td className="px-3 py-1 text-right">
                                                         <span className={`text-xs font-black ${item.diferencia === 0 ? 'text-slate-300' : item.diferencia > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                             {item.diferencia > 0 ? '+' : ''}{item.diferencia}
                                                         </span>
                                                     </td>
-                                                    <td className="px-3 py-2 text-right">
+                                                    <td className="px-3 py-1 text-right">
                                                         <span className="text-xs font-bold text-slate-400">${item.costo}</span>
                                                     </td>
-                                                    <td className="px-3 py-2 text-right">
+                                                    <td className="px-3 py-1 text-right">
                                                         <span className={`text-xs font-black ${item.total === 0 ? 'text-slate-300' : item.total > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                             ${Math.abs(item.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                         </span>
@@ -788,7 +1095,7 @@ const PhysicalInventory = () => {
                                             ))}
                                             {paginatedItems.length === 0 && (
                                                 <tr>
-                                                    <td colSpan="6" className="px-6 py-12 text-center">
+                                                    <td colSpan="7" className="px-6 py-12 text-center">
                                                         <Search className="mx-auto text-slate-300 mb-3" size={32} />
                                                         <p className="text-slate-500 font-bold text-sm">No se encontraron productos en el conteo</p>
                                                     </td>
@@ -856,8 +1163,7 @@ const PhysicalInventory = () => {
                                     </td>
                                     <td className="px-3 py-2">
                                         <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                                            {new Date(inv.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })} 
-                                            {new Date(inv.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                            {new Date(inv.fecha + 'T00:00:00').toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                         </span>
                                     </td>
                                     <td className="px-3 py-2">
@@ -975,6 +1281,282 @@ const PhysicalInventory = () => {
                         </table>
                     </div>
                 </div>
+            </Modal>
+
+            {/* QR Preview Modal */}
+            <Modal
+                isOpen={isQRPreviewOpen}
+                onClose={() => { setIsQRPreviewOpen(false); setQRPreviewSession(null); }}
+                title="Código QR - Sesión de Escaneo"
+                size="md"
+            >
+                <div className="p-6 space-y-6 text-center">
+                    {qrPreviewSession && (
+                        <>
+                            <div className="flex items-center justify-center gap-2 text-sm text-slate-500 mb-2">
+                                <QrCode size={18} className="text-indigo-600" />
+                                <span className="font-bold text-slate-900">{qrPreviewSession.nombre_sesion}</span>
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded ${qrPreviewSession.is_active ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                    {qrPreviewSession.is_active ? 'ACTIVA' : 'EXPIRADA'}
+                                </span>
+                            </div>
+                            
+                            <div className="bg-white p-6 rounded-xl border border-slate-200 inline-block shadow-sm">
+                                <img 
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrPreviewSession.qrUrl)}`}
+                                    alt="QR Code"
+                                    className="mx-auto"
+                                />
+                            </div>
+                            
+                            <div className="space-y-2 text-left max-w-xs mx-auto">
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500">URL:</span>
+                                    <span className="font-mono text-slate-700 truncate max-w-[200px]">{qrPreviewSession.qrUrl}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500">Conteo:</span>
+                                    <span className="font-bold text-slate-700">INV-{String(qrPreviewSession.physical_inventory_id).padStart(5, '0')}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500">Equipo:</span>
+                                    <span className="font-bold text-slate-700">{qrPreviewSession.nombre_sesion}</span>
+                                </div>
+                            </div>
+                            
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(qrPreviewSession.qrUrl);
+                                        toast.success('URL copiada al portapapeles');
+                                    }}
+                                    className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Copy size={16} /> Copiar URL
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        // Download QR as image
+                                        const link = document.createElement('a');
+                                        link.href = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(qrPreviewSession.qrUrl)}`;
+                                        link.download = `QR-${qrPreviewSession.nombre_sesion.replace(/\s+/g, '-')}.png`;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                    }}
+                                    className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Download size={16} /> Descargar QR
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </Modal>
+
+            {/* Crear Sesión QR Modal */}
+            <Modal
+                isOpen={isQRModalOpen}
+                onClose={() => { setIsQRModalOpen(false); setNewSessionName(''); }}
+                title="Crear Sesión de Escaneo QR"
+                size="sm"
+            >
+                <div className="p-6 space-y-4">
+                    <p className="text-sm text-slate-500">
+                        Ingrese un nombre para identificar a este equipo o persona.
+                    </p>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Nombre del equipo / persona
+                        </label>
+                        <input
+                            type="text"
+                            value={newSessionName}
+                            onChange={(e) => setNewSessionName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateScanSession()}
+                            placeholder="Ej: Equipo Bodega 1"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400"
+                            autoFocus
+                        />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            onClick={() => { setIsQRModalOpen(false); setNewSessionName(''); }}
+                            className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleCreateScanSession}
+                            disabled={!newSessionName.trim() || createScanSessionMutation.isPending}
+                            className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {createScanSessionMutation.isPending ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                                <QrCode size={16} />
+                            )}
+                            Generar QR
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Scans Viewing Modal */}
+            <Modal
+                isOpen={!!viewingScans}
+                onClose={() => { setViewingScans(null); setSelectedScans([]); setExpandedProduct(null); }}
+                title="Verificar Escaneos"
+                maxWidth="max-w-3xl"
+            >
+                {viewingScans && (
+                    <div className="p-4 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900">{viewingScans.nombre_sesion}</h3>
+                                <p className="text-xs text-slate-500">
+                                    {viewingScans.scans?.length || 0} escaneos • 
+                                    <span className={`font-medium ${viewingScans.is_active ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {viewingScans.is_active ? 'ACTIVA' : 'EXPIRADA'}
+                                    </span>
+                                </p>
+                            </div>
+                            <div className="flex gap-1.5">
+                                <button
+                                    onClick={() => toggleSelectAllScans(viewingScans.scans || [])}
+                                    disabled={!(viewingScans.scans?.length > 0)}
+                                    className="px-2.5 py-1 text-[9px] font-black uppercase bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {selectedScans.length === (viewingScans.scans?.length || 0) ? 'Deseleccionar' : 'Seleccionar'} Todo
+                                </button>
+                                <button
+                                    onClick={handleRejectSelectedScans}
+                                    disabled={selectedScans.length === 0}
+                                    className="px-2.5 py-1 text-[9px] font-black uppercase bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                                >
+                                    <X size={12} /> Rechazar
+                                </button>
+                                <button
+                                    onClick={handleApplySelectedScans}
+                                    disabled={selectedScans.length === 0 || applyingScans}
+                                    className="px-3 py-1 text-[9px] font-black uppercase bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                                >
+                                    {applyingScans ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Aplicar ({selectedScans.length})
+                                </button>
+                            </div>
+                        </div>
+
+                        {groupedScans.length > 0 ? (
+                            <div className="overflow-x-auto max-h-[400px]">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                                        <tr>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider w-10"></th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider">Código</th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider">Producto</th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-center">#</th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">Acumulado</th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">Sistema</th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">Dif.</th>
+                                            <th className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {groupedScans.map(group => {
+                                            const groupScanIds = group.scans.map(s => s.id);
+                                            const allSelected = groupScanIds.every(id => selectedScans.includes(id));
+                                            const diff = group.acumulado - group.stock_sistema;
+                                            const isExpanded = expandedProduct === group.product_id;
+                                            
+                                            return (
+                                                <React.Fragment key={group.product_id}>
+                                                    <tr className="hover:bg-indigo-50/30 transition-colors bg-white">
+                                                        <td className="px-2 py-1.5">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={allSelected}
+                                                                onChange={() => {
+                                                                    setSelectedScans(prev => {
+                                                                        if (allSelected) return prev.filter(id => !groupScanIds.includes(id));
+                                                                        return [...prev, ...groupScanIds.filter(id => !prev.includes(id))];
+                                                                    });
+                                                                }}
+                                                                className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-2 focus:ring-indigo-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-2 py-1.5">
+                                                            <span className="text-[11px] font-mono font-black text-indigo-500">#{group.codigo}</span>
+                                                        </td>
+                                                        <td className="px-2 py-1.5">
+                                                            <span className="text-[11px] font-bold text-slate-700 truncate block max-w-[250px]">{group.nombre}</span>
+                                                        </td>
+                                                        <td className="px-2 py-1.5 text-center">
+                                                            <span className="text-[10px] font-black text-slate-400">{group.total_escanes}x</span>
+                                                        </td>
+                                                        <td className="px-2 py-1.5 text-right">
+                                                            <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{group.acumulado}</span>
+                                                        </td>
+                                                        <td className="px-2 py-1.5 text-right">
+                                                            <span className="text-[11px] font-black text-slate-400">{group.stock_sistema}</span>
+                                                        </td>
+                                                        <td className="px-2 py-1.5 text-right">
+                                                            <span className={`text-[11px] font-black ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                                                {diff > 0 ? '+' : ''}{diff}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-2 py-1.5">
+                                                            <button
+                                                                onClick={() => setExpandedProduct(isExpanded ? null : group.product_id)}
+                                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                                title="Ver escaneos individuales"
+                                                            >
+                                                                <ChevronRight size={14} className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && group.scans.map(scan => (
+                                                        <tr key={scan.id} className="hover:bg-slate-50/30 transition-colors bg-indigo-50/5">
+                                                            <td className="px-2 py-1 pl-8">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedScans.includes(scan.id)}
+                                                                    onChange={() => toggleScanSelect(scan.id)}
+                                                                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-2 focus:ring-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="px-2 py-1" colSpan="2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] font-bold text-slate-500">{new Date(scan.created_at).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                    <span className="text-[10px] text-slate-400">por</span>
+                                                                    <span className="text-[10px] font-bold text-slate-600">{scan.escaneado_por_nombre}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-2 py-1 text-center">
+                                                                <span className="text-[10px] font-black text-indigo-500">{scan.cantidad_fisica}</span>
+                                                            </td>
+                                                            <td className="px-2 py-1" colSpan="2"></td>
+                                                            <td className="px-2 py-1 text-right">
+                                                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-tighter uppercase ${scan.estado === 'APLICADO' ? 'bg-emerald-100 text-emerald-600' : scan.estado === 'RECHAZADO' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                                    {scan.estado}
+                                                                </span>
+                                                            </td>
+                                                            <td></td>
+                                                        </tr>
+                                                    ))}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : viewingScans.scans && viewingScans.scans.length > 0 ? (
+                            <div className="text-center py-12 text-slate-400">
+                                <Search size={48} className="mx-auto mb-3 opacity-20" />
+                                <p className="font-bold text-sm">No hay escaneos en esta sesión</p>
+                            </div>
+                        ) : null}
+                    </div>
+                        )}
             </Modal>
 
             {/* Category Filter Modal */}

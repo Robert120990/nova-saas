@@ -2433,7 +2433,7 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}}
+                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
                                                         {allDespachadores.map(disp => (
                                                             <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
                                                         ))}
