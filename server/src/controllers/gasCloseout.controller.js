@@ -2417,7 +2417,7 @@ exports.generarComplementaria = async (req, res) => {
         }
 
         const [companyRows] = await pool.query(
-            `SELECT id, razon_social, nit, dte_active, dte_ambiente, actividad_economica,
+            `SELECT id, razon_social, nit, dte_active, ambiente, actividad_economica,
                     departamento, municipio, direccion, telefono, correo_electronico,
                     codigo_establecimiento, codigo_punto_venta_mh
              FROM companies WHERE id = ?`,
@@ -2533,7 +2533,7 @@ exports.generarComplementaria = async (req, res) => {
                 codigo: item.codigo,
                 descripcion: item.descripcion,
                 cantidad: item.cantidad,
-                precio_unitario: item.precioUnitario,
+                precio_unitario: item.precio_unitario,
                 monto_descuento: 0,
                 venta_gravada: item.ventaGravada,
                 venta_exenta: 0,
