@@ -2418,8 +2418,7 @@ exports.generarComplementaria = async (req, res) => {
 
         const [companyRows] = await pool.query(
             `SELECT id, razon_social, nit, dte_active, ambiente, actividad_economica,
-                    departamento, municipio, direccion, telefono, correo_electronico,
-                    codigo_establecimiento, codigo_punto_venta_mh
+                    departamento, municipio, direccion, telefono, correo
              FROM companies WHERE id = ?`,
             [company_id]
         );
@@ -2427,7 +2426,7 @@ exports.generarComplementaria = async (req, res) => {
         const company = companyRows[0];
 
         const [customer] = await pool.query(
-            `SELECT id, codigo, nombres, dui, nit, direccion, telefono, correo
+            `SELECT id, nombre, nit, direccion, telefono, correo
              FROM customers WHERE company_id = ? AND (nit = '' OR nit IS NULL) AND tipo_persona = 'CF'
              ORDER BY id ASC LIMIT 1`,
             [company_id]
@@ -2437,7 +2436,7 @@ exports.generarComplementaria = async (req, res) => {
             return res.status(400).json({ message: 'No se encontro cliente consumidor final (CF)' });
         }
 
-        const cliente = customer[0];
+        const cliente = { ...customer[0], nombres: customer[0].nombre };
 
         let totalMonto = 0;
         const items = rows.map(r => {
@@ -2470,10 +2469,10 @@ exports.generarComplementaria = async (req, res) => {
                 customer_name: cliente.nombres,
                 customer_nit: cliente.nit,
                 customer_nrc: '',
-                customer_dui: cliente.dui || '',
+                customer_dui: '',
                 customer_direccion: cliente.direccion || company.direccion,
                 customer_telefono: cliente.telefono || company.telefono,
-                customer_correo: cliente.correo || company.correo_electronico,
+                customer_correo: cliente.correo || company.correo,
                 branch_id: branch_id || req.user.branch_id,
                 user_id: req.user?.id,
                 payment_type: 'CONT',
@@ -2490,8 +2489,7 @@ exports.generarComplementaria = async (req, res) => {
             payments: [{ codigo: '01', monto: totalPagar, referencia: '', plazo: '', periodo: '' }],
             linkedDocuments: [],
             emisor_adicional: {
-                descActividad: company.actividad_economica || '',
-                codPuntoVentaMH: company.codigo_punto_venta_mh || ''
+                descActividad: company.actividad_economica || ''
             }
         };
 
