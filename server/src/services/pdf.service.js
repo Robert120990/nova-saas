@@ -1419,7 +1419,7 @@ const generateRTEE = (data) => {
                     crY += Math.max(ih, 15);
                 });
                 const footerY = Math.max(crY + 20, 580);
-                const qrUrl = `https://admin.factura.gob.sv/consulta-publica?p=${dte.codigoGeneracion}&f=${venta.fecha_emision}&s=${dte.selloRecepcion}&m=${venta.total_pagar}`;
+                const qrUrl = `https://admin.factura.gob.sv/consultaPublica?ambiente=${dte.ambiente}&codGen=${dte.codigoGeneracion}&fechaEmi=${venta.fecha_emision}`;
                 const qrImage = await QRCode.toDataURL(qrUrl);
                 doc.image(qrImage, startX, footerY - 10, { width: 80 });
                 let cy = footerY;
@@ -1473,7 +1473,7 @@ const generateRTEE = (data) => {
             const footerY = Math.max(currentY + 20, 580);
             
             // QR Code
-            const qrUrl = `https://admin.factura.gob.sv/consulta-publica?p=${dte.codigoGeneracion}&f=${venta.fecha_emision}&s=${dte.selloRecepcion}&m=${venta.total_pagar}`;
+            const qrUrl = `https://admin.factura.gob.sv/consultaPublica?ambiente=${dte.ambiente}&codGen=${dte.codigoGeneracion}&fechaEmi=${venta.fecha_emision}`;
             const qrImage = await QRCode.toDataURL(qrUrl);
             doc.image(qrImage, startX, footerY, { width: 90 });
             doc.fontSize(6).text('Representación Gráfica de DTE. Valide escaneando el código QR o en el sitio oficial de Hacienda.', startX, footerY + 95, { width: 90, align: 'center' });

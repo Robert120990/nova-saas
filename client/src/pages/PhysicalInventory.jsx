@@ -1163,7 +1163,7 @@ const PhysicalInventory = () => {
                                     </td>
                                     <td className="px-3 py-2">
                                         <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                                            {new Date(inv.fecha + 'T00:00:00').toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                            {new Date(inv.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                         </span>
                                     </td>
                                     <td className="px-3 py-2">

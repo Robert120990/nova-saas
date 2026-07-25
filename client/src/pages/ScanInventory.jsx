@@ -9,7 +9,9 @@ import {
     Package, 
     Hash,
     List,
-    Clock
+    Clock,
+    Pause,
+    Play
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -35,6 +37,7 @@ const ScanInventory = () => {
     const manualInputRef = useRef(null);
     const scannerStartedRef = useRef(false);
     const [recentScans, setRecentScans] = useState([]);
+    const [paused, setPaused] = useState(false);
 
     // Cargar sesión y productos permitidos
     useEffect(() => {
@@ -196,15 +199,34 @@ const ScanInventory = () => {
     };
 
     const resumeScanner = async () => {
+        if (paused) return;
         if (scanner && !scanning) {
             try {
                 await scanner.resume();
                 setScanning(true);
+                setPaused(false);
             } catch (err) {
                 console.error('Error resuming scanner:', err);
             }
         }
         setLastScan(null);
+    };
+
+    const togglePause = async () => {
+        if (!scanner) return;
+        try {
+            if (paused) {
+                await scanner.resume();
+                setScanning(true);
+                setPaused(false);
+            } else {
+                await scanner.pause();
+                setScanning(false);
+                setPaused(true);
+            }
+        } catch (err) {
+            console.error('Error toggling pause:', err);
+        }
     };
 
     const handleSaveScan = async () => {
@@ -372,6 +394,24 @@ const ScanInventory = () => {
 
                         {!cameraError && (
                             <>
+                                {/* Botón pausa/reanudar */}
+                                <button
+                                    onClick={togglePause}
+                                    className="absolute top-2 right-2 z-20 w-9 h-9 bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white rounded-full flex items-center justify-center transition-all active:scale-90"
+                                    title={paused ? 'Reanudar cámara' : 'Pausar cámara'}
+                                >
+                                    {paused ? <Play size={16} /> : <Pause size={16} />}
+                                </button>
+
+                                {/* Overlay de pausa */}
+                                {paused && (
+                                    <div className="absolute inset-0 bg-slate-900/85 flex flex-col items-center justify-center rounded-xl z-20">
+                                        <Camera size={40} className="text-white/40 mb-2" />
+                                        <p className="text-white/70 text-sm font-semibold">Cámara pausada</p>
+                                        <p className="text-white/40 text-xs mt-1">Presione ▶ para reanudar</p>
+                                    </div>
+                                )}
+
                                 {/* Esquinas decorativas */}
                                 <div className="absolute inset-0 pointer-events-none z-10">
                                     <div className="absolute top-0 left-0 w-10 h-[3px] bg-indigo-400 rounded-r-full" style={{ boxShadow: '0 0 8px rgba(129,140,248,0.5)' }} />
@@ -384,14 +424,14 @@ const ScanInventory = () => {
                                     <div className="absolute bottom-0 right-0 w-[3px] h-10 bg-indigo-400 rounded-t-full" style={{ boxShadow: '0 0 8px rgba(129,140,248,0.5)' }} />
                                 </div>
                                 {/* Línea de escaneo animada */}
-                                <div className="scan-line absolute left-3 right-3 h-[2px] bg-gradient-to-r from-transparent via-indigo-300 to-transparent opacity-90 pointer-events-none z-10" />
+                                {!paused && <div className="scan-line absolute left-3 right-3 h-[2px] bg-gradient-to-r from-transparent via-indigo-300 to-transparent opacity-90 pointer-events-none z-10" />}
                             </>
                         )}
                     </div>
 
                     <div className="text-center">
                         <p className="text-slate-500 text-sm font-medium">
-                            {cameraError ? 'Ingrese el código manualmente' : 'Apunte la cámara al código de barras'}
+                            {cameraError ? 'Ingrese el código manualmente' : paused ? 'Cámara pausada' : 'Apunte la cámara al código de barras'}
                         </p>
                     </div>
 
