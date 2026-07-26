@@ -2428,7 +2428,7 @@ exports.generarComplementaria = async (req, res) => {
         if (companyRows.length === 0) return res.status(404).json({ message: 'Empresa no encontrada' });
         const company = companyRows[0];
 
-        const [customer] = await pool.query(
+        let [customer] = await pool.query(
             `SELECT id, nombre, nit, direccion, telefono, correo
              FROM customers WHERE company_id = ? AND (nit = '' OR nit IS NULL)
              ORDER BY id ASC LIMIT 1`,
@@ -2436,7 +2436,22 @@ exports.generarComplementaria = async (req, res) => {
         );
 
         if (customer.length === 0) {
-            return res.status(400).json({ message: 'No se encontro cliente consumidor final (CF)' });
+            const [result] = await pool.query(
+                'INSERT INTO customers SET ?',
+                [{
+                    company_id,
+                    nombre: 'CONSUMIDOR FINAL',
+                    nit: '',
+                    nrc: '',
+                    tipo_documento: '36',
+                    numero_documento: '',
+                    tipo_persona: '1',
+                    direccion: company.direccion || '',
+                    telefono: company.telefono || '',
+                    correo: company.correo || ''
+                }]
+            );
+            customer = [{ id: result.insertId, nombre: 'CONSUMIDOR FINAL', nit: '', direccion: company.direccion || '', telefono: company.telefono || '', correo: company.correo || '' }];
         }
 
         const cliente = { ...customer[0], nombres: customer[0].nombre };
