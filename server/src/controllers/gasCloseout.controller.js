@@ -2417,9 +2417,12 @@ exports.generarComplementaria = async (req, res) => {
         }
 
         const [companyRows] = await pool.query(
-            `SELECT id, razon_social, nit, dte_active, ambiente, actividad_economica,
-                    departamento, municipio, direccion, telefono, correo
-             FROM companies WHERE id = ?`,
+            `SELECT c.id, c.razon_social, c.nit, c.dte_active, c.ambiente,
+                    cat.description AS actividad_economica,
+                    c.departamento, c.municipio, c.direccion, c.telefono, c.correo
+             FROM companies c
+             LEFT JOIN cat_019_actividad_economica cat ON c.codigo_actividad = cat.code
+             WHERE c.id = ?`,
             [company_id]
         );
         if (companyRows.length === 0) return res.status(404).json({ message: 'Empresa no encontrada' });
