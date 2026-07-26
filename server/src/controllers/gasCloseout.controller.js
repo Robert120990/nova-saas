@@ -2534,8 +2534,7 @@ exports.generarComplementaria = async (req, res) => {
             sale_id: saleId,
             metodo_pago: '01',
             monto: totalPagar,
-            referencia: '',
-            created_at: new Date()
+            referencia: ''
         }]);
 
         // Emitir DTE vinculado a la venta
