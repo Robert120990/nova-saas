@@ -2430,7 +2430,7 @@ exports.generarComplementaria = async (req, res) => {
 
         const [customer] = await pool.query(
             `SELECT id, nombre, nit, direccion, telefono, correo
-             FROM customers WHERE company_id = ? AND (nit = '' OR nit IS NULL) AND tipo_persona = 'CF'
+             FROM customers WHERE company_id = ? AND (nit = '' OR nit IS NULL)
              ORDER BY id ASC LIMIT 1`,
             [company_id]
         );
