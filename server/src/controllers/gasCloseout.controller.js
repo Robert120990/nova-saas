@@ -2428,34 +2428,6 @@ exports.generarComplementaria = async (req, res) => {
         if (companyRows.length === 0) return res.status(404).json({ message: 'Empresa no encontrada' });
         const company = companyRows[0];
 
-        let [customer] = await pool.query(
-            `SELECT id, nombre, nit, direccion, telefono, correo
-             FROM customers WHERE company_id = ? AND (nit = '' OR nit IS NULL)
-             ORDER BY id ASC LIMIT 1`,
-            [company_id]
-        );
-
-        if (customer.length === 0) {
-            const [result] = await pool.query(
-                'INSERT INTO customers SET ?',
-                [{
-                    company_id,
-                    nombre: 'CONSUMIDOR FINAL',
-                    nit: '',
-                    nrc: '',
-                    tipo_documento: '36',
-                    numero_documento: '',
-                    tipo_persona: '1',
-                    direccion: company.direccion || '',
-                    telefono: company.telefono || '',
-                    correo: company.correo || ''
-                }]
-            );
-            customer = [{ id: result.insertId, nombre: 'CONSUMIDOR FINAL', nit: '', direccion: company.direccion || '', telefono: company.telefono || '', correo: company.correo || '' }];
-        }
-
-        const cliente = { ...customer[0], nombres: customer[0].nombre };
-
         let totalMonto = 0;
         const items = rows.map(r => {
             const monto = parseFloat(r.diferencia_monto) || 0;
@@ -2483,14 +2455,14 @@ exports.generarComplementaria = async (req, res) => {
         const payload = {
             header: {
                 dte_type: '01',
-                customer_id: cliente.id,
-                customer_name: cliente.nombres,
-                customer_nit: cliente.nit,
+                customer_id: null,
+                customer_name: 'CONSUMIDOR FINAL',
+                customer_nit: null,
                 customer_nrc: '',
                 customer_dui: '',
-                customer_direccion: cliente.direccion || company.direccion,
-                customer_telefono: cliente.telefono || company.telefono,
-                customer_correo: cliente.correo || company.correo,
+                customer_direccion: company.direccion,
+                customer_telefono: company.telefono,
+                customer_correo: company.correo,
                 branch_id: branch_id || req.user.branch_id,
                 user_id: req.user?.id,
                 payment_type: 'CONT',
@@ -2515,7 +2487,7 @@ exports.generarComplementaria = async (req, res) => {
         const [saleResult] = await pool.query('INSERT INTO sales_headers SET ?', [{
             company_id,
             branch_id,
-            customer_id: cliente.id,
+            customer_id: null,
             seller_id: payload.header.seller_id,
             shift_id: posShift[0].id,
             dte_type: '01',
@@ -2535,7 +2507,7 @@ exports.generarComplementaria = async (req, res) => {
             iva_retenido: 0,
             total_pagar: totalPagar,
             payment_condition: 1,
-            cliente_nombre: cliente.nombres,
+            cliente_nombre: 'CONSUMIDOR FINAL',
             observaciones: `Complementaria turno ${fecha_turno} #${turnoNum}`,
             created_at: new Date()
         }]);
