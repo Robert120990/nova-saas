@@ -49,7 +49,11 @@ async function invalidateDTE(payload, companyId, user) {
     const company = companyRows[0];
     const [branchRows] = await pool.query('SELECT codigo, codigo_mh FROM branches WHERE id = ? AND company_id = ?', [dte.branch_id, companyId]);
     const branch = branchRows.length > 0 ? branchRows[0] : { codigo: '1', codigo_mh: null };
-    const [posRows] = await pool.query('SELECT codigo FROM points_of_sale WHERE id = ?', [dte.pos_id]);
+    const [posRows] = await pool.query(`
+        SELECT pos.codigo FROM points_of_sale pos
+        JOIN sales_headers sh ON sh.pos_id = pos.id
+        WHERE sh.id = ?
+    `, [dte.venta_id]);
     const pos = posRows.length > 0 ? posRows[0] : { codigo: null };
 
     // 2. Generar JSON de Invalidación (hora actual en zona de El Salvador UTC-6)
@@ -79,15 +83,15 @@ async function invalidateDTE(payload, companyId, user) {
 
         codEstable = codEstableMH;
 
-        codPuntoVentaMH = emisorOrig.codPuntoVenta;
+        codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
         if (!codPuntoVentaMH) {
-            codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
+            codPuntoVentaMH = emisorOrig.codPuntoVenta;
             if (!codPuntoVentaMH) {
-                throw new Error('El DTE original no contiene código de punto de venta y el punto de venta no tiene código configurado.');
+                throw new Error('El DTE original no contiene código de punto de venta y el punto de venta no tiene código configurado en la base de datos.');
             }
         }
 
-        codPuntoVenta = codPuntoVentaMH;
+        codPuntoVenta = emisorOrig.codPuntoVenta || codPuntoVentaMH;
     } else {
         codEstableMH = emisorOrig.codEstableMH;
         if (!codEstableMH) {

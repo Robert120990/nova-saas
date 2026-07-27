@@ -2387,13 +2387,19 @@ exports.generarComplementaria = async (req, res) => {
         const turnoNum = parseInt(numero_turno, 10) || 0;
 
         const [posShift] = await pool.query(
-            `SELECT id, seller_id FROM pos_shifts
+            `SELECT id, seller_id, pos_id FROM pos_shifts
              WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
              LIMIT 1`,
             [company_id, branch_id, fecha_turno, turnoNum]
         );
         if (posShift.length === 0) {
             return res.status(400).json({ message: `No se encontro un turno de facturacion (POS) para la fecha ${fecha_turno} turno #${turnoNum}. Debe crear el turno de facturacion primero.` });
+        }
+
+        let codPuntoVentaMH = null;
+        if (posShift[0].pos_id) {
+            const [pos] = await pool.query('SELECT codigo FROM points_of_sale WHERE id = ?', [posShift[0].pos_id]);
+            if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
         }
 
         const [rows] = await pool.query(`
@@ -2497,14 +2503,15 @@ exports.generarComplementaria = async (req, res) => {
                 total_gravado: totalMonto,
                 total_iva: iva,
                 total_pagar: totalPagar,
-                shift_id: posShift[0].id,
+            shift_id: posShift[0].id,
                 seller_id: posShift[0].seller_id || null,
             },
             items,
             payments: [{ codigo: '01', monto: totalPagar, referencia: '', plazo: '', periodo: '' }],
             linkedDocuments: [],
             emisor_adicional: {
-                descActividad: company.actividad_economica || ''
+                descActividad: company.actividad_economica || '',
+                codPuntoVentaMH: codPuntoVentaMH
             }
         };
 
@@ -2515,6 +2522,7 @@ exports.generarComplementaria = async (req, res) => {
             customer_id: null,
             seller_id: payload.header.seller_id,
             shift_id: posShift[0].id,
+            pos_id: posShift[0].pos_id,
             dte_type: '01',
             tipo_documento: '01',
             condicion_operacion: 1,

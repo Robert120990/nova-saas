@@ -1755,7 +1755,9 @@ const voidSale = async (req, res) => {
 
             const dteResult = await dteService.invalidateDTE(sale, invalidationPayload);
             if (!dteResult.success && !dteResult.skip) {
-                console.warn('[VoidSale] dte-api reportó error, el DTE pudo haberse invalidado igual:', dteResult.error);
+                return res.status(502).json({
+                    message: `Error al invalidar el DTE en Hacienda: ${dteResult.error}`
+                });
             }
         }
 

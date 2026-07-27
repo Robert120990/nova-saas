@@ -9,7 +9,7 @@ const getUsers = async (req, res) => {
         const companyId = req.user?.company_id || null;
 
         let query = `
-            SELECT u.id, u.username, u.nombre, u.email, u.status, u.allowed_ips, ue.role_id, r.name as role_name 
+            SELECT u.id, u.username, u.nombre, u.email, u.telefono, u.status, u.allowed_ips, ue.role_id, r.name as role_name 
             FROM users u 
             LEFT JOIN usuario_empresa ue ON u.id = ue.usuario_id AND ue.empresa_id = ?
             LEFT JOIN roles r ON ue.role_id = r.id
@@ -47,8 +47,13 @@ const getUsers = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
-    const { username, password, nombre, email, role_id, branches, allowed_ips } = req.body;
+    const { username, password, nombre, email, telefono, role_id, branches, allowed_ips } = req.body;
     const companyId = req.user.company_id;
+
+    if (telefono && !/^\d{4}-\d{4}$/.test(telefono)) {
+        return res.status(400).json({ message: 'El teléfono debe tener el formato 0000-0000' });
+    }
+
     console.log('DEBUG: createUser', { username, role_id, companyId, user: req.user });
     
     const connection = await pool.getConnection();
@@ -77,8 +82,8 @@ const createUser = async (req, res) => {
             const hashedPassword = await bcrypt.hash(password, 10);
             const ipArray = allowed_ips ? (Array.isArray(allowed_ips) ? allowed_ips : allowed_ips.split('\n').map(s => s.trim()).filter(Boolean)) : [];
             const [userResult] = await connection.query(
-                'INSERT INTO users (username, password, nombre, email, allowed_ips) VALUES (?, ?, ?, ?, ?)',
-                [username, hashedPassword, nombre, email, ipArray.length > 0 ? JSON.stringify(ipArray) : null]
+                'INSERT INTO users (username, password, nombre, email, telefono, allowed_ips) VALUES (?, ?, ?, ?, ?, ?)',
+                [username, hashedPassword, nombre, email, telefono || null, ipArray.length > 0 ? JSON.stringify(ipArray) : null]
             );
             userId = userResult.insertId;
         }
@@ -108,8 +113,12 @@ const createUser = async (req, res) => {
 
 const updateUser = async (req, res) => {
     const { id } = req.params;
-    const { username, nombre, email, role_id, status, branches, password, allowed_ips } = req.body;
+    const { username, nombre, email, telefono, role_id, status, branches, password, allowed_ips } = req.body;
     const companyId = req.user.company_id;
+
+    if (telefono && !/^\d{4}-\d{4}$/.test(telefono)) {
+        return res.status(400).json({ message: 'El teléfono debe tener el formato 0000-0000' });
+    }
     
     const connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -121,6 +130,7 @@ const updateUser = async (req, res) => {
         if (username !== undefined) { updates.push('username = ?'); params.push(username); }
         if (nombre !== undefined) { updates.push('nombre = ?'); params.push(nombre); }
         if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+        if (telefono !== undefined) { updates.push('telefono = ?'); params.push(telefono || null); }
         if (status !== undefined) { updates.push('status = ?'); params.push(status); }
         if (allowed_ips !== undefined) {
             const ipArray = Array.isArray(allowed_ips) ? allowed_ips : allowed_ips.split('\n').map(s => s.trim()).filter(Boolean);

@@ -400,6 +400,8 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 Exento: n(r.t_exe).toFixed(2),
                 Neto: n(r.t_grav).toFixed(2),
                 IVA: n(r.t_iva).toFixed(2),
+                FOVIAL: n(r.t_fov).toFixed(2),
+                COTRANS: n(r.t_cot).toFixed(2),
                 Total: n(r.t_pagar).toFixed(2)
             }));
             const buffer = await excelService.createExcelBuffer({
@@ -412,6 +414,8 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                     { header: 'Exento', key: 'Exento', width: 14 },
                     { header: 'Neto', key: 'Neto', width: 14 },
                     { header: 'IVA', key: 'IVA', width: 14 },
+                    { header: 'FOVIAL', key: 'FOVIAL', width: 14 },
+                    { header: 'COTRANS', key: 'COTRANS', width: 14 },
                     { header: 'Total', key: 'Total', width: 14 }
                 ], data: excelData }]
             });

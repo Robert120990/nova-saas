@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
+import { IMaskInput } from 'react-imask';
 import { Plus, Shield, Edit, GitBranch, User, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -96,6 +97,17 @@ const Users = () => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
+
+        if (data.telefono) {
+            const placeholderLimpio = data.telefono.replace(/[_-]/g, '').trim();
+            if (placeholderLimpio === '') {
+                delete data.telefono;
+            } else if (!/^\d{4}-\d{4}$/.test(data.telefono)) {
+                toast.error('El teléfono debe tener el formato 0000-0000');
+                return;
+            }
+        }
+
         mutation.mutate(data);
     };
 
@@ -240,6 +252,17 @@ const Users = () => {
                         <div>
                             <label className={labelCls}>Correo Electrónico</label>
                             <input name="email" type="email" defaultValue={selectedUser?.email} required placeholder="juan@ejemplo.com" className={fieldCls} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Teléfono</label>
+                            <IMaskInput
+                                mask="0000-0000"
+                                name="telefono"
+                                defaultValue={selectedUser?.telefono || ''}
+                                placeholder="2200-0000"
+                                className={fieldCls}
+                                lazy={false}
+                            />
                         </div>
                     </div>
 
