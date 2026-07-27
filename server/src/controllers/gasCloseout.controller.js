@@ -693,11 +693,11 @@ exports.closeCloseout = async (req, res) => {
             [id]
         );
         const [[{ totalGalones }]] = await pool.query(
-            `SELECT COALESCE(SUM(cantidad), 0) as totalGalones FROM gas_station_closeout_readings WHERE closeout_id = ?`,
+            `SELECT COALESCE(SUM(diferencia), 0) as totalGalones FROM gas_station_closeout_readings WHERE closeout_id = ?`,
             [id]
         );
         const [[{ numDespachadores }]] = await pool.query(
-            `SELECT COUNT(DISTINCT despachador_id) as numDespachadores FROM gas_station_closeout_readings WHERE closeout_id = ? AND despachador_id IS NOT NULL`,
+            `SELECT COUNT(*) as numDespachadores FROM gas_station_closeout_despachadores WHERE closeout_id = ?`,
             [id]
         );
 

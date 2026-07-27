@@ -373,11 +373,11 @@ const GasCloseout = () => {
 
     const closeMutation = useMutation({
         mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/close`),
-        onSuccess: () => {
+        onSuccess: (res) => {
             setEstado('cerrado');
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
-            toast.success('Cierre cerrado exitosamente');
+            toast.success(res.data?.message || 'Cierre cerrado exitosamente');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
     });

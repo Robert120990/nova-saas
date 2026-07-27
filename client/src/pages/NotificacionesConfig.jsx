@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Bell, Plus, GitBranch, Settings, Trash2, Power, PowerOff, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import RuleEditor from '../components/ui/RuleEditor';
+import { useConfirm } from '../context/ConfirmContext';
 
 const categoryColors = {
   ventas: '#10b981', dte: '#3b82f6', cxc: '#22c55e', cxp: '#a855f7',
@@ -23,6 +24,7 @@ const NotificacionesConfig = () => {
   const [editingRule, setEditingRule] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState(null);
+  const confirm = useConfirm();
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -216,10 +218,15 @@ const NotificacionesConfig = () => {
                                   <Edit3 size={14} />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    if (window.confirm('¿Eliminar esta regla de notificación?')) {
-                                      deleteMutation.mutate(rule.id);
-                                    }
+                                  onClick={async () => {
+                                    const ok = await confirm({
+                                      title: 'Eliminar regla',
+                                      message: '¿Estás seguro de eliminar esta regla de notificación?',
+                                      confirmLabel: 'Sí, eliminar',
+                                      cancelLabel: 'Cancelar',
+                                      variant: 'warning'
+                                    });
+                                    if (ok) deleteMutation.mutate(rule.id);
                                   }}
                                   className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
                                   title="Eliminar regla"

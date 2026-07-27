@@ -58,8 +58,8 @@ const GasReadingHistory = () => {
 
     const reopenMutation = useMutation({
         mutationFn: (id) => axios.post(`/api/gas-station/closeouts/${id}/reopen`),
-        onSuccess: () => {
-            toast.success('Cierre reabierto exitosamente');
+        onSuccess: (res) => {
+            toast.success(res.data?.message || 'Cierre reabierto exitosamente');
             setReopenConfirm(null);
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },

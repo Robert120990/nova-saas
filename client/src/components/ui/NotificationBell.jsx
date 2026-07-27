@@ -129,6 +129,7 @@ const NotificationBell = () => {
                   key={notif.id}
                   notification={notif}
                   onClick={handleNotificationClick}
+                  onMarkRead={(id) => markReadMutation.mutate(id)}
                   compact
                 />
               ))

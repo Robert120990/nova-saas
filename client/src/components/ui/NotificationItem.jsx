@@ -9,7 +9,7 @@ import {
   UserPlus, CheckCircle, FileText, Umbrella, Gift,
   BookOpen, Lock, Unlock,
   Box, Wrench,
-  Bell
+  Bell, CheckCheck
 } from 'lucide-react';
 
 const iconMap = {
@@ -88,7 +88,7 @@ function getTimeAgo(dateStr) {
   return date.toLocaleDateString('es-SV');
 }
 
-const NotificationItem = ({ notification, onClick, compact = false }) => {
+const NotificationItem = ({ notification, onClick, onMarkRead, compact = false }) => {
   const iconName = actionIcons[notification.action_code] || defaultIcon;
   const Icon = iconMap[iconName] || Bell;
   const color = colorMap[notification.action_code] || defaultColor;
@@ -125,6 +125,15 @@ const NotificationItem = ({ notification, onClick, compact = false }) => {
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5" />
           )}
         </div>
+        {!notification.is_read && onMarkRead && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}
+            className="p-1.5 rounded-lg hover:bg-indigo-100 text-slate-300 hover:text-indigo-600 transition-all flex-shrink-0 mt-0.5"
+            title="Marcar como leída"
+          >
+            <CheckCheck size={14} />
+          </button>
+        )}
       </div>
     </button>
   );

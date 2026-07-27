@@ -101,6 +101,7 @@ const NotificacionesLista = () => {
                 key={notif.id}
                 notification={notif}
                 onClick={handleNotificationClick}
+                onMarkRead={(id) => markReadMutation.mutate(id)}
               />
             ))}
           </div>
