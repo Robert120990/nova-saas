@@ -900,6 +900,7 @@ exports.saveExpenses = async (req, res) => {
         }
 
         if (expenses && expenses.length > 0) {
+            const providerIds = expenses.map(e => e.provider_id).filter(id => id);
             const providerMap = {};
             if (providerIds.length > 0) {
                 const [providers] = await pool.query(
