@@ -2288,6 +2288,17 @@ exports.getVentasComparacion = async (req, res) => {
 
         const turnoNum = parseInt(numero_turno, 10) || 0;
 
+        let shiftMatch = null;
+        if (turnoNum > 0) {
+            const [posShift] = await pool.query(
+                `SELECT id FROM pos_shifts
+                 WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
+                 LIMIT 1`,
+                [company_id, branch_id, fecha_turno, turnoNum]
+            );
+            shiftMatch = posShift.length > 0;
+        }
+
         const [rows] = await pool.query(`
             SELECT 
                 p.codigo AS codigo_producto,
@@ -2352,7 +2363,7 @@ exports.getVentasComparacion = async (req, res) => {
             totales.diferencia_monto += parseFloat(row.diferencia_monto) || 0;
         }
 
-        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno });
+        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno, shiftMatch });
     } catch (error) {
         console.error('Error getVentasComparacion:', error);
         res.status(500).json({ message: 'Error al obtener comparacion de ventas' });

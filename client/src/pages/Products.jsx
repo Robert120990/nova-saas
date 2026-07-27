@@ -4,6 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Search } from 'lucide-react';
+import Money from '../components/ui/Money';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
@@ -223,7 +224,7 @@ const Products = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
-                    headers={['Código', 'Nombre / Descripción', 'Detalles', 'Acciones']}
+                    headers={['Código', 'Nombre', 'Categoría', 'Precios', 'Acciones']}
                     data={products}
                     isLoading={isLoading}
                     renderRow={(p) => (
@@ -234,17 +235,29 @@ const Products = () => {
                             </td>
                             <td className="px-3 py-1">
                                 <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
-                                <div className="text-[10px] text-slate-500 truncate max-w-xs">{p.descripcion}</div>
                             </td>
                             <td className="px-3 py-1">
-                                <div className="flex flex-col gap-0.5">
+                                {p.category_name ? (
                                     <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md inline-block w-fit uppercase">
-                                        {catUnidadMedida.find(um => um.code == p.unidad_medida)?.description || p.unidad_medida}
+                                        {p.category_name}
                                     </span>
-                                    <span className="text-[9px] text-indigo-500 font-bold uppercase">
-                                        {catTipoItem.find(ti => ti.code == p.tipo_item)?.description || p.tipo_item}
-                                    </span>
-                                </div>
+                                ) : (
+                                    <span className="text-[10px] text-slate-400 italic">Sin categoría</span>
+                                )}
+                            </td>
+                            <td className="px-3 py-1">
+                                {p.branches && p.branches.length > 0 ? (
+                                    <div className="flex flex-col gap-0.5">
+                                        {branches.filter(b => p.branches.includes(b.id)).map(b => (
+                                            <div key={b.id} className="flex items-center gap-1 text-[10px]">
+                                                <span className="text-slate-500 font-medium truncate max-w-[100px]">{b.nombre}:</span>
+                                                <Money value={p.branchPrices?.[b.id] ?? 0} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span className="text-[10px] text-slate-400 italic">Sin asignar</span>
+                                )}
                             </td>
                             <td className="px-3 py-1 flex gap-1">
                                 <button onClick={() => handleEdit(p)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>

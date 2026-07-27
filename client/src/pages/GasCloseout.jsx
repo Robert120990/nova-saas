@@ -5,7 +5,7 @@ import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
     FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save,
-    Users, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload
+    Users, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -3850,7 +3850,7 @@ const GasCloseout = () => {
                                     <BarChart3 size={16} className="text-indigo-600" />
                                     Lecturas vs Ventas
                                     <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                        {diferenciasData?.fecha} — Turno #{diferenciasData?.turno}
+                                        {diferenciasData?.fecha?.split('T')[0] || diferenciasData?.fecha} — Turno #{diferenciasData?.turno}
                                     </span>
                                 </h3>
                                 <button
@@ -3868,6 +3868,15 @@ const GasCloseout = () => {
                                     </div>
                                 ) : diferenciasData ? (
                                     <>
+                                        {diferenciasData.shiftMatch === false && (
+                                            <div className="flex items-start gap-3 p-3 mt-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+                                                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                                <div className="text-[11px] font-medium">
+                                                    <p className="font-bold mb-0.5">Turno de facturación no encontrado</p>
+                                                    <p>No se encontró un turno POS (punto de venta) que coincida con el Turno #{diferenciasData.turno} de este cierre en la fecha {diferenciasData.fecha?.split('T')[0] || diferenciasData.fecha}. Las ventas mostradas corresponden a todas las ventas del día sin filtrar por turno.</p>
+                                                </div>
+                                            </div>
+                                        )}
                                         <table className="w-full text-left border-collapse mt-3">
                                             <thead>
                                                 <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
