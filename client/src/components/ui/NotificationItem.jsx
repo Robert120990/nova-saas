@@ -126,13 +126,16 @@ const NotificationItem = ({ notification, onClick, onMarkRead, compact = false }
           )}
         </div>
         {!notification.is_read && onMarkRead && (
-          <button
+          <span
+            role="button"
+            tabIndex={0}
             onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}
-            className="p-1.5 rounded-lg hover:bg-indigo-100 text-slate-300 hover:text-indigo-600 transition-all flex-shrink-0 mt-0.5"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onMarkRead(notification.id); } }}
+            className="p-1.5 rounded-lg hover:bg-indigo-100 text-slate-300 hover:text-indigo-600 transition-all flex-shrink-0 mt-0.5 cursor-pointer"
             title="Marcar como leída"
           >
             <CheckCheck size={14} />
-          </button>
+          </span>
         )}
       </div>
     </button>

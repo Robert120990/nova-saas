@@ -753,14 +753,17 @@ exports.closeCloseout = async (req, res) => {
             [id]
         );
 
-        notificationService.notify('gas_closeout_completed', req.company_id, req.user.branch_id, {
+        const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeouts[0].branch_id]);
+        const branchName = brRows[0]?.nombre || '';
+
+        notificationService.notify('gas_closeout_completed', req.company_id, closeouts[0].branch_id, {
             turno: closeouts[0].numero_turno || '',
             fecha: closeouts[0].fecha_turno ? new Date(closeouts[0].fecha_turno).toLocaleDateString('es-SV') : '',
             total_ventas: totalMonto,
             total_galones: totalGalones,
             num_despachadores: numDespachadores,
             tanques: [],
-            sucursal: req.branch_name || ''
+            sucursal: branchName
         }).catch(() => {});
 
         res.json({ message: 'Cierre cerrado exitosamente' });
@@ -791,10 +794,13 @@ exports.reopenCloseout = async (req, res) => {
             [id]
         );
 
-        notificationService.notify('gas_closeout_reopened', req.company_id, req.user.branch_id, {
+        const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeouts[0].branch_id]);
+        const branchName = brRows[0]?.nombre || '';
+
+        notificationService.notify('gas_closeout_reopened', req.company_id, closeouts[0].branch_id, {
             turno: closeouts[0].numero_turno || '',
             fecha: closeouts[0].fecha_turno ? new Date(closeouts[0].fecha_turno).toLocaleDateString('es-SV') : '',
-            sucursal: req.branch_name || ''
+            sucursal: branchName
         }).catch(() => {});
 
         res.json({ message: 'Cierre reabierto exitosamente' });
