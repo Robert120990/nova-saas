@@ -34,10 +34,11 @@ async function findMatchingRules(actionCode, companyId, branchId, context) {
 
     const matchingRules = [];
     for (const rule of rules) {
-        const [conditions] = await pool.query(
+        const [rawConditions] = await pool.query(
             'SELECT * FROM notification_rule_conditions WHERE rule_id = ?',
             [rule.id]
         );
+        const conditions = rawConditions.filter(c => c.field && c.field.trim());
         if (evaluateAll(conditions, context)) {
             const [recipients] = await pool.query(`
                 SELECT u.id, u.email, u.nombre, u.telefono

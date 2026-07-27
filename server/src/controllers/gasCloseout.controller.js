@@ -666,7 +666,7 @@ exports.closeCloseout = async (req, res) => {
         const { id } = req.params;
 
         const [closeouts] = await pool.query(
-            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id, numero_turno, fecha_turno FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
@@ -684,15 +684,24 @@ exports.closeCloseout = async (req, res) => {
         );
         const variacionPermitida = parseFloat(settingsRows[0]?.setting_value) || 0;
 
+        const [[{ totalMonto }]] = await pool.query(
+            `SELECT COALESCE(SUM(monto), 0) as totalMonto FROM gas_station_closeout_readings WHERE closeout_id = ?`,
+            [id]
+        );
+        const [[{ lubricantTotal }]] = await pool.query(
+            `SELECT COALESCE(SUM(total), 0) as lubricantTotal FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`,
+            [id]
+        );
+        const [[{ totalGalones }]] = await pool.query(
+            `SELECT COALESCE(SUM(cantidad), 0) as totalGalones FROM gas_station_closeout_readings WHERE closeout_id = ?`,
+            [id]
+        );
+        const [[{ numDespachadores }]] = await pool.query(
+            `SELECT COUNT(DISTINCT despachador_id) as numDespachadores FROM gas_station_closeout_readings WHERE closeout_id = ? AND despachador_id IS NOT NULL`,
+            [id]
+        );
+
         if (variacionPermitida > 0) {
-            const [[{ totalMonto }]] = await pool.query(
-                `SELECT COALESCE(SUM(monto), 0) as totalMonto FROM gas_station_closeout_readings WHERE closeout_id = ?`,
-                [id]
-            );
-            const [[{ lubricantTotal }]] = await pool.query(
-                `SELECT COALESCE(SUM(total), 0) as lubricantTotal FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`,
-                [id]
-            );
             const [[{ gastosTotal }]] = await pool.query(
                 `SELECT COALESCE(SUM(valor), 0) as gastosTotal FROM gas_station_closeout_expenses WHERE closeout_id = ?`,
                 [id]
@@ -746,10 +755,10 @@ exports.closeCloseout = async (req, res) => {
 
         notificationService.notify('gas_closeout_completed', req.company_id, req.user.branch_id, {
             turno: closeouts[0].numero_turno || '',
-            fecha: closeouts[0].fecha_turno || new Date().toISOString().split('T')[0],
-            total_ventas: 0,
-            total_galones: 0,
-            num_despachadores: 0,
+            fecha: closeouts[0].fecha_turno ? new Date(closeouts[0].fecha_turno).toLocaleDateString('es-SV') : '',
+            total_ventas: totalMonto,
+            total_galones: totalGalones,
+            num_despachadores: numDespachadores,
             tanques: [],
             sucursal: req.branch_name || ''
         }).catch(() => {});
@@ -766,7 +775,7 @@ exports.reopenCloseout = async (req, res) => {
         const { id } = req.params;
 
         const [closeouts] = await pool.query(
-            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id, numero_turno, fecha_turno FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
@@ -781,6 +790,12 @@ exports.reopenCloseout = async (req, res) => {
             `UPDATE gas_station_closeouts SET estado = 'reabierto' WHERE id = ?`,
             [id]
         );
+
+        notificationService.notify('gas_closeout_reopened', req.company_id, req.user.branch_id, {
+            turno: closeouts[0].numero_turno || '',
+            fecha: closeouts[0].fecha_turno ? new Date(closeouts[0].fecha_turno).toLocaleDateString('es-SV') : '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ message: 'Cierre reabierto exitosamente' });
     } catch (error) {

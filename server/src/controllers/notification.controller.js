@@ -92,11 +92,14 @@ const saveRule = async (req, res) => {
         }
 
         if (conditions && conditions.length > 0) {
-            const values = conditions.map(c => [ruleId, c.field, c.operator, c.value]);
-            await connection.query(
-                'INSERT INTO notification_rule_conditions (rule_id, field, operator, value) VALUES ?',
-                [values]
-            );
+            const validConditions = conditions.filter(c => c.field && c.field.trim());
+            if (validConditions.length > 0) {
+                const values = validConditions.map(c => [ruleId, c.field, c.operator, c.value]);
+                await connection.query(
+                    'INSERT INTO notification_rule_conditions (rule_id, field, operator, value) VALUES ?',
+                    [values]
+                );
+            }
         }
 
         if (recipients && recipients.length > 0) {
