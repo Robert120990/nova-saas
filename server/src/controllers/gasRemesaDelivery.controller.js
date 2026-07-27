@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const notificationService = require('../services/notification.service');
 
 exports.getPendingRemesas = async (req, res) => {
     try {
@@ -111,6 +112,14 @@ exports.createDelivery = async (req, res) => {
             WHERE d.id = ?
             GROUP BY d.id
         `, [deliveryId]);
+
+        notificationService.notify('gas_remesa_delivered', req.company_id, req.user.branch_id, {
+            despachador_nombre: '',
+            monto_entregado: delivery[0].monto_total || 0,
+            turno: '',
+            fecha: delivery[0].fecha || '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json(delivery[0]);
     } catch (error) {

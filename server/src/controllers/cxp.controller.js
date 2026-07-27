@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const mailer = require('../services/mailer.service');
 const { generateProviderStatementPDF, generateProviderAgingPDF, generateProviderBalancesPDF } = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
+const notificationService = require('../services/notification.service');
 
 
 /**
@@ -232,6 +233,19 @@ const registerPayment = async (req, res) => {
             });
         }
 
+        const [providerRows] = await pool.query('SELECT nombre FROM providers WHERE id = ? AND company_id = ?', [provider_id, company_id]);
+        const providerName = providerRows.length > 0 ? providerRows[0].nombre : '';
+        const firstDoc = validDocs[0] || {};
+        const monto = firstDoc.monto || 0;
+
+        notificationService.notify('cxp_payment_made', req.company_id, req.user.branch_id, {
+            pago_id: insertedIds[0],
+            proveedor_nombre: providerName,
+            monto: monto,
+            referencia: referencia || '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.status(201).json({
             ids: insertedIds,
             message: `${insertedIds.length} pago(s) registrado(s) exitosamente`
@@ -398,12 +412,24 @@ const deletePayment = async (req, res) => {
 
     try {
         const [existing] = await pool.query(
-            'SELECT id FROM provider_payments WHERE id = ? AND company_id = ?',
+            `SELECT p.id, p.monto, p.referencia, pr.nombre as provider_name
+             FROM provider_payments p
+             LEFT JOIN providers pr ON p.provider_id = pr.id
+             WHERE p.id = ? AND p.company_id = ?`,
             [id, company_id]
         );
         if (existing.length === 0) return res.status(404).json({ message: 'Pago no encontrado' });
+        const payment = existing[0];
 
         await pool.query('DELETE FROM provider_payments WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        notificationService.notify('cxp_payment_deleted', req.company_id, req.user.branch_id, {
+            pago_id: req.params.id,
+            proveedor_nombre: payment.provider_name || '',
+            monto: payment.monto || 0,
+            referencia: payment.referencia || '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ message: 'Pago eliminado correctamente' });
     } catch (error) {

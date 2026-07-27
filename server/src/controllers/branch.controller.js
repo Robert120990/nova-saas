@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const notificationService = require('../services/notification.service');
 
 const getBranches = async (req, res) => {
     const companyId = req.query.company_id || req.company_id;
@@ -43,6 +44,11 @@ const createBranch = async (req, res) => {
     }
     try {
         const [result] = await pool.query('INSERT INTO branches SET ?', [data]);
+        notificationService.notify('branch_created', req.company_id, result.insertId, {
+            sucursal_id: result.insertId,
+            nombre: data.nombre || '',
+            codigo: data.codigo || ''
+        }).catch(() => {});
         res.status(201).json({ id: result.insertId, ...data });
     } catch (error) {
         console.error('CREATE ERROR:', error);

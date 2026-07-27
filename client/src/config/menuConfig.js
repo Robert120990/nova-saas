@@ -40,7 +40,9 @@ import {
     Gift,
     FileSignature,
     Umbrella,
-    Handshake
+    Handshake,
+    Bell,
+    MessageCircle
 } from 'lucide-react';
 
 export const topLevelItems = [
@@ -293,6 +295,7 @@ export const menuConfig = [
             { id: 'audit-log', label: 'Bitácora del Sistema', path: '/seguridad/bitacora', icon: ScrollText, permission: 'manage_system' },
             { id: 'connected-users', label: 'Usuarios Conectados', path: '/seguridad/conectados', icon: Users, permission: 'manage_connected_users' },
             { id: 'changelog', label: 'Historial de Cambios', path: '/changelog', icon: History, permission: 'manage_changelog' },
+            { id: 'notifications-list', label: 'Bandeja de Notificaciones', path: '/notificaciones', icon: Bell, permission: 'view_notifications' },
         ]
     },
     {
@@ -302,6 +305,8 @@ export const menuConfig = [
         children: [
             { id: 'system-settings', label: 'Configuración del Sistema', path: '/configuracion/sistema', icon: Settings, permission: 'manage_system_settings' },
             { id: 'smtp', label: 'Configuración SMTP', path: '/configuracion/smtp', icon: Settings, permission: 'manage_smtp' },
+            { id: 'notificaciones', label: 'Notificaciones', path: '/configuracion/notificaciones', icon: Bell, permission: 'manage_notifications' },
+            { id: 'whatsapp', label: 'WhatsApp', path: '/configuracion/whatsapp', icon: MessageCircle, permission: 'manage_whatsapp' },
             { id: 'log-viewer', label: 'Visor de Logs', path: '/configuracion/logs', icon: ScrollText, permission: 'view_logs' },
         ]
     },

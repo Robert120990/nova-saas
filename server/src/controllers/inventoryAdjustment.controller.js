@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
+const notificationService = require('../services/notification.service');
 
 const getMotivos = async (req, res) => {
     try {
@@ -172,6 +173,14 @@ const createAdjustment = async (req, res) => {
         }
 
         await connection.commit();
+
+        notificationService.notify('adjustment_applied', req.company_id, req.user.branch_id, {
+            ajuste_id: adjustmentId,
+            tipo: tipo,
+            items_count: items.length,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.status(201).json({ id: adjustmentId, message: 'Movimiento registrado correctamente' });
     } catch (error) {
         await connection.rollback();

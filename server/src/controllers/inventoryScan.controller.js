@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { broadcastToCompany } = require('../services/websocket.service');
+const notificationService = require('../services/notification.service');
 
 const createScanSession = async (req, res) => {
     const connection = await pool.getConnection();
@@ -430,6 +431,13 @@ const applyScans = async (req, res) => {
             scans_applied: scans.length,
             products_updated: Object.keys(qtyByProduct).length
         });
+
+        notificationService.notify('physical_inventory_applied', req.company_id, req.user.branch_id, {
+            inventario_fisico_id: parseInt(id),
+            escaneos_aplicados: scans.length,
+            productos_actualizados: Object.keys(qtyByProduct).length,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ 
             message: `${scans.length} escaneo(s) aplicado(s) correctamente`,

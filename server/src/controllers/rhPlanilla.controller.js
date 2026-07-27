@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { generatePlanillaPDF, generatePlanillaReciboPDF } = require('../services/pdf.service');
 const { numberToWords } = require('../utils/numberToWords');
+const notificationService = require('../services/notification.service');
 
 const TABLE = 'rh_planillas';
 const LABEL = 'Planilla';
@@ -237,6 +238,15 @@ const pagarPlanilla = async (req, res) => {
             [id, req.company_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: `${LABEL} no encontrada` });
+
+        notificationService.notify('payroll_closed', req.company_id, req.user?.branch_id, {
+            tipo_planilla: 'quincenal',
+            periodo: '',
+            total_empleados: 0,
+            total_pagado: 0,
+            fecha_pago: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
+
         res.json({ message: 'Planilla marcada como pagada' });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -400,6 +410,14 @@ const generarPlanilla = async (req, res) => {
                 [totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaId]
             );
         }
+
+        notificationService.notify('payroll_generated', req.company_id, req.user?.branch_id, {
+            tipo_planilla: 'quincenal',
+            periodo: `${periodo_mes}/${periodo_anio}`,
+            total_empleados: empleados.length,
+            total_pagar: 0,
+            fecha_generacion: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
 
         res.json({ message: 'Planilla generada exitosamente', total: empleados.length });
     } catch (error) {

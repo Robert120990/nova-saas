@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const notificationService = require('../services/notification.service');
 
 // === Account Types ===
 const getAccountTypes = async (req, res) => {
@@ -188,6 +189,14 @@ const createEntry = async (req, res) => {
         }
 
         await conn.commit();
+        notificationService.notify('accounting_entry_created', req.company_id, req.user?.branch_id, {
+            partida_id: r.insertId,
+            tipo_partida: '',
+            descripcion: description || '',
+            total_debe: totalDebit,
+            total_haber: totalCredit,
+            fecha: date || ''
+        }).catch(() => {});
         res.status(201).json({ id: r.insertId, message: 'Partida registrada' });
     } catch (e) {
         await conn.rollback();
@@ -202,6 +211,15 @@ const voidEntry = async (req, res) => {
             ['voided', req.params.id, req.company_id, 'voided']
         );
         if (r.affectedRows === 0) return res.status(400).json({ message: 'No se puede anular' });
+
+        notificationService.notify('accounting_entry_voided', req.company_id, req.user?.branch_id, {
+            partida_id: parseInt(req.params.id),
+            tipo_partida: '',
+            descripcion: '',
+            total: 0,
+            motivo: ''
+        }).catch(() => {});
+
         res.json({ message: 'Partida anulada' });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
@@ -402,6 +420,11 @@ const performClosing = async (req, res) => {
         }
 
         await conn.commit();
+        notificationService.notify('accounting_closing_done', req.company_id, req.user?.branch_id, {
+            periodo_contable: `${entryDate2.getFullYear()}`,
+            fecha_cierre: date || '',
+            usuario: req.user?.nombre || ''
+        }).catch(() => {});
         res.json({ success: true, entry_id: r.insertId, lines: lines.length, total_debit: totalD, total_credit: totalC });
     } catch (e) {
         await conn.rollback();
@@ -483,6 +506,11 @@ const performOpening = async (req, res) => {
         }
 
         await conn.commit();
+        notificationService.notify('accounting_opening_done', req.company_id, req.user?.branch_id, {
+            periodo_contable: `${entryDate3.getFullYear()}`,
+            fecha_apertura: date || '',
+            usuario: req.user?.nombre || ''
+        }).catch(() => {});
         res.json({ success: true, entry_id: r.insertId, lines: lines.length, total_debit: totalD, total_credit: totalC });
     } catch (e) {
         await conn.rollback();

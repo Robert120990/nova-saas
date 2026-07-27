@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const notificationService = require('../services/notification.service');
 
 const getUsers = async (req, res) => {
     try {
@@ -84,6 +85,12 @@ const createUser = async (req, res) => {
 
 
         await connection.commit();
+        notificationService.notify('user_created', companyId, req.user?.branch_id, {
+            usuario_id: userId,
+            nombre: nombre || '',
+            username: username || '',
+            email: email || ''
+        }).catch(() => {});
         res.status(201).json({ 
             id: userId, 
             username, 

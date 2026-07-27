@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Bell, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, User } from 'lucide-react';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, User } from 'lucide-react';
+import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -156,10 +157,7 @@ const Navbar = () => {
 
             {/* Right actions */}
             <div className="flex items-center gap-4">
-                <button className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group">
-                    <Bell size={20} />
-                    <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-indigo-500 rounded-full border-2 border-[#0c1524]" />
-                </button>
+                <NotificationBell />
 
                 <div className="h-8 w-px bg-slate-800/60" />
 

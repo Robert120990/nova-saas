@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
+const notificationService = require('../services/notification.service');
 
 const getCompanies = async (req, res) => {
     try {
@@ -123,6 +124,12 @@ const createCompany = async (req, res) => {
         }
 
         await connection.commit();
+        notificationService.notify('company_created', companyId, null, {
+            empresa_id: companyId,
+            razon_social: data.razon_social || '',
+            nit: data.nit || '',
+            usuario_creador: req.user?.nombre || ''
+        }).catch(() => {});
         res.status(201).json({ id: companyId, ...data });
     } catch (error) {
         await connection.rollback();

@@ -99,12 +99,16 @@ app.use((err, req, res, next) => {
 
 const http = require('http');
 const { initWebSocket } = require('./services/websocket.service');
+const { startWorker } = require('./services/notificationWorker');
 
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
 // Inicializar el WebSocket acoplado al servidor HTTP
 initWebSocket(server);
+
+// Inicializar worker de notificaciones en segundo plano
+startWorker();
 
 server.listen(PORT, () => {
     console.log(`Servidor SaaS corriendo en puerto ${PORT}`);

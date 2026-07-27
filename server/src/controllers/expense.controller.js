@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const PDFDocument = require('pdfkit');
 const excelService = require('../services/excel.service');
+const notificationService = require('../services/notification.service');
 
 /**
  * Obtener lista de gastos con búsqueda y paginación
@@ -155,6 +156,18 @@ const createExpense = async (req, res) => {
         }
 
         await connection.commit();
+
+        const [provRows] = await pool.query('SELECT nombre FROM providers WHERE id = ? AND company_id = ?', [provider_id, companyId]);
+        const providerName = provRows.length > 0 ? provRows[0].nombre : '';
+
+        notificationService.notify('expense_created', req.company_id, req.user.branch_id, {
+            gasto_id: expenseId,
+            proveedor_nombre: providerName,
+            numero_documento: numero_documento || '',
+            total: monto_total || 0,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.status(201).json({ message: 'Gasto registrado con éxito', id: expenseId });
     } catch (error) {
         await connection.rollback();
@@ -247,6 +260,12 @@ const voidExpense = async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'Gasto no encontrado' });
         }
+
+        notificationService.notify('expense_annulled', req.company_id, req.user.branch_id, {
+            gasto_id: id,
+            empresa_id: companyId,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ message: 'Gasto anulado correctamente' });
     } catch (error) {

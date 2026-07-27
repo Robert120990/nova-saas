@@ -4,6 +4,10 @@ const WebSocket = require('ws');
 // Estructura: { companyId: Set([ws, ws, ...]) }
 const companyClients = new Map();
 
+// Almacén de clientes WebSocket para notificaciones, agrupados por user_id
+// Estructura: { userId: Set([ws, ws, ...]) }
+const userClients = new Map();
+
 // Estado simulado de telemetría IoT industrial
 const telemetryState = {
     // Tanques de Holding (2 a 6 C)
@@ -36,7 +40,7 @@ function initWebSocket(server) {
     server.on('upgrade', (request, socket, head) => {
         const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
 
-        if (pathname === '/ws/egg-industrial' || pathname === '/ws/inventory') {
+        if (pathname === '/ws/egg-industrial' || pathname === '/ws/inventory' || pathname === '/ws/notifications') {
             wss.handleUpgrade(request, socket, head, (ws) => {
                 wss.emit('connection', ws, request, pathname);
             });
@@ -52,13 +56,23 @@ function initWebSocket(server) {
 
         const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
 
-        console.log(`Cliente WebSocket conectado. Company ID: ${companyId}, Path: ${pathname}`);
+        const userId = parseInt(parameters.user_id || '0');
+
+        console.log(`Cliente WebSocket conectado. Company ID: ${companyId}, User ID: ${userId}, Path: ${pathname}`);
 
         // Asociar cliente a su compañía
         if (!companyClients.has(companyId)) {
             companyClients.set(companyId, new Set());
         }
         companyClients.get(companyId).add(ws);
+
+        // Asociar cliente a su usuario (para notificaciones)
+        if (pathname === '/ws/notifications' && userId) {
+            if (!userClients.has(userId)) {
+                userClients.set(userId, new Set());
+            }
+            userClients.get(userId).add(ws);
+        }
 
         // Solo egg-industrial envía estado inicial de telemetría
         if (pathname === '/ws/egg-industrial') {
@@ -148,11 +162,17 @@ function initWebSocket(server) {
         });
 
         ws.on('close', () => {
-            console.log(`Cliente WebSocket desconectado. Company ID: ${companyId}`);
+            console.log(`Cliente WebSocket desconectado. Company ID: ${companyId}, User ID: ${userId}`);
             if (companyClients.has(companyId)) {
                 companyClients.get(companyId).delete(ws);
                 if (companyClients.get(companyId).size === 0) {
                     companyClients.delete(companyId);
+                }
+            }
+            if (userId && userClients.has(userId)) {
+                userClients.get(userId).delete(ws);
+                if (userClients.get(userId).size === 0) {
+                    userClients.delete(userId);
                 }
             }
         });
@@ -223,6 +243,19 @@ function startTelemetrySimulation() {
     }, 3000);
 }
 
+function sendToUser(userId, event, data) {
+    const numericId = typeof userId === 'string' ? parseInt(userId) : userId;
+    const clients = userClients.get(numericId);
+    if (!clients) return;
+
+    const payload = JSON.stringify({ event, data });
+    for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(payload);
+        }
+    }
+}
+
 function broadcastToCompany(companyId, event, data) {
     const numericId = typeof companyId === 'string' ? parseInt(companyId) : companyId;
     const clients = companyClients.get(numericId);
@@ -239,5 +272,6 @@ function broadcastToCompany(companyId, event, data) {
 module.exports = {
     initWebSocket,
     broadcastToCompany,
+    sendToUser,
     telemetryState
 };

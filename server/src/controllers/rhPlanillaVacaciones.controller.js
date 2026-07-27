@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { generateVacacionPDF } = require('../services/pdf.service');
 const { numberToWords } = require('../utils/numberToWords');
+const notificationService = require('../services/notification.service');
 
 const TABLE = 'rh_planilla_vacaciones';
 const LABEL = 'Planilla de Vacaciones';
@@ -109,6 +110,13 @@ const createPlanilla = async (req, res) => {
              descuento_isss || 0, descuento_afp || 0, descuento_renta || 0,
              total_devengado || 0, total_deducciones || 0, monto_recibir || 0]
         );
+        notificationService.notify('vacation_payroll_generated', req.company_id, req.user?.branch_id, {
+            periodo: `${periodo_mes}/${periodo_año}`,
+            total_empleados: 1,
+            total_pagar: monto_recibir || 0,
+            fecha_generacion: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
+
         res.status(201).json({ id: result.insertId });
     } catch (error) {
         res.status(500).json({ message: error.message });

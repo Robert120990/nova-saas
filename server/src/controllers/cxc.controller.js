@@ -6,6 +6,7 @@ const {
     generatePaymentReceiptPDF
 } = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
+const notificationService = require('../services/notification.service');
 
 
 /**
@@ -192,6 +193,19 @@ const registerPayment = async (req, res) => {
             });
         }
 
+        const [customerRows] = await pool.query('SELECT nombre FROM customers WHERE id = ? AND company_id = ?', [customer_id, company_id]);
+        const customerName = customerRows.length > 0 ? customerRows[0].nombre : '';
+        const firstDoc = validDocs[0] || {};
+        const monto = firstDoc.monto || 0;
+
+        notificationService.notify('cxc_payment_received', req.company_id, req.user.branch_id, {
+            pago_id: insertedIds[0],
+            cliente_nombre: customerName,
+            monto: monto,
+            referencia: referencia || '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.status(201).json({
             ids: insertedIds,
             message: `${insertedIds.length} abono(s) registrado(s) exitosamente`
@@ -362,12 +376,24 @@ const deletePayment = async (req, res) => {
 
     try {
         const [existing] = await pool.query(
-            'SELECT id FROM customer_payments WHERE id = ? AND company_id = ?',
+            `SELECT p.id, p.monto, p.referencia, c.nombre as customer_name
+             FROM customer_payments p
+             LEFT JOIN customers c ON p.customer_id = c.id
+             WHERE p.id = ? AND p.company_id = ?`,
             [id, company_id]
         );
         if (existing.length === 0) return res.status(404).json({ message: 'Abono no encontrado' });
+        const payment = existing[0];
 
         await pool.query('DELETE FROM customer_payments WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        notificationService.notify('cxc_payment_deleted', req.company_id, req.user.branch_id, {
+            pago_id: req.params.id,
+            cliente_nombre: payment.customer_name || '',
+            monto: payment.monto || 0,
+            referencia: payment.referencia || '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ message: 'Abono eliminado correctamente' });
     } catch (error) {

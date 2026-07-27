@@ -7,6 +7,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const excelService = require('../services/excel.service');
+const notificationService = require('../services/notification.service');
 
 const dteTypeNames = {
     '01': 'Factura',
@@ -258,6 +259,14 @@ const createSale = async (req, res) => {
                 }
             })();
         }
+
+        notificationService.notify('sale_created', req.company_id, req.user.branch_id, {
+            venta_id: saleResult.insertId,
+            cliente_nombre: header.cliente_nombre || 'Cliente Final',
+            total: header.total_pagar || 0,
+            tipo_dte: dteTypeNames[header.dte_type] || header.dte_type,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.status(201).json({ 
             id: saleId, 
@@ -1826,6 +1835,14 @@ const voidSale = async (req, res) => {
                 console.error('[VoidSale] Error al enviar correo de invalidación:', err);
             });
         }
+
+        notificationService.notify('sale_annulled', req.company_id, req.user.branch_id, {
+            venta_id: id,
+            cliente_nombre: sale.cliente_nombre || 'Cliente Final',
+            total: sale.total_pagar || 0,
+            motivo: req.body.motivo || 'Anulación manual',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ success: true, message: 'Venta anulada correctamente, DTE invalidado e inventario restaurado' });
 

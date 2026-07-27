@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const notificationService = require('../services/notification.service');
 
 const TABLE = 'rh_planilla_aguinaldos';
 
@@ -237,6 +238,12 @@ const savePlanilla = async (req, res) => {
         }
 
         await connection.commit();
+        notificationService.notify('bonus_payroll_generated', req.company_id, req.user?.branch_id, {
+            periodo: `${mes || 12}/${año}`,
+            total_empleados: items.length,
+            total_pagar: items.reduce((s, i) => s + parseFloat(i.monto_recibir || 0), 0),
+            fecha_generacion: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
         res.json({ message: 'Planilla guardada exitosamente' });
     } catch (error) {
         await connection.rollback();

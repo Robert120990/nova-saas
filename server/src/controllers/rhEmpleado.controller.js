@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const notificationService = require('../services/notification.service');
 
 const TABLE = 'rh_empleados';
 const LABEL = 'Empleado';
@@ -131,6 +132,14 @@ const createEmpleado = async (req, res) => {
                 }
             }
         }
+
+        notificationService.notify('employee_created', req.company_id, req.user?.branch_id, {
+            empleado_nombre: `${nombres || ''} ${apellidos || ''}`.trim(),
+            empleado_codigo: codigo || '',
+            cargo: '',
+            departamento: '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.status(201).json({ id: empleadoId, codigo });
     } catch (error) {

@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Navbar from './Navbar';
 import AIAssistant from '../ui/AIAssistant';
 import CommandPalette from '../ui/CommandPalette';
+import ErrorBoundary from '../ui/ErrorBoundary';
 
 const Layout = () => {
     const location = useLocation();
@@ -31,7 +32,9 @@ const Layout = () => {
                 <Navbar />
                 <main className="flex-1 overflow-y-auto p-6 md:p-8">
                     <div className="max-w-7xl mx-auto" key={location.pathname}>
-                        <Outlet />
+                        <ErrorBoundary showDetails>
+                            <Outlet />
+                        </ErrorBoundary>
                     </div>
                 </main>
                 <AIAssistant />

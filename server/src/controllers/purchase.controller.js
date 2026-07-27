@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const PDFDocument = require('pdfkit');
 const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
+const notificationService = require('../services/notification.service');
 
 /**
  * Obtener lista de compras con búsqueda y paginación
@@ -211,6 +212,18 @@ const createPurchase = async (req, res) => {
         }
 
         await connection.commit();
+
+        const [provRows] = await pool.query('SELECT nombre FROM providers WHERE id = ? AND company_id = ?', [provider_id, companyId]);
+        const providerName = provRows.length > 0 ? provRows[0].nombre : '';
+
+        notificationService.notify('purchase_created', req.company_id, req.user.branch_id, {
+            compra_id: purchaseId,
+            proveedor_nombre: providerName,
+            numero_documento: numero_documento || '',
+            total: monto_total || 0,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.status(201).json({ message: 'Compra registrada con éxito', id: purchaseId });
     } catch (error) {
         await connection.rollback();
@@ -374,7 +387,10 @@ const voidPurchase = async (req, res) => {
     try {
         // 1. Verificar estado actual
         const [purchase] = await connection.query(
-            'SELECT * FROM purchase_headers WHERE id = ? AND company_id = ?',
+            `SELECT ph.*, pr.nombre AS proveedor_nombre
+             FROM purchase_headers ph
+             LEFT JOIN providers pr ON ph.provider_id = pr.id
+             WHERE ph.id = ? AND ph.company_id = ?`,
             [id, companyId]
         );
 
@@ -421,6 +437,15 @@ const voidPurchase = async (req, res) => {
         );
 
         await connection.commit();
+
+        notificationService.notify('purchase_annulled', req.company_id, req.user.branch_id, {
+            compra_id: id,
+            proveedor_nombre: purchase[0].proveedor_nombre || '',
+            numero_documento: purchase[0].numero_documento || '',
+            total: purchase[0].monto_total || 0,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.json({ message: 'Compra anulada correctamente' });
     } catch (error) {
         await connection.rollback();

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { broadcastToCompany } = require('../services/websocket.service');
+const notificationService = require('../services/notification.service');
 
 // 1. RECEPCIÓN DE MATERIA PRIMA
 const getRawMaterials = async (req, res) => {
@@ -270,6 +271,14 @@ const createProductionBatch = async (req, res) => {
 
         await connection.commit();
 
+        notificationService.notify('production_batch_created', req.company_id, req.body.branch_id || 1, {
+            lote_id: batchId,
+            producto: product_type || '',
+            cantidad: totalInputWeight || 0,
+            fecha: new Date().toISOString().split('T')[0],
+            sucursal: ''
+        }).catch(() => {});
+
         res.status(201).json({ id: batchId, batch_uuid, product_type, presentation, status: 'en_proceso', totalInputWeight });
     } catch (error) {
         await connection.rollback();
@@ -305,6 +314,16 @@ const completeProductionBatch = async (req, res) => {
              VALUES (?, 'production.completed', 'info', ?, ?, ?)`,
             [req.company_id, `Lote de producción completado. Rendimiento líquido: ${yield_liquid_lbs} LBS, Desperdicio cáscara: ${waste_shell_lbs} LBS.`, JSON.stringify({ batch_id: id, yield_liquid_lbs, waste_shell_lbs }), batch.operator_name]
         );
+
+        const inputWeight = parseFloat(batch.input_weight_lbs || 0);
+        const yieldPct = inputWeight > 0 ? Math.round((parseFloat(yield_liquid_lbs || 0) / inputWeight) * 10000) / 100 : 0;
+        notificationService.notify('production_batch_completed', req.company_id, req.user?.branch_id, {
+            lote_id: parseInt(id),
+            producto: batch.product_type || '',
+            cantidad: inputWeight,
+            rendimiento: yieldPct,
+            duracion: 0
+        }).catch(() => {});
 
         res.json({ id, status: nextStatus, yield_liquid_lbs });
     } catch (error) {
@@ -671,6 +690,14 @@ const createMaintenanceLog = async (req, res) => {
              VALUES (?, 'maintenance.logged', 'info', ?, ?, ?)`,
             [req.company_id, `Mantenimiento ${maintenance_type} registrado para ${equipment_name}. Costo: $${cost}.`, JSON.stringify({ maintenance_id: result.insertId, equipment_name }), technician_name]
         );
+
+        notificationService.notify('maintenance_log_created', req.company_id, req.user?.branch_id, {
+            equipo: equipment_name || '',
+            tipo_mantenimiento: maintenance_type || '',
+            descripcion: description || '',
+            fecha: new Date().toISOString().split('T')[0],
+            sucursal: ''
+        }).catch(() => {});
 
         res.status(201).json({ id: result.insertId, ...req.body });
     } catch (error) {

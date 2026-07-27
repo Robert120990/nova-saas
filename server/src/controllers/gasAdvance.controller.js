@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const notificationService = require('../services/notification.service');
 
 function generateNumero(day, month, correlative) {
     const dd = String(day).padStart(2, '0');
@@ -101,7 +102,15 @@ exports.createAdvance = async (req, res) => {
             [result.insertId]
         );
 
-        res.status(201).json(created[0]);
+        const adv = created[0];
+        notificationService.notify('gas_advance_given', req.company_id, req.user.branch_id, {
+            despachador_nombre: adv.cliente_nombre || adv.customer_nombre || '',
+            monto: adv.monto || 0,
+            fecha: adv.fecha || '',
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
+        res.status(201).json(adv);
     } catch (error) {
         console.error('Error createAdvance:', error);
         res.status(500).json({ message: 'Error al crear anticipo' });

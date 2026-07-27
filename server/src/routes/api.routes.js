@@ -72,6 +72,10 @@ const gasAdvanceController = require('../controllers/gasAdvance.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
 
+// Notification Routes
+const notificationRoutes = require('./notification.routes');
+const whatsappRoutes = require('./whatsapp.routes');
+
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
 router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
@@ -805,5 +809,11 @@ router.delete('/rh/planillas/:id', rhPlanillaController.deletePlanilla);
 router.post('/rh/planillas/:id/pagar', rhPlanillaController.pagarPlanilla);
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
+
+// Notifications
+router.use('/notifications', notificationRoutes);
+
+// WhatsApp
+router.use('/whatsapp', whatsappRoutes);
 
 module.exports = router;

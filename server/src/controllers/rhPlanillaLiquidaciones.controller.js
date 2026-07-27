@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { generateLiquidacionPDF, generateFiniquitoPDF, generateAcuerdoPagoPDF } = require('../services/pdf.service');
 const { numberToWords } = require('../utils/numberToWords');
+const notificationService = require('../services/notification.service');
 
 const TABLE = 'rh_planilla_liquidaciones';
 const LABEL = 'Planilla de Liquidaciones';
@@ -119,6 +120,14 @@ const createLiquidacion = async (req, res) => {
              descuento_isss || 0, descuento_afp || 0, descuento_renta || 0, otros_descuentos || 0, total_deducciones || 0, monto_recibir || 0,
              pago_cuotas ? 1 : 0, cuotas || 1, pago_por_cuota || 0]
         );
+        notificationService.notify('settlement_created', req.company_id, req.user?.branch_id, {
+            empleado_nombre: '',
+            tipo_liquidacion: '',
+            monto_total: total_devengado || 0,
+            motivo: '',
+            fecha: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
+
         res.status(201).json({ id: result.insertId });
     } catch (error) {
         res.status(500).json({ message: error.message });

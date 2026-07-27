@@ -22,6 +22,9 @@ import Categories from './pages/Categories';
 import UserAccess from './pages/UserAccess';
 import SmtpConfig from './pages/SmtpConfig';
 import SystemSettings from './pages/SystemSettings';
+import NotificacionesConfig from './pages/NotificacionesConfig';
+import NotificacionesLista from './pages/NotificacionesLista';
+import WhatsAppConfig from './pages/WhatsAppConfig';
 import MenuItems from './pages/MenuItems';
 import Transfers from './pages/Transfers';
 import InventoryAdjustments from './pages/InventoryAdjustments';
@@ -171,6 +174,8 @@ function App() {
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
                         <Route path="/configuracion/logs" element={<LogViewer />} />
+                        <Route path="/configuracion/notificaciones" element={<NotificacionesConfig />} />
+                        <Route path="/configuracion/whatsapp" element={<WhatsAppConfig />} />
                         <Route path="/admin/menu-items" element={<MenuItems />} />
                         <Route path="/inventario/traslados" element={<Transfers />} />
                         <Route path="/inventario/movimientos" element={<InventoryAdjustments />} />
@@ -217,6 +222,7 @@ function App() {
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
                         <Route path="/changelog" element={<Changelog />} />
+                        <Route path="/notificaciones" element={<NotificacionesLista />} />
 
                         {/* Accounts Receivable (CXC) */}
                         <Route path="/cxc/estado-cuenta" element={<CustomerStatement />} />

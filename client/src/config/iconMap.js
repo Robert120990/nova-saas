@@ -42,7 +42,21 @@ import {
     Umbrella,
     Handshake,
     Menu,
-    Circle
+    Circle,
+    Bell,
+    MessageCircle,
+    Ban,
+    FileCheck,
+    FileX,
+    Trash2,
+    PackageCheck,
+    UserPlus,
+    Wrench,
+    CheckCircle,
+    PlusCircle,
+    FileMinus,
+    FilePlus,
+    XCircle
 } from 'lucide-react';
 
 const iconMap = {
@@ -90,6 +104,20 @@ const iconMap = {
     Handshake,
     Menu,
     Circle,
+    Bell,
+    MessageCircle,
+    Ban,
+    FileCheck,
+    FileX,
+    Trash2,
+    PackageCheck,
+    UserPlus,
+    Wrench,
+    CheckCircle,
+    PlusCircle,
+    FileMinus,
+    FilePlus,
+    XCircle,
 };
 
 export default iconMap;
