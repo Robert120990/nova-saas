@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
 import { 
     Fuel, 
     Save, 
@@ -9,19 +10,24 @@ import {
     TrendingUp, 
     DollarSign,
     AlertCircle,
-    CheckCircle2
+    CheckCircle2,
+    Store
 } from 'lucide-react';
 
 const FuelPrices = () => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [editablePrices, setEditablePrices] = useState({});
+    const userBranchId = user?.branch_id;
 
     const { data: fuelProducts, isLoading, isError, refetch } = useQuery({
-        queryKey: ['fuel-products'],
+        queryKey: ['fuel-products', userBranchId],
         queryFn: async () => {
-            const { data } = await axios.get('/api/products/fuel');
+            const params = userBranchId ? { branch_id: userBranchId } : {};
+            const { data } = await axios.get('/api/products/fuel', { params });
             return data;
-        }
+        },
+        enabled: !!userBranchId
     });
 
     // Synchronize query data with local state
@@ -36,7 +42,7 @@ const FuelPrices = () => {
     }, [fuelProducts]);
 
     const updatePricesMutation = useMutation({
-        mutationFn: (pricesArray) => axios.patch('/api/products/fuel/prices', { prices: pricesArray }),
+        mutationFn: (pricesArray) => axios.patch('/api/products/fuel/prices', { branch_id: userBranchId, prices: pricesArray }),
         onSuccess: () => {
             queryClient.invalidateQueries(['fuel-products']);
             toast.success('Precios actualizados correctamente');
@@ -65,6 +71,21 @@ const FuelPrices = () => {
 
         updatePricesMutation.mutate(pricesArray);
     };
+
+    if (!userBranchId) return (
+        <div className="max-w-6xl mx-auto">
+            <div className="flex gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-100 items-start mt-10">
+                <AlertCircle className="text-amber-500 shrink-0" size={20} />
+                <div className="space-y-0.5">
+                    <p className="text-amber-900 font-bold text-sm">Sin sucursal asignada</p>
+                    <p className="text-amber-700 text-xs">
+                        No tienes una sucursal asignada en tu perfil. Los precios de combustible no pueden cargarse.
+                        Contacta al administrador para asignarte una sucursal.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
@@ -97,7 +118,7 @@ const FuelPrices = () => {
                     </div>
                     <div>
                         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Precios de Combustible</h1>
-                        <p className="text-slate-500 font-medium">Actualización rápida de precios de venta</p>
+                        <p className="text-slate-500 font-medium">Precios configurados para <span className="text-indigo-600 font-bold">{user?.branch_name || 'sucursal asignada'}</span></p>
                     </div>
                 </div>
 
@@ -176,13 +197,14 @@ const FuelPrices = () => {
                 )}
             </div>
 
-            {/* Info Alerts */}
-            <div className="mt-6 flex gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-100 items-start">
-                <AlertCircle className="text-amber-500 shrink-0" size={20} />
+            {/* Branch Info */}
+            <div className="mt-6 flex gap-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 items-start">
+                <Store className="text-indigo-500 shrink-0" size={20} />
                 <div className="space-y-0.5">
-                    <p className="text-amber-900 font-bold text-sm">Aviso de sincronización</p>
-                    <p className="text-amber-700 text-xs">
-                        Los cambios de precio afectarán a todos los puntos de venta instantáneamente.
+                    <p className="text-indigo-900 font-bold text-sm">Precios por sucursal</p>
+                    <p className="text-indigo-700 text-xs">
+                        Los precios se aplican exclusivamente a la sucursal <strong>{user?.branch_name || 'actual'}</strong>.
+                        Cada sucursal puede tener sus propios precios de combustible.
                     </p>
                 </div>
             </div>

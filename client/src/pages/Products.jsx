@@ -7,7 +7,6 @@ import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Sea
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
-import Money, { MoneyInput } from '../components/ui/Money';
 
 const Products = () => {
     const queryClient = useQueryClient();
@@ -15,6 +14,7 @@ const Products = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedBranches, setSelectedBranches] = useState([]);
+    const [branchPrices, setBranchPrices] = useState({});
     const [selectedPos, setSelectedPos] = useState([]);
     const [activeTab, setActiveTab] = useState('general');
     const [mappingSearch, setMappingSearch] = useState('');
@@ -69,9 +69,11 @@ const Products = () => {
     useEffect(() => {
         if (selectedProduct) {
             setSelectedBranches(selectedProduct.branches || []);
+            setBranchPrices(selectedProduct.branchPrices || {});
             setSelectedPos(selectedProduct.pos || []);
         } else {
             setSelectedBranches([]);
+            setBranchPrices({});
             setSelectedPos([]);
         }
     }, [selectedProduct]);
@@ -125,18 +127,23 @@ const Products = () => {
         if (ok) deleteMutation.mutate(id);
     };
 
+    const handleBranchPriceChange = (branchId, value) => {
+        setBranchPrices(prev => ({ ...prev, [branchId]: value }));
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
         // Handle multi-select fields (checkboxes)
-        data.branches = formData.getAll('branches');
         data.pos = formData.getAll('pos');
         data.tributes = formData.getAll('tributes');
+        data.branches = selectedBranches.map(branchId => ({
+            branch_id: parseInt(branchId),
+            precio_unitario: parseFloat(branchPrices[branchId]) || 0
+        }));
 
-        // Ensure numeric fields are correctly typed
-        data.precio_unitario = parseFloat(data.precio_unitario);
         data.tipo_operacion = parseInt(data.tipo_operacion);
         data.tipo_combustible = parseInt(data.tipo_combustible);
 
@@ -216,7 +223,7 @@ const Products = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
-                    headers={['Código', 'Nombre / Descripción', 'Precio Unit.', 'Detalles', 'Acciones']}
+                    headers={['Código', 'Nombre / Descripción', 'Detalles', 'Acciones']}
                     data={products}
                     isLoading={isLoading}
                     renderRow={(p) => (
@@ -228,12 +235,6 @@ const Products = () => {
                             <td className="px-3 py-1">
                                 <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
                                 <div className="text-[10px] text-slate-500 truncate max-w-xs">{p.descripcion}</div>
-                            </td>
-                            <td className="px-3 py-1">
-                                <div className="text-xs font-bold text-slate-900"><Money value={p.precio_unitario} /></div>
-                                <div className="text-[9px] text-indigo-500 font-bold uppercase">
-                                    {p.category_name || 'Sin Categoría'}
-                                </div>
                             </td>
                             <td className="px-3 py-1">
                                 <div className="flex flex-col gap-0.5">
@@ -333,13 +334,6 @@ const Products = () => {
                                 <textarea name="descripcion" defaultValue={selectedProduct?.descripcion} placeholder="Características, marca, modelo..." className={`${fieldCls} h-20 resize-none`} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className={labelCls}>Precio Unitario</label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">$</span>
-                                        <MoneyInput name="precio_unitario" step="0.0001" defaultValue={selectedProduct?.precio_unitario} required className={`${fieldCls} pl-7`} />
-                                    </div>
-                                </div>
                                 <div>
                                     <label className={labelCls}>Categoría</label>
                                     <select name="category_id" defaultValue={selectedProduct?.category_id || ''} className={fieldCls}>
@@ -497,21 +491,44 @@ const Products = () => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-2 mb-2">
-                                        <Store size={14} className="text-indigo-600"/> Sucursales Autorizadas
+                                        <Store size={14} className="text-indigo-600"/> Sucursales Autorizadas y Precios
                                     </label>
                                     <div className="grid grid-cols-2 gap-2">
                                         {branches.map(b => (
                                             <label key={b.id} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all cursor-pointer ${
                                                 selectedBranches.includes(b.id) ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'
                                             }`}>
-                                                <input type="checkbox" name="branches" value={b.id} checked={selectedBranches.includes(b.id)} onChange={() => toggleBranch(b.id)} className="sr-only" />
-                                                <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${selectedBranches.includes(b.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
+                                                <input type="checkbox" checked={selectedBranches.includes(b.id)} onChange={() => toggleBranch(b.id)} className="sr-only" />
+                                                <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0 ${selectedBranches.includes(b.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
                                                     {selectedBranches.includes(b.id) && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
                                                 </div>
                                                 <span className="text-[11px] font-bold truncate">{b.nombre}</span>
+                                                {selectedBranches.includes(b.id) && (
+                                                    <div className="relative ml-auto w-24" onClick={(e) => e.stopPropagation()}>
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">$</span>
+                                                        <input
+                                                            type="number"
+                                                            step="0.0001"
+                                                            value={branchPrices[b.id] ?? ''}
+                                                            onChange={(e) => handleBranchPriceChange(b.id, e.target.value)}
+                                                            placeholder="0.0000"
+                                                            className="w-full pl-5 pr-1.5 py-1 bg-white border border-slate-200 rounded-lg text-right text-[11px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
+                                                        />
+                                                    </div>
+                                                )}
                                             </label>
                                         ))}
                                     </div>
+                                    {selectedBranches.length > 0 && (
+                                        <p className="text-[10px] text-indigo-500 mt-1 font-medium italic">
+                                            {selectedBranches.length} sucursal(es) seleccionada(s). Asigna un precio a cada una.
+                                        </p>
+                                    )}
+                                    {selectedBranches.length === 0 && (
+                                        <p className="text-[10px] text-amber-600 mt-1 font-medium italic">
+                                            Selecciona al menos una sucursal y asigna su precio.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>

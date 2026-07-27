@@ -39,7 +39,7 @@ const getCombos = async (req, res) => {
         // Cargar los items de cada combo
         const combosWithItems = await Promise.all(rows.map(async (combo) => {
             const [items] = await pool.query(`
-                SELECT pci.*, p.nombre as product_name, p.codigo as product_code, p.precio_unitario
+                SELECT pci.*, p.nombre as product_name, p.codigo as product_code, 0 as precio_unitario
                 FROM product_combo_items pci
                 JOIN products p ON pci.product_id = p.id
                 WHERE pci.combo_id = ?

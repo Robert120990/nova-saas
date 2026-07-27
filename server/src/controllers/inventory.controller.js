@@ -3,14 +3,16 @@ const { broadcastToCompany } = require('../services/websocket.service');
 const pdfService = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
+const notificationService = require('../services/notification.service');
 
 const getInventory = async (req, res) => {
     try {
         const { branch_id, search } = req.query;
         let query = `
-            SELECT i.*, p.nombre, p.codigo, p.precio_unitario, b.nombre as branch_name
+            SELECT i.*, p.nombre, p.codigo, COALESCE(pbp.precio_unitario, 0) as precio_unitario, b.nombre as branch_name
             FROM inventory i
             JOIN products p ON i.product_id = p.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = i.branch_id
             JOIN branches b ON i.branch_id = b.id
             WHERE p.company_id = ?
         `;
@@ -43,9 +45,10 @@ const getKardex = async (req, res) => {
         }
 
         const [rows] = await pool.query(`
-            SELECT m.*, p.precio_unitario as current_price
+            SELECT m.*, COALESCE(pbp.precio_unitario, 0) as current_price
             FROM inventory_movements m
             JOIN products p ON m.product_id = p.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = m.branch_id
             WHERE m.product_id = ? AND m.branch_id = ?
             ORDER BY m.created_at DESC
         `, [product_id, branch_id]);
@@ -82,11 +85,14 @@ const createTransfer = async (req, res) => {
             const { product_id, cantidad } = item;
             const qty = parseFloat(cantidad);
 
-            // Get product info for flags and price
-            const [pInfo] = await connection.query(
-                'SELECT precio_unitario, afecta_inventario, permitir_existencia_negativa FROM products WHERE id = ?', 
-                [product_id]
-            );
+            // Get product info for flags and price (from origin branch)
+            const [pInfo] = await connection.query(`
+                SELECT COALESCE(pbp.precio_unitario, 0) as precio_unitario,
+                       p.afecta_inventario, p.permitir_existencia_negativa
+                FROM products p
+                LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
+                WHERE p.id = ?
+            `, [origen_branch_id, product_id]);
             
             if (pInfo.length === 0) throw new Error(`Producto ID ${product_id} no encontrado`);
             
@@ -136,6 +142,14 @@ const createTransfer = async (req, res) => {
                 [qty, effectiveProductId, origen_branch_id]
             );
 
+            notificationService.notify('low_stock', req.company_id, req.user.branch_id, {
+                product_id: product_id,
+                cantidad_retirada: qty,
+                stock_actual: Math.max(0, currentOriginStock - qty),
+                origen_branch_id: origen_branch_id,
+                sucursal: req.branch_name || ''
+            }).catch(() => {});
+
             await connection.query(`
                 INSERT INTO inventory_movements (product_id, branch_id, tipo_movimiento, cantidad, precio_venta, tipo_documento, documento_id)
                 VALUES (?, ?, 'SALIDA', ?, ?, 'TRASLADO', ?)
@@ -166,7 +180,23 @@ const createTransfer = async (req, res) => {
         }
 
         await connection.commit();
-        
+
+        notificationService.notify('transfer_created', req.company_id, req.user.branch_id, {
+            transfer_id: transferId,
+            origen_branch_id: origen_branch_id,
+            destino_branch_id: destino_branch_id,
+            items_count: items.length,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
+        notificationService.notify('transfer_received', req.company_id, req.user.branch_id, {
+            transfer_id: transferId,
+            origen_branch_id: origen_branch_id,
+            destino_branch_id: destino_branch_id,
+            items_count: items.length,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         // Trigger email notification in background
         mailerService.sendTransferEmail(transferId).catch(err => {
             console.error('Error triggered in background mailer:', err);
@@ -291,6 +321,14 @@ const deleteTransfer = async (req, res) => {
         await connection.query('UPDATE inventory_transfers SET status = "ANULADO" WHERE id = ?', [id]);
 
         await connection.commit();
+
+        notificationService.notify('transfer_annulled', req.company_id, req.user.branch_id, {
+            transfer_id: id,
+            origen_branch_id: transfer.origen_branch_id,
+            destino_branch_id: transfer.destino_branch_id,
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
+
         res.json({ message: 'Traslado anulado correctamente' });
     } catch (error) {
         await connection.rollback();
@@ -592,14 +630,15 @@ const getInventoryStockReport = async (req, res) => {
                 c.name as categoria, 
                 COALESCE(i.stock, 0) as stock,
                 p.costo,
-                p.precio_unitario as precio_venta
+                COALESCE(pbp.precio_unitario, 0) as precio_venta
             FROM products p
             LEFT JOIN inventory i ON p.id = i.product_id AND i.branch_id = ?
             LEFT JOIN product_categories c ON p.category_id = c.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             WHERE p.company_id = ? AND p.status = 'activo'
         `;
-        const params = [branch_id, branch_id, company_id];
+        const params = [branch_id, branch_id, branch_id, company_id];
 
         if (category_ids) {
             const ids = category_ids.split(',').map(id => parseInt(id)).filter(Boolean);

@@ -6,7 +6,12 @@ const getProducts = async (req, res) => {
         const offset = (page - 1) * limit;
 
         let query = `
-            SELECT DISTINCT p.*, c.name as category_name, p2.nombre as discount_from_name
+            SELECT DISTINCT p.id, p.company_id, p.codigo, p.codigo_barra, p.nombre, p.descripcion,
+                   p.costo, p.unidad_medida, p.tipo_item, p.category_id, p.provider_id,
+                   p.tipo_combustible, p.tipo_operacion, p.stock_minimo, p.afecta_inventario,
+                   p.permitir_existencia_negativa, p.discount_from_id, p.status, p.created_at,
+                   COALESCE(pbp.precio_unitario, 0) as precio_unitario,
+                   c.name as category_name, p2.nombre as discount_from_name
             FROM products p
             LEFT JOIN product_categories c ON p.category_id = c.id
             LEFT JOIN products p2 ON p.discount_from_id = p2.id
@@ -15,6 +20,10 @@ const getProducts = async (req, res) => {
 
         if (branch_id) {
             query += ` JOIN product_branch pb ON p.id = pb.product_id`;
+            query += ` LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?`;
+            params.push(branch_id);
+        } else {
+            query += ` LEFT JOIN product_branch_prices pbp ON FALSE`;
         }
 
         query += ` WHERE p.company_id = ?`;
@@ -42,14 +51,20 @@ const getProducts = async (req, res) => {
 
         const [rows] = await pool.query(query, params);
         
-        // Cargar sucursales, POS y tributos asociados para cada producto de la página actual
+        // Cargar sucursales, POS, tributos y precios por sucursal para cada producto
         const productsWithDetails = await Promise.all(rows.map(async (p) => {
             const [branches] = await pool.query('SELECT branch_id FROM product_branch WHERE product_id = ?', [p.id]);
             const [pos] = await pool.query('SELECT pos_id FROM product_pos WHERE product_id = ?', [p.id]);
             const [tributes] = await pool.query('SELECT tribute_code FROM product_tributes WHERE product_id = ?', [p.id]);
+            const [branchPrices] = await pool.query(
+                'SELECT branch_id, precio_unitario FROM product_branch_prices WHERE product_id = ?', [p.id]
+            );
+            const branchPricesMap = {};
+            branchPrices.forEach(bp => { branchPricesMap[bp.branch_id] = bp.precio_unitario; });
             return {
                 ...p,
                 branches: branches.map(b => b.branch_id),
+                branchPrices: branchPricesMap,
                 pos: pos.map(pos => pos.pos_id),
                 tributes: tributes.map(t => t.tribute_code)
             };
@@ -79,8 +94,14 @@ const createProduct = async (req, res) => {
         const productId = result.insertId;
 
         if (branches && Array.isArray(branches) && branches.length > 0) {
-            const values = branches.map(branchId => [productId, branchId]);
-            await connection.query('INSERT INTO product_branch (product_id, branch_id) VALUES ?', [values]);
+            const branchValues = branches.map(b => [productId, b.branch_id]);
+            await connection.query('INSERT INTO product_branch (product_id, branch_id) VALUES ?', [branchValues]);
+
+            const priceValues = branches.map(b => [productId, b.branch_id, b.precio_unitario || 0]);
+            await connection.query(
+                'INSERT INTO product_branch_prices (product_id, branch_id, precio_unitario) VALUES ?',
+                [priceValues]
+            );
         }
 
         if (pos && Array.isArray(pos) && pos.length > 0) {
@@ -115,10 +136,17 @@ const updateProduct = async (req, res) => {
         await connection.query('UPDATE products SET ? WHERE id = ? AND company_id = ?', [productData, id, req.company_id]);
 
         if (branches && Array.isArray(branches)) {
+            await connection.query('DELETE FROM product_branch_prices WHERE product_id = ?', [id]);
             await connection.query('DELETE FROM product_branch WHERE product_id = ?', [id]);
             if (branches.length > 0) {
-                const values = branches.map(branchId => [id, branchId]);
-                await connection.query('INSERT INTO product_branch (product_id, branch_id) VALUES ?', [values]);
+                const branchValues = branches.map(b => [id, b.branch_id]);
+                await connection.query('INSERT INTO product_branch (product_id, branch_id) VALUES ?', [branchValues]);
+
+                const priceValues = branches.map(b => [id, b.branch_id, b.precio_unitario || 0]);
+                await connection.query(
+                    'INSERT INTO product_branch_prices (product_id, branch_id, precio_unitario) VALUES ?',
+                    [priceValues]
+                );
             }
         }
 
@@ -154,8 +182,14 @@ const lookupProduct = async (req, res) => {
         const { code } = req.params;
         const { branch_id } = req.query;
         const [rows] = await pool.query(`
-            SELECT p.* FROM products p
+            SELECT p.id, p.company_id, p.codigo, p.codigo_barra, p.nombre, p.descripcion,
+                   p.costo, p.unidad_medida, p.tipo_item, p.category_id, p.provider_id,
+                   p.tipo_combustible, p.tipo_operacion, p.stock_minimo, p.afecta_inventario,
+                   p.permitir_existencia_negativa, p.discount_from_id, p.status, p.created_at,
+                   COALESCE(pbp.precio_unitario, 0) as precio_unitario
+            FROM products p
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = pb.branch_id
             WHERE p.company_id = ? AND (p.codigo = ? OR p.codigo_barra = ?)
             LIMIT 1
         `, [branch_id, req.company_id, code, code]);
@@ -196,12 +230,16 @@ const deleteProduct = async (req, res) => {
 
 const getFuelProducts = async (req, res) => {
     try {
+        const branchId = req.query.branch_id || req.user?.branch_id || null;
         const [rows] = await pool.query(`
-            SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_unitario, p.costo, p.tipo_combustible
+            SELECT p.id, p.codigo, p.nombre, p.descripcion,
+                   COALESCE(pbp.precio_unitario, 0) as precio_unitario,
+                   p.costo, p.tipo_combustible
             FROM products p
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
             WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
             ORDER BY p.nombre ASC
-        `, [req.company_id]);
+        `, [branchId, req.company_id]);
         
         res.json(rows);
     } catch (error) {
@@ -211,9 +249,12 @@ const getFuelProducts = async (req, res) => {
 };
 
 const updateFuelPrices = async (req, res) => {
-    const { prices } = req.body; // Array of { id, precio_unitario }
+    const { prices, branch_id } = req.body;
     if (!prices || !Array.isArray(prices)) {
         return res.status(400).json({ message: 'Se requiere una lista de precios' });
+    }
+    if (!branch_id) {
+        return res.status(400).json({ message: 'Se requiere branch_id' });
     }
 
     const connection = await pool.getConnection();
@@ -222,8 +263,10 @@ const updateFuelPrices = async (req, res) => {
     try {
         for (const item of prices) {
             await connection.query(
-                'UPDATE products SET precio_unitario = ? WHERE id = ? AND company_id = ?',
-                [item.precio_unitario, item.id, req.company_id]
+                `INSERT INTO product_branch_prices (product_id, branch_id, precio_unitario)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE precio_unitario = ?`,
+                [item.id, branch_id, item.precio_unitario, item.precio_unitario]
             );
         }
         await connection.commit();
@@ -251,12 +294,13 @@ const getLubricantProducts = async (req, res) => {
         const branchId = req.query.branch_id || req.user?.branch_id || null;
 
         const [products] = await pool.query(`
-            SELECT p.id, p.codigo, p.descripcion, p.precio_unitario
+            SELECT p.id, p.codigo, p.descripcion, COALESCE(pbp.precio_unitario, 0) as precio_unitario
             FROM products p
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
             WHERE p.company_id = ? AND p.category_id = ? AND p.status = 'activo'
             ORDER BY p.codigo ASC
-        `, [branchId, req.company_id, categoryId]);
+        `, [branchId, branchId, req.company_id, categoryId]);
 
         if (products.length === 0) return res.json([]);
 

@@ -1276,7 +1276,7 @@ const GasCloseout = () => {
     const handleOpenLubricantes = async () => {
         if (lubricantReadings.length === 0 && closeoutId) {
             try {
-                const res = await axios.get(`/api/products/lubricants`);
+                const res = await axios.get(`/api/products/lubricants?branch_id=${user?.branch_id || ''}`);
                 const products = res.data;
                 if (products.length > 0) {
                     const mapped = products.map(p => {

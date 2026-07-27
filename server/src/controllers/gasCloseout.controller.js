@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { sendCloseoutToRrs } = require('../services/gasCloseoutRrs.service');
 const dteService = require('../services/dte.service');
+const notificationService = require('../services/notification.service');
 
 exports.initCloseout = async (req, res) => {
     try {
@@ -113,14 +114,16 @@ exports.initCloseout = async (req, res) => {
             }
         }
 
+        const branchId = req.user.branch_id || null;
         const [nozzles] = await pool.query(`
             SELECT n.id as nozzle_id, n.codigo as codigo_pistola,
                    p.id as product_id, p.codigo as codigo_producto, p.nombre as descripcion_producto,
-                   p.precio_unitario, p.tipo_combustible
+                   COALESCE(pbp.precio_unitario, 0) as precio_unitario, p.tipo_combustible
             FROM gas_station_nozzles n
             JOIN products p ON n.product_id = p.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
             WHERE n.company_id = ? AND (n.branch_id = ? OR (? IS NULL AND n.branch_id IS NULL))
-        `, [req.company_id, req.user.branch_id || null, req.user.branch_id || null]);
+        `, [branchId, req.company_id, branchId, branchId]);
 
         const readings = [];
         for (const n of nozzles) {
@@ -740,6 +743,16 @@ exports.closeCloseout = async (req, res) => {
             `UPDATE gas_station_closeouts SET estado = 'cerrado', closed_at = NOW() WHERE id = ?`,
             [id]
         );
+
+        notificationService.notify('gas_closeout_completed', req.company_id, req.user.branch_id, {
+            turno: closeouts[0].numero_turno || '',
+            fecha: closeouts[0].fecha_turno || new Date().toISOString().split('T')[0],
+            total_ventas: 0,
+            total_galones: 0,
+            num_despachadores: 0,
+            tanques: [],
+            sucursal: req.branch_name || ''
+        }).catch(() => {});
 
         res.json({ message: 'Cierre cerrado exitosamente' });
     } catch (error) {
@@ -2279,13 +2292,13 @@ exports.getVentasComparacion = async (req, res) => {
             SELECT 
                 p.codigo AS codigo_producto,
                 p.descripcion AS descripcion_producto,
-                COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS precio,
+                COALESCE(l.precio, v.precio, 0) AS precio,
                 COALESCE(l.lectura_galones, 0) AS lectura_galones,
                 COALESCE(l.lectura_monto, 0) AS lectura_monto,
                 COALESCE(v.venta_galones, 0) AS venta_galones,
                 COALESCE(v.venta_monto, 0) AS venta_monto,
                 COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0) AS diferencia_galones,
-                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS diferencia_monto
+                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, 0) AS diferencia_monto
             FROM products p
             LEFT JOIN (
                 SELECT 
@@ -2376,9 +2389,9 @@ exports.generarComplementaria = async (req, res) => {
                 p.id AS product_id,
                 p.codigo AS codigo_producto,
                 p.descripcion AS descripcion_producto,
-                COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS precio,
+                COALESCE(l.precio, v.precio, 0) AS precio,
                 COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0) AS diferencia_galones,
-                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS diferencia_monto
+                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, 0) AS diferencia_monto
             FROM products p
             LEFT JOIN (
                 SELECT r.product_id, AVG(r.precio) AS precio,

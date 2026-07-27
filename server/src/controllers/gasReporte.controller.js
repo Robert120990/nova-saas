@@ -18,13 +18,13 @@ exports.getReporteVentas = async (req, res) => {
             SELECT 
                 p.codigo AS codigo_producto,
                 p.descripcion AS descripcion_producto,
-                COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS precio,
+                COALESCE(l.precio, v.precio, 0) AS precio,
                 COALESCE(l.lectura_galones, 0) AS lectura_galones,
                 COALESCE(l.lectura_monto, 0) AS lectura_monto,
                 COALESCE(v.venta_galones, 0) AS venta_galones,
                 COALESCE(v.venta_monto, 0) AS venta_monto,
                 COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0) AS diferencia_galones,
-                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, p.precio_unitario, 0) AS diferencia_monto
+                (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, 0) AS diferencia_monto
             FROM products p
             LEFT JOIN (
                 SELECT 
