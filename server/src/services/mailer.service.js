@@ -81,6 +81,7 @@ const sendCustomerStatementEmail = async (customerId, branchId, companyId) => {
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `, [companyId, branchId, customerId]);
 
         const [payments] = await pool.query(`

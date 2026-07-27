@@ -48,6 +48,7 @@ exports.getReporteVentas = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
+                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                   AND (? = 0 OR sh.shift_id IN (
                       SELECT id FROM pos_shifts
                       WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?

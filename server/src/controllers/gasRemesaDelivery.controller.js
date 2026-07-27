@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
+const { getRrsPool } = require('../services/gasCloseoutRrs.service');
 
 exports.getPendingRemesas = async (req, res) => {
     try {
@@ -311,7 +312,10 @@ exports.entregarDelivery = async (req, res) => {
         const { id } = req.params;
 
         const [deliveries] = await pool.query(
-            `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            `SELECT d.*, b.nombre as branch_name
+             FROM gas_station_remesa_deliveries d
+             LEFT JOIN branches b ON d.branch_id = b.id
+             WHERE d.id = ? AND d.company_id = ?`,
             [id, req.company_id]
         );
 
@@ -322,12 +326,79 @@ exports.entregarDelivery = async (req, res) => {
             return res.status(400).json({ message: 'La entrega ya está marcada como entregada' });
         }
 
+        const delivery = deliveries[0];
+
         await pool.query(
             `UPDATE gas_station_remesa_deliveries SET entregado = 1 WHERE id = ?`,
             [id]
         );
 
-        const [delivery] = await pool.query(`
+        const [remesas] = await pool.query(
+            `SELECT r.* FROM gas_station_closeout_remesas r
+             JOIN gas_station_closeouts c ON r.closeout_id = c.id
+             WHERE r.entrega_id = ?`,
+            [id]
+        );
+
+        const montoTotal = remesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0);
+
+        try {
+            const [settingsRows] = await pool.query(
+                `SELECT setting_value FROM gas_station_settings 
+                 WHERE company_id = ? AND branch_id ${delivery.branch_id ? '= ?' : 'IS NULL'} 
+                 AND setting_key = 'cuenta_bancaria_pista'`,
+                delivery.branch_id ? [req.company_id, delivery.branch_id] : [req.company_id]
+            );
+
+            if (settingsRows.length > 0) {
+                const rawAccount = settingsRows[0].setting_value || '';
+                const cleanAccount = rawAccount.replace(/\s/g, '');
+                const last4 = cleanAccount.slice(-4);
+
+                if (last4.length === 4) {
+                    const rrsPool = getRrsPool();
+
+                    const [cuentas] = await rrsPool.query(
+                        `SELECT id_empresa, numero FROM cuentas_bancarias WHERE numero LIKE ?`,
+                        [`%${last4}`]
+                    );
+
+                    if (cuentas.length > 0) {
+                        const cuenta = cuentas[0];
+                        const llave = `015-${delivery.id}`;
+                        const documento = String(delivery.id).padStart(7, '0');
+                        const d = new Date(delivery.fecha);
+                        const fechaStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                        const now = new Date();
+                        const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+                        await rrsPool.query(
+                            `INSERT INTO movimientos_bancarios 
+                             (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                cuenta.id_empresa,
+                                llave,
+                                '01',
+                                documento,
+                                cuenta.numero,
+                                concepto,
+                                montoTotal.toFixed(2),
+                                '0.0',
+                                '',
+                                fechaStr,
+                                montoTotal.toFixed(2),
+                                'P'
+                            ]
+                        );
+                    }
+                }
+            }
+        } catch (rrsError) {
+            console.error('Error al registrar movimiento bancario en RRS:', rrsError);
+        }
+
+        const [result] = await pool.query(`
             SELECT d.*,
                    COUNT(r.id) as total_remesas,
                    COALESCE(SUM(r.monto), 0) as monto_total
@@ -337,7 +408,7 @@ exports.entregarDelivery = async (req, res) => {
             GROUP BY d.id
         `, [id]);
 
-        res.json(delivery[0]);
+        res.json(result[0]);
     } catch (error) {
         console.error('Error entregarDelivery:', error);
         res.status(500).json({ message: 'Error al marcar entrega como entregada' });

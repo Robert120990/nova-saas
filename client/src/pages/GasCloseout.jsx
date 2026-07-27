@@ -58,6 +58,7 @@ const GasCloseout = () => {
     const [sellerName, setSellerName] = useState('');
     const [fechaTurno, setFechaTurno] = useState(new Date().toISOString().split('T')[0]);
     const [numeroTurno, setNumeroTurno] = useState('');
+    const [userModifiedTurno, setUserModifiedTurno] = useState(false);
     const [closeoutDespachadores, setCloseoutDespachadores] = useState([]);
     const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
@@ -181,6 +182,22 @@ const GasCloseout = () => {
         queryKey: ['gas-last-turno'],
         queryFn: async () => (await axios.get('/api/gas-station/closeouts/last-turno')).data
     });
+
+    const { data: nextTurno } = useQuery({
+        queryKey: ['gas-next-turno', fechaTurno],
+        queryFn: async () => (await axios.get('/api/gas-station/closeouts/next-turno', { params: { fecha: fechaTurno } })).data,
+        enabled: !!fechaTurno && !closeoutId && !editId
+    });
+
+    useEffect(() => {
+        if (nextTurno?.next_turno && !userModifiedTurno) {
+            setNumeroTurno(nextTurno.next_turno);
+        }
+    }, [nextTurno, userModifiedTurno]);
+
+    useEffect(() => {
+        setUserModifiedTurno(false);
+    }, [fechaTurno]);
 
     const { data: posTypesList = [] } = useQuery({
         queryKey: ['gas-pos-types', user?.branch_id],
@@ -4245,16 +4262,16 @@ const GasCloseout = () => {
                     <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Número de Turno</label>
                     <div className="relative">
                         <Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={numeroTurno}
-                            onChange={(e) => setNumeroTurno(e.target.value)}
-                            required
-                            placeholder="Ej: 1"
-                            className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium"
-                        />
+                                <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={numeroTurno}
+                                    onChange={(e) => { setNumeroTurno(e.target.value); setUserModifiedTurno(true); }}
+                                    required
+                                    placeholder="Ej: 1"
+                                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium"
+                                />
                     </div>
                 </div>
                 <div>

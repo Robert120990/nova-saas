@@ -43,6 +43,7 @@ const getStats = async (req, res) => {
                     COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN total_pagar ELSE 0 END), 0) as today
                 FROM sales_headers
                 WHERE company_id = ? AND (estado != 'anulado' AND estado != 'ANULADO')
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sales_headers.id AND status = 'INVALIDADO')
             `, [companyId]);
             summary.monthlySales = parseFloat(sStats[0]?.monthly || 0);
             summary.todaySales = parseFloat(sStats[0]?.today || 0);
@@ -77,6 +78,7 @@ const getStats = async (req, res) => {
                 FROM sales_headers sh
                 LEFT JOIN customers c ON sh.customer_id = c.id
                 WHERE sh.company_id = ?
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                 ORDER BY sh.created_at DESC, sh.id DESC LIMIT 5
             `, [companyId]);
 
@@ -103,6 +105,7 @@ const getStats = async (req, res) => {
                 LEFT JOIN sales_headers sh ON b.id = sh.branch_id 
                   AND sh.estado != 'anulado' 
                   AND sh.estado != 'ANULADO'
+                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                   AND MONTH(sh.created_at) = MONTH(CURRENT_DATE())
                   AND YEAR(sh.created_at) = YEAR(CURRENT_DATE())
                 WHERE b.company_id = ?
@@ -115,6 +118,7 @@ const getStats = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 JOIN products p ON si.product_id = p.id
                 WHERE sh.company_id = ? AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'
+                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                   AND sh.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                 GROUP BY sh.branch_id, p.id, p.nombre
                 ORDER BY sh.branch_id, total_qty DESC
@@ -152,7 +156,7 @@ const getStats = async (req, res) => {
                         SELECT SUM(sp.monto) 
                         FROM sales_payments sp 
                         JOIN sales_headers sh ON sp.sale_id = sh.id 
-                        WHERE sh.shift_id = s.id AND sh.estado != 'anulado' AND sp.metodo_pago = '01'
+                        WHERE sh.shift_id = s.id AND sh.estado != 'anulado' AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO') AND sp.metodo_pago = '01'
                     ), 0) as cash_sales,
                     COALESCE((
                         SELECT SUM(amount) 
@@ -195,6 +199,7 @@ const getStats = async (req, res) => {
                     LEFT JOIN product_categories pc ON p.category_id = pc.id
                     WHERE sh.company_id = ? AND MONTH(sh.created_at) = MONTH(CURDATE()) AND YEAR(sh.created_at) = YEAR(CURDATE())
                       AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'
+                      AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                     GROUP BY pc.name
                     ORDER BY total DESC LIMIT 10
                 `, [companyId]);
@@ -237,7 +242,8 @@ const getCategorySales = async (req, res) => {
                    JOIN sales_headers sh ON si.sale_id = sh.id
                    LEFT JOIN products p ON si.product_id = p.id
                    LEFT JOIN product_categories pc ON p.category_id = pc.id
-                   WHERE sh.company_id = ? AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'`;
+                   WHERE sh.company_id = ? AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'
+                   AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')`;
         const params = [companyId];
 
         if (start_date) { sql += ' AND sh.created_at >= ?'; params.push(start_date); }

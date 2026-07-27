@@ -504,6 +504,7 @@ const getSalesByCategory = async (req, res) => {
             FROM sales_headers h
             JOIN sales_items si ON h.id = si.sale_id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
         `;
         const totalParams = [companyId];
         
@@ -533,6 +534,7 @@ const getSalesByCategory = async (req, res) => {
             LEFT JOIN products p ON si.product_id = p.id
             LEFT JOIN product_categories c ON p.category_id = c.id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
         `;
         const params = [grandTotalSales, companyId];
 
@@ -617,7 +619,7 @@ const exportSalesByCategoryPDF = async (req, res) => {
         }
 
         // 2. Obtener datos (Total periodo)
-        let totalSalesSql = `SELECT SUM(si.cantidad * si.precio_unitario) as total_periodo FROM sales_headers h JOIN sales_items si ON h.id = si.sale_id WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'`;
+        let totalSalesSql = `SELECT SUM(si.cantidad * si.precio_unitario) as total_periodo FROM sales_headers h JOIN sales_items si ON h.id = si.sale_id WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido' AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')`;
         const totalParams = [companyId];
         if (start_date && end_date) { totalSalesSql += ' AND h.fecha_emision BETWEEN ? AND ?'; totalParams.push(start_date, end_date); }
         if (branch_id && branch_id !== 'all') { totalSalesSql += ' AND h.branch_id = ?'; totalParams.push(branch_id); }
@@ -638,6 +640,7 @@ const exportSalesByCategoryPDF = async (req, res) => {
             LEFT JOIN products p ON si.product_id = p.id
             LEFT JOIN product_categories c ON p.category_id = c.id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
         `;
         const params = [grandTotal, companyId];
         if (start_date && end_date) { sql += ' AND h.fecha_emision BETWEEN ? AND ?'; params.push(start_date, end_date); }
@@ -668,6 +671,7 @@ const exportSalesByCategoryPDF = async (req, res) => {
                 LEFT JOIN products p ON si.product_id = p.id
                 LEFT JOIN product_categories c ON p.category_id = c.id
                 WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
             `;
             const dParams = [companyId];
             if (start_date && end_date) { detailSql += ' AND h.fecha_emision BETWEEN ? AND ?'; dParams.push(start_date, end_date); }
@@ -774,6 +778,7 @@ const getDailySales = async (req, res) => {
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `;
         const params = [companyId];
 
@@ -858,6 +863,7 @@ const exportDailySalesPDF = async (req, res) => {
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `;
         const params = [companyId];
 
@@ -993,6 +999,7 @@ const getSalesReportPDF = async (req, res) => {
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN branches br ON h.branch_id = br.id
             WHERE h.company_id = ? AND h.fecha_emision BETWEEN ? AND ? AND h.estado != 'ANULADO' AND h.estado != 'anulado'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
         `;
         const params = [companyId, start_date, end_date];
 
@@ -1234,6 +1241,7 @@ const getSalesByPOS = async (req, res) => {
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `;
         const params = [companyId];
 
@@ -1296,6 +1304,7 @@ const exportSalesByPOSPDF = async (req, res) => {
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `;
         const params = [companyId];
         if (start_date && end_date) { sql += ' AND h.fecha_emision BETWEEN ? AND ?'; params.push(start_date, end_date); }

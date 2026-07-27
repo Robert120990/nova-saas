@@ -430,4 +430,4 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
     }
 }
 
-module.exports = { sendCloseoutToRrs };
+module.exports = { sendCloseoutToRrs, getRrsPool };

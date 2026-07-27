@@ -31,6 +31,7 @@ const getCustomerStatement = async (req, res) => {
                 WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
                 AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
                 AND h.estado != 'ANULADO'
+                AND (d.status IS NULL OR d.status != 'INVALIDADO')
                 ${searchTerm ? 'AND (d.codigo_generacion LIKE ? OR h.id LIKE ?)' : ''}
                 UNION ALL
                 SELECT p.id FROM customer_payments p
@@ -62,6 +63,7 @@ const getCustomerStatement = async (req, res) => {
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
             ${searchTerm ? 'AND (d.numero_control LIKE ? OR h.id LIKE ?)' : ''}
         `, [company_id, branch_id, customer_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
 
@@ -135,6 +137,7 @@ const getPendingDocuments = async (req, res) => {
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
             GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, d.numero_control, h.total_pagar
             HAVING saldo_pendiente > 0.001
             ORDER BY h.fecha_emision ASC, h.id ASC
@@ -529,6 +532,7 @@ const exportStatementPDF = async (req, res) => {
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `, [company_id, branch_id, customer_id]);
 
         const [payments] = await pool.query(`
@@ -595,6 +599,7 @@ const getAgingReport = async (req, res) => {
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
             GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, d.numero_control, h.total_pagar
             HAVING saldo_pendiente > 0.001
             ORDER BY h.fecha_emision ASC
@@ -652,6 +657,7 @@ const exportAgingPDF = async (req, res) => {
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
             HAVING saldo_pendiente > 0.001 ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
@@ -719,6 +725,7 @@ const sendAgingEmail = async (req, res) => {
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
             HAVING saldo_pendiente > 0.001 ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
@@ -897,6 +904,7 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
             WHERE h.company_id = ? AND h.branch_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
             AND h.fecha_emision <= ?
         `;
         const params = [cutoffDate, cutoffDate, company_id, branch_id, cutoffDate];

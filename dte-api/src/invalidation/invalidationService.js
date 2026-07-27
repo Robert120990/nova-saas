@@ -251,6 +251,9 @@ async function invalidateDTE(payload, companyId, user) {
 
         if (status === 'PROCESADO') {
             await pool.query('UPDATE dtes SET status = "INVALIDADO" WHERE id = ?', [dte.id]);
+            if (dte.venta_id) {
+                await pool.query('UPDATE sales_headers SET estado = "anulado" WHERE id = ?', [dte.venta_id]);
+            }
             await pool.query(
                 'INSERT INTO dte_events (dte_id, event_type, description) VALUES (?, "INVALIDATED", ?)',
                 [dte.id, `Invalidado: ${descripcion}`]

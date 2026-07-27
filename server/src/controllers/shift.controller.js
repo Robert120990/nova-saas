@@ -157,6 +157,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             JOIN sales_headers h ON p.sale_id = h.id
             LEFT JOIN cat_017_forma_pago cat ON p.metodo_pago COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
             WHERE h.shift_id = ? AND h.estado = 'emitido'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
             GROUP BY p.metodo_pago, cat.description
         `, [id]);
         console.log(`[DEBUG] Sales by Method:`, JSON.stringify(salesByMethod));
@@ -182,6 +183,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             LEFT JOIN products p ON si.product_id = p.id
             LEFT JOIN product_categories pc ON p.category_id = pc.id
             WHERE h.shift_id = ? AND h.estado = 'emitido'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
             GROUP BY pc.name
             ORDER BY total DESC
         `, [id]);
@@ -290,6 +292,7 @@ const closeShift = async (req, res) => {
             FROM sales_payments p
             JOIN sales_headers h ON p.sale_id = h.id
             WHERE h.shift_id = ? AND h.estado = 'emitido'
+            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
         `, [id]);
 
         const totals = salesTotals[0];

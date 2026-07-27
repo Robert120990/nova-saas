@@ -743,10 +743,11 @@ const getForecasting = async (req, res) => {
         // Analizamos las ventas del año actual cargadas en sales_items agrupadas por mes,
         // y proyectamos la producción recomendada para el siguiente mes mediante regresión de promedio ponderado.
         const [salesHistory] = await pool.query(
-            `SELECT MONTH(sh.fecha_emision) as mes, SUM(si.cantidad) as total_unidades
+             `SELECT MONTH(sh.fecha_emision) as mes, SUM(si.cantidad) as total_unidades
              FROM sales_items si
              JOIN sales_headers sh ON si.sale_id = sh.id
              WHERE sh.company_id = ? AND sh.estado != 'ANULADO'
+               AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                AND sh.fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
              GROUP BY MONTH(sh.fecha_emision)
              ORDER BY mes ASC`,

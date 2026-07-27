@@ -2129,6 +2129,25 @@ exports.getLastTurno = async (req, res) => {
     }
 };
 
+exports.getNextTurno = async (req, res) => {
+    try {
+        const { fecha } = req.query;
+        if (!fecha) return res.status(400).json({ message: 'Fecha requerida' });
+        const branchId = req.user?.branch_id || null;
+        const [rows] = await pool.query(
+            `SELECT COALESCE(MAX(numero_turno), 0) + 1 as next_turno
+             FROM gas_station_closeouts
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             AND fecha_turno = ?`,
+            [req.company_id, branchId, branchId, fecha]
+        );
+        res.json({ next_turno: rows[0].next_turno });
+    } catch (error) {
+        console.error('Error getNextTurno:', error);
+        res.status(500).json({ message: 'Error al obtener próximo turno' });
+    }
+};
+
 // === Print Full Closeout Data ===
 
 exports.getCloseoutPrintData = async (req, res) => {
@@ -2334,6 +2353,7 @@ exports.getVentasComparacion = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
+                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                   AND (? = 0 OR sh.shift_id IN (
                       SELECT id FROM pos_shifts
                       WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
@@ -2428,6 +2448,7 @@ exports.generarComplementaria = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
+                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                   AND (? = 0 OR sh.shift_id IN (
                       SELECT id FROM pos_shifts WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
                   ))

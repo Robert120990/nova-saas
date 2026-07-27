@@ -243,7 +243,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'"];
+        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'", "(d.status IS NULL OR d.status != 'INVALIDADO')"];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -374,7 +374,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'"];
+        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'", "(d.status IS NULL OR d.status != 'INVALIDADO')"];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
