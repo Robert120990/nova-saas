@@ -22,7 +22,7 @@ const NotificationBell = () => {
 
   const { data: recentData } = useQuery({
     queryKey: ['notifications-recent'],
-    queryFn: async () => (await axios.get('/api/notifications/mine?limit=5&unread=false')).data,
+    queryFn: async () => (await axios.get('/api/notifications/mine?limit=5&unread=true')).data,
     enabled: isOpen,
   });
 
