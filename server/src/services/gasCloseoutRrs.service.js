@@ -1,7 +1,5 @@
-const mysql = require('mysql2/promise');
 const pool = require('../config/db');
-
-let rrsPool = null;
+const { getRrsPool } = require('../config/rrsDb');
 
 function formatDateDDMMYYYY(val) {
     if (!val) return '';
@@ -11,23 +9,6 @@ function formatDateDDMMYYYY(val) {
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const yyyy = d.getFullYear();
     return `${dd}/${mm}/${yyyy}`;
-}
-
-function getRrsPool() {
-    if (rrsPool) return rrsPool;
-    rrsPool = mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: 'db_system_rrs',
-        waitForConnections: true,
-        connectionLimit: 5,
-        queueLimit: 0,
-        decimalNumbers: true,
-        enableKeepAlive: true,
-        keepAliveInitialDelay: 30000
-    });
-    return rrsPool;
 }
 
 async function fetchCloseoutData(closeoutId, companyId) {

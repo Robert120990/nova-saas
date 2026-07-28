@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
-const { getRrsPool } = require('../services/gasCloseoutRrs.service');
+const { getRrsPool } = require('../config/rrsDb');
 
 exports.getPendingRemesas = async (req, res) => {
     try {

@@ -42,3 +42,9 @@ brain/
 implementation_plan.md
 task.md
 walkthrough.md
+
+# Junk files
+scratch/
+check_payments.js
+test_watermark.pdf
+spa.traineddata

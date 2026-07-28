@@ -91,6 +91,7 @@ const GasCloseout = () => {
     const [showDiferenciasModal, setShowDiferenciasModal] = useState(false);
     const [diferenciasData, setDiferenciasData] = useState(null);
     const [diferenciasLoading, setDiferenciasLoading] = useState(false);
+    const [showConfirmComplementaria, setShowConfirmComplementaria] = useState(false);
     const [despachadorNozzleAssignments, setDespachadorNozzleAssignments] = useState([]);
     const [showNozzleAssignModal, setShowNozzleAssignModal] = useState(false);
     const [modalAssignments, setModalAssignments] = useState([]);
@@ -554,8 +555,15 @@ const GasCloseout = () => {
     const generarComplementariaMutation = useMutation({
         mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/generar-complementaria`),
         onSuccess: (res) => {
-            toast.success(`Complementaria generada: ${res.data.codigo_generacion}`);
+            const { resultados, total_exitosos, total_fallidos } = res.data;
+            if (total_fallidos > 0) {
+                const errores = resultados.filter(r => !r.success).map(r => `${r.producto}: ${r.error}`).join('. ');
+                toast.error(`${total_exitosos} exitosas, ${total_fallidos} fallidas. ${errores}`);
+            } else {
+                toast.success(`${total_exitosos} complementarias generadas exitosamente`);
+            }
             setShowDiferenciasModal(false);
+            setShowConfirmComplementaria(false);
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al generar complementaria')
     });
@@ -3950,7 +3958,7 @@ const GasCloseout = () => {
                                                 </strong>
                                             </span>
                                             <button
-                                                onClick={() => generarComplementariaMutation.mutate()}
+                                                onClick={() => setShowConfirmComplementaria(true)}
                                                 disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
                                             >
@@ -3960,6 +3968,104 @@ const GasCloseout = () => {
                                         </div>
                                     </>
                                 ) : null}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showConfirmComplementaria && (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowConfirmComplementaria(false)} />
+                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl max-h-[90vh] flex flex-col">
+                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <AlertTriangle size={16} className="text-amber-500" />
+                                    Confirmar Generación de Complementarias
+                                </h3>
+                                <button onClick={() => setShowConfirmComplementaria(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="overflow-auto px-4 py-3 flex-1">
+                                {(() => {
+                                    const TASA_FOVIAL = 0.20;
+                                    const TASA_COTRANS = 0.10;
+                                    const productos = (diferenciasData?.data || []).filter(r => parseFloat(r.diferencia_galones) > 0);
+                                    const totalMontoBruto = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * parseFloat(r.precio)), 0);
+                                    const totalFovial = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * TASA_FOVIAL), 0);
+                                    const totalCotran = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * TASA_COTRANS), 0);
+                                    const totalBaseGrav = totalMontoBruto - totalFovial - totalCotran;
+                                    return (
+                                        <>
+                                            <p className="text-xs text-slate-600 mb-3">
+                                                Se generará <strong className="text-slate-800">{productos.length} DTE{productos.length !== 1 ? 's' : ''}</strong> de tipo Factura Consumidor Final (CF), uno por cada producto con diferencia positiva:
+                                            </p>
+                                            <table className="w-full text-left border-collapse text-[11px]">
+                                                <thead>
+                                                    <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
+                                                        <th className="px-2 py-1">Producto</th>
+                                                        <th className="px-2 py-1 text-right">Dif. (Gl)</th>
+                                                        <th className="px-2 py-1 text-right">Precio/Gal</th>
+                                                        <th className="px-2 py-1 text-right">Monto Bruto</th>
+                                                        <th className="px-2 py-1 text-right">FOVIAL</th>
+                                                        <th className="px-2 py-1 text-right">COTRANS</th>
+                                                        <th className="px-2 py-1 text-right">Base Gravable</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {productos.map((row, i) => {
+                                                        const gl = parseFloat(row.diferencia_galones) || 0;
+                                                        const precio = parseFloat(row.precio) || 0;
+                                                        const montoBruto = gl * precio;
+                                                        const fovial = gl * TASA_FOVIAL;
+                                                        const cotrans = gl * TASA_COTRANS;
+                                                        const baseGrav = montoBruto - fovial - cotrans;
+                                                        return (
+                                                            <tr key={i} className="hover:bg-slate-50">
+                                                                <td className="px-2 py-1.5 font-medium text-slate-700">{row.descripcion_producto}</td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{gl.toFixed(5)}</td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={precio} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={montoBruto} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={fovial} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={cotrans} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800"><Money value={baseGrav} /></td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-bold">
+                                                    <tr>
+                                                        <td className="px-2 py-1.5 text-slate-600 uppercase tracking-wider">
+                                                            {productos.length} DTE{productos.length !== 1 ? 's' : ''}
+                                                        </td>
+                                                        <td></td>
+                                                        <td></td>
+                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalMontoBruto} /></td>
+                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalFovial} /></td>
+                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalCotran} /></td>
+                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalBaseGrav} /></td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                            <div className="mt-4 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                                                <button
+                                                    onClick={() => setShowConfirmComplementaria(false)}
+                                                    className="px-4 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+                                                >
+                                                    Cancelar
+                                                </button>
+                                                <button
+                                                    onClick={() => generarComplementariaMutation.mutate()}
+                                                    disabled={generarComplementariaMutation.isPending}
+                                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
+                                                >
+                                                    {generarComplementariaMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                                                    {generarComplementariaMutation.isPending ? 'Generando...' : 'Confirmar y Generar'}
+                                                </button>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>

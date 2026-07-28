@@ -2501,95 +2501,107 @@ exports.generarComplementaria = async (req, res) => {
         if (companyRows.length === 0) return res.status(404).json({ message: 'Empresa no encontrada' });
         const company = companyRows[0];
 
-        let totalMonto = 0;
-        const items = rows.map(r => {
-            const monto = parseFloat(r.diferencia_monto) || 0;
-            totalMonto += monto;
-            return {
+        const [taxCfg] = await pool.query(
+            'SELECT fovial_rate, cotrans_rate FROM tax_configurations WHERE company_id = ?',
+            [company_id]
+        );
+        const tasaFovial = taxCfg.length > 0 ? parseFloat(taxCfg[0].fovial_rate) : 0.20;
+        const tasaCotran = taxCfg.length > 0 ? parseFloat(taxCfg[0].cotrans_rate) : 0.10;
+
+        const resultados = [];
+
+        for (const r of rows) {
+            const cantidad = parseFloat((parseFloat(r.diferencia_galones) || 0).toFixed(5));
+            const precio = parseFloat(r.precio) || 0;
+            const montoBruto = cantidad * precio;
+            if (montoBruto <= 0) continue;
+
+            const fovial = Math.round(cantidad * tasaFovial * 100) / 100;
+            const cotrans = Math.round(cantidad * tasaCotran * 100) / 100;
+            const ventaGravada = Math.round((montoBruto - fovial - cotrans) * 100) / 100;
+
+            const item = {
                 product_id: r.product_id,
                 codigo: r.codigo_producto,
                 descripcion: r.descripcion_producto,
-                cantidad: parseFloat((parseFloat(r.diferencia_galones) || 0).toFixed(5)),
-                precio_unitario: parseFloat(r.precio) || 0,
+                cantidad,
+                precio_unitario: precio,
                 monto_descuento: 0,
                 ventaNoSujeta: 0,
                 ventaExenta: 0,
-                ventaGravada: monto,
-                tributos: ["20"],
+                ventaGravada,
+                tributos: [
+                    { codigo: 'D1', descripcion: 'FOVIAL', valor: fovial },
+                    { codigo: 'C8', descripcion: 'COTRANS', valor: cotrans },
+                    "20"
+                ],
                 noGravado: 0,
                 ivaItem: 0,
                 tipoItem: 1
             };
-        });
 
-        const iva = Math.round(totalMonto * 0.13 * 100) / 100;
-        const totalPagar = totalMonto + iva;
+            const payload = {
+                header: {
+                    dte_type: '01',
+                    customer_id: null,
+                    customer_name: 'CONSUMIDOR FINAL',
+                    customer_nit: null,
+                    customer_nrc: '',
+                    customer_dui: '',
+                    customer_direccion: company.direccion,
+                    customer_telefono: company.telefono,
+                    customer_correo: company.correo,
+                    branch_id,
+                    user_id: req.user?.id,
+                    payment_type: 'CONT',
+                    fovial,
+                    cotrans,
+                    taxes: [],
+                    total_gravado: ventaGravada,
+                    total_iva: 0,
+                    total_pagar: ventaGravada,
+                    shift_id: posShift[0].id,
+                    seller_id: posShift[0].seller_id || null,
+                },
+                items: [item],
+                payments: [{ codigo: '01', monto: ventaGravada, referencia: '', plazo: '', periodo: '' }],
+                linkedDocuments: [],
+                emisor_adicional: {
+                    descActividad: company.actividad_economica || '',
+                    codPuntoVentaMH: codPuntoVentaMH
+                }
+            };
 
-        const payload = {
-            header: {
-                dte_type: '01',
+            const [saleResult] = await pool.query('INSERT INTO sales_headers SET ?', [{
+                company_id,
+                branch_id,
                 customer_id: null,
-                customer_name: 'CONSUMIDOR FINAL',
-                customer_nit: null,
-                customer_nrc: '',
-                customer_dui: '',
-                customer_direccion: company.direccion,
-                customer_telefono: company.telefono,
-                customer_correo: company.correo,
-                branch_id: branch_id || req.user.branch_id,
-                user_id: req.user?.id,
-                payment_type: 'CONT',
-                fovial: 0,
-                cotrans: 0,
-                taxes: [],
-                total_gravado: totalMonto,
-                total_iva: iva,
-                total_pagar: totalPagar,
-            shift_id: posShift[0].id,
-                seller_id: posShift[0].seller_id || null,
-            },
-            items,
-            payments: [{ codigo: '01', monto: totalPagar, referencia: '', plazo: '', periodo: '' }],
-            linkedDocuments: [],
-            emisor_adicional: {
-                descActividad: company.actividad_economica || '',
-                codPuntoVentaMH: codPuntoVentaMH
-            }
-        };
+                seller_id: payload.header.seller_id,
+                shift_id: posShift[0].id,
+                pos_id: posShift[0].pos_id,
+                dte_type: '01',
+                tipo_documento: '01',
+                condicion_operacion: 1,
+                fecha_emision: new Date(),
+                hora_emision: new Date().toTimeString().split(' ')[0],
+                estado: 'emitido',
+                total_gravado: ventaGravada,
+                total_exento: 0,
+                total_nosujetas: 0,
+                fovial,
+                cotrans,
+                total_iva: 0,
+                descuento_general: 0,
+                iva_percibido: 0,
+                iva_retenido: 0,
+                total_pagar: ventaGravada,
+                payment_condition: 1,
+                cliente_nombre: 'CONSUMIDOR FINAL',
+                observaciones: `Complementaria turno ${fecha_turno} #${turnoNum} - ${r.descripcion_producto}`,
+                created_at: new Date()
+            }]);
+            const saleId = saleResult.insertId;
 
-        // Crear la venta en sales_headers con shift_id vinculado al POS shift
-        const [saleResult] = await pool.query('INSERT INTO sales_headers SET ?', [{
-            company_id,
-            branch_id,
-            customer_id: null,
-            seller_id: payload.header.seller_id,
-            shift_id: posShift[0].id,
-            pos_id: posShift[0].pos_id,
-            dte_type: '01',
-            tipo_documento: '01',
-            condicion_operacion: 1,
-            fecha_emision: new Date(),
-            hora_emision: new Date().toTimeString().split(' ')[0],
-            estado: 'emitido',
-            total_gravado: totalMonto,
-            total_exento: 0,
-            total_nosujetas: 0,
-            fovial: 0,
-            cotrans: 0,
-            total_iva: iva,
-            descuento_general: 0,
-            iva_percibido: 0,
-            iva_retenido: 0,
-            total_pagar: totalPagar,
-            payment_condition: 1,
-            cliente_nombre: 'CONSUMIDOR FINAL',
-            observaciones: `Complementaria turno ${fecha_turno} #${turnoNum}`,
-            created_at: new Date()
-        }]);
-        const saleId = saleResult.insertId;
-
-        // Crear sales_items
-        for (const item of items) {
             await pool.query('INSERT INTO sales_items SET ?', [{
                 sale_id: saleId,
                 product_id: item.product_id,
@@ -2598,58 +2610,81 @@ exports.generarComplementaria = async (req, res) => {
                 cantidad: item.cantidad,
                 precio_unitario: item.precio_unitario,
                 monto_descuento: 0,
-                venta_gravada: item.ventaGravada,
+                venta_gravada: ventaGravada,
                 venta_exenta: 0,
                 tributos: JSON.stringify(item.tributos || [])
             }]);
+
+            await pool.query('INSERT INTO sales_payments SET ?', [{
+                sale_id: saleId,
+                metodo_pago: '01',
+                monto: ventaGravada,
+                referencia: ''
+            }]);
+
+            try {
+                const dteResult = await dteService.emitDTE(company, payload, saleId);
+
+                if (dteResult.success) {
+                    await pool.query(
+                        `UPDATE sales_headers SET
+                         numero_control = ?, codigo_generacion = ?, sello_recepcion = ?, fh_procesamiento = ?
+                         WHERE id = ?`,
+                        [dteResult.data.numero_control, dteResult.data.codigo_generacion,
+                         dteResult.data.sello_recepcion, dteResult.data.fh_procesamiento, saleId]
+                    );
+                    resultados.push({
+                        producto: r.descripcion_producto,
+                        success: true,
+                        codigo_generacion: dteResult.data.codigo_generacion,
+                        numero_control: dteResult.data.numero_control,
+                        total: totalPagar,
+                        sale_id: saleId
+                    });
+                } else if (dteResult.codigo_generacion) {
+                    await pool.query(
+                        `UPDATE sales_headers SET codigo_generacion = ?, numero_control = ? WHERE id = ?`,
+                        [dteResult.codigo_generacion, dteResult.numero_control || null, saleId]
+                    );
+                    resultados.push({
+                        producto: r.descripcion_producto,
+                        success: false,
+                        partial: true,
+                        codigo_generacion: dteResult.codigo_generacion,
+                        sale_id: saleId,
+                        error: dteResult.error
+                    });
+                } else {
+                    resultados.push({
+                        producto: r.descripcion_producto,
+                        success: false,
+                        sale_id: saleId,
+                        error: dteResult.error || 'Error al emitir DTE'
+                    });
+                }
+            } catch (err) {
+                resultados.push({
+                    producto: r.descripcion_producto,
+                    success: false,
+                    sale_id: saleId,
+                    error: err.message
+                });
+            }
         }
 
-        // Crear sales_payments
-        await pool.query('INSERT INTO sales_payments SET ?', [{
-            sale_id: saleId,
-            metodo_pago: '01',
-            monto: totalPagar,
-            referencia: ''
-        }]);
+        const exitosos = resultados.filter(r => r.success).length;
+        const fallidos = resultados.filter(r => !r.success).length;
 
-        // Emitir DTE vinculado a la venta
-        const dteResult = await dteService.emitDTE(company, payload, saleId);
-
-        if (dteResult.success) {
-            // Actualizar sale header con datos del DTE
-            await pool.query(
-                `UPDATE sales_headers SET
-                 numero_control = ?, codigo_generacion = ?, sello_recepcion = ?, fh_procesamiento = ?
-                 WHERE id = ?`,
-                [dteResult.data.numero_control, dteResult.data.codigo_generacion,
-                 dteResult.data.sello_recepcion, dteResult.data.fh_procesamiento, saleId]
-            );
-            res.json({
-                message: 'Complementaria generada exitosamente',
-                codigo_generacion: dteResult.data.codigo_generacion,
-                numero_control: dteResult.data.numero_control,
-                total: totalPagar,
-                items: rows.length,
-                sale_id: saleId,
-                shift_id: posShift[0].id
-            });
-        } else if (dteResult.codigo_generacion) {
-            await pool.query(
-                `UPDATE sales_headers SET codigo_generacion = ?, numero_control = ? WHERE id = ?`,
-                [dteResult.codigo_generacion, dteResult.numero_control || null, saleId]
-            );
-            res.status(400).json({
-                message: 'Complementaria generada con errores en DTE',
-                codigo_generacion: dteResult.codigo_generacion,
-                sale_id: saleId,
-                error: dteResult.error
-            });
-        } else {
-            res.status(500).json({
-                message: dteResult.error || 'Error al generar complementaria',
-                sale_id: saleId
-            });
+        if (resultados.length === 0) {
+            return res.status(400).json({ message: 'No se generó ninguna complementaria' });
         }
+
+        res.json({
+            message: `Complementarias generadas: ${exitosos} exitosas, ${fallidos} fallidas`,
+            resultados,
+            total_exitosos: exitosos,
+            total_fallidos: fallidos
+        });
     } catch (error) {
         console.error('Error generarComplementaria:', error);
         res.status(500).json({ message: error.message || 'Error al generar complementaria' });
