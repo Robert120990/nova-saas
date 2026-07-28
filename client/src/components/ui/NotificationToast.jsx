@@ -1,5 +1,5 @@
 import React from 'react';
-import { 
+import {
   ShoppingCart, Ban, FileMinus, FilePlus,
   FileCheck, FileX, RefreshCcw, AlertTriangle, XCircle,
   Banknote, Trash2, ArrowLeftRight,
@@ -8,9 +8,9 @@ import {
   Wallet, Handshake,
   UserPlus, CheckCircle, FileText, Umbrella, Gift,
   BookOpen, Lock, Unlock,
-  Box, Wrench,
-  Bell, CheckCheck
+  Box, Wrench, Bell, X
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const iconMap = {
   ShoppingCart, Ban, FileMinus, FilePlus,
@@ -49,9 +49,6 @@ const colorMap = {
   'branch_created': '#14b8a6', 'user_created': '#059669'
 };
 
-const defaultIcon = 'Bell';
-const defaultColor = '#6366f1';
-
 const actionIcons = {
   sale_created: 'ShoppingCart', sale_annulled: 'Ban',
   sale_credit_note: 'FileMinus', sale_debit_note: 'FilePlus',
@@ -59,7 +56,7 @@ const actionIcons = {
   dte_retransmitted: 'RefreshCcw', dte_contingency: 'AlertTriangle',
   dte_rejected: 'XCircle',
   cxc_payment_received: 'Banknote', cxc_payment_deleted: 'Trash2',
-  cxp_payment_made: 'ArrowRightLeft', cxp_payment_deleted: 'Trash2',
+  cxp_payment_made: 'ArrowLeftRight', cxp_payment_deleted: 'Trash2',
   purchase_created: 'Package', purchase_annulled: 'Ban',
   expense_created: 'Receipt', expense_annulled: 'Ban',
   transfer_created: 'ArrowLeftRight', transfer_received: 'PackageCheck',
@@ -77,69 +74,47 @@ const actionIcons = {
   branch_created: 'GitBranch', user_created: 'UserPlus'
 };
 
-function getTimeAgo(dateStr) {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diff = Math.floor((now - date) / 1000);
-  if (diff < 60) return 'ahora';
-  if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
-  if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`;
-  if (diff < 2592000) return `hace ${Math.floor(diff / 86400)} d`;
-  return date.toLocaleDateString('es-SV');
-}
+const defaultColor = '#6366f1';
 
-const NotificationItem = ({ notification, onClick, onMarkRead, compact = false }) => {
-  const iconName = actionIcons[notification.action_code] || defaultIcon;
+const NotificationToast = ({ notification, toastId, onClick }) => {
+  if (!notification) return null;
+
+  const iconName = actionIcons[notification.action_code] || 'Bell';
   const Icon = iconMap[iconName] || Bell;
   const color = colorMap[notification.action_code] || defaultColor;
 
   return (
-    <button
-      onClick={() => onClick?.(notification)}
-      className={`w-full text-left transition-all hover:bg-slate-50 animate-slide-in-right ${
-        !notification.is_read ? 'bg-indigo-50/50' : ''
-      } ${compact ? 'px-3 py-2.5' : 'px-4 py-3'}`}
+    <div
+      className="flex items-start gap-3 w-full cursor-pointer group"
+      onClick={onClick}
     >
-      <div className="flex items-start gap-3">
-        <div
-          className="rounded-lg p-2 flex-shrink-0 mt-0.5"
-          style={{ backgroundColor: color + '15' }}
-        >
-          <Icon size={compact ? 14 : 16} style={{ color }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <span className={`font-bold text-slate-800 ${compact ? 'text-xs' : 'text-sm'}`}>
-              {notification.title}
-            </span>
-            <span className="text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0 mt-0.5">
-              {getTimeAgo(notification.created_at)}
-            </span>
-          </div>
-          {notification.message && (
-            <p className={`text-slate-500 mt-0.5 line-clamp-2 ${compact ? 'text-[11px]' : 'text-xs'}`}>
-              {notification.message}
-            </p>
-          )}
-          {!notification.is_read && (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5" />
-          )}
-        </div>
-        {!notification.is_read && onMarkRead && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onMarkRead(notification.id); } }}
-            className="p-1.5 rounded-lg hover:bg-indigo-100 text-slate-300 hover:text-indigo-600 transition-all flex-shrink-0 mt-0.5 cursor-pointer"
-            title="Marcar como leída"
-          >
-            <CheckCheck size={14} />
-          </span>
+      <div
+        className="rounded-lg p-2 flex-shrink-0 mt-0.5 animate-slide-in-right"
+        style={{ backgroundColor: color + '18' }}
+      >
+        <Icon size={16} style={{ color }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-bold text-slate-800 leading-tight">
+          {notification.title || 'Nueva notificación'}
+        </p>
+        {notification.message && (
+          <p className="text-[12px] text-slate-500 mt-0.5 line-clamp-2 leading-snug">
+            {notification.message}
+          </p>
         )}
       </div>
-    </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          toast.dismiss(toastId);
+        }}
+        className="p-1 rounded-lg hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+      >
+        <X size={14} />
+      </button>
+    </div>
   );
 };
 
-export default NotificationItem;
+export default NotificationToast;

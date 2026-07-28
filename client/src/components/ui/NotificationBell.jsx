@@ -3,11 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Bell, BellRing, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import NotificationItem from './NotificationItem';
+import NotificationToast from './NotificationToast';
 
 const NotificationBell = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dropdownRef = useRef(null);
@@ -76,6 +79,15 @@ const NotificationBell = () => {
             if (isOpen) {
               queryClient.invalidateQueries({ queryKey: ['notifications-recent'] });
             }
+
+            setShakeKey((k) => k + 1);
+
+            toast.custom((t) => (
+              <NotificationToast notification={data} toastId={t} onClick={() => {
+                if (data?.link) navigate(data.link);
+                toast.dismiss(t);
+              }} />
+            ), { duration: 5000 });
           }
         } catch (e) {}
       };
@@ -84,7 +96,7 @@ const NotificationBell = () => {
       };
       wsRef.current = ws;
     } catch (e) {}
-  }, [user?.company_id, user?.id, queryClient, isOpen]);
+  }, [user?.company_id, user?.id, queryClient, isOpen, navigate]);
 
   useEffect(() => {
     connectWebSocket();
@@ -101,9 +113,11 @@ const NotificationBell = () => {
         onClick={() => setIsOpen(!isOpen)}
         className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group"
       >
-        {unreadCount > 0 ? <BellRing size={20} /> : <Bell size={20} />}
+        <span key={shakeKey} className={shakeKey > 0 ? 'animate-bell-ring' : ''}>
+          {unreadCount > 0 ? <BellRing size={20} /> : <Bell size={20} />}
+        </span>
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-indigo-500 text-white text-[10px] font-bold rounded-full border-2 border-[#0c1524] px-1">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-indigo-500 text-white text-[10px] font-bold rounded-full border-2 border-[#0c1524] px-1 animate-in zoom-in duration-200">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -124,17 +138,22 @@ const NotificationBell = () => {
 
           <div className="max-h-[400px] overflow-y-auto custom-scrollbar divide-y divide-slate-50">
             {recentData?.data?.length > 0 ? (
-              recentData.data.map((notif) => (
-                <NotificationItem
+              recentData.data.map((notif, idx) => (
+                <div
                   key={notif.id}
-                  notification={notif}
-                  onClick={handleNotificationClick}
-                  onMarkRead={(id) => markReadMutation.mutate(id)}
-                  compact
-                />
+                  className="animate-slide-in-right"
+                  style={{ animationDelay: `${idx * 60}ms` }}
+                >
+                  <NotificationItem
+                    notification={notif}
+                    onClick={handleNotificationClick}
+                    onMarkRead={(id) => markReadMutation.mutate(id)}
+                    compact
+                  />
+                </div>
               ))
             ) : (
-              <div className="p-8 text-center">
+              <div className="p-8 text-center animate-in fade-in duration-300">
                 <Bell size={32} className="mx-auto text-slate-200 mb-3" />
                 <p className="text-sm text-slate-400 font-medium">No hay notificaciones</p>
               </div>

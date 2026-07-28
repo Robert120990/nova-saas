@@ -96,13 +96,18 @@ const NotificacionesLista = () => {
           </div>
         ) : data?.data?.length > 0 ? (
           <div className="divide-y divide-slate-50">
-            {data.data.map(notif => (
-              <NotificationItem
+            {data.data.map((notif, idx) => (
+              <div
                 key={notif.id}
-                notification={notif}
-                onClick={handleNotificationClick}
-                onMarkRead={(id) => markReadMutation.mutate(id)}
-              />
+                className="animate-slide-in-bottom"
+                style={{ animationDelay: `${idx * 40}ms` }}
+              >
+                <NotificationItem
+                  notification={notif}
+                  onClick={handleNotificationClick}
+                  onMarkRead={(id) => markReadMutation.mutate(id)}
+                />
+              </div>
             ))}
           </div>
         ) : (
