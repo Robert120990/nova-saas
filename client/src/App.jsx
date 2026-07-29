@@ -49,6 +49,7 @@ import AuditLog from './pages/AuditLog';
 import LogViewer from './pages/LogViewer';
 import ConnectedUsers from './pages/ConnectedUsers';
 import Changelog from './pages/Changelog';
+import Manual from './pages/Manual';
 import CashClosing from './pages/CashClosing';
 import Combos from './pages/Combos';
 import CustomerStatement from './pages/CustomerStatement';
@@ -222,6 +223,7 @@ function App() {
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
                         <Route path="/changelog" element={<Changelog />} />
+                        <Route path="/manual" element={<Manual />} />
                         <Route path="/notificaciones" element={<NotificacionesLista />} />
 
                         {/* Accounts Receivable (CXC) */}

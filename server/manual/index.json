@@ -1,0 +1,15 @@
+[
+  { "id": "introduccion",  "label": "Introducción",                               "file": "introduccion.md",  "order": 1 },
+  { "id": "dashboard",     "label": "Dashboard",                                  "file": "dashboard.md",     "order": 2 },
+  { "id": "productos",     "label": "Productos",                                  "file": "productos.md",     "order": 3 },
+  { "id": "ventas",        "label": "Ventas (POS)",                               "file": "ventas.md",        "order": 4 },
+  { "id": "compras",       "label": "Compras",                                    "file": "compras.md",       "order": 5 },
+  { "id": "inventario",    "label": "Inventario",                                 "file": "inventario.md",    "order": 6 },
+  { "id": "cxc",           "label": "Cuentas por Cobrar",                         "file": "cxc.md",           "order": 7 },
+  { "id": "cxp",           "label": "Cuentas por Pagar",                          "file": "cxp.md",           "order": 8 },
+  { "id": "contabilidad",  "label": "Contabilidad",                               "file": "contabilidad.md",  "order": 9 },
+  { "id": "gasolinera",    "label": "Gasolinera",                                 "file": "gasolinera.md",    "order": 10 },
+  { "id": "rh",            "label": "Recursos Humanos",                           "file": "rh.md",            "order": 11 },
+  { "id": "dte",           "label": "DTE (Documentos Tributarios Electrónicos)",  "file": "dte.md",           "order": 12 },
+  { "id": "configuracion", "label": "Configuración",                              "file": "configuracion.md", "order": 13 }
+]

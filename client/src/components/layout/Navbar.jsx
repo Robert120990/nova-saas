@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, User } from 'lucide-react';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, User, HelpCircle } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -158,6 +158,13 @@ const Navbar = () => {
             {/* Right actions */}
             <div className="flex items-center gap-4">
                 <NotificationBell />
+                <button
+                    onClick={() => window.location.href = '/manual'}
+                    className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group"
+                    title="Manual de Usuario"
+                >
+                    <HelpCircle size={20} />
+                </button>
 
                 <div className="h-8 w-px bg-slate-800/60" />
 

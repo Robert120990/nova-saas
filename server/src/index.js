@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
 const authRoutes = require('./routes/auth.routes');
+const manualRoutes = require('./routes/manual.routes');
 const apiRoutes = require('./routes/api.routes');
 
 const app = express();
@@ -45,6 +46,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/manual', manualRoutes);
 
 // Restart DTE API (reinicia proceso dte-api en puerto 5000)
 app.post('/api/restart', express.json(), async (req, res) => {

@@ -305,16 +305,22 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     const handlePrintTicket = async (sale) => {
         try {
             const { data: detail } = await axios.get(`/api/sales/${sale.id}`);
-            const itemsHtml = (detail.items || []).map(item => `
+            const itemsHtml = (detail.items || []).map(item => {
+                const precio = parseFloat(item.precio_unitario);
+                const cantidad = parseFloat(item.cantidad);
+                const descuento = parseFloat(item.monto_descuento || 0);
+                const showPrice = precio !== 0 && (cantidad * precio - descuento) !== 0;
+                return `
                 <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                     <div style="flex: 1;">${item.descripcion || item.nombre}</div>
                 </div>
+                ${showPrice ? `
                 <div style="text-align: right; font-size: 11px;">
-                    ${item.cantidad} x $${parseFloat(item.precio_unitario).toFixed(2)}
-                    ${item.monto_descuento > 0 ? ` (-$${parseFloat(item.monto_descuento).toFixed(2)})` : ''}
-                    = $${((parseFloat(item.cantidad) * parseFloat(item.precio_unitario)) - parseFloat(item.monto_descuento || 0)).toFixed(2)}
-                </div>
-            `).join('');
+                    ${cantidad} x $${precio.toFixed(2)}
+                    ${descuento > 0 ? ` (-$${descuento.toFixed(2)})` : ''}
+                    = $${(cantidad * precio - descuento).toFixed(2)}
+                </div>` : ''}
+            `}).join('');
             const { data: companies } = await axios.get('/api/companies');
             const company = Array.isArray(companies) ? companies.find(c => c.id == detail.company_id) : null;
             const fechaStr = detail.fecha_emision ? new Date(detail.fecha_emision).toLocaleDateString('es-SV') : '';
@@ -339,7 +345,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                         <title>Ticket de Venta</title>
                         <style>
                             @page { margin: 0; }
-                            body { width: 72mm; font-family: 'Courier New', monospace; font-size: 10px; margin: 0; padding: 5px 0; }
+                            body { width: 72mm; font-family: 'Courier New', monospace; font-size: 10px; margin: 0; padding: 5px 4px; }
                             .center { text-align: center; }
                             .bold { font-weight: bold; }
                             .dashed { border-top: 1px dashed #000; margin: 4px 0; }
