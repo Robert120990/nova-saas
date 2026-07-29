@@ -645,6 +645,11 @@ const SalesTerminal = () => {
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                 <div style="flex: 1;">${item.nombre}</div>
             </div>
+            <div style="text-align: right; font-size: 11px;">
+                ${item.cantidad} x $${parseFloat(item.precio).toFixed(2)}
+                ${item.descuento > 0 ? ` (-$${parseFloat(item.descuento).toFixed(2)})` : ''}
+                = $${((parseFloat(item.cantidad) * parseFloat(item.precio)) - parseFloat(item.descuento || 0)).toFixed(2)}
+            </div>
         `).join('');
 
         const ticketHtml = `
@@ -722,12 +727,12 @@ const SalesTerminal = () => {
 
                     <div class="dashed"></div>
 
-                    <div class="text-center">ATENDIDO POR : ${sale.seller || 'SISTEMA'}</div>
-                    <div class="text-center">GRACIAS POR SU COMPRA</div>
+                    <div class="center">ATENDIDO POR : ${sale.seller || 'SISTEMA'}</div>
+                    <div class="center">GRACIAS POR SU COMPRA</div>
 
                     <div class="dashed"></div>
                     
-                    <div class="text-center" style="margin-top: 10px;">
+                    <div class="center" style="margin-top: 10px;">
                         <div style="margin-bottom: 5px;">DESCARGUE SU DTE</div>
                         <img src="${qrUrl}" style="width: 120px; height: 120px;" onload="setTimeout(() => { window.print(); window.close(); }, 200);" onerror="setTimeout(() => { window.print(); window.close(); }, 200);" />
                     </div>

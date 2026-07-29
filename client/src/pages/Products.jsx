@@ -342,10 +342,6 @@ const Products = () => {
                                 <label className={labelCls}>Nombre del Producto</label>
                                 <input name="nombre" defaultValue={selectedProduct?.nombre} required placeholder="Nombre descriptivo" className={fieldCls} />
                             </div>
-                            <div>
-                                <label className={labelCls}>Descripción</label>
-                                <textarea name="descripcion" defaultValue={selectedProduct?.descripcion} placeholder="Características, marca, modelo..." className={`${fieldCls} h-20 resize-none`} />
-                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelCls}>Categoría</label>
