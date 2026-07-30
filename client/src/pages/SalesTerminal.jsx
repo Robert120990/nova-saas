@@ -147,7 +147,7 @@ const SalesTerminal = () => {
 
     const { data: products = [] } = useQuery({
         queryKey: ['products-all', sellerSession?.branch_id],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000, branch_id: sellerSession?.branch_id } })).data?.data || [],
+        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000, branch_id: sellerSession?.branch_id, pos_id: sellerSession?.pos_id } })).data?.data || [],
         enabled: !!sellerSession?.branch_id
     });
 

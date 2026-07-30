@@ -5,7 +5,7 @@ const pool = require('../config/db');
  */
 
 const getCurrentShift = async (req, res) => {
-    const { pos_id, seller_id } = req.query;
+    const { pos_id, seller_id, branch_id } = req.query;
     try {
         let query = `
             SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name
@@ -19,6 +19,11 @@ const getCurrentShift = async (req, res) => {
         if (pos_id && pos_id !== 'undefined') {
             query += ` AND s.pos_id = ?`;
             params.push(pos_id);
+        }
+
+        if (branch_id && branch_id !== 'undefined') {
+            query += ` AND s.branch_id = ?`;
+            params.push(branch_id);
         }
 
         query += ` ORDER BY s.start_time DESC`;

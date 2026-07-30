@@ -59,7 +59,9 @@ const CashClosing = () => {
     // Queries
     const { data: currentShiftStatus, isLoading: isLoadingStatus } = useQuery({
         queryKey: ['shifts', 'current'],
-        queryFn: async () => (await axios.get('/api/shifts/current')).data,
+        queryFn: async () => (await axios.get('/api/shifts/current', {
+                params: { branch_id: user.branch_id }
+            })).data,
     });
 
     // Summary query for the current active shift
@@ -79,7 +81,8 @@ const CashClosing = () => {
             params: {
                 search: historySearch,
                 start_date: historyStartDate,
-                end_date: historyEndDate
+                end_date: historyEndDate,
+                branch_id: user.branch_id
             }
         })).data,
     });

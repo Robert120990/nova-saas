@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getProducts = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, branch_id } = req.query;
+        const { search, page = 1, limit = 15, branch_id, pos_id, category_id } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `
@@ -26,6 +26,10 @@ const getProducts = async (req, res) => {
             query += ` LEFT JOIN product_branch_prices pbp ON FALSE`;
         }
 
+        if (pos_id) {
+            query += ` LEFT JOIN product_pos pp ON p.id = pp.product_id`;
+        }
+
         query += ` WHERE p.company_id = ?`;
         params.push(req.company_id);
 
@@ -34,10 +38,20 @@ const getProducts = async (req, res) => {
             params.push(branch_id);
         }
 
+        if (pos_id) {
+            query += ` AND (pp.pos_id = ? OR pp.pos_id IS NULL)`;
+            params.push(pos_id);
+        }
+
         if (search) {
             query += ` AND (p.nombre LIKE ? OR p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barra LIKE ?)`;
             const searchTerm = `%${search}%`;
             params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        if (category_id) {
+            query += ` AND p.category_id = ?`;
+            params.push(category_id);
         }
 
         // Count total for pagination

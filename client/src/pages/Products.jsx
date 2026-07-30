@@ -24,6 +24,7 @@ const Products = () => {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('');
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -34,8 +35,10 @@ const Products = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['products', debouncedSearch, page, limit],
-        queryFn: async () => (await axios.get('/api/products', { params: { search: debouncedSearch, page, limit } })).data
+        queryKey: ['products', debouncedSearch, page, limit, selectedCategory],
+        queryFn: async () => (await axios.get('/api/products', {
+            params: { search: debouncedSearch, page, limit, category_id: selectedCategory || undefined }
+        })).data
     });
 
     const products = response.data || [];
@@ -211,16 +214,28 @@ const Products = () => {
                 </button>
             </div>
 
-            <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                <input 
-                    type="text" 
-                    placeholder="Buscar..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
-                    />
+            <div className="flex gap-2">
+                <div className="relative max-w-sm flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                        />
                 </div>
+                <select
+                    value={selectedCategory}
+                    onChange={(e) => { setSelectedCategory(e.target.value); setPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                >
+                    <option value="">Todas las categorías</option>
+                    {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                </select>
+            </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
