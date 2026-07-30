@@ -90,6 +90,15 @@ const createProduct = async (req, res) => {
     await connection.beginTransaction();
 
     try {
+        const [existing] = await connection.query(
+            'SELECT id FROM products WHERE company_id = ? AND codigo = ?',
+            [productData.company_id, productData.codigo]
+        );
+        if (existing.length > 0) {
+            await connection.rollback();
+            return res.status(409).json({ message: 'Ya existe un producto con este código' });
+        }
+
         const [result] = await connection.query('INSERT INTO products SET ?', [productData]);
         const productId = result.insertId;
 

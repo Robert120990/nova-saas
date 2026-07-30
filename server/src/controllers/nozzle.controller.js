@@ -20,7 +20,7 @@ exports.getNozzles = async (req, res) => {
         const total = countResult[0].total;
         const [rows] = await pool.query(`
             SELECT n.*, i.codigo as island_codigo, i.descripcion as island_descripcion,
-                   p.codigo as product_codigo, p.descripcion as product_nombre, p.tipo_combustible
+                   p.codigo as product_codigo, p.nombre as product_nombre, p.tipo_combustible
             FROM ${TABLE} n
             LEFT JOIN gas_station_islands i ON n.island_id = i.id
             LEFT JOIN products p ON n.product_id = p.id

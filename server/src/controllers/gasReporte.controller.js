@@ -17,7 +17,7 @@ exports.getReporteVentas = async (req, res) => {
         const query = `
             SELECT 
                 p.codigo AS codigo_producto,
-                p.descripcion AS descripcion_producto,
+                p.nombre AS descripcion_producto,
                 COALESCE(l.precio, v.precio, 0) AS precio,
                 COALESCE(l.lectura_galones, 0) AS lectura_galones,
                 COALESCE(l.lectura_monto, 0) AS lectura_monto,

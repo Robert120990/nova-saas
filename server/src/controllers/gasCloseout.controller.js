@@ -2343,7 +2343,7 @@ exports.getVentasComparacion = async (req, res) => {
         const [rows] = await pool.query(`
             SELECT 
                 p.codigo AS codigo_producto,
-                p.descripcion AS descripcion_producto,
+                p.nombre AS descripcion_producto,
                 COALESCE(l.precio, v.precio, 0) AS precio,
                 COALESCE(l.lectura_galones, 0) AS lectura_galones,
                 COALESCE(l.lectura_monto, 0) AS lectura_monto,
@@ -2447,7 +2447,7 @@ exports.generarComplementaria = async (req, res) => {
             SELECT 
                 p.id AS product_id,
                 p.codigo AS codigo_producto,
-                p.descripcion AS descripcion_producto,
+                p.nombre AS descripcion_producto,
                 COALESCE(l.precio, v.precio, 0) AS precio,
                 COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0) AS diferencia_galones,
                 (COALESCE(l.lectura_galones, 0) - COALESCE(v.venta_galones, 0)) * COALESCE(l.precio, v.precio, 0) AS diferencia_monto
