@@ -24,6 +24,7 @@ const VatBookSalesConsumers = () => {
 
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
+    const [resumen, setResumen] = useState(true);
 
     // Queries
     const { data: branches = [] } = useQuery({
@@ -39,7 +40,7 @@ const VatBookSalesConsumers = () => {
         setIsGenerating(true);
         try {
             const response = await axios.get('/api/vat-books/sales-consumers-pdf', {
-                params: filters,
+                params: { ...filters, resumen },
                 responseType: 'blob'
             });
 
@@ -88,7 +89,7 @@ const VatBookSalesConsumers = () => {
 
     const handleExportExcel = async () => {
         try {
-            const params = { ...filters, format: 'excel' };
+            const params = { ...filters, format: 'excel', resumen };
             const response = await axios.get('/api/vat-books/sales-consumers-pdf', {
                 params,
                 responseType: 'blob'
@@ -123,7 +124,7 @@ const VatBookSalesConsumers = () => {
     return (
         <ReportLayout
             title="Libro de Ventas a Consumidor Final"
-            subtitle="Resumen diario de Facturas (FAC) emitidas al público."
+            subtitle={resumen ? "Resumen diario de Facturas (FAC) emitidas al público." : "Detalle de cada DTE de Facturas (FAC) emitidas al público."}
             category="Libros de IVA"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -182,6 +183,16 @@ const VatBookSalesConsumers = () => {
                         <option key={y} value={y}>{y}</option>
                     ))}
                 </select>
+            </div>
+
+            {/* Toggle Resumen / Detalle */}
+            <div className="flex items-center justify-between pt-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">Resumen</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={resumen}
+                           onChange={(e) => setResumen(e.target.checked)} />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
             </div>
         </ReportLayout>
     );

@@ -358,8 +358,9 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
  */
 const getVatBookSalesConsumersPDF = async (req, res) => {
     try {
-        const { year, month, branch_id } = req.query;
+        const { year, month, branch_id, resumen } = req.query;
         const companyId = req.company_id || req.user?.company_id;
+        const isResumen = resumen !== 'false';
 
         console.log(`[VAT Books] Generating FAC: Co=${companyId}, Period=${year}-${month}, Branch=${branch_id}`);
 
@@ -378,101 +379,193 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
-        const query = `
-            SELECT DATE(sh.fecha_emision) as fecha, MIN(d.numero_control) as num_desde, MAX(d.numero_control) as num_hasta,
-                   SUM(sh.total_gravado) as t_grav, SUM(sh.total_exento) as t_exe, SUM(sh.total_iva) as t_iva,
-                   SUM(sh.fovial) as t_fov, SUM(sh.cotrans) as t_cot, SUM(sh.total_pagar) as t_pagar
-            FROM sales_headers sh
-            LEFT JOIN dtes d ON sh.id = d.venta_id
-            WHERE ${whereClauses.join(' AND ')}
-            GROUP BY DATE(sh.fecha_emision)
-            ORDER BY fecha ASC
-        `;
-        const [rows] = await pool.query(query, params);
+        let rows;
+        if (isResumen) {
+            const query = `
+                SELECT DATE(sh.fecha_emision) as fecha, MIN(d.numero_control) as num_desde, MAX(d.numero_control) as num_hasta,
+                       SUM(sh.total_gravado) as t_grav, SUM(sh.total_exento) as t_exe, SUM(sh.total_iva) as t_iva,
+                       SUM(sh.fovial) as t_fov, SUM(sh.cotrans) as t_cot, SUM(sh.total_pagar) as t_pagar
+                FROM sales_headers sh
+                LEFT JOIN dtes d ON sh.id = d.venta_id
+                WHERE ${whereClauses.join(' AND ')}
+                GROUP BY DATE(sh.fecha_emision)
+                ORDER BY fecha ASC
+            `;
+            [rows] = await pool.query(query, params);
+        } else {
+            const query = `
+                SELECT sh.fecha_emision as fecha, d.numero_control,
+                       COALESCE(c.nombre, sh.cliente_nombre, 'CONSUMIDOR FINAL') as cliente,
+                       COALESCE(c.nit, '') as nit,
+                       sh.total_gravado, sh.total_exento, sh.total_iva,
+                       sh.fovial, sh.cotrans, sh.total_pagar
+                FROM sales_headers sh
+                LEFT JOIN dtes d ON sh.id = d.venta_id
+                LEFT JOIN customers c ON sh.customer_id = c.id
+                WHERE ${whereClauses.join(' AND ')}
+                ORDER BY sh.fecha_emision ASC, d.numero_control ASC
+            `;
+            [rows] = await pool.query(query, params);
+        }
 
         if (req.query.format === 'excel') {
-            const excelData = rows.map(r => ({
-                Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
-                'Tipo Doc': 'Factura',
-                'No. Documento': `${r.num_desde || '---'} - ${r.num_hasta || '---'}`,
-                Cliente: 'CONSUMIDOR FINAL',
-                NIT: '',
-                Exento: n(r.t_exe).toFixed(2),
-                Neto: n(r.t_grav).toFixed(2),
-                IVA: n(r.t_iva).toFixed(2),
-                FOVIAL: n(r.t_fov).toFixed(2),
-                COTRANS: n(r.t_cot).toFixed(2),
-                Total: n(r.t_pagar).toFixed(2)
-            }));
-            const buffer = await excelService.createExcelBuffer({
-                sheets: [{ name: 'Libro FAC', columns: [
-                    { header: 'Fecha', key: 'Fecha', width: 14 },
-                    { header: 'Tipo Doc', key: 'Tipo Doc', width: 14 },
-                    { header: 'No. Documento', key: 'No. Documento', width: 24 },
-                    { header: 'Cliente', key: 'Cliente', width: 30 },
-                    { header: 'NIT', key: 'NIT', width: 18 },
-                    { header: 'Exento', key: 'Exento', width: 14 },
-                    { header: 'Neto', key: 'Neto', width: 14 },
-                    { header: 'IVA', key: 'IVA', width: 14 },
-                    { header: 'FOVIAL', key: 'FOVIAL', width: 14 },
-                    { header: 'COTRANS', key: 'COTRANS', width: 14 },
-                    { header: 'Total', key: 'Total', width: 14 }
-                ], data: excelData }]
-            });
-            return excelService.sendExcelResponse(res, buffer, `Libro_FAC_${month}_${year}.xlsx`);
+            if (isResumen) {
+                const excelData = rows.map(r => ({
+                    Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                    'Tipo Doc': 'Factura',
+                    'No. Documento': `${r.num_desde || '---'} - ${r.num_hasta || '---'}`,
+                    Cliente: 'CONSUMIDOR FINAL',
+                    NIT: '',
+                    Exento: n(r.t_exe).toFixed(2),
+                    Neto: n(r.t_grav).toFixed(2),
+                    IVA: n(r.t_iva).toFixed(2),
+                    FOVIAL: n(r.t_fov).toFixed(2),
+                    COTRANS: n(r.t_cot).toFixed(2),
+                    Total: n(r.t_pagar).toFixed(2)
+                }));
+                const buffer = await excelService.createExcelBuffer({
+                    sheets: [{ name: 'Libro FAC', columns: [
+                        { header: 'Fecha', key: 'Fecha', width: 14 },
+                        { header: 'Tipo Doc', key: 'Tipo Doc', width: 14 },
+                        { header: 'No. Documento', key: 'No. Documento', width: 24 },
+                        { header: 'Cliente', key: 'Cliente', width: 30 },
+                        { header: 'NIT', key: 'NIT', width: 18 },
+                        { header: 'Exento', key: 'Exento', width: 14 },
+                        { header: 'Neto', key: 'Neto', width: 14 },
+                        { header: 'IVA', key: 'IVA', width: 14 },
+                        { header: 'FOVIAL', key: 'FOVIAL', width: 14 },
+                        { header: 'COTRANS', key: 'COTRANS', width: 14 },
+                        { header: 'Total', key: 'Total', width: 14 }
+                    ], data: excelData }]
+                });
+                return excelService.sendExcelResponse(res, buffer, `Libro_FAC_${month}_${year}.xlsx`);
+            } else {
+                const excelData = rows.map(r => ({
+                    'N° Control': r.numero_control || 'SIN DTE',
+                    Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                    Cliente: r.cliente || 'CONSUMIDOR FINAL',
+                    NIT: r.nit || '',
+                    Exento: n(r.total_exento).toFixed(2),
+                    Neto: n(r.total_gravado).toFixed(2),
+                    IVA: n(r.total_iva).toFixed(2),
+                    FOVIAL: n(r.fovial).toFixed(2),
+                    COTRANS: n(r.cotrans).toFixed(2),
+                    Total: n(r.total_pagar).toFixed(2)
+                }));
+                const buffer = await excelService.createExcelBuffer({
+                    sheets: [{ name: 'Detalle FAC', columns: [
+                        { header: 'N° Control', key: 'N° Control', width: 22 },
+                        { header: 'Fecha', key: 'Fecha', width: 14 },
+                        { header: 'Cliente', key: 'Cliente', width: 30 },
+                        { header: 'NIT', key: 'NIT', width: 18 },
+                        { header: 'Exento', key: 'Exento', width: 14 },
+                        { header: 'Neto', key: 'Neto', width: 14 },
+                        { header: 'IVA', key: 'IVA', width: 14 },
+                        { header: 'FOVIAL', key: 'FOVIAL', width: 14 },
+                        { header: 'COTRANS', key: 'COTRANS', width: 14 },
+                        { header: 'Total', key: 'Total', width: 14 }
+                    ], data: excelData }]
+                });
+                return excelService.sendExcelResponse(res, buffer, `Detalle_FAC_${month}_${year}.xlsx`);
+            }
         }
 
         const buffer = await generatePdfBuffer((doc) => {
-            // Header completo
             doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
             doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
             doc.fontSize(8).font('Helvetica-Bold').text(`SUCURSAL: ${String(branchName)}`, 30, 58);
             doc.fontSize(12).font('Helvetica-Bold').text('LIBRO DE VENTAS A CONSUMIDOR FINAL', 30, 30, { align: 'right' });
-            doc.fontSize(10).text(`MES: ${String(month)} / AÑO: ${String(year)}`, 30, 45, { align: 'right' });
+            doc.fontSize(10).text(`${isResumen ? 'RESUMEN' : 'DETALLE'} — MES: ${String(month)} / AÑO: ${String(year)}`, 30, 45, { align: 'right' });
             doc.moveDown(3);
 
             const startX = 30;
             let currentY = doc.y;
-            const drawHeader = (y) => {
-                doc.fontSize(7).font('Helvetica-Bold');
-                doc.text('FECHA', startX, y);
-                doc.text('DEL No.', startX + 55, y);
-                doc.text('AL No.', startX + 195, y);
-                doc.text('GRAVADO', startX + 335, y, { width: 60, align: 'right' });
-                doc.text('EXENTO', startX + 395, y, { width: 55, align: 'right' });
-                doc.text('IVA', startX + 450, y, { width: 45, align: 'right' });
-                doc.text('FOVIAL', startX + 495, y, { width: 45, align: 'right' });
-                doc.text('COTRANS', startX + 540, y, { width: 45, align: 'right' });
-                doc.text('TOTAL', startX + 585, y, { width: 70, align: 'right' });
-                doc.moveTo(startX, y + 10).lineTo(startX + 655, y + 10).stroke();
-                return y + 15;
-            };
 
-            currentY = drawHeader(currentY);
-            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+            if (isResumen) {
+                const drawHeader = (y) => {
+                    doc.fontSize(7).font('Helvetica-Bold');
+                    doc.text('FECHA', startX, y);
+                    doc.text('DEL No.', startX + 55, y);
+                    doc.text('AL No.', startX + 195, y);
+                    doc.text('GRAVADO', startX + 335, y, { width: 60, align: 'right' });
+                    doc.text('EXENTO', startX + 395, y, { width: 55, align: 'right' });
+                    doc.text('IVA', startX + 450, y, { width: 45, align: 'right' });
+                    doc.text('FOVIAL', startX + 495, y, { width: 45, align: 'right' });
+                    doc.text('COTRANS', startX + 540, y, { width: 45, align: 'right' });
+                    doc.text('TOTAL', startX + 585, y, { width: 70, align: 'right' });
+                    doc.moveTo(startX, y + 10).lineTo(startX + 655, y + 10).stroke();
+                    return y + 15;
+                };
 
-            rows.forEach(r => {
-                if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
-                const gNeto = n(r.t_grav), i = n(r.t_iva);
-                const g = gNeto + i; // Gravado incluye IVA para consumidor final
-                const e = n(r.t_exe);
-                const f = n(r.t_fov), c = n(r.t_cot), to = n(r.t_pagar);
+                currentY = drawHeader(currentY);
+                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
 
-                doc.fontSize(7).font('Helvetica');
-                doc.text(safeFormatDate(r.fecha), startX, currentY);
-                doc.text(String(r.num_desde || '---'), startX + 55, currentY, { width: 135, truncate: true });
-                doc.text(String(r.num_hasta || '---'), startX + 195, currentY, { width: 135, truncate: true });
-                doc.text(`$${g.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-                doc.text(`$${e.toFixed(2)}`, startX + 395, currentY, { width: 50, align: 'right' });
-                doc.text(`$${i.toFixed(2)}`, startX + 450, currentY, { width: 40, align: 'right' });
-                doc.text(`$${f.toFixed(2)}`, startX + 495, currentY, { width: 40, align: 'right' });
-                doc.text(`$${c.toFixed(2)}`, startX + 540, currentY, { width: 40, align: 'right' });
-                doc.text(`$${to.toFixed(2)}`, startX + 585, currentY, { width: 65, align: 'right' });
+                rows.forEach(r => {
+                    if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
+                    const gNeto = n(r.t_grav), i = n(r.t_iva);
+                    const g = gNeto + i;
+                    const e = n(r.t_exe);
+                    const f = n(r.t_fov), c = n(r.t_cot), to = n(r.t_pagar);
 
-                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
-                currentY += 13;
-            });
-            drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');
+                    doc.fontSize(7).font('Helvetica');
+                    doc.text(safeFormatDate(r.fecha), startX, currentY);
+                    doc.text(String(r.num_desde || '---'), startX + 55, currentY, { width: 135, truncate: true });
+                    doc.text(String(r.num_hasta || '---'), startX + 195, currentY, { width: 135, truncate: true });
+                    doc.text(`$${g.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
+                    doc.text(`$${e.toFixed(2)}`, startX + 395, currentY, { width: 50, align: 'right' });
+                    doc.text(`$${i.toFixed(2)}`, startX + 450, currentY, { width: 40, align: 'right' });
+                    doc.text(`$${f.toFixed(2)}`, startX + 495, currentY, { width: 40, align: 'right' });
+                    doc.text(`$${c.toFixed(2)}`, startX + 540, currentY, { width: 40, align: 'right' });
+                    doc.text(`$${to.toFixed(2)}`, startX + 585, currentY, { width: 65, align: 'right' });
+
+                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                    currentY += 13;
+                });
+                drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');
+            } else {
+                const drawDetailHeader = (y) => {
+                    doc.fontSize(6.5).font('Helvetica-Bold');
+                    doc.text('N° CONTROL', startX, y);
+                    doc.text('FECHA', startX + 120, y);
+                    doc.text('CLIENTE', startX + 185, y);
+                    doc.text('NIT', startX + 325, y);
+                    doc.text('GRAVADO', startX + 415, y, { width: 55, align: 'right' });
+                    doc.text('EXENTO', startX + 475, y, { width: 50, align: 'right' });
+                    doc.text('IVA', startX + 530, y, { width: 40, align: 'right' });
+                    doc.text('FOVIAL', startX + 575, y, { width: 35, align: 'right' });
+                    doc.text('COTRANS', startX + 615, y, { width: 35, align: 'right' });
+                    doc.text('TOTAL', startX + 655, y, { width: 55, align: 'right' });
+                    doc.moveTo(startX, y + 10).lineTo(startX + 710, y + 10).stroke();
+                    return y + 15;
+                };
+
+                currentY = drawDetailHeader(currentY);
+                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+
+                rows.forEach(r => {
+                    if (currentY > 540) { doc.addPage(); currentY = drawDetailHeader(30); }
+                    const gNeto = n(r.total_gravado), i = n(r.total_iva);
+                    const g = gNeto + i;
+                    const e = n(r.total_exento);
+                    const f = n(r.fovial), c = n(r.cotrans), to = n(r.total_pagar);
+
+                    doc.fontSize(6.5).font('Helvetica');
+                    doc.text(String(r.numero_control || 'SIN DTE'), startX, currentY, { width: 115, truncate: true });
+                    doc.text(safeFormatDate(r.fecha), startX + 120, currentY, { width: 60 });
+                    doc.text(String(r.cliente || 'CONSUMIDOR FINAL'), startX + 185, currentY, { width: 135, truncate: true });
+                    doc.text(String(r.nit || ''), startX + 325, currentY, { width: 85, truncate: true });
+                    doc.text(`$${g.toFixed(2)}`, startX + 415, currentY, { width: 55, align: 'right' });
+                    doc.text(`$${e.toFixed(2)}`, startX + 475, currentY, { width: 50, align: 'right' });
+                    doc.text(`$${i.toFixed(2)}`, startX + 530, currentY, { width: 40, align: 'right' });
+                    doc.text(`$${f.toFixed(2)}`, startX + 575, currentY, { width: 35, align: 'right' });
+                    doc.text(`$${c.toFixed(2)}`, startX + 615, currentY, { width: 35, align: 'right' });
+                    doc.text(`$${to.toFixed(2)}`, startX + 655, currentY, { width: 55, align: 'right' });
+
+                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                    currentY += 11;
+                });
+                drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');
+            }
         });
 
         res.setHeader('Content-Type', 'application/pdf');
