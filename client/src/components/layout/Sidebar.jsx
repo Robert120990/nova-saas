@@ -97,7 +97,8 @@ const Sidebar = ({ onOpenSearch }) => {
     const renderMenuItem = (item, depth = 0) => {
         if (!hasPermission(item) || item.hideInMenu) return null;
 
-        const hasChildren = item.children && item.children.length > 0;
+        const visibleChildren = item.children?.filter(c => !c.hideInMenu) || [];
+        const hasChildren = visibleChildren.length > 0;
         const paddingLeft = isCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
 
         if (hasChildren) {
@@ -254,7 +255,7 @@ const Sidebar = ({ onOpenSearch }) => {
                         <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{hoveredItem.label}</span>
                     </div>
                     <div className="space-y-1 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
-                        {hoveredItem.children.map(child => (
+                        {hoveredItem.children.filter(child => child.path && !child.hideInMenu).map(child => (
                             <NavLink
                                 key={child.path}
                                 to={child.path}

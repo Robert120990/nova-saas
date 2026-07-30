@@ -222,7 +222,7 @@ const Dashboard = () => {
                                             <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{shift.seller_name}</p>
                                             {shift.shift_number && <span className="text-[10px] font-black text-indigo-500 shrink-0">#{shift.shift_number}</span>}
                                         </div>
-                                        <p className="text-[11px] font-bold text-slate-800 truncate">Caja: {shift.pos_name}</p>
+                                        <p className="text-[11px] font-bold text-slate-800 truncate">{shift.pos_name} · {shift.branch_name}</p>
                                     </div>
                                     {isOld ? <AlertCircle size={12} className="text-amber-500 shrink-0" /> : <ArrowUpRight size={12} className="text-emerald-500 shrink-0" />}
                                 </div>

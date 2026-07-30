@@ -21,16 +21,19 @@ import {
     Trash2,
     Users,
     Plus,
-    X
+    X,
+    Pencil
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
-import Money from '../components/ui/Money';
+import Money, { MoneyInput } from '../components/ui/Money';
+import Pagination from '../components/ui/Pagination';
 
 const CashClosing = () => {
     const queryClient = useQueryClient();
     const { user } = useAuth();
+    const canEditShift = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('manage_shifts_edit');
     
     // UI State
     const [selectedPos, setSelectedPos] = useState('');
@@ -38,6 +41,8 @@ const CashClosing = () => {
     
     // History Filters State
     const [historySearch, setHistorySearch] = useState('');
+    const [historyPage, setHistoryPage] = useState(1);
+    const [historyLimit, setHistoryLimit] = useState(15);
     const [historyStartDate, setHistoryStartDate] = useState('');
     const [historyEndDate, setHistoryEndDate] = useState('');
     const [showHistorySearch, setShowHistorySearch] = useState(false);
@@ -57,6 +62,35 @@ const CashClosing = () => {
     const [isEditSellersModalOpen, setIsEditSellersModalOpen] = useState(false);
     const [editingShiftSellers, setEditingShiftSellers] = useState(null);
     const [shiftSellersList, setShiftSellersList] = useState([]);
+    const [isEditShiftModalOpen, setIsEditShiftModalOpen] = useState(false);
+    const [editingShift, setEditingShift] = useState(null);
+    const [editForm, setEditForm] = useState({ seller_id: '', pos_id: '', opening_balance: '', shift_number: '' });
+
+    const updateShiftMutation = useMutation({
+        mutationFn: async ({ id, data }) => (await axios.put(`/api/shifts/${id}`, data)).data,
+        onSuccess: () => {
+            toast.success('Turno actualizado correctamente');
+            setIsEditShiftModalOpen(false);
+            setEditingShift(null);
+            queryClient.invalidateQueries({ queryKey: ['shifts'] });
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al actualizar el turno');
+        }
+    });
+
+    const deleteShiftMutation = useMutation({
+        mutationFn: async (id) => (await axios.delete(`/api/shifts/${id}`)).data,
+        onSuccess: () => {
+            toast.success('Turno eliminado correctamente');
+            setIsEditShiftModalOpen(false);
+            setEditingShift(null);
+            queryClient.invalidateQueries({ queryKey: ['shifts'] });
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al eliminar el turno');
+        }
+    });
 
     // Queries
     const { data: currentShiftStatus, isLoading: isLoadingStatus } = useQuery({
@@ -77,17 +111,20 @@ const CashClosing = () => {
         enabled: !!currentShiftStatus?.shift?.id,
     });
 
-    const { data: shiftsHistory = [], isLoading: isLoadingHistory } = useQuery({
-        queryKey: ['shifts', 'history', historySearch, historyStartDate, historyEndDate],
+    const { data: shiftsHistoryData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingHistory } = useQuery({
+        queryKey: ['shifts', 'history', historySearch, historyStartDate, historyEndDate, historyPage, historyLimit],
         queryFn: async () => (await axios.get('/api/shifts', {
             params: {
                 search: historySearch,
                 start_date: historyStartDate,
                 end_date: historyEndDate,
-                branch_id: user.branch_id
+                branch_id: user.branch_id,
+                page: historyPage,
+                limit: historyLimit
             }
         })).data,
     });
+    const shiftsHistory = shiftsHistoryData.data || [];
 
     const { data: sellers = [] } = useQuery({
         queryKey: ['sellers'],
@@ -339,7 +376,7 @@ const CashClosing = () => {
                                         type="text"
                                         placeholder="Buscar cajero o terminal..."
                                         value={historySearch}
-                                        onChange={(e) => setHistorySearch(e.target.value)}
+                                        onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }}
                                         className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none w-64 shadow-sm"
                                     />
                                 </div>
@@ -351,7 +388,7 @@ const CashClosing = () => {
                                         <input 
                                             type="date"
                                             value={historyStartDate}
-                                            onChange={(e) => setHistoryStartDate(e.target.value)}
+                                            onChange={(e) => { setHistoryStartDate(e.target.value); setHistoryPage(1); }}
                                             className="text-sm text-slate-600 border-none p-0 focus:ring-0 outline-none"
                                         />
                                     </div>
@@ -360,13 +397,13 @@ const CashClosing = () => {
                                         <input 
                                             type="date"
                                             value={historyEndDate}
-                                            onChange={(e) => setHistoryEndDate(e.target.value)}
+                                            onChange={(e) => { setHistoryEndDate(e.target.value); setHistoryPage(1); }}
                                             className="text-sm text-slate-600 border-none p-0 focus:ring-0 outline-none"
                                         />
                                     </div>
                                     {(historyStartDate || historyEndDate) && (
                                         <button 
-                                            onClick={() => { setHistoryStartDate(''); setHistoryEndDate(''); }}
+                                            onClick={() => { setHistoryStartDate(''); setHistoryEndDate(''); setHistoryPage(1); }}
                                             className="p-2.5 text-slate-400 hover:text-red-500 transition-colors"
                                             title="Limpiar fechas"
                                         >
@@ -384,20 +421,20 @@ const CashClosing = () => {
                         <table className="w-full">
                             <thead>
                                 <tr className="bg-slate-50/50 border-b border-slate-100">
-                                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Inicio / Fin</th>
-                                    <th className="px-8 py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Turno</th>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Responsable</th>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">POS</th>
-                                    <th className="px-8 py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Esperado</th>
-                                    <th className="px-8 py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Contado</th>
-                                    <th className="px-8 py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Diferencia</th>
-                                    <th className="px-8 py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Acciones</th>
+                                    <th className="px-6 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Inicio / Fin</th>
+                                    <th className="px-6 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Turno</th>
+                                    <th className="px-6 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Responsable</th>
+                                    <th className="px-6 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">POS</th>
+                                    <th className="px-6 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Esperado</th>
+                                    <th className="px-6 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Contado</th>
+                                    <th className="px-6 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Diferencia</th>
+                                    <th className="px-6 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {shiftsHistory.length > 0 ? shiftsHistory.map((shift) => (
                                     <tr key={shift.id} className="hover:bg-slate-50 transition-colors group">
-                                        <td className="px-8 py-6">
+                                        <td className="px-6 py-3">
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-black text-slate-900">{new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                                 <span className="text-[10px] font-bold text-slate-400 tabular-nums">
@@ -405,50 +442,80 @@ const CashClosing = () => {
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-6 text-center">
+                                        <td className="px-6 py-3 text-center">
                                             <span className="text-xs font-black text-indigo-600">#{shift.shift_number || '-'}</span>
                                         </td>
-                                        <td className="px-8 py-6">
+                                        <td className="px-6 py-3">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 text-[10px] font-black">
+                                                <div className="w-7 h-7 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 text-[10px] font-black">
                                                     {shift.seller_name?.charAt(0)}
                                                 </div>
                                                 <span className="text-sm font-bold text-slate-700">{shift.seller_name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-6">
+                                        <td className="px-6 py-3">
                                             <span className="text-xs font-black text-slate-500 uppercase tracking-wider">{shift.pos_name}</span>
                                         </td>
-                                        <td className="px-8 py-6 text-right tabular-nums">
+                                        <td className="px-6 py-3 text-right tabular-nums">
                                             <span className="text-sm font-bold text-slate-700"><Money value={shift.expected_cash || 0} /></span>
                                         </td>
-                                        <td className="px-8 py-6 text-right tabular-nums">
+                                        <td className="px-6 py-3 text-right tabular-nums">
                                             <span className="text-sm font-bold text-slate-700"><Money value={shift.actual_cash || 0} /></span>
                                         </td>
-                                        <td className="px-8 py-6 text-right tabular-nums">
+                                        <td className="px-6 py-3 text-right tabular-nums">
                                             <span className={`text-sm font-black flex items-center justify-end gap-1 ${parseFloat(shift.actual_cash - shift.expected_cash) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                 {parseFloat(shift.actual_cash - shift.expected_cash || 0).toFixed(2)}
                                                 {parseFloat(shift.actual_cash - shift.expected_cash || 0) >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                                             </span>
                                         </td>
-                                        <td className="px-8 py-6 text-center">
-                                            <button 
-                                                title="Ver Arqueo / Reporte"
-                                                onClick={() => handleViewHistoryReport(shift.id)}
-                                                className="p-2.5 bg-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                                            >
-                                                <Printer size={16} />
-                                            </button>
+                                        <td className="px-6 py-3 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <button 
+                                                    title="Ver Arqueo / Reporte"
+                                                    onClick={() => handleViewHistoryReport(shift.id)}
+                                                    className="p-2.5 bg-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                                >
+                                                    <Printer size={16} />
+                                                </button>
+                                                {canEditShift && (
+                                                    <button 
+                                                        title="Editar / Eliminar Turno"
+                                                        onClick={() => { 
+                                                            setEditingShift(shift); 
+                                                            setEditForm({ 
+                                                                seller_id: shift.seller_id || '', 
+                                                                pos_id: shift.pos_id || '', 
+                                                                opening_balance: shift.opening_balance?.toString() || '', 
+                                                                shift_number: shift.shift_number?.toString() || '' 
+                                                            }); 
+                                                            setIsEditShiftModalOpen(true); 
+                                                        }}
+                                                        className="p-2.5 bg-slate-100 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                                                    >
+                                                        <Pencil size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan="7" className="px-8 py-12 text-center text-slate-400 font-medium italic">No hay historial de turnos disponible.</td>
+                                        <td colSpan="8" className="px-8 py-12 text-center text-slate-400 font-medium italic">No hay historial de turnos disponible.</td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
+                    <Pagination
+                        currentPage={historyPage}
+                        totalPages={shiftsHistoryData.totalPages}
+                        totalItems={shiftsHistoryData.total}
+                        itemsOnPage={shiftsHistory.length}
+                        onPageChange={(p) => setHistoryPage(p)}
+                        limit={historyLimit}
+                        onLimitChange={(l) => { setHistoryLimit(l); setHistoryPage(1); }}
+                        isLoading={isLoadingHistory}
+                    />
                 </div>
             </div>
 
@@ -1046,6 +1113,109 @@ const CashClosing = () => {
                                 Imprimir Reporte Arqueo
                             </button>
                             <button onClick={() => setIsSummaryModalOpen(false)} className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">Cerrar Detalle</button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Modal: Editar / Eliminar Turno */}
+            <Modal
+                isOpen={isEditShiftModalOpen}
+                onClose={() => { setIsEditShiftModalOpen(false); setEditingShift(null); }}
+                title={`Editar Turno #${editingShift?.shift_number || ''}`}
+                maxWidth="max-w-md"
+            >
+                {editingShift && (
+                    <div className="space-y-5 pt-4">
+                        <div className="bg-slate-50 rounded-2xl p-5 space-y-4">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sucursal</span>
+                                <span className="text-sm font-bold text-slate-900">{editingShift.branch_name}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Inicio</span>
+                                <span className="text-sm font-bold text-slate-900">
+                                    {new Date(editingShift.start_time).toLocaleString('es-SV', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
+                            {editingShift.end_time && (
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Fin</span>
+                                    <span className="text-sm font-bold text-slate-900">
+                                        {new Date(editingShift.end_time).toLocaleString('es-SV', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Estado</span>
+                                <span className={`text-xs font-black uppercase px-3 py-1 rounded-full ${editingShift.status === 'open' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                                    {editingShift.status === 'open' ? 'Abierto' : 'Cerrado'}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Ventas</span>
+                                <span className="text-sm font-black text-slate-900">
+                                    <Money value={editingShift.total_sales || 0} />
+                                </span>
+                            </div>
+
+                            <div className="space-y-3 pt-2">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">N° Turno</label>
+                                    <input type="number" value={editForm.shift_number}
+                                        onChange={(e) => setEditForm({ ...editForm, shift_number: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Vendedor Responsable</label>
+                                    <select value={editForm.seller_id}
+                                        onChange={(e) => setEditForm({ ...editForm, seller_id: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none">
+                                        {branchSellers.map(s => (
+                                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">POS / Terminal</label>
+                                    <select value={editForm.pos_id}
+                                        onChange={(e) => setEditForm({ ...editForm, pos_id: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none">
+                                        {posList.map(p => (
+                                            <option key={p.id} value={p.id}>{p.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fondo Inicial</label>
+                                    <MoneyInput value={editForm.opening_balance}
+                                        onChange={(e) => setEditForm({ ...editForm, opening_balance: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => updateShiftMutation.mutate({ id: editingShift.id, data: editForm })}
+                                disabled={updateShiftMutation.isPending}
+                                className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-30"
+                            >
+                                {updateShiftMutation.isPending ? 'Guardando...' : 'Guardar Cambios'}
+                                <CheckCircle2 size={16} />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (window.confirm('¿Está seguro de eliminar este turno? Esta acción no se puede deshacer.')) {
+                                        deleteShiftMutation.mutate(editingShift.id);
+                                    }
+                                }}
+                                disabled={deleteShiftMutation.isPending}
+                                className="w-full py-4 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-30"
+                            >
+                                {deleteShiftMutation.isPending ? 'Eliminando...' : 'Eliminar Turno'}
+                                <Trash2 size={16} />
+                            </button>
                         </div>
                     </div>
                 )}

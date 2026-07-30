@@ -373,47 +373,79 @@ const closeShift = async (req, res) => {
 };
 
 const getShiftsHistory = async (req, res) => {
-    const { branch_id, seller_id, status, search, start_date, end_date } = req.query;
+    const { branch_id, seller_id, status, search, start_date, end_date, page = 1, limit = 15 } = req.query;
     try {
-        let sql = `
-            SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
+        const offset = (pageNum - 1) * limitNum;
+
+        let countSql = `
+            SELECT COUNT(*) as total
             FROM pos_shifts s
             JOIN sellers sel ON s.seller_id = sel.id
             JOIN points_of_sale p ON s.pos_id = p.id
             JOIN branches b ON s.branch_id = b.id
             WHERE s.company_id = ?
         `;
+        let dataSql = `
+            SELECT s.*, 
+                COALESCE(sales.total, s.total_sales, 0) as total_sales,
+                sel.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name
+            FROM pos_shifts s
+            JOIN sellers sel ON s.seller_id = sel.id
+            JOIN points_of_sale p ON s.pos_id = p.id
+            JOIN branches b ON s.branch_id = b.id
+            LEFT JOIN (
+                SELECT h.shift_id, SUM(p.monto) as total
+                FROM sales_payments p
+                JOIN sales_headers h ON p.sale_id = h.id
+                WHERE h.estado = 'emitido'
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                GROUP BY h.shift_id
+            ) sales ON sales.shift_id = s.id
+            WHERE s.company_id = ?
+        `;
         const params = [req.company_id];
 
         if (branch_id) {
-            sql += ` AND s.branch_id = ?`;
+            countSql += ` AND s.branch_id = ?`;
+            dataSql += ` AND s.branch_id = ?`;
             params.push(branch_id);
         }
         if (seller_id) {
-            sql += ` AND s.seller_id = ?`;
+            countSql += ` AND s.seller_id = ?`;
+            dataSql += ` AND s.seller_id = ?`;
             params.push(seller_id);
         }
         if (status) {
-            sql += ` AND s.status = ?`;
+            countSql += ` AND s.status = ?`;
+            dataSql += ` AND s.status = ?`;
             params.push(status);
         }
         if (search) {
-            sql += ` AND (sel.nombre LIKE ? OR p.nombre LIKE ?)`;
+            countSql += ` AND (sel.nombre LIKE ? OR p.nombre LIKE ?)`;
+            dataSql += ` AND (sel.nombre LIKE ? OR p.nombre LIKE ?)`;
             params.push(`%${search}%`, `%${search}%`);
         }
         if (start_date) {
-            sql += ` AND s.start_time >= ?`;
+            countSql += ` AND s.start_time >= ?`;
+            dataSql += ` AND s.start_time >= ?`;
             params.push(`${start_date} 00:00:00`);
         }
         if (end_date) {
-            sql += ` AND s.start_time <= ?`;
+            countSql += ` AND s.start_time <= ?`;
+            dataSql += ` AND s.start_time <= ?`;
             params.push(`${end_date} 23:59:59`);
         }
 
-        sql += ` ORDER BY s.start_time DESC LIMIT 50`;
+        dataSql += ` ORDER BY s.start_time DESC LIMIT ? OFFSET ?`;
+        const dataParams = [...params, limitNum, offset];
 
-        const [rows] = await pool.query(sql, params);
-        res.json(rows);
+        const [[{ total }]] = await pool.query(countSql, params);
+        const [rows] = await pool.query(dataSql, dataParams);
+        const totalPages = Math.ceil(total / limitNum);
+
+        res.json({ data: rows, total, page: pageNum, totalPages });
     } catch (error) {
         console.error('Error in getShiftsHistory:', error);
         res.status(500).json({ message: 'Error al obtener historial de turnos' });
@@ -508,4 +540,54 @@ const updateShiftSellers = async (req, res) => {
     }
 };
 
-module.exports = { getCurrentShift, openShift, getShiftSummary, closeShift, getShiftsHistory, getShiftSellers, updateShiftSellers };
+const deleteShift = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [sales] = await pool.query(
+            'SELECT COUNT(*) as count FROM sales_headers WHERE shift_id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+
+        if (sales[0].count > 0) {
+            return res.status(409).json({
+                message: `No se puede eliminar el turno porque tiene ${sales[0].count} venta(s) asociada(s).`
+            });
+        }
+
+        await pool.query('DELETE FROM pos_shift_sellers WHERE shift_id = ?', [id]);
+        await pool.query('DELETE FROM pos_shift_incomes WHERE shift_id = ?', [id]);
+        await pool.query('DELETE FROM pos_shift_expenses WHERE shift_id = ?', [id]);
+        await pool.query('DELETE FROM pos_shift_remesas WHERE shift_id = ?', [id]);
+        await pool.query('DELETE FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
+
+        res.json({ message: 'Turno eliminado correctamente' });
+    } catch (error) {
+        console.error('Error in deleteShift:', error);
+        res.status(500).json({ message: 'Error al eliminar el turno' });
+    }
+};
+
+const updateShift = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { seller_id, pos_id, opening_balance, shift_number } = req.body;
+
+        const [result] = await pool.query(
+            `UPDATE pos_shifts SET seller_id = ?, pos_id = ?, opening_balance = ?, shift_number = ?
+             WHERE id = ? AND company_id = ?`,
+            [seller_id, pos_id, opening_balance, shift_number, id, req.company_id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Turno no encontrado' });
+        }
+
+        res.json({ message: 'Turno actualizado correctamente' });
+    } catch (error) {
+        console.error('Error in updateShift:', error);
+        res.status(500).json({ message: 'Error al actualizar el turno' });
+    }
+};
+
+module.exports = { getCurrentShift, openShift, getShiftSummary, closeShift, getShiftsHistory, getShiftSellers, updateShiftSellers, updateShift, deleteShift };

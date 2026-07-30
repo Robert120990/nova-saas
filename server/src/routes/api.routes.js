@@ -343,6 +343,8 @@ router.get('/shifts/:id/summary', shiftController.getShiftSummary);
 router.post('/shifts/:id/close', shiftController.closeShift);
 router.get('/shifts/:id/sellers', shiftController.getShiftSellers);
 router.put('/shifts/:id/sellers', shiftController.updateShiftSellers);
+router.put('/shifts/:id', checkPermission('manage_shifts_edit'), shiftController.updateShift);
+router.delete('/shifts/:id', checkPermission('manage_shifts_edit'), shiftController.deleteShift);
 
 // Dashboard
 router.get('/dashboard/general-stats', dashboardController.getStats);
