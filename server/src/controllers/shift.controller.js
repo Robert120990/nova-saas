@@ -178,6 +178,9 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             WHERE i.shift_id = ?
          `, [id]);
 
+        // Obtener Remesas
+        const [remesas] = await pool.query('SELECT numero, description, amount FROM pos_shift_remesas WHERE shift_id = ? ORDER BY numero', [id]);
+
         // Ventas por categoría de producto
         const [salesByCategory] = await pool.query(`
             SELECT 
@@ -221,8 +224,10 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             methods: methods,
             expenses: expenses.map(e => ({ description: e.description, amount: parseFloat(e.amount || 0) })),
             incomes: incomes.map(i => ({ description: i.description, amount: parseFloat(i.amount || 0), method: i.payment_method_name })),
+            remesas: remesas.map(r => ({ numero: r.numero, description: r.description, amount: parseFloat(r.amount || 0) })),
             total_expenses: parseFloat(shift.total_expenses || expenses.reduce((acc, e) => acc + parseFloat(e.amount || 0), 0)),
             total_incomes: parseFloat(shift.total_incomes || incomes.reduce((acc, i) => acc + parseFloat(i.amount || 0), 0)),
+            total_remesas: parseFloat(shift.total_remesas || remesas.reduce((acc, r) => acc + parseFloat(r.amount || 0), 0)),
             actual: parseFloat(shift.actual_cash || 0),
             expected: parseFloat(shift.expected_cash || (parseFloat(shift.opening_balance || 0) + cashSales)),
             difference: parseFloat(shift.difference || 0),
@@ -232,7 +237,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             }))
         };
 
-        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses;
+        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses - summary.total_remesas;
 
         console.log(`[DEBUG] Final Summary:`, JSON.stringify(summary));
         res.json(summary);
@@ -244,7 +249,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
 
 const closeShift = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [] } = req.body;
+    const { actual_cash, expenses = [], incomes = [], remesas = [] } = req.body;
 
     try {
         // Obtener resumen actual
@@ -289,7 +294,24 @@ const closeShift = async (req, res) => {
             }
         }
 
-        // 3. Calcular totales para el cierre persistente
+        // 3. Guardar remesas
+        let totalRemesas = 0;
+        let remesaNum = 0;
+        if (remesas.length > 0) {
+            for (const rem of remesas) {
+                const amount = parseFloat(rem.amount || 0);
+                if (amount > 0) {
+                    remesaNum++;
+                    await pool.query(`
+                        INSERT INTO pos_shift_remesas (shift_id, numero, description, amount)
+                        VALUES (?, ?, ?, ?)
+                    `, [id, remesaNum, rem.description || 'Remesa', amount]);
+                    totalRemesas += amount;
+                }
+            }
+        }
+
+        // 4. Calcular totales para el cierre persistente
         const [salesTotals] = await pool.query(`
             SELECT 
                 SUM(CASE WHEN p.metodo_pago = '01' THEN p.monto ELSE 0 END) as cash,
@@ -303,8 +325,8 @@ const closeShift = async (req, res) => {
         const totals = salesTotals[0];
         const cashSales = parseFloat(totals.cash || 0);
         
-        // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS
-        const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses;
+        // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS
+        const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas;
         const actualCash = parseFloat(actual_cash || 0);
         const difference = actualCash - expectedCash;
 
@@ -318,6 +340,7 @@ const closeShift = async (req, res) => {
                 total_sales = ?,
                 total_expenses = ?,
                 total_incomes = ?,
+                total_remesas = ?,
                 status = 'closed'
             WHERE id = ?
         `, [
@@ -328,6 +351,7 @@ const closeShift = async (req, res) => {
             parseFloat(totals.total || 0),
             totalExpenses,
             totalIncomes,
+            totalRemesas,
             id
         ]);
 
@@ -338,7 +362,8 @@ const closeShift = async (req, res) => {
                 actual: actualCash,
                 difference: difference,
                 expenses: totalExpenses,
-                incomes: totalIncomes
+                incomes: totalIncomes,
+                remesas: totalRemesas
             }
         });
     } catch (error) {

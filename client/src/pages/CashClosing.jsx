@@ -50,6 +50,8 @@ const CashClosing = () => {
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
     const [expenses, setExpenses] = useState([{ description: '', amount: '' }]);
     const [incomes, setIncomes] = useState([{ description: '', amount: '', payment_method: '01' }]);
+    const [remesas, setRemesas] = useState([{ description: '', amount: '' }]);
+    const [arqueoActiveTab, setArqueoActiveTab] = useState('incomes');
     const [selectedResponsibleId, setSelectedResponsibleId] = useState('');
     const [selectedSellers, setSelectedSellers] = useState([]);
     const [isEditSellersModalOpen, setIsEditSellersModalOpen] = useState(false);
@@ -120,7 +122,7 @@ const CashClosing = () => {
     });
 
     const closeShiftMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes })).data,
+        mutationFn: async ({ id, actualCash, expenses, incomes, remesas }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes, remesas })).data,
         onSuccess: (data) => {
             queryClient.invalidateQueries(['shifts']);
             setShiftSummary(data.summary);
@@ -128,6 +130,7 @@ const CashClosing = () => {
             setIsSummaryModalOpen(true);
             setExpenses([{ description: '', amount: '' }]); // Reset
             setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
+            setRemesas([{ description: '', amount: '' }]); // Reset
             toast.success('Turno cerrado correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al cerrar turno')
@@ -157,6 +160,7 @@ const CashClosing = () => {
         setActualCash('');
         setExpenses([{ description: '', amount: '' }]);
         setIncomes([{ description: '', amount: '', payment_method: '01' }]);
+        setRemesas([{ description: '', amount: '' }]);
         setIsClosingModalOpen(true);
     };
 
@@ -255,6 +259,20 @@ const CashClosing = () => {
                         {' — '}
                         {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: true })}
                     </div>
+                    {activeSummary && activeShifts[0]?.id === shift.id && (
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 mb-3">
+                            <div>
+                                <span className="text-[9px] font-black uppercase text-slate-400">Ventas Totales</span>
+                                <p className="text-sm font-black text-slate-900"><Money value={activeSummary.total_sales || 0} /></p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-[9px] font-black uppercase text-slate-400">Efectivo en Caja</span>
+                                <p className="text-sm font-black text-emerald-600">
+                                    <Money value={(parseFloat(activeSummary.opening_balance) || 0) + (parseFloat(activeSummary.cash) || 0)} />
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between mb-3 pt-2 border-t border-slate-100">
                         <div>
                             <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Vendedores</span>
@@ -589,7 +607,7 @@ const CashClosing = () => {
                 isOpen={isClosingModalOpen}
                 onClose={() => setIsClosingModalOpen(false)}
                 title="Realizar Arqueo de Caja"
-                maxWidth="max-w-6xl"
+                maxWidth="max-w-5xl"
             >
                 {shiftSummary && (
                     <div className="flex flex-col gap-8 py-4">
@@ -629,6 +647,14 @@ const CashClosing = () => {
                                                 <span>-${expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
                                             </div>
                                         )}
+
+                                        {/* Sección de Remesas (Resumen) */}
+                                        {remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
+                                            <div className="flex justify-between items-center text-sm font-bold text-amber-600 italic">
+                                                <span>Total Remesas</span>
+                                                <span>-${remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -636,117 +662,120 @@ const CashClosing = () => {
                                 <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
                                     <div className="flex flex-col">
                                         <span className="text-xs font-black uppercase text-slate-900 tracking-widest">Efectivo Físico Esperado</span>
-                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses)</span>
+                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas)</span>
                                     </div>
                                     <span className="text-3xl font-black text-emerald-600">
                                         ${(
                                             (parseFloat(shiftSummary.opening_balance) || 0) + 
                                             (parseFloat(shiftSummary.cash) || 0) + 
                                             incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
-                                            expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                            expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
+                                            remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                         ).toFixed(2)}
                                     </span>
                                 </div>
                             </div>
 
-                            {/* Formularios de Ajuste */}
-                            <div className="md:col-span-7 space-y-6">
-                                {/* Sección de Otros Ingresos */}
-                                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Otros Ingresos</h5>
-                                        <button 
-                                            onClick={() => setIncomes([...incomes, { description: '', amount: '', payment_method: '01' }])}
-                                            className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 uppercase"
-                                        >
-                                            + Agregar Ingreso
+                            {/* Formularios de Ajuste - Tabs */}
+                            <div className="md:col-span-7 space-y-4">
+                                {/* Tab Bar */}
+                                <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl">
+                                    {[
+                                        { key: 'incomes', label: 'Ingresos', color: 'emerald', total: incomes.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
+                                        { key: 'remesas', label: 'Remesas', color: 'amber', total: remesas.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
+                                        { key: 'expenses', label: 'Gastos', color: 'rose', total: expenses.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
+                                    ].map(tab => (
+                                        <button key={tab.key} onClick={() => setArqueoActiveTab(tab.key)}
+                                            className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${arqueoActiveTab === tab.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                                            {tab.label}
+                                            {tab.total > 0 && <span className="ml-1.5 tabular-nums text-slate-500">(${tab.total.toFixed(2)})</span>}
                                         </button>
-                                    </div>
-                                    <div className="space-y-3 max-h-32 overflow-y-auto px-1 custom-scrollbar">
-                                        {incomes.map((inc, idx) => (
-                                            <div key={idx} className="flex gap-2 items-center">
-                                                <input 
-                                                    className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300"
-                                                    placeholder="Motivo (ej: Cambio)"
-                                                    value={inc.description}
-                                                    onChange={(e) => {
-                                                        const newInc = [...incomes];
-                                                        newInc[idx].description = e.target.value;
-                                                        setIncomes(newInc);
-                                                    }}
-                                                />
-                                                <select
-                                                    className="flex-1 px-2 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none"
-                                                    value={inc.payment_method}
-                                                    onChange={(e) => {
-                                                        const newInc = [...incomes];
-                                                        newInc[idx].payment_method = e.target.value;
-                                                        setIncomes(newInc);
-                                                    }}
-                                                >
-                                                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                                                </select>
-                                                <input 
-                                                    type="number"
-                                                    className="w-32 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right"
-                                                    placeholder="0.00"
-                                                    value={inc.amount}
-                                                    onChange={(e) => {
-                                                        const newInc = [...incomes];
-                                                        newInc[idx].amount = e.target.value;
-                                                        setIncomes(newInc);
-                                                    }}
-                                                />
-                                                {incomes.length > 1 && (
-                                                    <button onClick={() => setIncomes(incomes.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+                                    ))}
                                 </div>
 
-                                {/* Sección de Gastos */}
-                                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Gastos Caja Chica</h5>
-                                        <button 
-                                            onClick={() => setExpenses([...expenses, { description: '', amount: '' }])}
-                                            className="text-[10px] font-black text-rose-600 hover:text-rose-700 uppercase"
-                                        >
-                                            + Agregar Gasto
-                                        </button>
+                                {/* Tab Content: Ingresos */}
+                                {arqueoActiveTab === 'incomes' && (
+                                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Otros Ingresos</h5>
+                                            <button onClick={() => setIncomes([...incomes, { description: '', amount: '', payment_method: '01' }])}
+                                                className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 uppercase">+ Agregar</button>
+                                        </div>
+                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                            {incomes.map((inc, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center">
+                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300"
+                                                        placeholder="Motivo" value={inc.description}
+                                                        onChange={(e) => { const n = [...incomes]; n[idx].description = e.target.value; setIncomes(n); }} />
+                                                    <select className="flex-1 px-2 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none"
+                                                        value={inc.payment_method}
+                                                        onChange={(e) => { const n = [...incomes]; n[idx].payment_method = e.target.value; setIncomes(n); }}>
+                                                        {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                                                    </select>
+                                                    <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right"
+                                                        placeholder="0.00" value={inc.amount}
+                                                        onChange={(e) => { const n = [...incomes]; n[idx].amount = e.target.value; setIncomes(n); }} />
+                                                    {incomes.length > 1 && (
+                                                        <button onClick={() => setIncomes(incomes.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="space-y-3 max-h-32 overflow-y-auto px-1 custom-scrollbar">
-                                        {expenses.map((exp, idx) => (
-                                            <div key={idx} className="flex gap-2 items-center">
-                                                <input 
-                                                    className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300"
-                                                    placeholder="Descripción"
-                                                    value={exp.description}
-                                                    onChange={(e) => {
-                                                        const newExp = [...expenses];
-                                                        newExp[idx].description = e.target.value;
-                                                        setExpenses(newExp);
-                                                    }}
-                                                />
-                                                <input 
-                                                    type="number"
-                                                    className="w-32 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right"
-                                                    placeholder="0.00"
-                                                    value={exp.amount}
-                                                    onChange={(e) => {
-                                                        const newExp = [...expenses];
-                                                        newExp[idx].amount = e.target.value;
-                                                        setExpenses(newExp);
-                                                    }}
-                                                />
-                                                {expenses.length > 1 && (
-                                                    <button onClick={() => setExpenses(expenses.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                                                )}
-                                            </div>
-                                        ))}
+                                )}
+
+                                {/* Tab Content: Remesas */}
+                                {arqueoActiveTab === 'remesas' && (
+                                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Remesas / Entregas</h5>
+                                            <button onClick={() => setRemesas([...remesas, { description: '', amount: '' }])}
+                                                className="text-[10px] font-black text-amber-600 hover:text-amber-700 uppercase">+ Agregar</button>
+                                        </div>
+                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                            {remesas.map((rem, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center">
+                                                    <span className="w-5 text-[10px] font-black text-amber-600 text-center shrink-0">#{idx + 1}</span>
+                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300"
+                                                        placeholder="Descripción" value={rem.description}
+                                                        onChange={(e) => { const n = [...remesas]; n[idx].description = e.target.value; setRemesas(n); }} />
+                                                    <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 text-right"
+                                                        placeholder="0.00" value={rem.amount}
+                                                        onChange={(e) => { const n = [...remesas]; n[idx].amount = e.target.value; setRemesas(n); }} />
+                                                    {remesas.length > 1 && (
+                                                        <button onClick={() => setRemesas(remesas.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
+
+                                {/* Tab Content: Gastos */}
+                                {arqueoActiveTab === 'expenses' && (
+                                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="text-[10px] font-black uppercase text-rose-500 tracking-widest">Gastos Caja Chica</h5>
+                                            <button onClick={() => setExpenses([...expenses, { description: '', amount: '' }])}
+                                                className="text-[10px] font-black text-rose-600 hover:text-rose-700 uppercase">+ Agregar</button>
+                                        </div>
+                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                            {expenses.map((exp, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center">
+                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300"
+                                                        placeholder="Descripción" value={exp.description}
+                                                        onChange={(e) => { const n = [...expenses]; n[idx].description = e.target.value; setExpenses(n); }} />
+                                                    <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right"
+                                                        placeholder="0.00" value={exp.amount}
+                                                        onChange={(e) => { const n = [...expenses]; n[idx].amount = e.target.value; setExpenses(n); }} />
+                                                    {expenses.length > 1 && (
+                                                        <button onClick={() => setExpenses(expenses.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Entrada de Efectivo Contado */}
                                 <div>
@@ -769,7 +798,8 @@ const CashClosing = () => {
                                                 (parseFloat(shiftSummary.opening_balance) || 0) + 
                                                 (parseFloat(shiftSummary.cash) || 0) + 
                                                 incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
-                                                expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
+                                                remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                             )) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
                                         }`}>
                                             <span className="text-[10px] font-black uppercase tracking-widest">Diferencia</span>
@@ -778,7 +808,8 @@ const CashClosing = () => {
                                                     (parseFloat(shiftSummary.opening_balance) || 0) + 
                                                     (parseFloat(shiftSummary.cash) || 0) + 
                                                     incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
-                                                    expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                    expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
+                                                    remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                                 )).toFixed(2)}
                                             </span>
                                         </div>
@@ -788,15 +819,16 @@ const CashClosing = () => {
                                 <button 
                                 onClick={() => {
                                         const totalCashIncomings = (parseFloat(shiftSummary.opening_balance) || 0) + (parseFloat(shiftSummary.cash) || 0) + incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
-                                        const totalExp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
+                                        const totalExp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) + remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
                                         if (totalExp > totalCashIncomings) {
-                                            return toast.error('El total de gastos no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
+                                            return toast.error('El total de gastos y remesas no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
                                         }
                                         closeShiftMutation.mutate({ 
                                             id: shiftSummary?.id || selectedShiftId || activeShifts[0]?.id, 
                                             actualCash, 
                                             expenses: expenses.filter(e => parseFloat(e.amount) > 0),
-                                            incomes: incomes.filter(i => parseFloat(i.amount) > 0)
+                                            incomes: incomes.filter(i => parseFloat(i.amount) > 0),
+                                            remesas: remesas.filter(r => parseFloat(r.amount) > 0)
                                         });
                                     }}
                                     disabled={!actualCash || closeShiftMutation.isPending}
@@ -905,6 +937,22 @@ const CashClosing = () => {
                                         </div>
                                     </div>
                                 )}
+                                {parseFloat(shiftSummary.total_remesas || 0) > 0 && (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center text-[10px] font-black text-amber-600 uppercase tracking-widest bg-amber-50 p-2 rounded-lg">
+                                            <span>Remesas / Entregas</span>
+                                            <span>-<Money value={shiftSummary.total_remesas || 0} /></span>
+                                        </div>
+                                        <div className="px-1 space-y-1">
+                                            {shiftSummary.remesas?.map((rem, i) => (
+                                                <div key={i} className="flex justify-between text-[10px] font-bold text-slate-400">
+                                                    <span className="truncate pr-4">#{rem.numero} {rem.description}</span>
+                                                    <span className="shrink-0">-<Money value={rem.amount} /></span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -926,6 +974,9 @@ const CashClosing = () => {
                                     ).join('');
                                     const incomesHtml = (s.incomes || []).map(i =>
                                         `<div class="row"><span>Ingreso: ${i.description}</span><span>+$${i.amount.toFixed(2)}</span></div>`
+                                    ).join('');
+                                    const remesasHtml = (s.remesas || []).map(r =>
+                                        `<div class="row"><span>#${r.numero} ${r.description}</span><span>-$${r.amount.toFixed(2)}</span></div>`
                                     ).join('');
 
                                     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Arqueo</title>
@@ -959,6 +1010,7 @@ const CashClosing = () => {
                                     <div class="dashed"></div>
                                     ${catsHtml ? `<div class="bold" style="margin-bottom:2px;">VENTAS POR CATEGORÍA</div>${catsHtml}<div class="dashed"></div>` : ''}
                                     ${incomesHtml ? `<div class="bold" style="margin-bottom:2px;">INGRESOS</div>${incomesHtml}<div class="dashed"></div>` : ''}
+                                    ${remesasHtml ? `<div class="bold" style="margin-bottom:2px;">REMAS</div>${remesasHtml}<div class="dashed"></div>` : ''}
                                     ${expensesHtml ? `<div class="bold" style="margin-bottom:2px;">GASTOS</div>${expensesHtml}<div class="dashed"></div>` : ''}
                                     <div class="row bold"><span>Esperado en Caja</span><span>$${(s.expected || 0).toFixed(2)}</span></div>
                                     <div class="row bold"><span>Contado Físico</span><span>$${(s.actual || 0).toFixed(2)}</span></div>

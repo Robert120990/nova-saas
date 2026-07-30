@@ -83,6 +83,7 @@ const SalesTerminal = () => {
         num_cheque: '',
         last_digits: ''
     });
+    const [entregado, setEntregado] = useState('');
     
     // UI State
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -378,11 +379,17 @@ const SalesTerminal = () => {
             }
             if (e.key === 'F10') {
                 e.preventDefault();
-                if (activeView === 'pago') {
+                if (isSuccessModalOpen && saleResult) {
+                    handlePrintTicketRef.current(saleResult);
+                } else if (activeView === 'pago') {
                     handleProcessSaleRef.current();
                 } else if (tipoDte === '07' ? linkedDocs.length > 0 : cart.length > 0) {
                     goToPayment();
                 }
+            }
+            if (e.key === 'Enter' && isSuccessModalOpen) {
+                e.preventDefault();
+                handleCloseSuccessRef.current();
             }
             if (e.key === 'Escape' && isAuthModalOpen) {
                 navigate('/dashboard');
@@ -421,7 +428,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView]);
+    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length]);
 
     // Auto-focus barcode input when starting POS
     useEffect(() => {
@@ -566,6 +573,7 @@ const SalesTerminal = () => {
                 extra: '',
                 methodName: 'Efectivo'
             }]);
+            setEntregado(totals.total.toFixed(2));
             
             setCurrentPayment({
                 metodo_pago: '01',
@@ -576,6 +584,21 @@ const SalesTerminal = () => {
             });
         }
     };
+
+    // Sync entregado to cash payment
+    useEffect(() => {
+        if (activeView !== 'pago') return;
+        const amount = parseFloat(entregado) || 0;
+        if (amount <= 0) return;
+        setPayments(prev => {
+            const idx = prev.findIndex(p => p.metodo_pago === '01');
+            if (idx < 0) return prev;
+            if (Math.abs(parseFloat(prev[idx].monto) - amount) < 0.001) return prev;
+            const next = [...prev];
+            next[idx] = { ...next[idx], monto: amount.toFixed(2) };
+            return next;
+        });
+    }, [entregado, activeView]);
 
     // Mutation
     const processSale = useMutation({
@@ -884,6 +907,10 @@ const SalesTerminal = () => {
 
     const handleProcessSaleRef = useRef(handleProcessSale);
     handleProcessSaleRef.current = handleProcessSale;
+    const handleCloseSuccessRef = useRef(handleCloseSuccess);
+    handleCloseSuccessRef.current = handleCloseSuccess;
+    const handlePrintTicketRef = useRef(handlePrintTicket);
+    handlePrintTicketRef.current = handlePrintTicket;
 
     // Totals Calculation
     const totals = useMemo(() => {
@@ -1756,34 +1783,78 @@ const SalesTerminal = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
                         {/* Columna de Resumen */}
-                        <div className="bg-slate-50 p-6 rounded-[3rem] flex flex-col border border-slate-100 overflow-y-auto custom-scrollbar">
-                            <span className="text-indigo-500 font-black uppercase text-[10px] tracking-[0.2em] mb-4">Resumen de Operación</span>
-                            <div className="space-y-2 mb-8 text-xs font-bold text-slate-500 uppercase">
-                                <div className="flex justify-between border-b border-slate-100 pb-1"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><span>${totals.viewIva.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1 text-orange-600"><span>FOVIAL (${(taxSettings?.fovial_rate || 0.20)}/gal)</span><span>${totals.fovial.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1 text-amber-600"><span>COTRANS (${(taxSettings?.cotrans_rate || 0.10)}/gal)</span><span>${totals.cotrans.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1"><span>Exentas</span><span>${totals.exento.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1"><span>No Sujetas</span><span>${totals.noSujeto.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1 font-black text-indigo-600"><span>Subtotal s/Impuestos</span><span>${totals.subtotal.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1 text-rose-500"><span>Retención ({(taxSettings?.retencion_rate || 1)}%)</span><span>-${totals.retencion.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-1 text-emerald-600"><span>Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span><span>+${totals.percepcion.toFixed(2)}</span></div>
-                                <div className="flex justify-between font-black text-slate-900 pt-2 text-sm italic"><span>Monto Operación</span><span>${totals.montoOperacion.toFixed(2)}</span></div>
+                        <div className="bg-slate-50 p-4 rounded-[3rem] flex flex-col border border-slate-100 overflow-y-auto custom-scrollbar">
+                            <span className="text-indigo-500 font-black uppercase text-[10px] tracking-[0.2em] mb-2">Resumen de Operación</span>
+                            <div className="space-y-1 mb-4 text-[11px] font-bold text-slate-500 uppercase">
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><span>${totals.viewIva.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-orange-600"><span>FOVIAL (${(taxSettings?.fovial_rate || 0.20)}/gal)</span><span>${totals.fovial.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-amber-600"><span>COTRANS (${(taxSettings?.cotrans_rate || 0.10)}/gal)</span><span>${totals.cotrans.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>Exentas</span><span>${totals.exento.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>No Sujetas</span><span>${totals.noSujeto.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5 font-black text-indigo-600"><span>Subtotal s/Impuestos</span><span>${totals.subtotal.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-rose-500"><span>Retención ({(taxSettings?.retencion_rate || 1)}%)</span><span>-${totals.retencion.toFixed(2)}</span></div>
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-emerald-600"><span>Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span><span>+${totals.percepcion.toFixed(2)}</span></div>
+                                <div className="flex justify-between font-black text-slate-900 pt-1 text-xs italic"><span>Monto Operación</span><span>${totals.montoOperacion.toFixed(2)}</span></div>
                             </div>
 
-                            <div className="mt-auto space-y-4">
+                            <div className="mt-auto space-y-3">
                                 <div className="flex justify-between items-end">
                                     <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Total Documento</span>
-                                    <span className="text-4xl font-black text-slate-900 tracking-tighter">${totals.total.toFixed(2)}</span>
+                                    <span className="text-3xl font-black text-slate-900 tracking-tighter">${totals.total.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between items-end p-4 bg-indigo-600 rounded-2xl text-white shadow-lg">
+
+                                {/* Entregado y Vuelto */}
+                                <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-sm space-y-2">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Entregado</label>
+                                        <MoneyInput 
+                                            value={entregado}
+                                            onChange={(e) => setEntregado(e.target.value)}
+                                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xl font-black outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-400 transition-all tabular-nums text-right"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    {/* Quick Amount Buttons */}
+                                    <div className="flex flex-wrap gap-1">
+                                        <button onClick={() => setEntregado(totals.total.toFixed(2))}
+                                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all">
+                                            Exacto
+                                        </button>
+                                        {['+1', '+5', '10', '20', '50', '100'].map(val => (
+                                            <button key={val} onClick={() => {
+                                                const current = parseFloat(entregado) || 0;
+                                                if (val.startsWith('+')) {
+                                                    setEntregado((current + parseFloat(val.slice(1))).toFixed(2));
+                                                } else {
+                                                    setEntregado(val);
+                                                }
+                                            }}
+                                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black transition-all">
+                                                {val.startsWith('+') ? val : `$${val}`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {/* Vuelto */}
+                                    {(() => {
+                                        const v = Math.max(0, parseFloat(entregado || 0) - totals.total);
+                                        return v > 0.01 ? (
+                                            <div className="flex justify-between items-center pt-1.5 border-t border-slate-100">
+                                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Vuelto</span>
+                                                <span className="text-lg font-black text-emerald-600 tabular-nums">${v.toFixed(2)}</span>
+                                            </div>
+                                        ) : null;
+                                    })()}
+                                </div>
+
+                                <div className="flex justify-between items-end p-3 bg-indigo-600 rounded-2xl text-white shadow-lg">
                                     <span className="font-black uppercase text-[10px] tracking-widest opacity-80">Total Cobrado</span>
-                                    <span className="text-2xl font-black tracking-tighter">${payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0).toFixed(2)}</span>
+                                    <span className="text-xl font-black tracking-tighter">${payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0).toFixed(2)}</span>
                                 </div>
                                 {condicionPago === '1' && (
-                                    <div className="flex justify-between items-end p-4 bg-white rounded-2xl border border-slate-200 shadow-sm italic">
+                                    <div className="flex justify-between items-end p-3 bg-white rounded-2xl border border-slate-200 shadow-sm italic">
                                         <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Saldo Pendiente</span>
-                                        <span className={`text-2xl font-black tracking-tighter ${totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) > 0.01 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                        <span className={`text-xl font-black tracking-tighter ${totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) > 0.01 ? 'text-rose-500' : 'text-emerald-500'}`}>
                                             ${Math.max(0, totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)).toFixed(2)}
                                         </span>
                                     </div>
@@ -1898,9 +1969,9 @@ const SalesTerminal = () => {
                                         const monto = parseFloat(currentPayment.monto);
                                         if (isNaN(monto) || monto <= 0) return toast.error('Monto inválido');
                                         
-                                        // Validar que no supere el total
+                                        // Validar que no supere el total (excepto efectivo que genera vuelto)
                                         const alreadyPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
-                                        if (alreadyPaid + monto > totals.total + 0.01) {
+                                        if (currentPayment.metodo_pago !== '01' && alreadyPaid + monto > totals.total + 0.01) {
                                             return toast.error('El monto total de los pagos no puede superar el total de la venta');
                                         }
 
@@ -2586,13 +2657,13 @@ const SalesTerminal = () => {
                                 className="flex items-center justify-center gap-3 bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl transition-all active:scale-95 w-full"
                             >
                                 <Printer size={20} />
-                                Imprimir Ticket
+                                Imprimir Ticket  [F10]
                             </button>
                             <button 
                                 onClick={handleCloseSuccess}
                                 className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 hover:border-indigo-100 hover:text-indigo-600 text-slate-500 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all w-full"
                             >
-                                Nueva Venta
+                                Nueva Venta  [Enter]
                             </button>
                         </div>
                                     </div>
