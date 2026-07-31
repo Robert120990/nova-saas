@@ -325,6 +325,13 @@ const Dashboard = () => {
                                                 <span className="text-lg font-black text-indigo-600">{formatCurrency(branch.monthlyTotal)}</span>
                                             </div>
                                             <div className="flex flex-col items-end gap-1">
+                                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                                                    branch.ambiente === '2'
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                                        : 'bg-amber-50 text-amber-700 border-amber-100'
+                                                }`}>
+                                                    {branch.ambiente === '2' ? 'Producción' : 'Pruebas'}
+                                                </span>
                                                 <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">Este Mes</span>
                                                 <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>

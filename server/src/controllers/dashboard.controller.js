@@ -100,7 +100,7 @@ const getStats = async (req, res) => {
         // 5. Sucursales mas ventas y top productos
         try {
             const [mSales] = await pool.query(`
-                SELECT b.id as branch_id, b.nombre as branch_name, COALESCE(SUM(sh.total_pagar), 0) as total
+                SELECT b.id as branch_id, b.nombre as branch_name, b.ambiente, COALESCE(SUM(sh.total_pagar), 0) as total
                 FROM branches b
                 LEFT JOIN sales_headers sh ON b.id = sh.branch_id 
                   AND sh.estado != 'anulado' 
@@ -135,6 +135,7 @@ const getStats = async (req, res) => {
             branches = (mSales || []).map(ms => ({
                 id: ms.branch_id,
                 name: ms.branch_name,
+                ambiente: ms.ambiente,
                 monthlyTotal: parseFloat(ms.total || 0),
                 topProducts: topByBranch[ms.branch_id] || [],
                 status: 'Online'

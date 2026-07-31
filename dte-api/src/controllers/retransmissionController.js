@@ -211,13 +211,15 @@ async function retransmit(req, res) {
             [req.company_id]
         );
         const certPass = company[0].certificate_password;
+        // El ambiente lo define el documento regenerado (sucursal → empresa)
+        const ambiente = dteJson.identificacion?.ambiente || company[0].ambiente;
 
         // 4. Sign Document
         const signResult = await signatureService.signDTE(dteJson, {
             certificatePath: company[0].certificate_path,
             certificatePassword: certPass,
             nit: company[0].nit,
-            ambiente: company[0].ambiente
+            ambiente: ambiente
         });
 
         if (!signResult.success) {
@@ -225,7 +227,7 @@ async function retransmit(req, res) {
         }
 
         // 5. Authenticate with Hacienda
-        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, company[0].ambiente);
+        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
         if (!auth.success) {
             throw new Error(`Error MH Auth: ${auth.message}`);
         }
@@ -238,7 +240,7 @@ async function retransmit(req, res) {
         const version = getSchemaVersion(tipoDte);
 
         const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
-            ambiente: getMHAmbiente(company[0].ambiente),
+            ambiente: getMHAmbiente(ambiente),
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
             version: version

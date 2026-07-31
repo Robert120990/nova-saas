@@ -15,6 +15,7 @@ const Branches = () => {
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
+    const [selectedEnv, setSelectedEnv] = useState('2');
     const [previewUrl, setPreviewUrl] = useState(null);
 
     const { data: branches = [] } = useQuery({
@@ -78,6 +79,11 @@ const Branches = () => {
         queryFn: async () => (await axios.get('/api/catalogs/cat_009_tipo_establecimiento')).data
     });
 
+    const { data: environments = [] } = useQuery({
+        queryKey: ['catalogs', 'cat_001_ambiente'],
+        queryFn: async () => (await axios.get('/api/catalogs/cat_001_ambiente')).data
+    });
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -89,6 +95,7 @@ const Branches = () => {
         setSelectedDept(branch.departamento);
         setSelectedMun(branch.municipio);
         setSelectedDistrito(branch.distrito);
+        setSelectedEnv(branch.ambiente || '2');
         setPreviewUrl(null);
         setIsModalOpen(true);
     };
@@ -108,6 +115,8 @@ const Branches = () => {
                         setSelectedBranch(null); 
                         setSelectedDept(''); 
                         setSelectedMun('');
+                        setSelectedDistrito('');
+                        setSelectedEnv('2');
                         setPreviewUrl(null);
                         setIsModalOpen(true); 
                     }}
@@ -134,6 +143,15 @@ const Branches = () => {
                                     {establishmentTypes.find(t => t.code === b.tipo_establecimiento)?.description || 'Sucursal'}
                                 </div>
                                 {b.codigo_mh && <div className="text-[10px] text-slate-400 mt-0.5">MH: {b.codigo_mh}</div>}
+                                <div className="flex items-center gap-1.5 mt-1">
+                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${
+                                        b.ambiente === '2'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                            : 'bg-amber-50 text-amber-700 border-amber-100'
+                                    }`}>
+                                        {b.ambiente === '2' ? 'Producción' : 'Pruebas'}
+                                    </span>
+                                </div>
                             </td>
                             <td className="px-6 py-4">
                                 <div className="text-xs text-slate-500 font-medium">Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}</div>
@@ -188,9 +206,18 @@ const Branches = () => {
                             <input name="correo" type="email" defaultValue={selectedBranch?.correo} placeholder="sucursal@empresa.com" className={fieldCls} />
                         </div>
                     </div>
-                    <div>
-                        <label className={labelCls}>Código MH</label>
-                        <input name="codigo_mh" defaultValue={selectedBranch?.codigo_mh} placeholder="Código Ministerio de Hacienda" className={fieldCls} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelCls}>Código MH</label>
+                            <input name="codigo_mh" defaultValue={selectedBranch?.codigo_mh} placeholder="Código Ministerio de Hacienda" className={fieldCls} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Ambiente de Facturación</label>
+                            <select name="ambiente" value={selectedEnv} onChange={(e) => setSelectedEnv(e.target.value)} className={fieldCls} required>
+                                <option value="">Seleccionar</option>
+                                {environments?.map(env => <option key={env.code} value={env.code}>{env.description}</option>)}
+                            </select>
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>

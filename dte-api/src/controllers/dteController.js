@@ -37,7 +37,9 @@ async function emit(req, res) {
 
         // 2. Get Company/Branch credentials for signing and transmission
         const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
-        console.log(`[DTE-EMIT-DEBUG] Company ${req.company_id} — ambiente DB: "${company[0].ambiente}"`);
+        const [branchEnv] = await pool.query('SELECT ambiente FROM branches WHERE id = ? AND company_id = ?', [req.branch_id, req.company_id]);
+        const ambiente = (branchEnv.length > 0 && branchEnv[0].ambiente) || company[0].ambiente;
+        console.log(`[DTE-EMIT-DEBUG] Company ${req.company_id} — ambiente DB: "${ambiente}"`);
         const certPass = bodyPassword || company[0].certificate_password;
         const signatureMode = process.env.SIGNATURE_MODE || 'internal';
 
@@ -50,7 +52,7 @@ async function emit(req, res) {
             certificatePath: company[0].certificate_path,
             certificatePassword: certPass,
             nit: company[0].nit,
-            ambiente: company[0].ambiente
+            ambiente: ambiente
         });
 
         if (!signResult.success) {
@@ -59,7 +61,7 @@ async function emit(req, res) {
 
         // 4. Authenticate with Hacienda
         console.log(`[HaciendaAuth] Authenticaton request for company ${company[0].nit}...`);
-        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, company[0].ambiente);
+        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
         if (!auth.success) {
             throw new Error(`Error MH Auth: ${auth.message}`);
         }
@@ -73,12 +75,12 @@ async function emit(req, res) {
         console.log(`[Transmission] JWS identified (starting with): ${jwsString.substring(0, 50)}...`);
 
         const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
-            ambiente: getMHAmbiente(company[0].ambiente),
+            ambiente: getMHAmbiente(ambiente),
             tipoDte: tipoDte,
             codigoGeneracion: codigoGeneracion,
             version: getSchemaVersion(tipoDte)
         });
-        console.log(`[DTE-EMIT-DEBUG] Ambiente enviado a Hacienda: "${getMHAmbiente(company[0].ambiente)}" (DB: "${company[0].ambiente}")`);
+        console.log(`[DTE-EMIT-DEBUG] Ambiente enviado a Hacienda: "${getMHAmbiente(ambiente)}" (DB: "${ambiente}")`);
 
         // 6. Store in Database
         const dbStatus = txResult.success && txResult.status === 'PROCESADO' ? 'ACCEPTED' : 'REJECTED';
@@ -206,6 +208,8 @@ async function sign(req, res) {
 
         const dte = rows[0];
         const [company] = await pool.query('SELECT nit, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
+        const [branchEnv] = await pool.query('SELECT ambiente FROM branches WHERE id = ? AND company_id = ?', [dte.branch_id, req.company_id]);
+        const ambiente = (branchEnv.length > 0 && branchEnv[0].ambiente) || company[0].ambiente;
         
         const certPath = company[0].certificate_path;
         const certPass = bodyPassword || company[0].certificate_password;
@@ -219,7 +223,7 @@ async function sign(req, res) {
             certificatePath: certPath,
             certificatePassword: certPass,
             nit: company[0].nit,
-            ambiente: company[0].ambiente
+            ambiente: ambiente
         });
 
         if (signResult.success) {

@@ -201,7 +201,7 @@ async function invalidateDTE(payload, companyId, user) {
             certificatePath: company.certificate_path,
             certificatePassword: company.certificate_password,
             nit: company.nit,
-            ambiente: company.ambiente
+            ambiente: dte.ambiente
         }
     );
 
@@ -210,7 +210,7 @@ async function invalidateDTE(payload, companyId, user) {
     }
 
     // 4. Enviar a Hacienda
-    const auth = await authenticate(company.api_user, company.api_password, company.ambiente);
+    const auth = await authenticate(company.api_user, company.api_password, dte.ambiente);
     if (!auth.success) {
         throw new Error(`Error de autenticación: ${auth.message}`);
     }

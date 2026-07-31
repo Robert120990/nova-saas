@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS branches (
     telefono VARCHAR(20),
     correo VARCHAR(100),
     codigo_mh VARCHAR(10),
+    ambiente VARCHAR(10) DEFAULT '2',
     logo_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,

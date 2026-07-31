@@ -15,7 +15,7 @@ async function processContingencyQueue() {
 
     // 1. Get pending contingency documents (sin exceder máximo de intentos)
     const [tasks] = await pool.query(
-        'SELECT cd.*, c.api_user, c.api_password, c.ambiente ' +
+        'SELECT cd.*, c.api_user, c.api_password, d.ambiente ' +
         'FROM dte_contingency_documents cd ' +
         'JOIN dtes d ON cd.codigo_generacion = d.codigo_generacion ' +
         'JOIN companies c ON d.company_id = c.id ' +

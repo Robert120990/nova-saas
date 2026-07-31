@@ -116,7 +116,7 @@ async function generateDTE(payload) {
 
     const identificacion = {
         version: version,
-        ambiente: getMHAmbiente(company.ambiente),
+        ambiente: getMHAmbiente(branch.ambiente || company.ambiente),
         tipoDte: tipoDte,
         numeroControl: numeroControl,
         codigoGeneracion: codigoGeneracion,

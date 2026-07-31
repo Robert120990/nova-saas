@@ -245,14 +245,14 @@ async function emitERET(payload, companyId, user) {
         certificatePath: company[0].certificate_path,
         certificatePassword: certPass,
         nit: company[0].nit,
-        ambiente: company[0].ambiente
+        ambiente: eretJson.identificacion.ambiente
     });
 
     if (!signResult.success) {
         throw new Error(`Falla en firma: ${signResult.message}`);
     }
 
-    const auth = await authenticate(company[0].api_user, company[0].api_password, company[0].ambiente);
+    const auth = await authenticate(company[0].api_user, company[0].api_password, eretJson.identificacion.ambiente);
     if (!auth.success) {
         throw new Error(`Error MH Auth: ${auth.message}`);
     }

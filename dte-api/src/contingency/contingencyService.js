@@ -6,7 +6,7 @@ const pool = require('../../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { authenticate } = require('../transmission/transmissionService');
 const axios = require('axios');
-const { getEndpoint } = require('../config/haciendaConfig');
+const { getEndpoint, getMHAmbiente } = require('../config/haciendaConfig');
 
 async function startContingency(payload) {
     const { motivo, tipoContingencia, companyId, branchId } = payload;
@@ -67,7 +67,7 @@ async function getActiveContingency(companyId) {
 async function sendContingencyReport(contingencyId) {
     const [contingencyRows] = await pool.query(
         'SELECT c.*, comp.nit, comp.razon_social, comp.correo, comp.telefono, comp.ambiente, ' +
-        'b.tipo_establecimiento, b.codigo_mh, b.codigo as punto_venta_codigo ' +
+        'b.tipo_establecimiento, b.codigo_mh, b.codigo as punto_venta_codigo, b.ambiente AS branch_ambiente ' +
         'FROM dte_contingencies c ' +
         'LEFT JOIN companies comp ON c.company_id = comp.id ' +
         'LEFT JOIN branches b ON c.branch_id = b.id ' +
@@ -77,6 +77,7 @@ async function sendContingencyReport(contingencyId) {
 
     if (contingencyRows.length === 0) return { success: false, message: 'Contingencia no encontrada' };
     const con = contingencyRows[0];
+    const ambiente = con.branch_ambiente || con.ambiente;
 
     const [docs] = await pool.query(
         'SELECT codigo_generacion, tipo_documento FROM dte_contingency_documents WHERE estado_envio = ?',
@@ -89,7 +90,7 @@ async function sendContingencyReport(contingencyId) {
     const report = {
         identificacion: {
             version: 4,
-            ambiente: con.ambiente || '00',
+            ambiente: getMHAmbiente(ambiente),
             codigoGeneracion: uuidv4().toUpperCase(),
             fTransmision: fin.toISOString().split('T')[0],
             hTransmision: fin.toTimeString().split(' ')[0]
@@ -122,10 +123,10 @@ async function sendContingencyReport(contingencyId) {
     };
 
     try {
-        const auth = await authenticate(con.api_user, con.api_password, con.ambiente);
+        const auth = await authenticate(con.api_user, con.api_password, ambiente);
         if (!auth.success) return { success: false, message: 'Error de autenticación MH' };
 
-        const url = getEndpoint('contingencia', con.ambiente);
+        const url = getEndpoint('contingencia', ambiente);
         const response = await axios.post(url, report, {
             headers: { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' }
         });
