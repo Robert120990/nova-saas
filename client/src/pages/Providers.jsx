@@ -208,7 +208,7 @@ const Providers = () => {
                                 )}
                             </td>
                             <td className="px-3 py-1">
-                                <div className="text-[10px] text-slate-600 font-medium">Dist. {p.distrito || '01'}, {p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
+                                <div className="text-[10px] text-slate-600 font-medium">Dist. {p.distrito_nombre || p.distrito || '01'}, {p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
                                 <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{p.direccion}</div>
                             </td>
                             <td className="px-3 py-1">

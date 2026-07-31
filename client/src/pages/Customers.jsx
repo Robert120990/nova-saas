@@ -429,7 +429,7 @@ const Customers = () => {
                                 <div className="text-[10px] text-slate-500 font-medium">{c.nombre_comercial}</div>
                             </td>
                             <td className="px-3 py-1">
-                                <div className="text-[10px] text-slate-600 font-medium">Dist. {c.distrito || '01'}, {c.municipio_nombre || c.municipio}, {c.departamento_nombre || c.departamento}</div>
+                                <div className="text-[10px] text-slate-600 font-medium">Dist. {c.distrito_nombre || c.distrito || '01'}, {c.municipio_nombre || c.municipio}, {c.departamento_nombre || c.departamento}</div>
                                 <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{c.direccion}</div>
                             </td>
                             <td className="px-3 py-1">
@@ -713,7 +713,7 @@ const Customers = () => {
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-bold text-slate-800">{b.nombre}</div>
                                         <div className="text-xs text-slate-500">
-                                            Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                            Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
                                             {b.direccion && ` — ${b.direccion}`}
                                         </div>
                                         {b.telefono && <div className="text-xs text-slate-400">{b.telefono}</div>}

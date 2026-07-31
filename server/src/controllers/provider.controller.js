@@ -9,11 +9,13 @@ const getProviders = async (req, res) => {
             SELECT p.*,
                    d.description AS departamento_nombre,
                    m.description AS municipio_nombre,
+                   dist.description AS distrito_nombre,
                    a.description AS actividad_nombre,
                    tp.description AS tipo_persona_nombre
             FROM providers p
             LEFT JOIN cat_012_departamento d ON p.departamento = d.code
             LEFT JOIN cat_013_municipio m ON p.municipio = m.code AND p.departamento = m.dep_code
+            LEFT JOIN cat_008_distrito dist ON p.distrito = dist.code AND p.departamento = dist.dep_code
             LEFT JOIN cat_019_actividad_economica a ON p.codigo_actividad = a.code
             LEFT JOIN cat_029_tipo_persona tp ON p.tipo_persona = tp.code
             WHERE p.company_id = ?

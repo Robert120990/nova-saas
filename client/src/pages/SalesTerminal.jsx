@@ -1465,7 +1465,7 @@ const SalesTerminal = () => {
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Ubicación</span>
                                             <span className="text-[10px] font-bold text-slate-600 truncate uppercase">
-                                                Dist. {selectedCustomerData.distrito || '01'}, {selectedCustomerData.municipio_nombre || 'MUNIC.'}, {selectedCustomerData.departamento_nombre || 'DEPTO.'}
+                                                Dist. {selectedCustomerData.distrito_nombre || selectedCustomerData.distrito || '01'}, {selectedCustomerData.municipio_nombre || 'MUNIC.'}, {selectedCustomerData.departamento_nombre || 'DEPTO.'}
                                             </span>
                                         </div>
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1 text-right">
@@ -1488,7 +1488,7 @@ const SalesTerminal = () => {
                                         <option value="">Principal</option>
                                         {customerBranches.map(b => (
                                             <option key={b.id} value={b.id}>
-                                                {b.nombre} — Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                                {b.nombre} — Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
                                             </option>
                                         ))}
                                     </select>

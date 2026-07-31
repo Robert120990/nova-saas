@@ -154,7 +154,7 @@ const Branches = () => {
                                 </div>
                             </td>
                             <td className="px-6 py-4">
-                                <div className="text-xs text-slate-500 font-medium">Dist. {b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}</div>
+                                <div className="text-xs text-slate-500 font-medium">Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}</div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[200px]">{b.direccion}</div>
                             </td>
                             <td className="px-6 py-4">

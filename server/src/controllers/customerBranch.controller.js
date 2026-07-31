@@ -9,10 +9,12 @@ const getBranches = async (req, res) => {
         const [rows] = await pool.query(
             `SELECT cb.*,
                     d.description AS departamento_nombre,
-                    m.description AS municipio_nombre
+                    m.description AS municipio_nombre,
+                    dist.description AS distrito_nombre
              FROM customer_branches cb
              LEFT JOIN cat_012_departamento d ON cb.departamento = d.code
              LEFT JOIN cat_013_municipio m ON cb.municipio = m.code AND cb.departamento = m.dep_code
+             LEFT JOIN cat_008_distrito dist ON cb.distrito = dist.code AND cb.departamento = dist.dep_code
              WHERE cb.customer_id = ? AND cb.company_id = ?
              ORDER BY cb.id ASC`,
             [customer_id, req.company_id]

@@ -10,10 +10,12 @@ const getBranches = async (req, res) => {
         let sql = `
             SELECT b.*,
                    d.description AS departamento_nombre,
-                   m.description AS municipio_nombre
+                   m.description AS municipio_nombre,
+                   dist.description AS distrito_nombre
             FROM branches b
             LEFT JOIN cat_012_departamento d ON b.departamento = d.code
             LEFT JOIN cat_013_municipio m ON b.municipio = m.code and b.departamento = m.dep_code
+            LEFT JOIN cat_008_distrito dist ON b.distrito = dist.code AND b.departamento = dist.dep_code
             WHERE b.company_id = ?
         `;
         let params = [companyId];
