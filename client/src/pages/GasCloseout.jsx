@@ -3893,7 +3893,7 @@ const GasCloseout = () => {
                                     </div>
                                 ) : diferenciasData ? (
                                     <>
-                                        {diferenciasData.shiftMatch === false && (
+                                        {diferenciasData.shiftMatch !== true && (
                                             <div className="flex items-start gap-3 p-3 mt-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
                                                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                                                 <div className="text-[11px] font-medium">
@@ -3959,7 +3959,7 @@ const GasCloseout = () => {
                                             </span>
                                             <button
                                                 onClick={() => setShowConfirmComplementaria(true)}
-                                                disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0}
+                                                disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0 || diferenciasData.shiftMatch !== true}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
                                             >
                                                 {generarComplementariaMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
