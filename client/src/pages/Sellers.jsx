@@ -229,6 +229,17 @@ const Sellers = () => {
                                 {branches.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                             </select>
                         </div>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Estado</label>
+                            <select 
+                                name="status"
+                                defaultValue={selectedSeller?.status || 'activo'}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-400 transition-all cursor-pointer"
+                            >
+                                <option value="activo">Activo</option>
+                                <option value="inactivo">Inactivo</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="pt-4 flex gap-3">
