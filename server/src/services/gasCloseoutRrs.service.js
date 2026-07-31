@@ -111,9 +111,13 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
     const data = await fetchCloseoutData(closeoutId, companyId);
     const { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, creditos, vales, nozzleAssignments } = data;
 
-    const cierreId = '015-' + closeout.id;
+    const [settingsRows] = await pool.query(
+        `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'rrs_id_empresa'`,
+        [companyId, closeout.branch_id || null, closeout.branch_id || null]
+    );
+    const idEmpresa = settingsRows[0]?.setting_value || '015';
+    const cierreId = `${idEmpresa}-${closeout.id}`;
     const tankLecturaId = cierreId + '-T';
-    const idEmpresa = '015';
     const idPuntoVenta = 'P01';
     const fechaTurno = formatDateDDMMYYYY(closeout.fecha_turno);
     const fechaDate = closeout.fecha_turno instanceof Date

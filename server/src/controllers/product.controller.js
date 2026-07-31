@@ -305,16 +305,16 @@ const updateFuelPrices = async (req, res) => {
 
 const getLubricantProducts = async (req, res) => {
     try {
+        const branchId = req.query.branch_id || req.user?.branch_id || null;
+
         const [settings] = await pool.query(
-            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND setting_key = 'lubricant_category_id'`,
-            [req.company_id]
+            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'lubricant_category_id'`,
+            [req.company_id, branchId, branchId]
         );
         const categoryId = settings[0]?.setting_value;
         if (!categoryId) {
             return res.json([]);
         }
-
-        const branchId = req.query.branch_id || req.user?.branch_id || null;
 
         const [products] = await pool.query(`
             SELECT p.id, p.codigo, p.descripcion, COALESCE(pbp.precio_unitario, 0) as precio_unitario

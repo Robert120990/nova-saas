@@ -352,8 +352,15 @@ const requestQuedan = async (req, res) => {
         }
 
         const config = configs[0];
+
+        const [empresaRows] = await pool.query(
+            'SELECT setting_value FROM sales_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = ?',
+            [companyId, quedan.branch_id || null, quedan.branch_id || null, 'empresa_rrs']
+        );
+        const rrsEmpresa = empresaRows[0]?.setting_value || '015';
+
         const nrc = (quedan.provider_nrc || '').replace(/\s/g, '');
-        const codProveedor = `015${quedan.provider_id}${nrc}`;
+        const codProveedor = `${rrsEmpresa}${quedan.provider_id}${nrc}`;
         const llave = `${config.rrs_id_empresa}-${quedan.id}`;
         const tipoDestino = 'PISTA';
         const fechaDate = quedan.fecha instanceof Date

@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
 
 export default function GasStationConfig() {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [lubricantCategoryId, setLubricantCategoryId] = useState('');
     const [variacionPermitida, setVariacionPermitida] = useState('');
     const [cuentaBancariaPista, setCuentaBancariaPista] = useState('');
+    const [empresaRrs, setEmpresaRrs] = useState('');
 
     const { data: settings } = useQuery({
         queryKey: ['gas-station-settings'],
@@ -23,6 +26,7 @@ export default function GasStationConfig() {
         if (settings?.lubricant_category_id) setLubricantCategoryId(settings.lubricant_category_id);
         if (settings?.variacion_permitida) setVariacionPermitida(settings.variacion_permitida);
         if (settings?.cuenta_bancaria_pista) setCuentaBancariaPista(settings.cuenta_bancaria_pista);
+        if (settings?.rrs_id_empresa) setEmpresaRrs(settings.rrs_id_empresa);
     }, [settings]);
 
     const saveMutation = useMutation({
@@ -41,6 +45,7 @@ export default function GasStationConfig() {
             lubricant_category_id: lubricantCategoryId || null,
             variacion_permitida: variacionPermitida || null,
             cuenta_bancaria_pista: cuentaBancariaPista || null,
+            rrs_id_empresa: empresaRrs || null,
         });
     };
 
@@ -51,7 +56,14 @@ export default function GasStationConfig() {
 
     return (
         <div className="p-6 max-w-xl mx-auto">
-            <h1 className="text-lg font-bold text-slate-800 mb-1">Configuración Gasolinera</h1>
+            <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-lg font-bold text-slate-800">Configuración Gasolinera</h1>
+                {user?.branch_name && (
+                    <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded-lg">
+                        Sucursal: {user.branch_name}
+                    </span>
+                )}
+            </div>
             <p className="text-xs text-slate-400 mb-6">Configura los parámetros operativos de la gasolinera</p>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-6">
@@ -101,6 +113,21 @@ export default function GasStationConfig() {
                     />
                     <p className="text-[10px] text-slate-400 mt-1">
                         Número de cuenta para depósitos y remesas de la gasolinera.
+                    </p>
+                </div>
+
+                <div>
+                    <label className={labelCls}>Empresa en RRS</label>
+                    <input
+                        type="text"
+                        value={empresaRrs}
+                        onChange={(e) => setEmpresaRrs(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        placeholder="Código de empresa (ej. 015)"
+                        className={fieldCls + " font-mono"}
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                        Código de la empresa en la base RRS. Se usa en el envío de cierres de lecturas y remesas.
                     </p>
                 </div>
 

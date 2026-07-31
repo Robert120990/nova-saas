@@ -82,6 +82,7 @@ import GasCloseout from './pages/GasCloseout';
 import GasReadingHistory from './pages/GasReadingHistory';
 import GasExpenseCategories from './pages/GasExpenseCategories';
 import GasStationConfig from './pages/GasStationConfig';
+import SalesConfig from './pages/SalesConfig';
 import GasDespachadores from './pages/GasDespachadores';
 import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
@@ -219,6 +220,7 @@ function App() {
                         <Route path="/ventas/reglas-descuento" element={<DiscountRules />} />
                         <Route path="/ventas/contingencia" element={<Contingency />} />
                         <Route path="/ventas/retorno" element={<Eret />} />
+                        <Route path="/ventas/configuracion" element={<SalesConfig />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />

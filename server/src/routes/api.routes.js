@@ -25,6 +25,7 @@ const inventoryAdjustmentController = require('../controllers/inventoryAdjustmen
 const inventoryScanController = require('../controllers/inventoryScan.controller');
 const purchaseController = require('../controllers/purchase.controller');
 const salesController = require('../controllers/sales.controller');
+const salesConfigController = require('../controllers/salesConfig.controller');
 const periodController = require('../controllers/period.controller');
 const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
@@ -316,6 +317,11 @@ router.post('/sales', salesController.createSale);
 router.get('/sales/rtee/:id', salesController.exportRTEE);
 router.post('/sales/resend-email/:id', salesController.resendDTEEmail);
 router.get('/sales/dte-json/:id', salesController.getDTEJson);
+
+// Sales Settings (Configuración Tienda) — antes de /sales/:id
+router.get('/sales/settings', salesConfigController.getSettings);
+router.put('/sales/settings', salesConfigController.updateSettings);
+
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);

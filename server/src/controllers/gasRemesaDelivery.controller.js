@@ -345,10 +345,18 @@ exports.entregarDelivery = async (req, res) => {
         try {
             const [settingsRows] = await pool.query(
                 `SELECT setting_value FROM gas_station_settings 
-                 WHERE company_id = ? AND branch_id ${delivery.branch_id ? '= ?' : 'IS NULL'} 
+                 WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
                  AND setting_key = 'cuenta_bancaria_pista'`,
-                delivery.branch_id ? [req.company_id, delivery.branch_id] : [req.company_id]
+                [req.company_id, delivery.branch_id || null, delivery.branch_id || null]
             );
+
+            const [empresaRows] = await pool.query(
+                `SELECT setting_value FROM gas_station_settings 
+                 WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+                 AND setting_key = 'rrs_id_empresa'`,
+                [req.company_id, delivery.branch_id || null, delivery.branch_id || null]
+            );
+            const rrsIdEmpresa = empresaRows[0]?.setting_value || '015';
 
             if (settingsRows.length > 0) {
                 const rawAccount = settingsRows[0].setting_value || '';
@@ -365,7 +373,7 @@ exports.entregarDelivery = async (req, res) => {
 
                     if (cuentas.length > 0) {
                         const cuenta = cuentas[0];
-                        const llave = `015-${delivery.id}`;
+                        const llave = `${rrsIdEmpresa}-${delivery.id}`;
                         const documento = String(delivery.id).padStart(7, '0');
                         const d = new Date(delivery.fecha);
                         const fechaStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -458,8 +466,8 @@ exports.getDeliveryPdf = async (req, res) => {
 
         let cuentaBancaria = '';
         const [settingsRows] = await pool.query(
-            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND branch_id ${delivery.branch_id ? '= ?' : 'IS NULL'} AND setting_key = 'cuenta_bancaria_pista'`,
-            delivery.branch_id ? [req.company_id, delivery.branch_id] : [req.company_id]
+            `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'cuenta_bancaria_pista'`,
+            [req.company_id, delivery.branch_id || null, delivery.branch_id || null]
         );
         if (settingsRows.length > 0) {
             cuentaBancaria = settingsRows[0].setting_value || '';

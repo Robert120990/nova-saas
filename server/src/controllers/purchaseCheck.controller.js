@@ -257,8 +257,14 @@ const requestCheck = async (req, res) => {
 
         const config = configs[0];
 
+        const [empresaRows] = await pool.query(
+            'SELECT setting_value FROM sales_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = ?',
+            [companyId, check.branch_id || null, check.branch_id || null, 'empresa_rrs']
+        );
+        const rrsEmpresa = empresaRows[0]?.setting_value || '015';
+
         const nrc = (check.provider_nrc || '').replace(/\s/g, '');
-        const codProveedor = `015${check.provider_id}${nrc}`;
+        const codProveedor = `${rrsEmpresa}${check.provider_id}${nrc}`;
         const llave = `${check.id}`;
         const tipoDestino = check.destino === 'P' ? 'PISTA' : 'TIENDA';
         const fechaDate = check.fecha instanceof Date
@@ -386,6 +392,7 @@ const syncProviders = async (req, res) => {
         }
 
         const rrsIdEmpresa = configs[0].rrs_id_empresa;
+        const rrsEmpresa = rrsIdEmpresa || '015';
 
         const [providers] = await pool.query(
             'SELECT id, nombre, nombre_comercial, nit, nrc, direccion, telefono, correo FROM providers WHERE company_id = ?',
@@ -401,7 +408,7 @@ const syncProviders = async (req, res) => {
             try {
                 const nrc = (p.nrc || '').replace(/\s/g, '');
                 const nit = (p.nit || '').replace(/\s/g, '');
-                const codigoBusqueda = `015${p.id}${nrc}`;
+                const codigoBusqueda = `${rrsEmpresa}${p.id}${nrc}`;
 
                 let existing = null;
 
