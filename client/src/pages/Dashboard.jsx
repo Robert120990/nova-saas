@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import Money from '../components/ui/Money';
 import { 
     ShoppingCart, 
     Package, 
@@ -24,14 +25,24 @@ import {
     GitBranch
 } from 'lucide-react';
 
-const StatCard = ({ label, value, icon: Icon, color, bg, subtitle }) => (
+const StatCard = ({ label, value, icon: Icon, color, bg, subtitle, breakdown }) => (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-start justify-between transition-all hover:shadow-md h-full">
-        <div>
+        <div className="flex-1 min-w-0">
             <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1">{label}</p>
             <h4 className="text-2xl font-black text-slate-900 tracking-tight">{value}</h4>
             {subtitle && <p className="text-[10px] text-slate-400 font-bold mt-1">{subtitle}</p>}
+            {breakdown?.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                    {breakdown.map((b, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase truncate">{b.name}</span>
+                            <span className="text-[10px] font-black text-slate-600">{b.value}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
-        <div className={`p-3 rounded-2xl ${bg} ${color} shadow-sm`}>
+        <div className={`p-3 rounded-2xl ${bg} ${color} shadow-sm shrink-0`}>
             <Icon size={20} />
         </div>
     </div>
@@ -158,27 +169,30 @@ const Dashboard = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                         <StatCard 
                             label="Ventas del Día" 
-                            value={formatCurrency(summary?.todaySales)} 
+                            value={<Money value={summary?.todaySales} className="text-2xl font-black text-slate-900 tracking-tight" />}
                             icon={TrendingUp}
                             color="text-emerald-600"
                             bg="bg-emerald-40"
                             subtitle="Ingresos de hoy"
+                            breakdown={(summary?.todaySalesByBranch || []).map(b => ({ name: b.branch_name, value: <Money value={b.total} className="text-[10px] font-black text-slate-600" /> }))}
                         />
                         <StatCard 
                             label="Efectivo en Caja" 
-                            value={formatCurrency(summary?.totalCashInHand)} 
+                            value={<Money value={summary?.totalCashInHand} className="text-2xl font-black text-slate-900 tracking-tight" />}
                             icon={Wallet}
                             color="text-indigo-600"
                             bg="bg-indigo-40"
                             subtitle={`${summary?.activeShiftsCount || 0} turnos abiertos`}
+                            breakdown={(summary?.cashInHandByBranch || []).map(b => ({ name: b.branch_name, value: <Money value={b.total} className="text-[10px] font-black text-slate-600" /> }))}
                         />
                         <StatCard 
                             label="Ventas del Mes" 
-                            value={formatCurrency(summary?.monthlySales)} 
+                            value={<Money value={summary?.monthlySales} className="text-2xl font-black text-slate-900 tracking-tight" />}
                             icon={DollarSign}
                             color="text-slate-600"
                             bg="bg-slate-40"
                             subtitle="Suma del mes actual"
+                            breakdown={(summary?.monthlySalesByBranch || []).map(b => ({ name: b.branch_name, value: <Money value={b.total} className="text-[10px] font-black text-slate-600" /> }))}
                         />
                         <StatCard 
                             label="Inventario" 

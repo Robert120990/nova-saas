@@ -20,7 +20,10 @@ const getStats = async (req, res) => {
             customers: 0,
             monthlySales: 0,
             totalCashInHand: 0,
-            activeShiftsCount: 0
+            activeShiftsCount: 0,
+            todaySalesByBranch: [],
+            monthlySalesByBranch: [],
+            cashInHandByBranch: []
         };
         let recentActivity = [];
         let branches = [];
@@ -47,6 +50,28 @@ const getStats = async (req, res) => {
             `, [companyId]);
             summary.monthlySales = parseFloat(sStats[0]?.monthly || 0);
             summary.todaySales = parseFloat(sStats[0]?.today || 0);
+
+            const [bStats] = await pool.query(`
+                SELECT sh.branch_id, b.nombre as branch_name,
+                    COALESCE(SUM(CASE WHEN MONTH(sh.created_at) = MONTH(CURDATE()) AND YEAR(sh.created_at) = YEAR(CURDATE()) THEN sh.total_pagar ELSE 0 END), 0) as monthly,
+                    COALESCE(SUM(CASE WHEN DATE(sh.created_at) = CURDATE() THEN sh.total_pagar ELSE 0 END), 0) as today
+                FROM sales_headers sh
+                JOIN branches b ON sh.branch_id = b.id
+                WHERE sh.company_id = ? AND (sh.estado != 'anulado' AND sh.estado != 'ANULADO')
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
+                GROUP BY sh.branch_id, b.nombre
+            `, [companyId]);
+
+            summary.todaySalesByBranch = (bStats || []).map(r => ({
+                branch_id: r.branch_id,
+                branch_name: r.branch_name,
+                total: parseFloat(r.today || 0)
+            }));
+            summary.monthlySalesByBranch = (bStats || []).map(r => ({
+                branch_id: r.branch_id,
+                branch_name: r.branch_name,
+                total: parseFloat(r.monthly || 0)
+            }));
         } catch (e) { console.error('SSTATS ERR', e); }
 
         // 3. Conteos
@@ -150,6 +175,7 @@ const getStats = async (req, res) => {
                     s.shift_number,
                     sel.nombre as seller_name, 
                     p.nombre as pos_name, 
+                    s.branch_id,
                     b.nombre as branch_name,
                     s.opening_balance,
                     s.start_time,
@@ -181,6 +207,7 @@ const getStats = async (req, res) => {
                 shift_number: s.shift_number,
                 seller_name: s.seller_name,
                 pos_name: s.pos_name,
+                branch_id: s.branch_id,
                 branch_name: s.branch_name,
                 start_time: s.start_time,
                 expected_cash: parseFloat(s.opening_balance || 0) + parseFloat(s.cash_sales || 0) + parseFloat(s.cash_incomes || 0) - parseFloat(s.cash_expenses || 0)
@@ -188,6 +215,13 @@ const getStats = async (req, res) => {
 
             summary.totalCashInHand = activeShifts.reduce((acc, s) => acc + s.expected_cash, 0);
             summary.activeShiftsCount = activeShifts.length;
+
+            const cashByBranch = {};
+            activeShifts.forEach(s => {
+                if (!cashByBranch[s.branch_id]) cashByBranch[s.branch_id] = { branch_id: s.branch_id, branch_name: s.branch_name, total: 0 };
+                cashByBranch[s.branch_id].total += s.expected_cash;
+            });
+            summary.cashInHandByBranch = Object.values(cashByBranch).map(b => ({ ...b, total: parseFloat(b.total || 0) }));
 
             let salesByCategory = [];
             try {
