@@ -103,6 +103,20 @@ const GasCloseout = () => {
     const fileInputRef = useRef(null);
     const tankInputRefs = useRef({});
     const lubricantInputRefs = useRef({});
+    const lastDespachadorRef = useRef(null);
+
+    const getDefaultDespachador = () => {
+        if (lastDespachadorRef.current) return lastDespachadorRef.current;
+        if (closeoutDespachadores.length > 0) return closeoutDespachadores[0].despachador_id;
+        if (allDespachadores.length > 0) return allDespachadores[0].id;
+        return '';
+    };
+
+    const trackDespachadorChange = (field, value) => {
+        if (field === 'despachador_id' && value) {
+            lastDespachadorRef.current = value;
+        }
+    };
 
     useEffect(() => {
         const handler = (e) => {
@@ -143,6 +157,10 @@ const GasCloseout = () => {
             setCreditos(editData.creditos || []);
             setVales(editData.vales || []);
             setAnticiposDesp(editData.anticipos_despachadores || []);
+            const firstWithDesp = [editData.gastos, editData.remesas, editData.cupones, editData.descuentos, editData.adelantos, editData.tarjetas, editData.creditos, editData.vales, editData.anticipos_despachadores]
+                .flat()
+                .find(r => r && r.despachador_id);
+            lastDespachadorRef.current = firstWithDesp?.despachador_id || editData.despachadores?.[0]?.despachador_id || null;
         }
     }, [editData]);
 
@@ -166,6 +184,7 @@ const GasCloseout = () => {
             setCreditos([]);
             setVales([]);
             setAnticiposDesp([]);
+            lastDespachadorRef.current = null;
         }
     }, [editId]);
 
@@ -607,9 +626,7 @@ const GasCloseout = () => {
     };
 
     const handleAddGastoRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setGastos(prev => [...prev, {
             id: Date.now(),
             rubro: '',
@@ -624,6 +641,7 @@ const GasCloseout = () => {
     };
 
     const handleGastoChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setGastos(prev => prev.map(g => g.id === id ? { ...g, [field]: value } : g));
     };
 
@@ -650,9 +668,7 @@ const GasCloseout = () => {
 
     const handleAddRemesaRow = () => {
         const tempId = Date.now();
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setRemesas(prev => {
             const maxDoc = prev.reduce((max, r) => {
                 const num = parseInt(r.documento, 10);
@@ -671,6 +687,7 @@ const GasCloseout = () => {
     };
 
     const handleRemesaChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setRemesas(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
     };
 
@@ -771,9 +788,7 @@ const GasCloseout = () => {
     };
 
     const handleAddCuponRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setCupones(prev => [...prev, {
             id: Date.now(),
             cupon: '',
@@ -787,6 +802,7 @@ const GasCloseout = () => {
     };
 
     const handleCuponChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setCupones(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
     };
 
@@ -799,9 +815,7 @@ const GasCloseout = () => {
     };
 
     const handleAddDescuentoRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setDescuentos(prev => [...prev, {
             id: Date.now(),
             documento: '',
@@ -817,6 +831,7 @@ const GasCloseout = () => {
     };
 
     const handleDescuentoChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setDescuentos(prev => prev.map(d => {
             if (d.id !== id) return d;
             const updated = { ...d, [field]: value };
@@ -838,9 +853,7 @@ const GasCloseout = () => {
     };
 
     const handleAddAdelantoRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setAdelantos(prev => [...prev, {
             id: Date.now(),
             empleado: '',
@@ -850,6 +863,7 @@ const GasCloseout = () => {
     };
 
     const handleAdelantoChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setAdelantos(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
     };
 
@@ -862,9 +876,7 @@ const GasCloseout = () => {
     };
 
     const handleAddTarjetaRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setTarjetas(prev => [...prev, {
             id: Date.now(),
             num_tarjeta: '',
@@ -877,6 +889,7 @@ const GasCloseout = () => {
     };
 
     const handleTarjetaChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setTarjetas(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
     };
 
@@ -889,9 +902,7 @@ const GasCloseout = () => {
     };
 
     const handleAddCreditoRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setCreditos(prev => [...prev, {
             id: Date.now(),
             documento: '',
@@ -910,6 +921,7 @@ const GasCloseout = () => {
     };
 
     const handleCreditoChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setCreditos(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
     };
 
@@ -922,9 +934,7 @@ const GasCloseout = () => {
     };
 
     const handleAddValeRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setVales(prev => [...prev, {
             id: Date.now(),
             documento: '',
@@ -943,6 +953,7 @@ const GasCloseout = () => {
     };
 
     const handleValeChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setVales(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
     };
 
@@ -969,9 +980,7 @@ const GasCloseout = () => {
     };
 
     const handleAddAnticipoRow = () => {
-        const defaultDesp = closeoutDespachadores.length > 0
-            ? closeoutDespachadores[0].despachador_id
-            : (allDespachadores.length > 0 ? allDespachadores[0].id : '');
+        const defaultDesp = getDefaultDespachador();
         setAnticiposDesp(prev => [...prev, {
             id: Date.now(),
             cliente_id: '',
@@ -991,6 +1000,7 @@ const GasCloseout = () => {
     };
 
     const handleAnticipoChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
         setAnticiposDesp(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
     };
 
@@ -1254,6 +1264,12 @@ const GasCloseout = () => {
             e.preventDefault();
             const currentReading = lubricantReadings[index];
             if (!currentReading) return;
+
+            if (field === 'lectura_inicial') {
+                const recargaKey = `lub-recarga-${currentReading.producto_id}`;
+                const recargaEl = lubricantInputRefs.current[recargaKey];
+                if (recargaEl) { recargaEl.focus(); return; }
+            }
 
             if (field === 'recarga') {
                 const finalKey = `lub-final-${currentReading.producto_id}`;
@@ -3213,7 +3229,9 @@ const GasCloseout = () => {
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Código</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 max-w-[140px]">Descripción</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Inicial</th>
+                                            <th className={`px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28 ${editAnterior ? 'text-amber-600' : ''}`}>
+                                                Inicial{editAnterior && '*'}
+                                            </th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Recarga</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Final</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Ventas</th>
@@ -3238,7 +3256,28 @@ const GasCloseout = () => {
                                                     <td className="px-1.5 py-0.5 max-w-[140px] truncate">
                                                         <span className="font-medium text-slate-800">{r.producto_descripcion}</span>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-600">{parseFloat(r.lectura_inicial || 0).toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right">
+                                                        {editAnterior ? (
+                                                            <input type="number" step="0.00001"
+                                                                ref={(el) => { lubricantInputRefs.current[`lub-anterior-${r.producto_id}`] = el; }}
+                                                                value={r.lectura_inicial ?? ''}
+                                                                onChange={(e) => {
+                                                                    setLubricantReadings(prev => prev.map(x =>
+                                                                        x.producto_id === r.producto_id
+                                                                            ? { ...x, lectura_inicial: e.target.value }
+                                                                            : x
+                                                                    ));
+                                                                }}
+                                                                onFocus={(e) => e.target.select()}
+                                                                onBlur={handleLubricantBlur}
+                                                                onKeyDown={(e) => handleLubricantKeyDown(e, idx, 'lectura_inicial')}
+                                                                disabled={estado === 'cerrado'}
+                                                                className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
+                                                            />
+                                                        ) : (
+                                                            <span className="font-mono text-slate-600 whitespace-nowrap">{parseFloat(r.lectura_inicial || 0).toFixed(5)}</span>
+                                                        )}
+                                                    </td>
                                                     <td className="px-1.5 py-0.5 text-right">
                                                         <input type="number" step="0.00001"
                                                             ref={(el) => { lubricantInputRefs.current[`lub-recarga-${r.producto_id}`] = el; }}
