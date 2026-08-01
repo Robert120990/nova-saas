@@ -4,6 +4,60 @@ const pool = require('../config/db');
  * Gestión de Turnos de Punto de Venta (Corte de Caja)
  */
 
+const getConflictSellers = async (companyId, sellerIds, excludeShiftId = null) => {
+    if (!sellerIds || sellerIds.length === 0) return [];
+    const ids = sellerIds.map(Number).filter(Boolean);
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(',');
+    const excludeClause = excludeShiftId ? 'AND ps.id <> ?' : '';
+    const query = `
+        SELECT DISTINCT seller_id
+        FROM (
+            SELECT pss.seller_id
+            FROM pos_shift_sellers pss
+            JOIN pos_shifts ps ON ps.id = pss.shift_id
+            WHERE ps.company_id = ? AND ps.status = 'open'
+              ${excludeClause}
+              AND pss.seller_id IN (${placeholders})
+            UNION
+            SELECT ps.seller_id
+            FROM pos_shifts ps
+            WHERE ps.company_id = ? AND ps.status = 'open'
+              ${excludeClause}
+              AND ps.seller_id IN (${placeholders})
+        ) t
+    `;
+    const params = [
+        companyId,
+        ...(excludeShiftId ? [excludeShiftId] : []),
+        ...ids,
+        companyId,
+        ...(excludeShiftId ? [excludeShiftId] : []),
+        ...ids
+    ];
+    const [rows] = await pool.query(query, params);
+    return rows.map(r => r.seller_id);
+};
+
+const getSellerNames = async (sellerIds) => {
+    if (!sellerIds || sellerIds.length === 0) return [];
+    const [rows] = await pool.query(
+        'SELECT id, nombre FROM sellers WHERE id IN (?)',
+        [sellerIds]
+    );
+    return rows;
+};
+
+const assertNoSellerConflicts = async (companyId, sellerIds, excludeShiftId = null) => {
+    const conflicts = await getConflictSellers(companyId, sellerIds, excludeShiftId);
+    if (conflicts.length === 0) return;
+    const names = await getSellerNames(conflicts);
+    const nameList = names.map(n => n.nombre).join(', ');
+    const err = new Error(`Los vendedores ya asignados a otro turno activo no pueden seleccionarse: ${nameList}`);
+    err.status = 400;
+    throw err;
+};
+
 const getCurrentShift = async (req, res) => {
     const { pos_id, seller_id, branch_id } = req.query;
     try {
@@ -84,6 +138,24 @@ const openShift = async (req, res) => {
             return res.status(400).json({ message: 'Ya existe un turno abierto para este punto de venta' });
         }
 
+        // Insertar responsable + vendedores adicionales en pos_shift_sellers
+        const sellerIds = [seller_id];
+        if (assigned_sellers && Array.isArray(assigned_sellers)) {
+            for (const sid of assigned_sellers) {
+                const id = Number(sid);
+                if (id && !sellerIds.includes(id)) {
+                    sellerIds.push(id);
+                }
+            }
+        }
+
+        // Validar que ningún vendedor esté asignado a otro turno activo
+        try {
+            await assertNoSellerConflicts(req.company_id, sellerIds);
+        } catch (err) {
+            return res.status(err.status || 400).json({ message: err.message });
+        }
+
         // Calcular siguiente shift_number por sucursal + fecha
         const [numRow] = await pool.query(`
             SELECT COALESCE(MAX(shift_number), 0) + 1 AS next
@@ -100,16 +172,6 @@ const openShift = async (req, res) => {
 
         const shiftId = result.insertId;
 
-        // Insertar responsable + vendedores adicionales en pos_shift_sellers
-        const sellerIds = [seller_id];
-        if (assigned_sellers && Array.isArray(assigned_sellers)) {
-            for (const sid of assigned_sellers) {
-                const id = Number(sid);
-                if (id && !sellerIds.includes(id)) {
-                    sellerIds.push(id);
-                }
-            }
-        }
         for (const sid of sellerIds) {
             await pool.query(`
                 INSERT IGNORE INTO pos_shift_sellers (shift_id, seller_id)
@@ -500,9 +562,6 @@ const updateShiftSellers = async (req, res) => {
             return res.status(400).json({ message: 'El turno ya está cerrado' });
         }
 
-        // Reemplazar todos los sellers asignados (siempre incluir responsable)
-        await pool.query('DELETE FROM pos_shift_sellers WHERE shift_id = ?', [id]);
-
         const allIds = [shift[0].seller_id];
         if (seller_ids && Array.isArray(seller_ids)) {
             for (const sid of seller_ids) {
@@ -512,6 +571,17 @@ const updateShiftSellers = async (req, res) => {
                 }
             }
         }
+
+        // Validar que ningún vendedor esté asignado a otro turno activo
+        try {
+            await assertNoSellerConflicts(req.company_id, allIds, Number(id));
+        } catch (err) {
+            return res.status(err.status || 400).json({ message: err.message });
+        }
+
+        // Reemplazar todos los sellers asignados (siempre incluir responsable)
+        await pool.query('DELETE FROM pos_shift_sellers WHERE shift_id = ?', [id]);
+
         for (const sid of allIds) {
             await pool.query(`
                 INSERT IGNORE INTO pos_shift_sellers (shift_id, seller_id)
@@ -572,6 +642,22 @@ const updateShift = async (req, res) => {
     try {
         const { id } = req.params;
         const { seller_id, pos_id, opening_balance, shift_number } = req.body;
+
+        const [shifts] = await pool.query(
+            'SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+        if (shifts.length === 0) {
+            return res.status(404).json({ message: 'Turno no encontrado' });
+        }
+
+        if (seller_id && Number(seller_id) !== Number(shifts[0].seller_id)) {
+            try {
+                await assertNoSellerConflicts(req.company_id, [seller_id], Number(id));
+            } catch (err) {
+                return res.status(err.status || 400).json({ message: err.message });
+            }
+        }
 
         const [result] = await pool.query(
             `UPDATE pos_shifts SET seller_id = ?, pos_id = ?, opening_balance = ?, shift_number = ?

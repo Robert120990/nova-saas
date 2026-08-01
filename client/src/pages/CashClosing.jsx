@@ -128,7 +128,7 @@ const CashClosing = () => {
 
     const { data: sellers = [] } = useQuery({
         queryKey: ['sellers'],
-        queryFn: async () => (await axios.get('/api/sellers')).data?.data || []
+        queryFn: async () => (await axios.get('/api/sellers', { params: { limit: 1000 } })).data?.data || []
     });
 
     const { data: posList = [] } = useQuery({
@@ -138,6 +138,8 @@ const CashClosing = () => {
 
     // Filtrar por sucursal actual y solo vendedores activos
     const branchSellers = sellers.filter(s => s.branch_id == user.branch_id && s.status === 'activo');
+    // Vendedores no asignados a ningún turno activo
+    const availableSellers = branchSellers.filter(s => !s.assigned_shift_id);
     const branchPOS = posList.filter(p => p.branch_id == user.branch_id);
 
     const { data: paymentMethods = [] } = useQuery({
@@ -539,14 +541,14 @@ const CashClosing = () => {
                                 }}
                             >
                                 <option value="">Seleccione vendedor</option>
-                                {branchSellers.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                                {availableSellers.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                             </select>
                         </div>
                         {selectedResponsibleId && (
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Vendedores Adicionales</label>
                             <div className="max-h-40 overflow-y-auto space-y-0.5 px-1 custom-scrollbar border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
-                                {branchSellers.filter(s => s.id != selectedResponsibleId).length > 0 ? branchSellers
+                                {availableSellers.filter(s => s.id != selectedResponsibleId).length > 0 ? availableSellers
                                     .filter(s => s.id != selectedResponsibleId)
                                     .map(s => (
                                         <label key={s.id} className={`flex items-center gap-3 p-2 rounded-xl transition-colors cursor-pointer ${selectedSellers.includes(s.id) ? 'bg-indigo-50' : 'hover:bg-slate-100'}`}>
@@ -620,8 +622,8 @@ const CashClosing = () => {
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Vendedores Asignados</label>
                             <div className="max-h-60 overflow-y-auto space-y-0.5 px-1 custom-scrollbar border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
-                                {branchSellers.filter(s => s.id != editingShiftSellers.seller_id).length > 0 ? branchSellers
-                                    .filter(s => s.id != editingShiftSellers.seller_id)
+                                {branchSellers.filter(s => s.id != editingShiftSellers.seller_id && (!s.assigned_shift_id || s.assigned_shift_id === editingShiftSellers.id)).length > 0 ? branchSellers
+                                    .filter(s => s.id != editingShiftSellers.seller_id && (!s.assigned_shift_id || s.assigned_shift_id === editingShiftSellers.id))
                                     .map(s => {
                                         const isAssigned = shiftSellersList.some(sl => sl.seller_id === s.id);
                                         return (
@@ -1171,7 +1173,7 @@ const CashClosing = () => {
                                     <select value={editForm.seller_id}
                                         onChange={(e) => setEditForm({ ...editForm, seller_id: e.target.value })}
                                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none">
-                                        {branchSellers.map(s => (
+                                        {branchSellers.filter(s => !s.assigned_shift_id || s.assigned_shift_id === editingShift.id).map(s => (
                                             <option key={s.id} value={s.id}>{s.nombre}</option>
                                         ))}
                                     </select>

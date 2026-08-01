@@ -7,7 +7,16 @@ const getSellers = async (req, res) => {
     
     try {
         let query = `
-            SELECT s.*, b.nombre as branch_name, p.nombre as pos_name
+            SELECT s.*, b.nombre as branch_name, p.nombre as pos_name,
+                (SELECT ps.id
+                 FROM pos_shifts ps
+                 WHERE ps.status = 'open'
+                   AND (ps.seller_id = s.id OR EXISTS (
+                       SELECT 1 FROM pos_shift_sellers pss
+                       WHERE pss.shift_id = ps.id AND pss.seller_id = s.id
+                   ))
+                   AND ps.company_id = s.company_id
+                 LIMIT 1) as assigned_shift_id
             FROM sellers s
             LEFT JOIN branches b ON s.branch_id = b.id
             LEFT JOIN points_of_sale p ON s.pos_id = p.id
