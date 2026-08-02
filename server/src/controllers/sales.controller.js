@@ -57,6 +57,15 @@ const createSale = async (req, res) => {
         `, [req.company_id]);
         const company = companies[0];
 
+        // 0b. Validar dirección del cliente seleccionado antes de crear la venta (requisito DTE)
+        if (company && company.dte_active && header.customer_id && header.dte_type !== '11') {
+            const addressError = await dteService.validateCustomerAddress(header.customer_id, header.customer_branch_id || null);
+            if (addressError) {
+                await connection.rollback();
+                return res.status(400).json({ message: addressError, success: false });
+            }
+        }
+
         // Obtener código de terminal si existe pos_id
         let codPuntoVentaMH = null;
         if (header.pos_id) {

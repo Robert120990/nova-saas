@@ -31,6 +31,17 @@ class DteService {
             // dte-api espera: { tipoDte, receptor, items, pagos, totalLetras, taxes }
             const receptor = await this._getReceptorData(payload.header.customer_id, payload.header.cliente_nombre || null, payload.header.customer_branch_id || null);
 
+            // Guardia: cliente seleccionado debe tener dirección completa (Hacienda rechaza 096)
+            if (payload.header.customer_id && payload.header.dte_type !== '11') {
+                const addressError = await this.validateCustomerAddress(
+                    payload.header.customer_id,
+                    payload.header.customer_branch_id || null
+                );
+                if (addressError) {
+                    return { success: false, error: addressError };
+                }
+            }
+
             // Calcular impuestos de cabecera si vienen por separado (Combustibles)
             const extraTaxes = [];
             if (payload.header.fovial > 0 || payload.header.total_fovial > 0) {
@@ -303,6 +314,41 @@ class DteService {
                 complemento
             }
         };
+    }
+
+    /**
+     * Valida que un cliente seleccionado tenga departamento, municipio y distrito
+     * (requisito Hacienda para el receptor del DTE). Toma en cuenta la sucursal
+     * del cliente como respaldo por campo.
+     * @returns {Promise<null|string>} null si es válido, o un mensaje de error
+     */
+    async validateCustomerAddress(customerId, customerBranchId = null) {
+        if (!customerId) return null;
+
+        const pool = require('../config/db');
+        const [rows] = await pool.query(
+            'SELECT departamento, municipio, distrito FROM customers WHERE id = ?',
+            [customerId]
+        );
+        if (rows.length === 0) return null;
+
+        const c = rows[0];
+        let b = {};
+        if (customerBranchId) {
+            const [branches] = await pool.query(
+                'SELECT departamento, municipio, distrito FROM customer_branches WHERE id = ? AND customer_id = ?',
+                [customerBranchId, customerId]
+            );
+            b = branches[0] || {};
+        }
+
+        const missing = [];
+        if (!(b.departamento || c.departamento)) missing.push('Departamento');
+        if (!(b.municipio || c.municipio)) missing.push('Municipio');
+        if (!(b.distrito || c.distrito)) missing.push('Distrito');
+
+        if (missing.length === 0) return null;
+        return `El cliente seleccionado no tiene ${missing.join(', ')}. Complételos antes de facturar.`;
     }
 }
 

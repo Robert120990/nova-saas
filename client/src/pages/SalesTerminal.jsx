@@ -288,6 +288,31 @@ const SalesTerminal = () => {
         return customers.find(c => c.id === parseInt(customerId));
     }, [customerId, customers]);
 
+    // Campos de ubicación obligatorios para facturar (DTE)
+    const getMissingCustomerFields = (customer) => {
+        if (!customer) return [];
+        const missing = [];
+        if (!customer.departamento) missing.push('Departamento');
+        if (!customer.municipio) missing.push('Municipio');
+        if (!customer.distrito) missing.push('Distrito');
+        return missing;
+    };
+
+    const selectedCustomerMissing = selectedCustomerData ? getMissingCustomerFields(selectedCustomerData) : [];
+
+    const handleCustomerSelect = (value) => {
+        setCustomerId(value);
+        if (value) {
+            const cust = customers.find(c => c.id === parseInt(value));
+            if (cust) {
+                const missing = getMissingCustomerFields(cust);
+                if (missing.length > 0) {
+                    toast.warning(`El cliente "${cust.nombre}" no tiene ${missing.join(', ')}. Complételos para facturar.`);
+                }
+            }
+        }
+    };
+
     const { data: customerBranches = [] } = useQuery({
         queryKey: ['customer-branches', customerId],
         queryFn: async () => (await axios.get('/api/customer-branches', { params: { customer_id: customerId } })).data,
@@ -541,6 +566,7 @@ const SalesTerminal = () => {
             if (!nrData.vehiclePlate) missing.push('Placa Vehículo');
             if (!customer.departamento) missing.push('Depto Destino');
             if (!customer.municipio) missing.push('Munic. Destino');
+            if (!customer.distrito) missing.push('Distrito Destino');
             if (!customer.direccion) missing.push('Dirección Destino');
         }
 
@@ -1416,7 +1442,7 @@ const SalesTerminal = () => {
                                 <SearchableSelect 
                                     options={customers}
                                     value={customerId}
-                                    onChange={(e) => setCustomerId(e.target.value)}
+                                    onChange={(e) => handleCustomerSelect(e.target.value)}
                                     placeholder="Consumidor Final (General)"
                                     valueKey="id"
                                     labelKey="nombre"
@@ -1475,6 +1501,20 @@ const SalesTerminal = () => {
                                             </span>
                                         </div>
                                     </div>
+                                    {selectedCustomerMissing.length > 0 && (
+                                        <div className="mt-2 px-3 py-2 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between gap-2 animate-in fade-in zoom-in-95 duration-200">
+                                            <span className="text-[10px] font-bold text-amber-700">
+                                                Faltan: {selectedCustomerMissing.join(', ')} — obligatorio para facturar
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={handleEditCustomer}
+                                                className="text-[10px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded-lg uppercase transition-all"
+                                            >
+                                                Editar
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             {selectedCustomerData && customerBranches.length > 0 && (
