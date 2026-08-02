@@ -6,6 +6,11 @@ const { v4: uuidv4 } = require('uuid');
 const { generateControlNumber } = require('./dte/controlNumberService');
 const { calculateItem, calculateTotals, round, round4, round6, getAmountInWords } = require('../utils/calculations');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
+
+function sanitizeNrc(value) {
+    const clean = cleanNumbers(value || '');
+    return /^\d{6,10}$/.test(clean) ? clean : null;
+}
 const { validateDTE } = require('../validators/schemaValidator');
 const { getSchemaVersion } = require('../utils/versionMap');
 const { getMHAmbiente } = require('../config/haciendaConfig');
@@ -506,6 +511,9 @@ async function generateDTE(payload) {
         throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
     }
 
+    let rawDistrito = String(receptor.direccion?.distrito || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
+    if (rawDistrito === '00') rawDistrito = '01';
+
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
         codActividad: receptor.codActividad || '10005',
@@ -513,7 +521,7 @@ async function generateDTE(payload) {
         direccion: receptor.direccion ? {
             departamento: rawDepto,
             municipio: rawMuni,
-            distrito: String(receptor.direccion.distrito || '01').padStart(2, '0'),
+            distrito: rawDistrito,
             complemento: sanitizeText(receptor.direccion.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
         } : null,
         telefono: cleanNumbers(receptor.telefono || '00000000').substring(0, 30),
@@ -524,7 +532,7 @@ async function generateDTE(payload) {
         // CR: estructura de receptor (tipoDocumento/numDocumento en raíz, sin nit)
         finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '36';
         finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
-        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null;
+        finalReceptor.nrc = sanitizeNrc(receptor.nrc);
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
         finalReceptor.codActividad = receptor.codActividad || '10005';
         finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
@@ -533,7 +541,7 @@ async function generateDTE(payload) {
     if (tipoDte === '07') {
         finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '36';
         finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
-        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null;
+        finalReceptor.nrc = sanitizeNrc(receptor.nrc);
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
         finalReceptor.codActividad = receptor.codActividad || '10005';
         finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
@@ -581,18 +589,15 @@ async function generateDTE(payload) {
         const rawDocType = (receptor.tipoDocumento || (receptor.nit ? '36' : '36')).toUpperCase();
         finalReceptor.tipoDocumento = docTypeMap[rawDocType] || '36';
         let rawNumDoc = cleanNumbers(receptor.numDocumento || receptor.nit || '000000000');
-        if (finalReceptor.tipoDocumento === '13' && rawNumDoc.length === 9) {
-            rawNumDoc = `${rawNumDoc.slice(0, 8)}-${rawNumDoc.slice(8)}`;
-        }
         if (finalReceptor.tipoDocumento === '37' && (!receptor.numDocumento && !receptor.nit)) {
             rawNumDoc = 'SN';
         }
         finalReceptor.numDocumento = rawNumDoc;
-        finalReceptor.nrc = receptor.nrc ? cleanNumbers(receptor.nrc) : null;
+        finalReceptor.nrc = sanitizeNrc(receptor.nrc);
         } 
     } else if (tipoDte !== '11' && tipoDte !== '07') {
         finalReceptor.nit = cleanNumbers(receptor.nit || receptor.numDocumento);
-        finalReceptor.nrc = cleanNumbers(receptor.nrc);
+        finalReceptor.nrc = sanitizeNrc(receptor.nrc);
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
     }
 
