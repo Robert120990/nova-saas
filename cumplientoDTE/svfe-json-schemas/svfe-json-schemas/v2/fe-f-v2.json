@@ -346,10 +346,6 @@
                             "type": "string",
                             "description": "Dirección: Municipio (Receptor)"
                         },
-                        "distrito": {
-                            "type": "string",
-                            "description": "Dirección Distrito (Receptor)"
-                        },
                         "complemento": {
                             "type": "string",
                             "description": "Dirección: complemento (Receptor)",
@@ -361,7 +357,6 @@
                     "required": [
                         "departamento",
                         "municipio",
-                        "distrito",
                         "complemento"
                     ]
                 },

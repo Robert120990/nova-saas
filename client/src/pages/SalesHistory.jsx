@@ -221,14 +221,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
         e.preventDefault();
         setRetransmitLoading(true);
         try {
-            await axios.post(`/api/sales/${selectedSaleId}/retransmit`, {
-                newReceptor: {
-                    nombre: retransmitForm.nombre,
-                    nit: retransmitForm.nit,
-                    nrc: retransmitForm.nrc,
-                    correo: retransmitForm.email
-                }
-            });
+            await axios.post(`/api/sales/${selectedSaleId}/retransmit`, {});
             toast.success('DTE retransmitido con éxito');
             setIsRetransmitModalOpen(false);
             queryClient.invalidateQueries(['sales-history']);
@@ -1103,8 +1096,8 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                     <div className="flex items-center gap-3 p-4 bg-amber-50 text-amber-800 rounded-3xl border border-amber-100 text-xs">
                         <AlertCircle size={20} className="shrink-0" />
                         <div>
-                            <p className="font-black uppercase tracking-widest mb-1">Corrección de Datos</p>
-                            <p className="font-medium text-Spanish">El DTE fue rechazado previamente. Puede corregir la información del receptor a continuación y volver a intentar el envío a Hacienda.</p>
+                            <p className="font-black uppercase tracking-widest mb-1">Reintento de Envío</p>
+                            <p className="font-medium text-Spanish">El DTE fue rechazado previamente. Se usará la información actual del cliente registrada en el sistema y se volverá a intentar el envío a Hacienda.</p>
                         </div>
                     </div>
 
@@ -1124,7 +1117,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                     )}
 
                     <div className="bg-slate-50 p-6 rounded-3xl border border-dotted border-slate-200 text-center space-y-2">
-                        <p className="text-slate-500 text-sm font-medium text-Spanish">Se intentará enviar el documento a Hacienda nuevamente con los datos originales.</p>
+                        <p className="text-slate-500 text-sm font-medium text-Spanish">Se intentará enviar el documento a Hacienda nuevamente con la información actual del cliente.</p>
                         <div className="flex items-center justify-center gap-4 text-[10px] font-black uppercase text-slate-400">
                             <span>{retransmitForm.nombre}</span>
                             {retransmitForm.nit && <span>• NIT: {retransmitForm.nit}</span>}
