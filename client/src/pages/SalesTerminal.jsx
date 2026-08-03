@@ -529,7 +529,7 @@ const SalesTerminal = () => {
         if (tipoDte === '03') { // Crédito Fiscal
             if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
             if (!customer.nrc) missing.push('NRC');
-            if (!customer.codigo_actividad) missing.push('Giro/Actividad');
+            if (!customer.codigo_actividad || String(customer.codigo_actividad).trim().length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
@@ -556,7 +556,7 @@ const SalesTerminal = () => {
             }
             if (!customer.nit) missing.push('NIT');
             if (!customer.nrc) missing.push('NRC');
-            if (!customer.codigo_actividad) missing.push('Giro/Actividad');
+            if (!customer.codigo_actividad || String(customer.codigo_actividad).trim().length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
