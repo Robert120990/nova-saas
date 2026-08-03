@@ -16,7 +16,8 @@ const SearchableSelect = ({
     displayKey = null, 
     codeKey = null,
     codeLabel = "CÓDIGO",
-    disabled = false
+    disabled = false,
+    searchKeys = null
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -33,6 +34,11 @@ const SearchableSelect = ({
     const filteredOptions = safeOptions.filter(opt => {
         if (!opt) return false;
         const s = (search || '').toLowerCase();
+        if (Array.isArray(searchKeys) && searchKeys.length > 0) {
+            return searchKeys.some(k =>
+                String(opt[k] ?? '').toLowerCase().includes(s)
+            );
+        }
         const v = String(opt[valueKey] || '').toLowerCase();
         const l = String(opt[labelKey] || '').toLowerCase();
         const c = codeKey ? String(opt[codeKey] || '').toLowerCase() : '';

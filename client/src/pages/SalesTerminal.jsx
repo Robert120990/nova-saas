@@ -1506,6 +1506,7 @@ const SalesTerminal = () => {
                                     displayKey="nombre"
                                     codeKey="nit"
                                     codeLabel="NIT/DOC"
+                                    searchKeys={['nombre', 'nombre_comercial', 'nit', 'nrc']}
                                 />
                             </div>
                             {!customerId && (
