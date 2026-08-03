@@ -423,6 +423,8 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
             WHERE sh.company_id = ?
                 AND DATE(sh.created_at) BETWEEN ? AND ?
                 AND sh.estado != 'anulado'
+                AND sh.estado != 'ANULADO'
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
                 AND p.tipo_combustible > 0
                 ${branchFilterSale}
             GROUP BY DATE(sh.created_at), p.tipo_combustible
