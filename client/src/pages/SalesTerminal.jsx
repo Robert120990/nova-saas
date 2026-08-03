@@ -128,6 +128,8 @@ const SalesTerminal = () => {
     const priceInputRef = useRef(null);
     const descInputRef = useRef(null);
     const barcodeRef = useRef(null);
+    const barcodeLookupInFlightRef = useRef(false);
+    const scanEntryRef = useRef(null);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -1127,96 +1129,151 @@ const SalesTerminal = () => {
         }
     };
 
-    const performBarcodeLookup = async () => {
-        if (!quickBarcode) return;
+    const autoAddScannedProduct = (product, isCombo = false, price = 0) => {
+        let finalPrice = price;
 
-        // Buscar primero en productos precargados
-        const product = products.find(p => p.codigo === quickBarcode || p.codigo_barra === quickBarcode);
-        if (product) {
-            if (product.status === 'inactivo') {
-                setQuickBarcode('');
-                return toast.error('El producto se encuentra inactivo');
-            }
-            
-            if (product.tipo_combustible > 0) {
-                setFuelProd(product);
-                setFuelAmount(product.precio_unitario || '0');
-                setFuelQty('1');
-                setIsFuelModalOpen(true);
-                setQuickBarcode('');
-                return;
-            }
+        // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
+        if (tipoDte === '04') {
+            finalPrice = 0.00001;
+        }
 
-            const discountRule = getCustomerDiscount(product.id);
-            const finalPrice = calculateDiscountedPrice(product.precio_unitario || 0, discountRule);
+        // Validación de precio 0 cuando no se permite editar
+        if (!sellerSession?.allow_price_edit && finalPrice <= 0) {
+            setQuickBarcode('');
+            return toast.error('No se permite agregar productos con precio 0 sin autorización de edición.');
+        }
 
-            setQuickProd(product);
-            setQuickPrecio(finalPrice.toFixed(2));
-            setQuickDesc(product.nombre);
-            setQuickCant('1');
-            
-            if (discountRule) {
-                toast.info('Descuento de cliente aplicado');
-                qtyInputRef.current?.focus();
-            } else {
-                qtyInputRef.current?.focus();
-            }
+        const existing = cart.find(item => 
+            isCombo ? (item.combo_id === product.id) : (item.id === product.id && !item.isManual && !item.combo_id)
+        );
+
+        if (existing) {
+            setCart(cart.map(item => 
+                (isCombo ? item.combo_id === product.id : (item.id === product.id && !item.isManual && !item.combo_id))
+                ? { ...item, cantidad: item.cantidad + 1, precio: finalPrice } 
+                : item
+            ));
         } else {
-            // Fallback: buscar directo en el servidor (por si la lista no ha cargado)
-            try {
-                const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
-                    params: { branch_id: sellerSession?.branch_id }
-                });
-                const product = res.data;
+            const productRule = getProductDiscountRule(product.id);
+            setCart([...cart, {
+                id: isCombo ? null : product.id,
+                combo_id: isCombo ? product.id : null,
+                nombre: (product.nombre || product.name),
+                codigo: (product.codigo || product.barcode),
+                tipo_combustible: product.tipo_combustible || 0,
+                precio: finalPrice,
+                cantidad: 1,
+                descuento: 0,
+                exento: false,
+                isManual: false,
+                discountRule: productRule || null
+            }]);
+        }
+
+        toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido: ${product.nombre || product.name}`);
+        setQuickBarcode('');
+        setQuickProd(null);
+        setQuickDesc('');
+        setQuickCant('1');
+        setQuickPrecio('0');
+        setTimeout(() => barcodeInputRef.current?.focus(), 100);
+    };
+
+    const recordBarcodeKeystroke = () => {
+        const now = Date.now();
+        if (!scanEntryRef.current || (now - scanEntryRef.current.last) > 500) {
+            scanEntryRef.current = { start: now, last: now, count: 1 };
+        } else {
+            scanEntryRef.current.last = now;
+            scanEntryRef.current.count += 1;
+        }
+    };
+
+    const classifyScanEntry = () => {
+        const entry = scanEntryRef.current;
+        if (!entry || entry.count < 4) return false;
+        const avgGap = (entry.last - entry.start) / Math.max(1, entry.count - 1);
+        return avgGap < 60;
+    };
+
+    const finishBarcodeLookup = (product, isCombo, autoAdd) => {
+        if (!isCombo && product.tipo_combustible > 0) {
+            setFuelProd(product);
+            setFuelAmount(product.precio_unitario || '0');
+            setFuelQty('1');
+            setIsFuelModalOpen(true);
+            setQuickBarcode('');
+            return;
+        }
+
+        const discountRule = getCustomerDiscount(product.id);
+        const finalPrice = calculateDiscountedPrice(product.precio_unitario || product.price || 0, discountRule);
+        if (discountRule) toast.info('Descuento de cliente aplicado');
+
+        if (autoAdd) {
+            autoAddScannedProduct(product, isCombo, finalPrice);
+        } else {
+            setQuickProd(isCombo
+                ? { ...product, nombre: product.name, precio_unitario: product.price, isCombo: true }
+                : product);
+            setQuickPrecio(finalPrice.toFixed(2));
+            setQuickDesc(product.nombre || product.name);
+            setQuickCant('1');
+            qtyInputRef.current?.focus();
+        }
+    };
+
+    const performBarcodeLookup = async (autoAdd = true) => {
+        if (!quickBarcode) return;
+        if (barcodeLookupInFlightRef.current) return;
+        barcodeLookupInFlightRef.current = true;
+
+        try {
+            // Buscar primero en productos precargados
+            const product = products.find(p => p.codigo === quickBarcode || p.codigo_barra === quickBarcode);
+            if (product) {
                 if (product.status === 'inactivo') {
                     setQuickBarcode('');
                     return toast.error('El producto se encuentra inactivo');
                 }
-                if (product.tipo_combustible > 0) {
-                    setFuelProd(product);
-                    setFuelAmount(product.precio_unitario || '0');
-                    setFuelQty('1');
-                    setIsFuelModalOpen(true);
-                    setQuickBarcode('');
-                    return;
-                }
-                const discountRule = getCustomerDiscount(product.id);
-                const finalPrice = calculateDiscountedPrice(product.precio_unitario || 0, discountRule);
-                setQuickProd(product);
-                setQuickPrecio(finalPrice.toFixed(2));
-                setQuickDesc(product.nombre);
-                setQuickCant('1');
-                if (discountRule) toast.info('Descuento de cliente aplicado');
-                qtyInputRef.current?.focus();
-            } catch {
-                // Si no es producto, buscar en combos
-                const combo = combos.find(c => c.barcode === quickBarcode);
-                if (combo) {
-                    if (combo.status === 'inactive') {
+                finishBarcodeLookup(product, false, autoAdd);
+            } else {
+                // Fallback: buscar directo en el servidor (por si la lista no ha cargado)
+                try {
+                    const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
+                        params: { branch_id: sellerSession?.branch_id }
+                    });
+                    const product = res.data;
+                    if (product.status === 'inactivo') {
                         setQuickBarcode('');
-                        return toast.error('El combo se encuentra inactivo');
+                        return toast.error('El producto se encuentra inactivo');
                     }
-                    const discountRule = getCustomerDiscount(combo.id);
-                    const finalPrice = calculateDiscountedPrice(combo.price || 0, discountRule);
-
-                    setQuickProd({ ...combo, nombre: combo.name, precio_unitario: combo.price, isCombo: true });
-                    setQuickPrecio(finalPrice.toFixed(2));
-                    setQuickDesc(combo.name);
-                    setQuickCant('1');
-                    
-                    if (discountRule) toast.info('Descuento de cliente aplicado');
-                    qtyInputRef.current?.focus();
-                } else {
-                    toast.error('Producto o Combo no encontrado');
-                    setQuickBarcode('');
+                    finishBarcodeLookup(product, false, autoAdd);
+                } catch {
+                    // Si no es producto, buscar en combos
+                    const combo = combos.find(c => c.barcode === quickBarcode);
+                    if (combo) {
+                        if (combo.status === 'inactive') {
+                            setQuickBarcode('');
+                            return toast.error('El combo se encuentra inactivo');
+                        }
+                        finishBarcodeLookup(combo, true, autoAdd);
+                    } else {
+                        toast.error('Producto o Combo no encontrado');
+                        setQuickBarcode('');
+                    }
                 }
             }
+        } finally {
+            barcodeLookupInFlightRef.current = false;
+            scanEntryRef.current = null;
         }
     };
 
     const handleBarcodeSubmit = async (e) => {
+        recordBarcodeKeystroke();
         if (e.key === 'Enter') {
-            await performBarcodeLookup();
+            await performBarcodeLookup(classifyScanEntry());
         }
     };
 
@@ -1617,7 +1674,7 @@ const SalesTerminal = () => {
                                             className="w-full pl-7 pr-8 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 font-mono text-[10px] font-bold transition-all" 
                                         />
                                         <button 
-                                            onClick={performBarcodeLookup} 
+                                            onClick={() => performBarcodeLookup(false)} 
                                             className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors"
                                         >
                                             <Search size={14} />
