@@ -45,27 +45,26 @@ const CustomerDiscounts = () => {
         queryFn: async () => (await axios.get('/api/customer-discounts', { params: { branch_id: filterBranchId } })).data
     });
 
-    const { data: customers = [] } = useQuery({
-        queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 5000 } })).data?.data || []
-    });
+    // Carga remota para SearchableSelect (catálogos grandes)
+    const loadCustomersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
 
-    // We fetch products based on the branch selected in the FORM
-    const { data: products = [], isLoading: isLoadingProducts } = useQuery({
-        queryKey: ['products-by-branch', formData.branch_id],
-        queryFn: async () => {
-            if (!formData.branch_id) return [];
-            const res = await axios.get('/api/products', { 
-                params: { 
-                    limit: 5000, 
-                    branch_id: formData.branch_id 
-                } 
-            });
-            // Filter only active products
-            return (res.data?.data || []).filter(p => p.status === 'activo');
-        },
-        enabled: !!formData.branch_id
-    });
+    const loadProductsOptions = async (search, page) => {
+        const { data } = await axios.get('/api/products', {
+            params: {
+                search: search || undefined,
+                page,
+                limit: 50,
+                branch_id: formData.branch_id || undefined,
+                status: 'activo'
+            }
+        });
+        return data;
+    };
 
     // Mutations
     const createMutation = useMutation({
@@ -280,7 +279,7 @@ const CustomerDiscounts = () => {
                                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Elegir Cliente</label>
                                     <SearchableSelect 
                                         placeholder="BUSCAR CLIENTE..."
-                                        options={customers}
+                                        loadOptions={loadCustomersOptions}
                                         value={formData.customer_id}
                                         onChange={(e) => setFormData({...formData, customer_id: e.target.value})}
                                         valueKey="id"
@@ -295,14 +294,14 @@ const CustomerDiscounts = () => {
                                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Elegir Producto</label>
                                     <SearchableSelect 
                                         placeholder={!formData.branch_id ? "DEBE ELEGIR SUCURSAL PRIMERO..." : "BUSCAR PRODUCTO ACTIVO..."}
-                                        options={products}
+                                        loadOptions={loadProductsOptions}
                                         value={formData.product_id}
                                         onChange={(e) => setFormData({...formData, product_id: e.target.value})}
                                         valueKey="id"
                                         labelKey="nombre"
                                         codeKey="codigo"
                                         codeLabel="SKU"
-                                        disabled={!formData.branch_id || isLoadingProducts}
+                                        disabled={!formData.branch_id}
                                     />
                                     {!formData.branch_id && <p className="text-[9px] font-bold text-rose-400 uppercase italic animate-pulse">Debe seleccionar una sucursal para listar los productos disponibles.</p>}
                                 </div>

@@ -72,6 +72,8 @@ const PhysicalInventory = () => {
     const [quickCant, setQuickCant] = useState('');
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [productSearch, setProductSearch] = useState('');
+    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
+    const [modalPage, setModalPage] = useState(1);
     const barcodeInputRef = useRef(null);
     const qtyInputRef = useRef(null);
 
@@ -112,10 +114,19 @@ const PhysicalInventory = () => {
         queryFn: async () => (await axios.get('/api/categories', { params: { limit: 5000 } })).data?.data || []
     });
 
-    const { data: allProducts = [] } = useQuery({
-        queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
+    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
+        queryKey: ['physical-products', debouncedProductSearch, branchId, modalPage],
+        queryFn: async () => (await axios.get('/api/products', {
+            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
+        })).data,
+        enabled: isProductModalOpen
     });
+    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo' && p.afecta_inventario === 1);
+
+    React.useEffect(() => {
+        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
+        return () => clearTimeout(timer);
+    }, [productSearch]);
 
     const { data: historyData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
         queryKey: ['physical-inventory-history', historySearch, historyPage, user?.branch_id],
@@ -311,18 +322,14 @@ const PhysicalInventory = () => {
 
     const handleBarcodeSubmit = async (e) => {
         if (e.key === 'Enter' && quickBarcode) {
-            const searchCode = quickBarcode.trim().toUpperCase();
-            const product = allProducts.find(p => 
-                p.codigo?.toUpperCase() === searchCode || 
-                p.barcode?.toUpperCase() === searchCode
-            );
-            if (product) {
-                if (product.status !== 'activo') return toast.error('Producto inactivo');
-                if (branchId && !product.branches?.includes(parseInt(branchId))) return toast.error('Producto no autorizado para esta sucursal');
-                
-                setQuickProd(product);
+            if (!branchId) return toast.error('Seleccione una sucursal primero');
+            try {
+                const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(quickBarcode.trim())}`, { params: { branch_id: branchId } });
+                if (data.status !== 'activo') return toast.error('Producto inactivo');
+                if (data.afecta_inventario !== 1) return toast.error('Producto no autorizado para esta sucursal');
+                setQuickProd(data);
                 setTimeout(() => qtyInputRef.current?.focus(), 50);
-            } else {
+            } catch {
                 toast.error('Producto no encontrado');
                 setQuickBarcode('');
             }
@@ -974,20 +981,7 @@ const PhysicalInventory = () => {
                                             onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && quickBarcode) {
-                                                    const searchCode = quickBarcode.trim().toUpperCase();
-                                                    const product = allProducts.find(p => 
-                                                        (p.codigo?.toUpperCase() === searchCode || p.barcode?.toUpperCase() === searchCode) &&
-                                                        p.status === 'activo' &&
-                                                        p.afecta_inventario === 1 &&
-                                                        (!branchId || p.branches?.includes(parseInt(branchId)))
-                                                    );
-                                                    if (product) {
-                                                        setQuickProd(product);
-                                                        setTimeout(() => qtyInputRef.current?.focus(), 50);
-                                                    } else {
-                                                        toast.error('Producto no encontrado o no autorizado');
-                                                        setQuickBarcode('');
-                                                    }
+                                                    handleBarcodeSubmit(e);
                                                 }
                                             }}
                                             placeholder="SCANNER..."
@@ -1257,11 +1251,16 @@ const PhysicalInventory = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
-                                {allProducts
-                                    .filter(p => p.status === 'activo' && p.afecta_inventario === 1)
-                                    .filter(p => !branchId || p.branches?.includes(parseInt(branchId)))
+                                {isLoadingModalProducts ? (
+                                    <tr>
+                                        <td colSpan="3" className="px-8 py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</td>
+                                    </tr>
+                                ) : modalProducts.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="3" className="px-8 py-16 text-center text-slate-400 text-sm font-medium">No se encontraron productos</td>
+                                    </tr>
+                                ) : modalProducts
                                     .filter(p => !productSearch || p.nombre.toLowerCase().includes(productSearch.toLowerCase()) || p.codigo.toLowerCase().includes(productSearch.toLowerCase()))
-                                    .slice(0, 50)
                                     .map((p) => (
                                         <tr key={p.id} className="hover:bg-slate-50 transition-all group">
                                             <td className="px-8 py-4 font-mono font-black text-indigo-500 text-xs">#{p.codigo}</td>
@@ -1279,6 +1278,18 @@ const PhysicalInventory = () => {
                                     ))}
                             </tbody>
                         </table>
+                        {modalProductsData.totalPages > 1 && (
+                            <div className="border-t border-slate-100 p-4">
+                                <Pagination
+                                    currentPage={modalPage}
+                                    totalPages={modalProductsData.totalPages}
+                                    totalItems={modalProductsData.total}
+                                    onPageChange={setModalPage}
+                                    itemsOnPage={modalProducts.length}
+                                    isLoading={isLoadingModalProducts}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             </Modal>

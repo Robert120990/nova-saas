@@ -28,10 +28,15 @@ const ProviderPendingDocumentsDetailedReport = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: providers = [] } = useQuery({
-        queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000, es_credito: '1' } })).data?.data || [],
-    });
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: '1' }
+        });
+        if (page === 1 && !search) {
+            data.data = [{ id: 'all', nombre: 'TODOS LOS PROVEEDORES' }, ...(data.data || [])];
+        }
+        return data;
+    };
 
     const handleGenerateReport = async () => {
         if (!selectedBranch) {
@@ -170,7 +175,7 @@ const ProviderPendingDocumentsDetailedReport = () => {
                 </label>
                 <SearchableSelect 
                     placeholder="TODOS LOS PROVEEDORES"
-                    options={[{ id: 'all', nombre: 'TODOS LOS PROVEEDORES' }, ...providers]}
+                    loadOptions={loadProvidersOptions}
                     value={selectedProvider}
                     onChange={(e) => setSelectedProvider(e.target.value)}
                     valueKey="id"

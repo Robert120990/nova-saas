@@ -599,19 +599,20 @@ const GasCloseout = () => {
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lubricantes')
     });
 
-    const { data: providersData } = useQuery({
-        queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 500 } })).data?.data || [],
-    });
-    const providers = providersData || [];
+    // Carga remota para SearchableSelect (clientes/proveedores pueden ser miles)
+    const loadCustomers = (extraParams = {}) => async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50, ...extraParams }
+        });
+        return data;
+    };
 
-    const { data: customersData } = useQuery({
-        queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000 } })).data?.data || [],
-    });
-    const customers = customersData || [];
-    const creditCustomers = customers.filter(c => c.es_credito);
-    const anticipadoCustomers = customers.filter(c => c.es_anticipado);
+    const loadProviders = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
 
     const loadExpenseCategories = async () => {
         try {
@@ -2322,13 +2323,11 @@ const GasCloseout = () => {
                                                 </td>
                                                 <td className="px-1.5 py-1">
                                                     <SearchableSelect
-                                                        options={providers}
+                                                        loadOptions={loadProviders}
                                                         value={g.provider_id}
-                                                        onChange={(e) => {
-                                                            const id = e.target.value;
-                                                            const prov = providers.find(p => p.id === parseInt(id));
-                                                            handleGastoChange(g.id, 'provider_id', id);
-                                                            handleGastoChange(g.id, 'proveedor', prov ? prov.nombre : '');
+                                                        onChange={(e, opt) => {
+                                                            handleGastoChange(g.id, 'provider_id', e.target.value);
+                                                            handleGastoChange(g.id, 'proveedor', opt ? opt.nombre : '');
                                                         }}
                                                         disabled={estado === 'cerrado'}
                                                         placeholder="Buscar proveedor..."
@@ -2337,6 +2336,8 @@ const GasCloseout = () => {
                                                         displayKey="nombre"
                                                         codeKey="nrc"
                                                         codeLabel="NRC"
+                                                        selectedLabel={g.proveedor}
+                                                        dropdownWidth={380}
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1">
@@ -2778,13 +2779,11 @@ const GasCloseout = () => {
                                                 </td>
                                                 <td className="px-1.5 py-1">
                                                     <SearchableSelect
-                                                        options={customers}
+                                                        loadOptions={loadCustomers()}
                                                         value={d.cliente_id}
-                                                        onChange={(e) => {
-                                                            const id = e.target.value;
-                                                            const cli = customers.find(c => c.id === parseInt(id));
-                                                            handleDescuentoChange(d.id, 'cliente_id', id);
-                                                            handleDescuentoChange(d.id, 'cliente_nombre', cli ? cli.nombre : '');
+                                                        onChange={(e, opt) => {
+                                                            handleDescuentoChange(d.id, 'cliente_id', e.target.value);
+                                                            handleDescuentoChange(d.id, 'cliente_nombre', opt ? opt.nombre : '');
                                                         }}
                                                         disabled={estado === 'cerrado'}
                                                         placeholder="Buscar cliente..."
@@ -2793,6 +2792,8 @@ const GasCloseout = () => {
                                                         displayKey="nombre"
                                                         codeKey="nit"
                                                         codeLabel="NIT/DOC"
+                                                        selectedLabel={d.cliente_nombre}
+                                                        dropdownWidth={420}
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1">
@@ -3513,13 +3514,11 @@ const GasCloseout = () => {
                                                     </td>
                                                     <td className="px-1.5 py-1">
                                                         <SearchableSelect
-                                                            options={creditCustomers}
+                                                            loadOptions={loadCustomers({ es_credito: 1 })}
                                                             value={c.cliente_id}
-                                                            onChange={(e) => {
-                                                                const id = e.target.value;
-                                                                const cli = customers.find(cust => cust.id === parseInt(id));
-                                                                handleCreditoChange(c.id, 'cliente_id', id);
-                                                                handleCreditoChange(c.id, 'cliente_nombre', cli ? cli.nombre : '');
+                                                            onChange={(e, opt) => {
+                                                                handleCreditoChange(c.id, 'cliente_id', e.target.value);
+                                                                handleCreditoChange(c.id, 'cliente_nombre', opt ? opt.nombre : '');
                                                             }}
                                                             disabled={estado === 'cerrado'}
                                                             placeholder="Buscar cliente..."
@@ -3528,6 +3527,8 @@ const GasCloseout = () => {
                                                             displayKey="nombre"
                                                             codeKey="nrc"
                                                             codeLabel="NRC"
+                                                            selectedLabel={c.cliente_nombre}
+                                                            dropdownWidth={420}
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-1">
@@ -3744,13 +3745,11 @@ const GasCloseout = () => {
                                                     </td>
                                                     <td className="px-1.5 py-1">
                                                         <SearchableSelect
-                                                            options={creditCustomers}
+                                                            loadOptions={loadCustomers({ es_credito: 1 })}
                                                             value={v.cliente_id}
-                                                            onChange={(e) => {
-                                                                const id = e.target.value;
-                                                                const cli = customers.find(cust => cust.id === parseInt(id));
-                                                                handleValeChange(v.id, 'cliente_id', id);
-                                                                handleValeChange(v.id, 'cliente_nombre', cli ? cli.nombre : '');
+                                                            onChange={(e, opt) => {
+                                                                handleValeChange(v.id, 'cliente_id', e.target.value);
+                                                                handleValeChange(v.id, 'cliente_nombre', opt ? opt.nombre : '');
                                                             }}
                                                             disabled={estado === 'cerrado'}
                                                             placeholder="Buscar cliente..."
@@ -3759,6 +3758,8 @@ const GasCloseout = () => {
                                                             displayKey="nombre"
                                                             codeKey="nrc"
                                                             codeLabel="NRC"
+                                                            selectedLabel={v.cliente_nombre}
+                                                            dropdownWidth={420}
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-1">
@@ -4161,13 +4162,11 @@ const GasCloseout = () => {
                                                 <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
                                                     <td className="px-1.5 py-1">
                                                         <SearchableSelect
-                                                            options={anticipadoCustomers}
+                                                            loadOptions={loadCustomers({ es_anticipado: 1 })}
                                                             value={a.cliente_id}
-                                                            onChange={(e) => {
-                                                                const id = e.target.value;
-                                                                const cli = customers.find(cust => cust.id === parseInt(id));
-                                                                handleAnticipoClienteChange(a.id, id);
-                                                                if (cli) handleAnticipoChange(a.id, 'cliente_nombre', cli.nombre);
+                                                            onChange={(e, opt) => {
+                                                                handleAnticipoClienteChange(a.id, e.target.value);
+                                                                if (opt) handleAnticipoChange(a.id, 'cliente_nombre', opt.nombre);
                                                             }}
                                                             disabled={estado === 'cerrado'}
                                                             placeholder="Buscar cliente..."
@@ -4176,6 +4175,8 @@ const GasCloseout = () => {
                                                             displayKey="nombre"
                                                             codeKey="nrc"
                                                             codeLabel="NRC"
+                                                            selectedLabel={a.cliente_nombre}
+                                                            dropdownWidth={420}
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-1 text-center font-mono font-bold text-xs">

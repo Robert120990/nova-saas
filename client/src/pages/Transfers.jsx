@@ -55,11 +55,19 @@ const Transfers = () => {
 
     // Auxiliary state for adding a product
     const [currentProduct, setCurrentProduct] = useState('');
+    const [currentProductObj, setCurrentProductObj] = useState(null);
     const [currentQty, setCurrentQty] = useState(1);
     const [viewingTransfer, setViewingTransfer] = useState(null);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [quickBarcode, setQuickBarcode] = useState('');
     const [productSearchModal, setProductSearchModal] = useState('');
+    const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
+    const [modalPage, setModalPage] = useState(1);
+
+    React.useEffect(() => {
+        const timer = setTimeout(() => { setDebouncedModalSearch(productSearchModal); setModalPage(1); }, 500);
+        return () => clearTimeout(timer);
+    }, [productSearchModal]);
     
     // Refs for focus management
     const qtyRef = React.useRef(null);
@@ -70,32 +78,14 @@ const Transfers = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: catResponse = { data: [] } } = useQuery({
-        queryKey: ['categories'],
-        queryFn: async () => (await axios.get('/api/categories')).data
+    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
+        queryKey: ['transfer-products', debouncedModalSearch, origenBranch, modalPage],
+        queryFn: async () => (await axios.get('/api/products', {
+            params: { search: debouncedModalSearch || undefined, branch_id: origenBranch || undefined, limit: 20, page: modalPage }
+        })).data,
+        enabled: isProductModalOpen
     });
-
-    const categories = catResponse.data || [];
-
-    const { data: products = [] } = useQuery({
-        queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
-    });
-
-    // Transform products to include category for display (Only active products and authorized for origin branch)
-    const productsForSelect = products
-        .filter(p => 
-            p.status === 'activo' && 
-            (!origenBranch || p.branches?.includes(parseInt(origenBranch)))
-        )
-        .map(p => {
-            const cat = categories.find(c => c.id === p.category_id);
-            return {
-                ...p,
-                categoria_nombre: cat ? cat.name : 'Sin categoría',
-                displayText: p.nombre
-            };
-        });
+    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo');
 
     const { data: transfersData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingTransfers } = useQuery({
         queryKey: ['transfers', historySearch, historyPage, user?.branch_id],
@@ -164,18 +154,19 @@ const Transfers = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeTab]);
 
-    const handleBarcodeSubmit = (e) => {
+    const handleBarcodeSubmit = async (e) => {
         if (e.key === 'Enter') {
-            const found = products.find(p => p.codigo === quickBarcode);
-            if (found) {
-                if (origenBranch && found.branches && !found.branches.includes(parseInt(origenBranch))) {
-                    return toast.error('Producto no disponible en la sucursal de origen');
-                }
-                setCurrentProduct(found.id);
+            const code = quickBarcode.trim();
+            if (!code) return;
+            if (!origenBranch) return toast.error('Seleccione primero la sucursal de origen');
+            try {
+                const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: origenBranch } });
+                setCurrentProduct(data.id);
+                setCurrentProductObj(data);
                 setQuickBarcode('');
                 setCurrentQty(1); // Reset qty to 1 for new item
                 setTimeout(() => qtyRef.current?.focus(), 100);
-            } else {
+            } catch {
                 toast.error('Producto no encontrado');
             }
         }
@@ -236,8 +227,8 @@ const Transfers = () => {
         if (!destinoBranch) return toast.error('Seleccione primero la sucursal de destino');
         if (currentQty <= 0) return toast.error('La cantidad debe ser mayor a 0');
 
-        const product = products.find(p => String(p.id) === String(currentProduct));
-        
+        const product = currentProductObj;
+
         // Verificar si el producto tiene permiso en la sucursal de destino
         if (!product?.branches?.includes(parseInt(destinoBranch))) {
             return toast.error(`El producto "${product.nombre}" no tiene permiso de acceso a la sucursal de destino`);
@@ -268,6 +259,7 @@ const Transfers = () => {
         }]);
 
         setCurrentProduct('');
+        setCurrentProductObj(null);
         setCurrentQty(1);
     };
 
@@ -335,6 +327,7 @@ const Transfers = () => {
                                             setOrigenBranch(e.target.value); 
                                             setSelectedItems([]); 
                                             setCurrentProduct('');
+                                            setCurrentProductObj(null);
                                         }}
                                         className={inputCls}
                                     >
@@ -435,7 +428,7 @@ const Transfers = () => {
                                             </div>
                                             <div className="flex-1 px-4 py-2 bg-indigo-50/20 border border-slate-200 rounded-r-xl text-xs font-bold text-slate-700 flex items-center justify-between group overflow-hidden h-[40px]">
                                                 <span className={currentProduct ? 'text-indigo-600 truncate' : 'text-slate-400 italic truncate'}>
-                                                    {currentProduct ? `${products.find(p => String(p.id) === String(currentProduct))?.nombre} (${products.find(p => String(p.id) === String(currentProduct))?.codigo})` : 'Escanee o busque...'}
+                                                    {currentProduct ? `${currentProductObj?.nombre} (${currentProductObj?.codigo})` : 'Escanee o busque...'}
                                                 </span>
                                                 <button 
                                                     onClick={() => setIsProductModalOpen(true)}
@@ -681,16 +674,19 @@ const Transfers = () => {
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-6 pt-0 space-y-2 custom-scrollbar">
-                            {products
-                                .filter(p => p.status === 'activo' && (!origenBranch || (p.branches && p.branches.includes(parseInt(origenBranch)))))
-                                .filter(p => (p.nombre || '').toLowerCase().includes(productSearchModal.toLowerCase()) || (p.codigo || '').toLowerCase().includes(productSearchModal.toLowerCase()))
-                                .map(p => (
+                            {isLoadingModalProducts ? (
+                                <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
+                            ) : modalProducts.length === 0 ? (
+                                <div className="py-16 text-center text-slate-400 text-sm font-medium">No se encontraron productos para esta selección</div>
+                            ) : modalProducts.map(p => (
                                     <button 
                                         key={p.id} 
                                         onClick={() => {
                                             setCurrentProduct(p.id);
+                                            setCurrentProductObj(p);
                                             setIsProductModalOpen(false);
                                             setProductSearchModal('');
+                                            setModalPage(1);
                                         }} 
                                         className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group text-left"
                                     >
@@ -715,6 +711,18 @@ const Transfers = () => {
                                     </button>
                                 ))}
                         </div>
+                        {modalProductsData.totalPages > 1 && (
+                            <div className="border-t border-slate-100 p-4">
+                                <Pagination
+                                    currentPage={modalPage}
+                                    totalPages={modalProductsData.totalPages}
+                                    totalItems={modalProductsData.total}
+                                    onPageChange={setModalPage}
+                                    itemsOnPage={modalProducts.length}
+                                    isLoading={isLoadingModalProducts}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

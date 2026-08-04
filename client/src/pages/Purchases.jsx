@@ -78,6 +78,8 @@ const Purchases = () => {
     const [quickProd, setQuickProd] = useState(null);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [productSearch, setProductSearch] = useState('');
+    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
+    const [modalPage, setModalPage] = useState(1);
 
     const barcodeInputRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -146,14 +148,26 @@ const Purchases = () => {
         enabled: !!user?.company_id
     });
 
-    const { data: providers = [] } = useQuery({
-        queryKey: ['providers-all', user?.company_id],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000 } })).data?.data || []
-    });
+    const [providersCache, setProvidersCache] = useState({});
+
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        if (data?.data?.length) {
+            setProvidersCache(prev => {
+                const next = { ...prev };
+                data.data.forEach(p => { next[p.id] = p; });
+                return next;
+            });
+        }
+        return data;
+    };
 
     const selectedProvider = useMemo(() => {
-        return providers.find(p => p.id === parseInt(providerId));
-    }, [providers, providerId]);
+        if (!providerId) return null;
+        return providersCache[parseInt(providerId)] || null;
+    }, [providersCache, providerId]);
 
     useEffect(() => {
         if (!selectedProvider) return;
@@ -186,10 +200,18 @@ const Purchases = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: products = [] } = useQuery({
-        queryKey: ['products-all', user?.company_id],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
+    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
+        queryKey: ['purchase-products', debouncedProductSearch, branchId, modalPage],
+        queryFn: async () => (await axios.get('/api/products', {
+            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
+        })).data,
+        enabled: isProductModalOpen
     });
+
+    React.useEffect(() => {
+        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
+        return () => clearTimeout(timer);
+    }, [productSearch]);
 
     const { data: tipoDocs = [] } = useQuery({
         queryKey: ['catalog', '002'],
@@ -340,40 +362,31 @@ const Purchases = () => {
     };
 
     const filteredProducts = useMemo(() => {
-        let list = products.filter(p => p.status === 'activo');
-        
+        let list = modalProductsData.data.filter(p => p.status === 'activo');
+
         // Filter by branch if selected
         if (branchId) {
             const bid = parseInt(branchId);
             list = list.filter(p => p.branches?.includes(bid));
         }
 
-        if (!productSearch) return list.slice(0, 50);
-        const search = productSearch.toLowerCase();
-        return list.filter(p => 
-            p.nombre?.toLowerCase().includes(search) || 
-            p.codigo?.toLowerCase().includes(search)
-        ).slice(0, 50);
-    }, [products, productSearch, branchId]);
+        return list;
+    }, [modalProductsData, branchId]);
 
-    const performBarcodeLookup = () => {
+    const performBarcodeLookup = async () => {
         if (!quickBarcode) return;
+        if (!branchId) return toast.error('Seleccione primero una sucursal');
 
-        const product = products.find(p => p.codigo === quickBarcode);
-        if (product) {
-            if (product.status !== 'activo') {
+        try {
+            const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(quickBarcode.trim())}`, { params: { branch_id: branchId } });
+            if (data.status !== 'activo') {
                 setQuickBarcode('');
                 return toast.error('El producto seleccionado se encuentra inactivo');
             }
-            const bid = parseInt(branchId);
-            if (bid && !product.branches?.includes(bid)) {
-                setQuickBarcode('');
-                return toast.error('El producto no está autorizado para esta sucursal');
-            }
-            setQuickProd(product);
-            setQuickCosto(product.costo || '0');
+            setQuickProd(data);
+            setQuickCosto(data.costo || '0');
             qtyInputRef.current?.focus();
-        } else {
+        } catch {
             toast.error('Producto no encontrado');
             setQuickBarcode('');
         }
@@ -469,11 +482,21 @@ const Purchases = () => {
                     const nit = json.emisor.nit?.replace(/\D/g, '');
                     const nrc = json.emisor.nrc?.replace(/\D/g, '');
                     
-                    const found = providers.find(p => {
-                        const pNit = p.nit?.replace(/\D/g, '');
-                        const pNrc = p.nrc?.replace(/\D/g, '');
-                        return (nit && pNit === nit) || (nrc && pNrc === nrc);
-                    });
+                    const found = await (async () => {
+                        if (!nit && !nrc) return null;
+                        try {
+                            const { data: res } = await axios.get('/api/providers', {
+                                params: { search: nit || nrc, limit: 50 }
+                            });
+                            const match = (res.data || []).find(p => {
+                                const pNit = p.nit?.replace(/\D/g, '');
+                                const pNrc = p.nrc?.replace(/\D/g, '');
+                                return (nit && pNit === nit) || (nrc && pNrc === nrc);
+                            });
+                            if (match) setProvidersCache(prev => ({ ...prev, [match.id]: match }));
+                            return match || null;
+                        } catch { return null; }
+                    })();
 
                     if (found) {
                         setProviderId(found.id);
@@ -493,9 +516,15 @@ const Purchases = () => {
                     const missingProducts = [];
                     let matchedCount = 0;
 
-                    body.forEach(item => {
+                    for (const item of body) {
                         const code = (item.codigo || '').toUpperCase();
-                        const prod = products.find(p => p.codigo?.toUpperCase() === code);
+                        let prod = null;
+                        if (code && branchId) {
+                            try {
+                                const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: branchId } });
+                                prod = data;
+                            } catch { prod = null; }
+                        }
                         
                         if (prod) {
                             newItems.push({
@@ -511,7 +540,7 @@ const Purchases = () => {
                         } else {
                             missingProducts.push(code || item.descripcion);
                         }
-                    });
+                    }
 
                     if (newItems.length > 0) {
                         setSelectedItems(newItems);
@@ -596,6 +625,9 @@ const Purchases = () => {
             setIsEditing(true);
             setBranchId(detail.branch_id);
             setProviderId(detail.provider_id);
+            if (detail.provider_nombre) {
+                setProvidersCache(prev => ({ ...prev, [detail.provider_id]: { id: detail.provider_id, nombre: detail.provider_nombre } }));
+            }
             setTipoDocId(detail.tipo_documento_id);
             setCondicionId(detail.condicion_operacion_id);
             setNumeroDoc(detail.numero_documento);
@@ -617,7 +649,7 @@ const Purchases = () => {
                 product_id: it.product_id,
                 nombre: it.nombre,
                 codigo: it.codigo,
-                tipo_combustible: products.find(p => p.id === it.product_id)?.tipo_combustible || 0,
+                tipo_combustible: it.tipo_combustible || 0,
                 cantidad: parseFloat(it.cantidad),
                 precio_unitario: parseFloat(it.precio_unitario),
                 total: parseFloat(it.total)
@@ -802,10 +834,15 @@ const Purchases = () => {
                                     <label className={labelCls}>Proveedor / Emisor</label>
                                     <div className="relative">
                                         <SearchableSelect 
-                                            options={providers} value={providerId} 
-                                            onChange={(e) => setProviderId(e.target.value)}
+                                            loadOptions={loadProvidersOptions} value={providerId} 
+                                            onChange={(e, opt) => {
+                                                setProviderId(e.target.value);
+                                                if (opt) setProvidersCache(prev => ({ ...prev, [opt.id]: opt }));
+                                            }}
                                             valueKey="id" labelKey="nombre" placeholder="BUSCAR PROVEEDOR..."
                                             codeKey="nrc" codeLabel="NRC"
+                                            selectedLabel={selectedProvider?.nombre}
+                                            dropdownWidth={420}
                                         />
                                         {selectedProvider && (
                                             <span className={`absolute -bottom-4 right-1 text-[8px] font-black uppercase tracking-tighter ${selectedProvider.es_gran_contribuyente ? 'text-indigo-500' : 'text-slate-400'}`}>
@@ -1239,12 +1276,16 @@ const Purchases = () => {
                 setProductSearch={setProductSearch}
                 products={filteredProducts}
                 handleSelect={handleSelectProduct}
+                isLoading={isLoadingModalProducts}
+                modalData={modalProductsData}
+                modalPage={modalPage}
+                setModalPage={setModalPage}
             />
         </div>
     );
 };
 
-const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect }) => {
+const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect, isLoading, modalData, modalPage, setModalPage }) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1275,7 +1316,9 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
 
                 <div className="flex-1 overflow-y-auto p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {products.map(p => (
+                        {isLoading ? (
+                            <div className="col-span-full py-12 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
+                        ) : products.map(p => (
                             <button 
                                 key={p.id}
                                 onClick={() => handleSelect(p)}
@@ -1291,7 +1334,7 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                                 </div>
                             </button>
                         ))}
-                        {products.length === 0 && (
+                        {!isLoading && products.length === 0 && (
                             <div className="col-span-full py-12 text-center text-slate-400">
                                 <Package size={40} className="mx-auto opacity-20 mb-2" />
                                 <p className="font-bold uppercase tracking-widest text-xs italic">Cargue productos en el inventario para que aparezcan aquí</p>
@@ -1299,6 +1342,18 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                         )}
                     </div>
                 </div>
+                {modalData?.totalPages > 1 && (
+                    <div className="border-t border-slate-100 p-4">
+                        <Pagination
+                            currentPage={modalPage}
+                            totalPages={modalData.totalPages}
+                            totalItems={modalData.total}
+                            onPageChange={setModalPage}
+                            itemsOnPage={products.length}
+                            isLoading={isLoading}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );

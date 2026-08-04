@@ -51,6 +51,7 @@ const PurchaseChecks = () => {
     const [formBranchId, setFormBranchId] = useState(user?.branch_id || '');
     const [formFecha, setFormFecha] = useState(today());
     const [formProviderId, setFormProviderId] = useState('');
+    const [formProviderNombre, setFormProviderNombre] = useState('');
     const [formMonto, setFormMonto] = useState('');
     const [formDestino, setFormDestino] = useState('P');
 
@@ -75,10 +76,12 @@ const PurchaseChecks = () => {
         })).data
     });
 
-    const { data: providers = [] } = useQuery({
-        queryKey: ['providers-all', user?.company_id],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000 } })).data?.data || []
-    });
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
@@ -96,6 +99,7 @@ const PurchaseChecks = () => {
             setFormBranchId(editData.branch_id || user?.branch_id || '');
             setFormFecha(editData.fecha ? editData.fecha.split('T')[0] : today());
             setFormProviderId(String(editData.provider_id || ''));
+            setFormProviderNombre(editData.provider_nombre || '');
             setFormMonto(String(editData.monto || ''));
             setFormDestino(editData.destino || 'P');
         }
@@ -243,6 +247,7 @@ const PurchaseChecks = () => {
         setFormBranchId(user?.branch_id || '');
         setFormFecha(today());
         setFormProviderId('');
+        setFormProviderNombre('');
         setFormMonto('');
         setFormDestino('P');
     };
@@ -486,7 +491,7 @@ const PurchaseChecks = () => {
                     <div>
                         <label className={`${labelCls} block mb-1`}>Proveedor</label>
                         <SearchableSelect
-                            options={providers}
+                            loadOptions={loadProvidersOptions}
                             value={formProviderId}
                             onChange={(e) => setFormProviderId(e.target.value)}
                             valueKey="id"
@@ -494,6 +499,8 @@ const PurchaseChecks = () => {
                             placeholder="BUSCAR PROVEEDOR..."
                             codeKey="nrc"
                             codeLabel="NRC"
+                            selectedLabel={formProviderNombre}
+                            dropdownWidth={420}
                         />
                     </div>
                     <div className="grid grid-cols-2 gap-5">

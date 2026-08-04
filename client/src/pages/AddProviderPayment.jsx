@@ -156,15 +156,18 @@ const AddProviderPayment = () => {
         queryFn: async () => (await axios.get('/api/branches')).data,
     });
 
-    const { data: providersRaw = [] } = useQuery({
-        queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000, es_credito: '1' } })).data?.data || [],
-    });
-
-    const providers = useMemo(() => providersRaw.map(p => ({
-        ...p,
-        nit_nrc: `NIT: ${p.nit || 'N/A'} | NRC: ${p.nrc || 'N/A'}`
-    })), [providersRaw]);
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: '1' }
+        });
+        if (data?.data) {
+            data.data = data.data.map(p => ({
+                ...p,
+                nit_nrc: `NIT: ${p.nit || 'N/A'} | NRC: ${p.nrc || 'N/A'}`
+            }));
+        }
+        return data;
+    };
 
     const { data: statementData } = useQuery({
         queryKey: ['provider-summary-balance', selectedProviderId, selectedBranchId],
@@ -334,7 +337,7 @@ const AddProviderPayment = () => {
                     <label className="block text-[9px] font-black text-rose-400 uppercase tracking-widest mb-1 ml-1">PROVEEDOR</label>
                     <SearchableSelect 
                         placeholder="BUSCAR PROVEEDOR..."
-                        options={providers}
+                        loadOptions={loadProvidersOptions}
                         value={selectedProviderId}
                         onChange={(e) => setSelectedProviderId(e.target.value)}
                         valueKey="id"

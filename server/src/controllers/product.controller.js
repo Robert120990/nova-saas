@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getProducts = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, branch_id, pos_id, category_id } = req.query;
+        const { search, page = 1, limit = 15, branch_id, pos_id, category_id, status } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `
@@ -52,6 +52,11 @@ const getProducts = async (req, res) => {
         if (category_id) {
             query += ` AND p.category_id = ?`;
             params.push(category_id);
+        }
+
+        if (status) {
+            query += ` AND p.status = ?`;
+            params.push(status);
         }
 
         // Count total for pagination
@@ -217,7 +222,9 @@ const lookupProduct = async (req, res) => {
             LIMIT 1
         `, [branch_id, req.company_id, code, code]);
         if (rows.length === 0) return res.status(404).json({ message: 'Producto no encontrado' });
-        res.json(rows[0]);
+
+        const [branches] = await pool.query('SELECT branch_id FROM product_branch WHERE product_id = ?', [rows[0].id]);
+        res.json({ ...rows[0], branches: branches.map(b => b.branch_id) });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

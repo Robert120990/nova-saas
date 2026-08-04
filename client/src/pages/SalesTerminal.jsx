@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
+import Pagination from '../components/ui/Pagination';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
@@ -88,6 +89,8 @@ const SalesTerminal = () => {
     // UI State
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [productSearch, setProductSearch] = useState('');
+    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
+    const [modalPage, setModalPage] = useState(1);
     const [barcode, setBarcode] = useState('');
     
     // Quick Add State (Like Purchases)
@@ -143,16 +146,40 @@ const SalesTerminal = () => {
         queryFn: async () => (await axios.get('/api/taxes')).data,
     });
 
-    const { data: customers = [] } = useQuery({
-        queryKey: ['customers'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 99999 } })).data?.data || []
+    const [customersCache, setCustomersCache] = useState({});
+
+    const loadCustomersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        if (data?.data?.length) {
+            setCustomersCache(prev => {
+                const next = { ...prev };
+                data.data.forEach(c => { next[c.id] = c; });
+                return next;
+            });
+        }
+        return data;
+    };
+
+    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
+        queryKey: ['terminal-products', debouncedProductSearch, sellerSession?.branch_id, sellerSession?.pos_id, modalPage],
+        queryFn: async () => (await axios.get('/api/products', {
+            params: {
+                search: debouncedProductSearch || undefined,
+                branch_id: sellerSession?.branch_id,
+                pos_id: sellerSession?.pos_id,
+                limit: 20,
+                page: modalPage
+            }
+        })).data,
+        enabled: !!sellerSession?.branch_id && isProductModalOpen
     });
 
-    const { data: products = [] } = useQuery({
-        queryKey: ['products-all', sellerSession?.branch_id],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000, branch_id: sellerSession?.branch_id, pos_id: sellerSession?.pos_id } })).data?.data || [],
-        enabled: !!sellerSession?.branch_id
-    });
+    React.useEffect(() => {
+        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
+        return () => clearTimeout(timer);
+    }, [productSearch]);
 
     const { data: combos = [] } = useQuery({
         queryKey: ['combos-all', sellerSession?.branch_id],
@@ -287,8 +314,9 @@ const SalesTerminal = () => {
 
     // Helper: Find selected customer data
     const selectedCustomerData = useMemo(() => {
-        return customers.find(c => c.id === parseInt(customerId));
-    }, [customerId, customers]);
+        if (!customerId) return null;
+        return customersCache[parseInt(customerId)] || null;
+    }, [customerId, customersCache]);
 
     // Campos de ubicación obligatorios para facturar (DTE)
     const getMissingCustomerFields = (customer) => {
@@ -302,10 +330,13 @@ const SalesTerminal = () => {
 
     const selectedCustomerMissing = selectedCustomerData ? getMissingCustomerFields(selectedCustomerData) : [];
 
-    const handleCustomerSelect = (value) => {
+    const handleCustomerSelect = (value, option) => {
         setCustomerId(value);
+        if (option) {
+            setCustomersCache(prev => ({ ...prev, [option.id]: option }));
+        }
         if (value) {
-            const cust = customers.find(c => c.id === parseInt(value));
+            const cust = option || customersCache[parseInt(value)];
             if (cust) {
                 const missing = getMissingCustomerFields(cust);
                 if (missing.length > 0) {
@@ -333,7 +364,7 @@ const SalesTerminal = () => {
         if (!search) {
             return {
                 filteredCombos: combos.slice(0, 10),
-                filteredProducts: products.slice(0, 50)
+                filteredProducts: modalProductsData.data.slice(0, 20)
             };
         }
 
@@ -342,17 +373,11 @@ const SalesTerminal = () => {
             (c.barcode || '').toLowerCase().includes(search)
         );
 
-        const fProducts = products.filter(p => 
-            (p.nombre || '').toLowerCase().includes(search) || 
-            (p.codigo || '').toLowerCase().includes(search) ||
-            (p.codigo_barra || '').toLowerCase().includes(search)
-        );
-
         return {
             filteredCombos: fCombos.slice(0, 20),
-            filteredProducts: fProducts.slice(0, 100)
+            filteredProducts: modalProductsData.data.slice(0, 20)
         };
-    }, [products, combos, productSearch, isProductModalOpen]);
+    }, [modalProductsData, combos, productSearch, isProductModalOpen]);
 
     const handleEditCustomer = () => {
         if (!selectedCustomerData) return;
@@ -385,6 +410,7 @@ const SalesTerminal = () => {
                 res = await axios.post('/api/customers', data);
                 toast.success('Cliente registrado');
                 setCustomerId(res.data.id); // Auto-select new customer
+                setCustomersCache(prev => ({ ...prev, [res.data.id]: res.data }));
             }
             queryClient.invalidateQueries(['customers']);
             setIsCustomerModalOpen(false);
@@ -1229,39 +1255,29 @@ const SalesTerminal = () => {
         barcodeLookupInFlightRef.current = true;
 
         try {
-            // Buscar primero en productos precargados
-            const product = products.find(p => p.codigo === quickBarcode || p.codigo_barra === quickBarcode);
-            if (product) {
+            // Buscar directo en el servidor (búsqueda exacta por código o código de barras)
+            try {
+                const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
+                    params: { branch_id: sellerSession?.branch_id }
+                });
+                const product = res.data;
                 if (product.status === 'inactivo') {
                     setQuickBarcode('');
                     return toast.error('El producto se encuentra inactivo');
                 }
                 finishBarcodeLookup(product, false, autoAdd);
-            } else {
-                // Fallback: buscar directo en el servidor (por si la lista no ha cargado)
-                try {
-                    const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
-                        params: { branch_id: sellerSession?.branch_id }
-                    });
-                    const product = res.data;
-                    if (product.status === 'inactivo') {
+            } catch {
+                // Si no es producto, buscar en combos
+                const combo = combos.find(c => c.barcode === quickBarcode);
+                if (combo) {
+                    if (combo.status === 'inactive') {
                         setQuickBarcode('');
-                        return toast.error('El producto se encuentra inactivo');
+                        return toast.error('El combo se encuentra inactivo');
                     }
-                    finishBarcodeLookup(product, false, autoAdd);
-                } catch {
-                    // Si no es producto, buscar en combos
-                    const combo = combos.find(c => c.barcode === quickBarcode);
-                    if (combo) {
-                        if (combo.status === 'inactive') {
-                            setQuickBarcode('');
-                            return toast.error('El combo se encuentra inactivo');
-                        }
-                        finishBarcodeLookup(combo, true, autoAdd);
-                    } else {
-                        toast.error('Producto o Combo no encontrado');
-                        setQuickBarcode('');
-                    }
+                    finishBarcodeLookup(combo, true, autoAdd);
+                } else {
+                    toast.error('Producto o Combo no encontrado');
+                    setQuickBarcode('');
                 }
             }
         } finally {
@@ -1497,16 +1513,17 @@ const SalesTerminal = () => {
                             </div>
                             <div className="relative">
                                 <SearchableSelect 
-                                    options={customers}
+                                    loadOptions={loadCustomersOptions}
                                     value={customerId}
-                                    onChange={(e) => handleCustomerSelect(e.target.value)}
+                                    onChange={(e, opt) => handleCustomerSelect(e.target.value, opt)}
                                     placeholder="Consumidor Final (General)"
                                     valueKey="id"
                                     labelKey="nombre"
                                     displayKey="nombre"
                                     codeKey="nit"
                                     codeLabel="NIT/DOC"
-                                    searchKeys={['nombre', 'nombre_comercial', 'nit', 'nrc']}
+                                    selectedLabel={selectedCustomerData?.nombre}
+                                    dropdownWidth={440}
                                 />
                             </div>
                             {!customerId && (
@@ -2174,7 +2191,9 @@ const SalesTerminal = () => {
                                 ))}
 
                                 {/* Productos */}
-                                {filteredProducts.map(p => (
+                                {isLoadingModalProducts ? (
+                                    <div className="col-span-full py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
+                                ) : filteredProducts.map(p => (
                                     <button key={p.id} onClick={() => addToCart(p)} className="flex items-center gap-3 p-3 rounded-2xl border border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all text-left group">
                                         <div className="p-2 bg-white rounded-xl shadow-sm group-hover:text-indigo-500 group-hover:scale-110 transition-transform text-slate-400"><Package size={20} /></div>
                                         <div className="flex-1 min-w-0">
@@ -2185,7 +2204,7 @@ const SalesTerminal = () => {
                                     </button>
                                 ))}
                             </div>
-                            {filteredProducts.length === 0 && filteredCombos.length === 0 && (
+                            {!isLoadingModalProducts && filteredProducts.length === 0 && filteredCombos.length === 0 && (
                                 <div className="text-center py-20 opacity-30">
                                     <Search size={64} className="mx-auto mb-4" />
                                     <p className="font-black uppercase tracking-widest text-sm">No se encontraron resultados</p>
@@ -2193,6 +2212,18 @@ const SalesTerminal = () => {
                                 </div>
                             )}
                         </div>
+                        {modalProductsData.totalPages > 1 && (
+                            <div className="border-t border-slate-100 p-4">
+                                <Pagination
+                                    currentPage={modalPage}
+                                    totalPages={modalProductsData.totalPages}
+                                    totalItems={modalProductsData.total}
+                                    onPageChange={setModalPage}
+                                    itemsOnPage={filteredProducts.length}
+                                    isLoading={isLoadingModalProducts}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

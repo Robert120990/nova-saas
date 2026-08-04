@@ -1,9 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, Check, X } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Search, ChevronDown, Check, X, Loader2 } from 'lucide-react';
 
 /**
  * Super Defensive SearchableSelect
  * Prevents app crashes if options are null, opt is null, or properties missing.
+ *
+ * Modo local (por defecto): filtra `options` en el cliente.
+ * Modo remoto: si se pasa `loadOptions(search, page) => Promise<{ data, total, totalPages }>`,
+ * busca en el servidor con debounce y carga incremental (scroll). La llamada `onChange`
+ * recibe `(event, option)` donde `option` es el objeto seleccionado.
+ * `dropdownWidth` (px) hace el panel más ancho que el campo y lo posiciona con `fixed`
+ * para evitar recortes por contenedores con overflow.
  */
 const SearchableSelect = ({
     options = [],
@@ -17,34 +24,85 @@ const SearchableSelect = ({
     codeKey = null,
     codeLabel = "CÓDIGO",
     disabled = false,
-    searchKeys = null
+    searchKeys = null,
+    loadOptions = null,
+    selectedLabel = null,
+    dropdownWidth = null,
+    debounceMs = 500
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [focusIdx, setFocusIdx] = useState(-1);
     const containerRef = useRef(null);
+    const triggerRef = useRef(null);
+    const listRef = useRef(null);
+
+    const [remoteOptions, setRemoteOptions] = useState([]);
+    const [remotePage, setRemotePage] = useState(1);
+    const [remoteHasMore, setRemoteHasMore] = useState(false);
+    const [remoteLoading, setRemoteLoading] = useState(false);
+    const [panelPos, setPanelPos] = useState(null);
+    const requestSeqRef = useRef(0);
+    const skipDebounceRef = useRef(false);
 
     // Ensure options is always an array
     const safeOptions = Array.isArray(options) ? options : [];
 
-    const selectedOption = (value !== undefined && value !== null && value !== '') 
-        ? safeOptions.find(opt => opt && String(opt[valueKey]) === String(value)) 
-        : null;
-    
-    const filteredOptions = safeOptions.filter(opt => {
-        if (!opt) return false;
-        const s = (search || '').toLowerCase();
-        if (Array.isArray(searchKeys) && searchKeys.length > 0) {
-            return searchKeys.some(k =>
-                String(opt[k] ?? '').toLowerCase().includes(s)
-            );
+    const loadRemotePage = useCallback(async (searchTerm, page, append) => {
+        const seq = ++requestSeqRef.current;
+        setRemoteLoading(true);
+        try {
+            const res = await loadOptions(searchTerm, page);
+            if (seq !== requestSeqRef.current) return;
+            const data = Array.isArray(res?.data) ? res.data : [];
+            setRemotePage(page);
+            setRemoteHasMore((res?.totalPages || 0) > page);
+            setRemoteOptions(prev => (append ? [...prev, ...data] : data));
+        } catch (err) {
+            if (seq !== requestSeqRef.current) return;
+            if (!append) setRemoteOptions([]);
+        } finally {
+            if (seq === requestSeqRef.current) setRemoteLoading(false);
         }
-        const v = String(opt[valueKey] || '').toLowerCase();
-        const l = String(opt[labelKey] || '').toLowerCase();
-        const c = codeKey ? String(opt[codeKey] || '').toLowerCase() : '';
-        
-        return v.includes(s) || l.includes(s) || c.includes(s);
-    }).slice(0, 100);
+    }, [loadOptions]);
+
+    const effectiveOptions = loadOptions ? remoteOptions : safeOptions;
+
+    const selectedOption = (value !== undefined && value !== null && value !== '') 
+        ? effectiveOptions.find(opt => opt && String(opt[valueKey]) === String(value)) || null
+        : null;
+
+    const displayText = selectedOption
+        ? (displayKey 
+            ? selectedOption[displayKey] 
+            : `${codeKey ? (selectedOption[codeKey] || 'N/A') : (selectedOption[valueKey] || 'N/A')} - ${selectedOption[labelKey] || 'Sin nombre'}`)
+        : (selectedLabel || null);
+
+    const filteredOptions = loadOptions
+        ? effectiveOptions
+        : safeOptions.filter(opt => {
+            if (!opt) return false;
+            const s = (search || '').toLowerCase();
+            if (Array.isArray(searchKeys) && searchKeys.length > 0) {
+                return searchKeys.some(k =>
+                    String(opt[k] ?? '').toLowerCase().includes(s)
+                );
+            }
+            const v = String(opt[valueKey] || '').toLowerCase();
+            const l = String(opt[labelKey] || '').toLowerCase();
+            const c = codeKey ? String(opt[codeKey] || '').toLowerCase() : '';
+            
+            return v.includes(s) || l.includes(s) || c.includes(s);
+        }).slice(0, 100);
+
+    const computePanelPos = useCallback(() => {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (!rect) return null;
+        const w = Math.min(dropdownWidth, window.innerWidth - 16);
+        let left = rect.left;
+        if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
+        return { top: rect.bottom + 4, left, width: w };
+    }, [dropdownWidth]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -60,11 +118,49 @@ const SearchableSelect = ({
         if (!isOpen) setFocusIdx(-1);
     }, [isOpen]);
 
+    // Debounce de búsqueda remota
+    useEffect(() => {
+        if (!isOpen || !loadOptions) return;
+        if (skipDebounceRef.current) { skipDebounceRef.current = false; return; }
+        const timer = setTimeout(() => {
+            setFocusIdx(-1);
+            loadRemotePage(search, 1, false);
+        }, debounceMs);
+        return () => clearTimeout(timer);
+    }, [search, isOpen, loadOptions, loadRemotePage, debounceMs]);
+
+    // Reposicionar panel ancho al hacer scroll/resize
+    useEffect(() => {
+        if (!isOpen || !dropdownWidth) return;
+        const onScrollResize = () => setPanelPos(computePanelPos());
+        window.addEventListener('scroll', onScrollResize, true);
+        window.addEventListener('resize', onScrollResize);
+        return () => {
+            window.removeEventListener('scroll', onScrollResize, true);
+            window.removeEventListener('resize', onScrollResize);
+        };
+    }, [isOpen, dropdownWidth, computePanelPos]);
+
+    const toggleOpen = () => {
+        if (disabled) return;
+        const next = !isOpen;
+        setIsOpen(next);
+        if (next) {
+            setSearch('');
+            setFocusIdx(-1);
+            if (loadOptions) {
+                skipDebounceRef.current = true;
+                loadRemotePage('', 1, false);
+            }
+            if (dropdownWidth) setPanelPos(computePanelPos());
+        }
+    };
+
     const handleKeyDown = (e) => {
         if (!isOpen) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                setIsOpen(true);
+                toggleOpen();
             }
             return;
         }
@@ -94,9 +190,17 @@ const SearchableSelect = ({
 
     const handleSelect = (option) => {
         if (!option) return;
-        onChange({ target: { name, value: option[valueKey] } });
+        onChange({ target: { name, value: option[valueKey] } }, option);
         setIsOpen(false);
         setSearch('');
+    };
+
+    const handleListScroll = (e) => {
+        if (!loadOptions || remoteLoading || !remoteHasMore) return;
+        const el = e.currentTarget;
+        if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+            loadRemotePage(search, remotePage + 1, true);
+        }
     };
 
     const isSelected = (opt) => {
@@ -107,9 +211,10 @@ const SearchableSelect = ({
     return (
         <div className="relative" ref={containerRef}>
             <div 
+                ref={triggerRef}
                 tabIndex={disabled ? -1 : 0}
                 role="button"
-                onClick={() => { if (!disabled) setIsOpen(!isOpen); }}
+                onClick={toggleOpen}
                 onKeyDown={disabled ? undefined : handleKeyDown}
                 className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase outline-none ${
                     disabled
@@ -118,13 +223,8 @@ const SearchableSelect = ({
                 } ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200'}`}
             >
                 <div className="truncate pr-2">
-                    {selectedOption ? (
-                        <span className="truncate">
-                            {displayKey 
-                                ? selectedOption[displayKey] 
-                                : `${codeKey ? (selectedOption[codeKey] || 'N/A') : (selectedOption[valueKey] || 'N/A')} - ${selectedOption[labelKey] || 'Sin nombre'}`
-                            }
-                        </span>
+                    {displayText ? (
+                        <span className="truncate">{displayText}</span>
                     ) : (
                         <span className="text-slate-400">{placeholder}</span>
                     )}
@@ -133,7 +233,12 @@ const SearchableSelect = ({
             </div>
 
             {isOpen && (
-                <div className="absolute z-[100] mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                <div 
+                    className={`z-[100] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 ${
+                        dropdownWidth ? 'fixed' : 'absolute mt-1 w-full'
+                    }`}
+                    style={dropdownWidth ? (panelPos || computePanelPos()) : undefined}
+                >
                     <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                         <Search size={14} className="text-slate-400 ml-2" />
                         <input 
@@ -150,8 +255,11 @@ const SearchableSelect = ({
                                 <X size={14} />
                             </button>
                         )}
+                        {loadOptions && remoteLoading && (
+                            <Loader2 size={14} className="text-indigo-500 animate-spin shrink-0" />
+                        )}
                     </div>
-                    <div className="max-h-60 overflow-y-auto">
+                    <div ref={listRef} onScroll={handleListScroll} className="max-h-60 overflow-y-auto">
                         {filteredOptions.length > 0 ? (
                             filteredOptions.map((opt, i) => (
                                 <div 
@@ -173,10 +281,15 @@ const SearchableSelect = ({
                             ))
                         ) : (
                             <div className="px-4 py-8 text-center text-slate-400 text-sm italic">
-                                No se encontraron resultados
+                                {remoteLoading && loadOptions ? 'Cargando...' : 'No se encontraron resultados'}
                             </div>
                         )}
                     </div>
+                    {loadOptions && !remoteLoading && remoteHasMore && (
+                        <div className="p-1.5 border-t border-slate-100 text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                            Deslice para cargar más...
+                        </div>
+                    )}
                 </div>
             )}
             <input type="hidden" name={name} value={value || ''} />

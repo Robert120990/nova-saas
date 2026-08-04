@@ -39,10 +39,12 @@ const ProviderStatement = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: providers = [] } = useQuery({
-        queryKey: ['providers-all'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000, es_credito: '1' } })).data?.data || []
-    });
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: '1' }
+        });
+        return data;
+    };
 
     // Pestaña 1: Estado de Cuenta (Movimientos)
     const { data: statementData, isLoading: isLoadingStatement } = useQuery({
@@ -222,7 +224,7 @@ const ProviderStatement = () => {
                     </label>
                     <SearchableSelect 
                         placeholder="BUSCAR PROVEEDOR POR NOMBRE O NRC..."
-                        options={providers}
+                        loadOptions={loadProvidersOptions}
                         value={selectedProviderId}
                         onChange={(e) => setSelectedProviderId(e.target.value)}
                         valueKey="id"

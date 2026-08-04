@@ -34,11 +34,15 @@ const SalesReport = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: customersResponse } = useQuery({
-        queryKey: ['customers'],
-        queryFn: async () => (await axios.get('/api/customers')).data
-    });
-    const customers = customersResponse?.data || [];
+    const loadCustomersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        if (page === 1 && !search) {
+            data.data = [{ id: 'all', nombre: 'TODOS LOS CLIENTES' }, ...(data.data || [])];
+        }
+        return data;
+    };
 
     const handleFilterChange = (name, value) => {
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -155,13 +159,13 @@ const SalesReport = () => {
                     <Users size={12} className="text-indigo-500" /> Cliente
                 </label>
                 <SearchableSelect
-                    options={[
-                        { id: 'all', nombre: 'TODOS LOS CLIENTES' },
-                        ...customers.map(c => ({ id: c.id, nombre: c.nombre }))
-                    ]}
+                    loadOptions={loadCustomersOptions}
                     value={filters.customer_id}
-                    onChange={(val) => handleFilterChange('customer_id', val)}
+                    onChange={(e) => handleFilterChange('customer_id', e.target.value)}
                     placeholder="Seleccionar cliente..."
+                    valueKey="id"
+                    labelKey="nombre"
+                    displayKey="nombre"
                 />
             </div>
 

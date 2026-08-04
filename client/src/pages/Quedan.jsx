@@ -80,10 +80,21 @@ const Quedan = () => {
     const total = listData?.total || 0;
     const totalPages = listData?.totalPages || 0;
 
-    const { data: creditProviders = [] } = useQuery({
-        queryKey: ['providers-credito'],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 5000, es_credito: '1' } })).data?.data || []
-    });
+    const [creditProvidersCache, setCreditProvidersCache] = useState({});
+
+    const loadCreditProviders = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: '1' }
+        });
+        if (data?.data?.length) {
+            setCreditProvidersCache(prev => {
+                const next = { ...prev };
+                data.data.forEach(p => { next[p.id] = p; });
+                return next;
+            });
+        }
+        return data;
+    };
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
@@ -101,6 +112,9 @@ const Quedan = () => {
             setFormBranchId(editData.branch_id || user?.branch_id || '');
             setFormNumQuedan(editData.num_quedan || '');
             setFormProviderId(String(editData.provider_id || ''));
+            if (editData.provider_nombre && editData.provider_id) {
+                setCreditProvidersCache(prev => ({ ...prev, [editData.provider_id]: { id: editData.provider_id, nombre: editData.provider_nombre, dias_credito: editData.dias_credito } }));
+            }
             setFormProviderDias(editData.dias_credito || 0);
             setFormFecha(editData.fecha ? editData.fecha.split('T')[0] : today());
             setFormFechaVenc(editData.fecha_vencimiento ? editData.fecha_vencimiento.split('T')[0] : '');
@@ -131,10 +145,10 @@ const Quedan = () => {
         return d.toISOString().split('T')[0];
     };
 
-    const handleProviderChange = (e) => {
+    const handleProviderChange = (e, option) => {
         const val = String(e.target.value);
         setFormProviderId(val);
-        const provider = creditProviders.find(p => String(p.id) === val);
+        const provider = option || creditProvidersCache[parseInt(val)];
         const dias = provider ? Number(provider.dias_credito) || 0 : 0;
         setFormProviderDias(dias);
         setFormFechaVenc(recalcVenc(formFecha, dias));
@@ -564,7 +578,7 @@ const Quedan = () => {
                     <div>
                         <label className={`${labelCls} block mb-1`}>Proveedor</label>
                         <SearchableSelect
-                            options={creditProviders}
+                            loadOptions={loadCreditProviders}
                             value={formProviderId}
                             onChange={handleProviderChange}
                             valueKey="id"
@@ -572,6 +586,8 @@ const Quedan = () => {
                             placeholder="BUSCAR PROVEEDOR CRÉDITO..."
                             codeKey="nrc"
                             codeLabel="NRC"
+                            selectedLabel={creditProvidersCache[parseInt(formProviderId)]?.nombre}
+                            dropdownWidth={420}
                         />
                     </div>
                     {formProviderDias > 0 && (

@@ -34,11 +34,15 @@ const PurchaseReport = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: providersResponse } = useQuery({
-        queryKey: ['providers'],
-        queryFn: async () => (await axios.get('/api/providers')).data
-    });
-    const providers = providersResponse?.data || [];
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        if (page === 1 && !search) {
+            data.data = [{ id: 'all', nombre: 'TODOS LOS PROVEEDORES' }, ...(data.data || [])];
+        }
+        return data;
+    };
 
     const handleFilterChange = (name, value) => {
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -155,13 +159,13 @@ const PurchaseReport = () => {
                     <Truck size={12} className="text-indigo-500" /> Proveedor
                 </label>
                 <SearchableSelect
-                    options={[
-                        { id: 'all', nombre: 'TODOS LOS PROVEEDORES' },
-                        ...providers.map(p => ({ id: p.id, nombre: p.nombre }))
-                    ]}
+                    loadOptions={loadProvidersOptions}
                     value={filters.provider_id}
-                    onChange={(val) => handleFilterChange('provider_id', val)}
+                    onChange={(e) => handleFilterChange('provider_id', e.target.value)}
                     placeholder="Seleccionar proveedor..."
+                    valueKey="id"
+                    labelKey="nombre"
+                    displayKey="nombre"
                 />
             </div>
 

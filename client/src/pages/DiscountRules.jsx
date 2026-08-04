@@ -27,15 +27,13 @@ const DiscountRules = () => {
         queryFn: async () => (await axios.get('/api/branches')).data,
     });
 
-    const { data: products = [] } = useQuery({
-        queryKey: ['products', 'simple', selectedBranchId],
-        queryFn: async () => {
-            const params = new URLSearchParams({ limit: '500', status: 'activo' });
-            if (selectedBranchId) params.append('branch_id', selectedBranchId);
-            return (await axios.get(`/api/products?${params}`)).data?.data || [];
-        },
-        enabled: !!selectedBranchId,
-    });
+    const loadProductsOptions = async (search, page) => {
+        if (!selectedBranchId) return { data: [], total: 0, totalPages: 0 };
+        const { data } = await axios.get('/api/products', {
+            params: { search: search || undefined, page, limit: 50, branch_id: selectedBranchId, status: 'activo' }
+        });
+        return data;
+    };
 
     const createMutation = useMutation({
         mutationFn: (data) => axios.post('/api/discount-rules', data),
@@ -165,7 +163,7 @@ const DiscountRules = () => {
                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-1">Sucursal</label>
                         <select
                             value={selectedBranchId}
-                            onChange={(e) => { setSelectedBranchId(e.target.value); setProductSearch(''); }}
+                            onChange={(e) => { setSelectedBranchId(e.target.value); setSelectedProductId(''); }}
                             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none"
                         >
                             <option value="">Seleccionar sucursal</option>
@@ -177,13 +175,16 @@ const DiscountRules = () => {
                     <div>
                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-1">Producto</label>
                         <SearchableSelect
-                            options={products}
+                            loadOptions={loadProductsOptions}
                             value={selectedProductId}
                             onChange={(e) => setSelectedProductId(e.target.value)}
                             placeholder="Buscar producto..."
                             valueKey="id"
                             labelKey="nombre"
                             codeKey="codigo"
+                            selectedLabel={editingRule?.product_name}
+                            disabled={!selectedBranchId}
+                            dropdownWidth={420}
                         />
                         {!selectedBranchId && (
                             <p className="text-[9px] text-amber-600 mt-1">Seleccione una sucursal para ver productos</p>

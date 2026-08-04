@@ -156,10 +156,12 @@ const AddPayment = () => {
         queryFn: async () => (await axios.get('/api/branches')).data,
     });
 
-    const { data: customers = [] } = useQuery({
-        queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 5000, es_credito: 1 } })).data?.data || [],
-    });
+    const loadCustomersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: 1 }
+        });
+        return data;
+    };
 
     const { data: statementData } = useQuery({
         queryKey: ['customer-summary-balance', selectedCustomerId, selectedBranchId],
@@ -329,7 +331,7 @@ const AddPayment = () => {
                     <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">CLIENTE</label>
                     <SearchableSelect 
                         placeholder="BUSCAR CLIENTE..."
-                        options={customers}
+                        loadOptions={loadCustomersOptions}
                         value={selectedCustomerId}
                         onChange={(e) => setSelectedCustomerId(e.target.value)}
                         valueKey="id"

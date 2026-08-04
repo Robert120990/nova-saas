@@ -20,11 +20,12 @@ const GasAdvances = () => {
     const [selectedClienteNombre, setSelectedClienteNombre] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
 
-    const { data: customersData } = useQuery({
-        queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000, es_anticipado: 1 } })).data?.data || [],
-    });
-    const customers = customersData || [];
+    const loadCustomersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50, es_anticipado: 1 }
+        });
+        return data;
+    };
 
     const { data: advancesData, isLoading } = useQuery({
         queryKey: ['gas-advances', searchTerm],
@@ -73,9 +74,7 @@ const GasAdvances = () => {
     const handleSubmit = (e) => {
         e.preventDefault();
         const cliente_id = parseInt(selectedClienteId) || 0;
-        const cli = customers.find(c => c.id === cliente_id);
-        const cliente_nombre = selectedClienteNombre || cli?.nombre || '';
-        console.log('[GasAdvances] submit:', { selectedClienteId, cliente_id, selectedClienteNombre, cliNom: cli?.nombre });
+        const cliente_nombre = selectedClienteNombre || '';
         const payload = {
             cliente_id,
             cliente_nombre,
@@ -176,15 +175,11 @@ const GasAdvances = () => {
                     <div>
                         <label className={labelCls}>Cliente <span className="text-red-400">*</span></label>
                         <SearchableSelect
-                            options={customers}
+                            loadOptions={loadCustomersOptions}
                             value={selectedClienteId}
-                            onChange={(e) => {
-                                const idVal = e.target.value;
-                                const idStr = String(idVal);
-                                setSelectedClienteId(idStr);
-                                const cli = customers.find(c => String(c.id) === idStr);
-                                setSelectedClienteNombre(cli?.nombre || '');
-                                console.log('[GasAdvances] select:', { idVal, idStr, cliNom: cli?.nombre });
+                            onChange={(e, opt) => {
+                                setSelectedClienteId(e.target.value);
+                                setSelectedClienteNombre(opt?.nombre || '');
                             }}
                             placeholder="Buscar cliente..."
                             valueKey="id"
@@ -192,6 +187,8 @@ const GasAdvances = () => {
                             displayKey="nombre"
                             codeKey="nrc"
                             codeLabel="NRC"
+                            selectedLabel={selectedClienteNombre}
+                            dropdownWidth={420}
                         />
                     </div>
                     <div>

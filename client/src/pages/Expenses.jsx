@@ -114,14 +114,26 @@ const Expenses = () => {
         enabled: !!user?.company_id
     });
 
-    const { data: providers = [] } = useQuery({
-        queryKey: ['providers-all', user?.company_id],
-        queryFn: async () => (await axios.get('/api/providers', { params: { limit: 1000 } })).data?.data || []
-    });
+    const [providersCache, setProvidersCache] = useState({});
+
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        if (data?.data?.length) {
+            setProvidersCache(prev => {
+                const next = { ...prev };
+                data.data.forEach(p => { next[p.id] = p; });
+                return next;
+            });
+        }
+        return data;
+    };
 
     const selectedProvider = useMemo(() => {
-        return providers.find(p => p.id === parseInt(providerId));
-    }, [providers, providerId]);
+        if (!providerId) return null;
+        return providersCache[parseInt(providerId)] || null;
+    }, [providersCache, providerId]);
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
@@ -343,6 +355,13 @@ const Expenses = () => {
             setIsEditing(true);
             setBranchId(detail.branch_id);
             setProviderId(detail.provider_id);
+            if (detail.provider_nombre && detail.provider_id) {
+                try {
+                    const { data: res } = await axios.get('/api/providers', { params: { search: detail.provider_nombre, limit: 50 } });
+                    const full = (res.data || []).find(p => String(p.id) === String(detail.provider_id));
+                    setProvidersCache(prev => ({ ...prev, [detail.provider_id]: full || { id: detail.provider_id, nombre: detail.provider_nombre } }));
+                } catch {}
+            }
             setTipoDocId(detail.tipo_documento_id);
             setCondicionId(detail.condicion_operacion_id);
             setNumeroDoc(detail.numero_documento);
@@ -451,10 +470,15 @@ const Expenses = () => {
                                 <div className="md:col-span-2">
                                     <label className={labelCls}>Proveedor</label>
                                     <SearchableSelect 
-                                        options={providers} value={providerId} 
-                                        onChange={(e) => setProviderId(e.target.value)}
+                                        loadOptions={loadProvidersOptions} value={providerId} 
+                                        onChange={(e, opt) => {
+                                            setProviderId(e.target.value);
+                                            if (opt) setProvidersCache(prev => ({ ...prev, [opt.id]: opt }));
+                                        }}
                                         valueKey="id" labelKey="nombre" placeholder="BUSCAR PROVEEDOR..."
                                         codeKey="nrc" codeLabel="NRC"
+                                        selectedLabel={selectedProvider?.nombre}
+                                        dropdownWidth={420}
                                     />
                                 </div>
                                 <div>

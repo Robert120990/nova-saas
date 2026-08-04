@@ -28,10 +28,15 @@ const PendingDocumentsDetailedReport = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
-    const { data: customers = [] } = useQuery({
-        queryKey: ['customers-all'],
-        queryFn: async () => (await axios.get('/api/customers', { params: { limit: 1000, es_credito: 1 } })).data?.data || [],
-    });
+    const loadCustomersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: 1 }
+        });
+        if (page === 1 && !search) {
+            data.data = [{ id: 'all', nombre: 'TODOS LOS CLIENTES' }, ...(data.data || [])];
+        }
+        return data;
+    };
 
     const handleGenerateReport = async () => {
         if (!selectedBranch) {
@@ -170,7 +175,7 @@ const PendingDocumentsDetailedReport = () => {
                 </label>
                 <SearchableSelect 
                     placeholder="TODOS LOS CLIENTES"
-                    options={[{ id: 'all', nombre: 'TODOS LOS CLIENTES' }, ...customers]}
+                    loadOptions={loadCustomersOptions}
                     value={selectedCustomer}
                     onChange={(e) => setSelectedCustomer(e.target.value)}
                     valueKey="id"

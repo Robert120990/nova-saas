@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -62,6 +62,13 @@ const InventoryAdjustments = () => {
     const [quickCant, setQuickCant] = useState(1);
     const [quickCosto, setQuickCosto] = useState(0);
     const [quickBarcode, setQuickBarcode] = useState('');
+
+    // Product Modal state
+    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+    const [isMotivosModalOpen, setIsMotivosModalOpen] = useState(false);
+    const [productSearch, setProductSearch] = useState('');
+    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
+    const [modalPage, setModalPage] = useState(1);
     
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -94,10 +101,19 @@ const InventoryAdjustments = () => {
         queryFn: async () => (await axios.get('/api/inventory/motivos')).data
     });
 
-    const { data: products = [] } = useQuery({
-        queryKey: ['products-all'],
-        queryFn: async () => (await axios.get('/api/products', { params: { limit: 5000 } })).data?.data || []
+    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
+        queryKey: ['adjustment-products', debouncedProductSearch, branchId, modalPage],
+        queryFn: async () => (await axios.get('/api/products', {
+            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
+        })).data,
+        enabled: isProductModalOpen
     });
+    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo');
+
+    React.useEffect(() => {
+        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
+        return () => clearTimeout(timer);
+    }, [productSearch]);
 
     const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({
         queryKey: ['inventory-adjustments', historySearch, historyPage, user?.branch_id],
@@ -135,25 +151,18 @@ const InventoryAdjustments = () => {
 
     const handleBarcodeSubmit = async (e) => {
         if (e.key === 'Enter' && quickBarcode) {
-            const searchCode = quickBarcode.trim().toUpperCase();
-            const product = products.find(p => 
-                p.codigo?.toUpperCase() === searchCode || 
-                p.barcode?.toUpperCase() === searchCode
-            );
-            if (product) {
-                if (product.status !== 'activo') {
+            const code = quickBarcode.trim();
+            if (!branchId) return toast.error('Seleccione primero una sucursal');
+            try {
+                const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: branchId } });
+                if (data.status !== 'activo') {
                     setQuickBarcode('');
                     return toast.error('El producto seleccionado se encuentra inactivo');
                 }
-                const bid = parseInt(branchId);
-                if (bid && !product.branches?.includes(bid)) {
-                    setQuickBarcode('');
-                    return toast.error('El producto no está autorizado para esta sucursal');
-                }
-                setQuickProd(product);
-                setQuickCosto(product.costo || 0);
+                setQuickProd(data);
+                setQuickCosto(data.costo || 0);
                 setTimeout(() => qtyInputRef.current?.focus(), 50);
-            } else {
+            } catch {
                 toast.error('Producto no encontrado');
                 setQuickBarcode('');
             }
@@ -234,27 +243,6 @@ const InventoryAdjustments = () => {
     const removeItem = (id) => {
         setSelectedItems(selectedItems.filter(item => item.product_id !== id));
     };
-
-    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [isMotivosModalOpen, setIsMotivosModalOpen] = useState(false);
-    const [productSearch, setProductSearch] = useState('');
-
-    // Filter products for modal
-    const productsForModal = useMemo(() => {
-        let list = products.filter(p => p.status === 'activo');
-        
-        if (branchId) {
-            const bid = parseInt(branchId);
-            list = list.filter(p => p.branches?.includes(bid));
-        }
-
-        if (!productSearch) return list.slice(0, 50);
-        const search = productSearch.toLowerCase();
-        return list.filter(p => 
-            p.nombre.toLowerCase().includes(search) || 
-            p.codigo.toLowerCase().includes(search)
-        ).slice(0, 50);
-    }, [products, productSearch, branchId]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -779,7 +767,11 @@ const InventoryAdjustments = () => {
                 onClose={() => setIsProductModalOpen(false)}
                 productSearch={productSearch}
                 setProductSearch={setProductSearch}
-                products={productsForModal}
+                products={modalProducts}
+                isLoading={isLoadingModalProducts}
+                modalData={modalProductsData}
+                modalPage={modalPage}
+                setModalPage={setModalPage}
                 handleSelect={handleSelectProduct}
             />
 
@@ -809,7 +801,7 @@ const InventoryAdjustments = () => {
 };
 
 /* Modals */
-const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect }) => {
+const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect, isLoading, modalData, modalPage, setModalPage }) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -840,7 +832,9 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
 
                 <div className="flex-1 overflow-y-auto p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {products.map(p => (
+                        {isLoading ? (
+                            <div className="col-span-full py-12 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
+                        ) : products.map(p => (
                             <button 
                                 key={p.id}
                                 onClick={() => handleSelect(p)}
@@ -856,7 +850,7 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                                 </div>
                             </button>
                         ))}
-                        {products.length === 0 && (
+                        {!isLoading && products.length === 0 && (
                             <div className="col-span-full py-12 text-center text-slate-400">
                                 <Package size={40} className="mx-auto opacity-20 mb-2" />
                                 <p className="font-bold uppercase tracking-widest text-xs">Sin coincidencias</p>
@@ -864,6 +858,18 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                         )}
                     </div>
                 </div>
+                {modalData?.totalPages > 1 && (
+                    <div className="border-t border-slate-100 p-4">
+                        <Pagination
+                            currentPage={modalPage}
+                            totalPages={modalData.totalPages}
+                            totalItems={modalData.total}
+                            onPageChange={setModalPage}
+                            itemsOnPage={products.length}
+                            isLoading={isLoading}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );
