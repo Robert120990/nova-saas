@@ -1500,18 +1500,20 @@ const generateRTEE = (data) => {
                 venta.tributos.forEach(tri => {
                     // Filtrar el IVA ya mostrado (código 20)
                     if (tri.codigo !== '20') {
-                        addTotalLine(`${tri.descripcion.toUpperCase()}:`, tri.valor);
+                        let desc = tri.descripcion || tri.codigo;
+                        if (desc.toUpperCase().includes('FEFE')) desc = 'FOVIAL';
+                        addTotalLine(`${desc.toUpperCase()}:`, tri.valor);
                         processedCodes.add(tri.codigo);
                     }
                 });
             }
             
             // Fallback para FOVIAL y COTRAN si no fueron procesados arriba pero tienen valor
-            // Códigos sugeridos por MH para estos tributos en algunos contextos: D1 (FOVIAL), C1 (COTRANS)
-            if (!processedCodes.has('D1') && !processedCodes.has('01') && venta.fovial > 0) {
+            // Códigos usados por el sistema: D1 (FOVIAL), C8 (COTRANS). Catálogo MH: C3 (FOVIAL), C1 (COTRANS)
+            if (!processedCodes.has('D1') && !processedCodes.has('C3') && !processedCodes.has('01') && venta.fovial > 0) {
                 addTotalLine('TOTAL FOVIAL ($0.20):', venta.fovial);
             }
-            if (!processedCodes.has('C1') && !processedCodes.has('02') && venta.cotrans > 0) {
+            if (!processedCodes.has('C8') && !processedCodes.has('C1') && !processedCodes.has('02') && venta.cotrans > 0) {
                 addTotalLine('TOTAL COTRAN ($0.10):', venta.cotrans);
             }
 
