@@ -272,17 +272,17 @@ async function generateDTE(payload) {
             itemTributos = itemTributos
                 .map(t => typeof t === 'object' ? t.codigo : String(t))
                 .filter(t => t && t !== 'null' && t !== 'undefined' && t.trim() !== '');
-            
-            // ESPECIAL COMBUSTIBLES DTE 03: FOVIAL (D1) y COTRANS (C8) NO van en el cuerpoDocumento, solo IVA
-            if (tipoDte === '03' || tipoDte === '05') {
-                itemTributos = itemTributos.filter(t => t !== 'D1' && t !== 'C8');
-                if (itemTributos.length === 0 && (item.tipoItem === 1 || !item.tipoItem)) {
-                    itemTributos = ["20"];
-                }
-            }
+
+            // FOVIAL (D1) y COTRANS (C8) SI van en el cuerpoDocumento (consistente con el resumen)
+            // Hacienda rechaza con "ERROR NO CATALOGADO" si el resumen los declara y el ítem no.
 
             // Eliminar duplicados
             itemTributos = [...new Set(itemTributos)];
+        }
+
+        // Ítem gravado: asegurar que el IVA (20) esté declarado en los tributos del ítem
+        if (!item.exento && itemTributos.length > 0 && !itemTributos.includes('20') && (parseFloat(item.ventaGravada || 0) > 0 || parseFloat(item.venta_gravada || 0) > 0)) {
+            itemTributos = ['20', ...itemTributos];
         }
 
         const relatedDoc = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0)
