@@ -25,7 +25,17 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
 
     const rate = ivaRate / 100;
     const divisor = 1 + rate;
-    
+
+    // Extraer FOVIAL (D1) y COTRANS (C8) por ítem desde los tributos del payload.
+    // El precio de combustible los incluye, por lo que deben quitarse ANTES de extraer el IVA.
+    const tributos = Array.isArray(item.tributos) ? item.tributos : [];
+    const extractFuelTax = (taxCode) => tributos.reduce((sum, t) => {
+        if (t && typeof t === 'object' && t.codigo === taxCode) return sum + (parseFloat(t.valor) || 0);
+        return sum;
+    }, 0);
+    const fovial = extractFuelTax('D1');
+    const cotrans = extractFuelTax('C8');
+
     let netPrice, netDiscount, ventaGravada, iva;
 
     if (tipoDte === '01') {
@@ -41,10 +51,11 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         ventaGravada = round((netPrice * quantity) - netDiscount);
         iva = 0;
     } else {
-        // MODO CRÉDITO FISCAL: Extraer Neto
-        netPrice = round6(priceInput / divisor);
+        // MODO CRÉDITO FISCAL: Primero quitar FOVIAL/COTRANS del precio y luego extraer el IVA
+        const baseConIVA = Math.max(0, (priceInput * quantity) - discountInput - fovial - cotrans);
+        netPrice = round6(quantity > 0 ? baseConIVA / (quantity * divisor) : 0);
         netDiscount = round6(discountInput / divisor);
-        ventaGravada = round((netPrice * quantity) - netDiscount);
+        ventaGravada = round(netPrice * quantity);
         iva = round(ventaGravada * rate); 
     }
 

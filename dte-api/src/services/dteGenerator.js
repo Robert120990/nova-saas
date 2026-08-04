@@ -208,6 +208,7 @@ async function generateDTE(payload) {
     let corpoItems;
     let totals;
     let pagos;
+    let resumenTaxes = [];
 
     if (tipoDte === '07') {
         corpoItems = (items || []).map((item, index) => ({
@@ -328,16 +329,41 @@ async function generateDTE(payload) {
 
     // 5. Resumen
     if (tipoDte !== '07') {
-    // FILTRO CRÍTICO: Para El Salvador, FOVIAL (D1) y COTRANS (C8) usualmente NO se reportan 
-    // como tributos separados en el resumen para evitar errores de cuadre (099) en Hacienda.
-    // Se absorben en la base gravada o se omiten si el POS ya los descuenta.
-    const filteredTaxes = (payload.taxes || []).filter(t => t && t.codigo !== 'D1' && t.codigo !== 'C8');
     const calculatedItems = items.map(item => calculateItem(item, tipoDte));
-    totals = calculateTotals(calculatedItems, filteredTaxes, tipoDte);
     
-    // No calculamos totales de fovial/cotran para el resumen oficial (se mantienen en el POS/DB interna)
-    let totalFovial = 0;
-    let totalCotran = 0;
+    // Para Crédito Fiscal (03) y Nota de Crédito (05) con combustible, FOVIAL (D1) y COTRANS (C8)
+    // se reportan como tributos del resumen. Ya se quitaron del precio en calculateItem (base + IVA
+    // correctos) y aquí se suman al total, de modo que totalPagar = base + IVA + FOVIAL + COTRANS.
+    // En los demás DTEs (01, 04, 11) se mantienen fuera del resumen oficial.
+    const taxMap = {};
+    (payload.taxes || []).forEach(t => {
+        if (t && t.codigo) taxMap[t.codigo] = t;
+    });
+    const itemFuelTax = { D1: 0, C8: 0 };
+    if (tipoDte === '03' || tipoDte === '05') {
+        calculatedItems.forEach(it => {
+            (it.tributos || []).forEach(t => {
+                if (t && typeof t === 'object') {
+                    const v = parseFloat(t.valor) || 0;
+                    if (t.codigo === 'D1') itemFuelTax.D1 += v;
+                    else if (t.codigo === 'C8') itemFuelTax.C8 += v;
+                }
+            });
+        });
+    }
+    resumenTaxes = (payload.taxes || [])
+        .filter(t => t && t.codigo && t.codigo !== '20')
+        .filter(t => (tipoDte === '03' || tipoDte === '05') || (t.codigo !== 'D1' && t.codigo !== 'C8'));
+    // Fallback por ítem (cubre retransmisiones que no envían taxes de cabecera)
+    if (tipoDte === '03' || tipoDte === '05') {
+        if (!taxMap['D1'] && itemFuelTax.D1 > 0) {
+            resumenTaxes.push({ codigo: 'D1', descripcion: 'FEFE (FOVIAL)', valor: round(itemFuelTax.D1) });
+        }
+        if (!taxMap['C8'] && itemFuelTax.C8 > 0) {
+            resumenTaxes.push({ codigo: 'C8', descripcion: 'COTRANS', valor: round(itemFuelTax.C8) });
+        }
+    }
+    totals = calculateTotals(calculatedItems, resumenTaxes, tipoDte);
     
     // Payments mapping
     pagos = (payload.pagos || [
@@ -386,8 +412,8 @@ async function generateDTE(payload) {
                     });
                 }
                 
-                // Solo añadir otros impuestos si NO son FOVIAL/COTRANS y vienen en el payload original
-                const extraTaxes = (payload.taxes || []).filter(t => t && t.codigo !== '20' && t.codigo !== 'D1' && t.codigo !== 'C8');
+                // Añadir los demás impuestos del resumen (ya incluye D1/C8 para 03/05)
+                const extraTaxes = resumenTaxes;
                 extraTaxes.forEach(t => {
                     taxes.push({
                         codigo: t.codigo,
