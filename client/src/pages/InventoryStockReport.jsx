@@ -4,6 +4,7 @@ import axios from 'axios';
 import { 
     GitBranch, 
     Tags, 
+    Calendar,
     CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,6 +14,7 @@ import ReportLayout from '../components/ui/ReportLayout';
 const InventoryStockReport = () => {
     const { user } = useAuth();
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
+    const [selectedDate, setSelectedDate] = useState('');
     const [selectedCategories, setSelectedCategories] = useState([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
@@ -43,6 +45,9 @@ const InventoryStockReport = () => {
         setIsGenerating(true);
         try {
             const params = { branch_id: selectedBranch };
+            if (selectedDate) {
+                params.as_of = selectedDate;
+            }
             if (selectedCategories.length > 0) {
                 params.category_ids = selectedCategories.join(',');
             }
@@ -77,6 +82,9 @@ const InventoryStockReport = () => {
     const handleExportExcel = async () => {
         try {
             const params = { branch_id: selectedBranch, format: 'excel' };
+            if (selectedDate) {
+                params.as_of = selectedDate;
+            }
             if (selectedCategories.length > 0) {
                 params.category_ids = selectedCategories.join(',');
             }
@@ -129,6 +137,21 @@ const InventoryStockReport = () => {
                         <option key={b.id} value={b.id}>{b.nombre}</option>
                     ))}
                 </select>
+            </div>
+
+            {/* Date Selection */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={12} className="text-indigo-500" /> Fecha de Corte <span className="text-slate-300 font-bold">(opcional)</span>
+                </label>
+                <input 
+                    type="date"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={selectedDate}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                />
+                <p className="text-[9px] text-slate-400 mt-2 italic font-medium">Muestra el stock al final de la fecha indicada. Si se deja vacío, se usa el stock actual.</p>
             </div>
 
             {/* Categories Multi-select */}

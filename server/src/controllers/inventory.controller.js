@@ -600,11 +600,21 @@ const deletePhysicalInventory = async (req, res) => {
 
 const getInventoryStockReport = async (req, res) => {
     try {
-        const { branch_id, category_ids } = req.query;
+        const { branch_id, category_ids, as_of } = req.query;
         const company_id = req.company_id;
 
         if (!branch_id) {
             return res.status(400).json({ message: 'La sucursal es requerida' });
+        }
+
+        // Fecha de corte opcional (YYYY-MM-DD): stock al final de ese día
+        let asOfDate = null;
+        if (as_of) {
+            const parsed = new Date(as_of);
+            if (isNaN(parsed.getTime())) {
+                return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD' });
+            }
+            asOfDate = `${as_of} 23:59:59`;
         }
 
         // Fetch company and branch info for header (safe pattern)
@@ -628,7 +638,15 @@ const getInventoryStockReport = async (req, res) => {
                 p.codigo, 
                 p.nombre, 
                 c.name as categoria, 
+                ${asOfDate ? `
+                COALESCE(i.stock, 0) - COALESCE((
+                    SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
+                    FROM inventory_movements
+                    WHERE product_id = p.id AND branch_id = ? AND created_at > ?
+                ), 0) as stock,
+                ` : `
                 COALESCE(i.stock, 0) as stock,
+                `}
                 p.costo,
                 COALESCE(pbp.precio_unitario, 0) as precio_venta
             FROM products p
@@ -638,7 +656,9 @@ const getInventoryStockReport = async (req, res) => {
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             WHERE p.company_id = ? AND p.status = 'activo'
         `;
-        const params = [branch_id, branch_id, branch_id, company_id];
+        const params = asOfDate
+            ? [branch_id, asOfDate, branch_id, branch_id, branch_id, company_id]
+            : [branch_id, branch_id, branch_id, company_id];
 
         if (category_ids) {
             const ids = category_ids.split(',').map(id => parseInt(id)).filter(Boolean);
@@ -655,6 +675,7 @@ const getInventoryStockReport = async (req, res) => {
         const reportData = {
             company_name: company.nombre,
             branch_name: branch.nombre,
+            as_of: as_of || null,
             products: rows
         };
 

@@ -226,7 +226,7 @@ const generateStockReportPDF = (data) => {
             doc.on('error', (err) => reject(err));
 
             doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
-            doc.fontSize(10).text(`Sucursal: ${data.branch_name}`);
+            doc.fontSize(10).text(`Sucursal: ${data.branch_name}${data.as_of ? `   |   Al: ${data.as_of}` : ''}`);
             doc.moveDown();
 
             doc.fontSize(14).text('REPORTE DE STOCK DE INVENTARIO', { align: 'center', underline: true });
