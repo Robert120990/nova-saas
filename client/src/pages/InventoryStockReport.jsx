@@ -13,8 +13,10 @@ import ReportLayout from '../components/ui/ReportLayout';
 
 const InventoryStockReport = () => {
     const { user } = useAuth();
+    const localToday = new Date();
+    const todayStr = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`;
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
-    const [selectedDate, setSelectedDate] = useState('');
+    const [selectedDate, setSelectedDate] = useState(todayStr);
     const [selectedCategories, setSelectedCategories] = useState([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
@@ -148,7 +150,7 @@ const InventoryStockReport = () => {
                     type="date"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                     value={selectedDate}
-                    max={new Date().toISOString().split('T')[0]}
+                    max={todayStr}
                     onChange={(e) => setSelectedDate(e.target.value)}
                 />
                 <p className="text-[9px] text-slate-400 mt-2 italic font-medium">Muestra el stock al final de la fecha indicada. Si se deja vacío, se usa el stock actual.</p>

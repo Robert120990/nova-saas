@@ -727,7 +727,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
             case 'lubricantes': {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno, l.producto_descripcion as producto,
-                           l.cantidad, l.precio, l.total
+                           l.ventas as cantidad, l.precio, l.total
                     FROM gas_station_closeout_lubricant_readings l
                     JOIN gas_station_closeouts g ON l.closeout_id = g.id
                     WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
