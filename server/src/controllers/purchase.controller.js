@@ -355,12 +355,35 @@ const updatePurchase = async (req, res) => {
                 );
             }
 
-            // Registrar Movimiento (usamos el ID efectivo)
+        }
+
+        // Registrar movimientos por DELTA (efecto_nuevo - efecto_viejo); el movimiento COMPRA original queda intacto
+        const oldEffects = {};
+        for (const oldItem of oldItems) {
+            const efectoViejo = (oldTipoDoc === '06' ? -1 : 1) * parseFloat(oldItem.cantidad);
+            oldEffects[oldItem.product_id] = (oldEffects[oldItem.product_id] || 0) + efectoViejo;
+        }
+
+        const newEffects = {};
+        const newPrices = {};
+        for (const item of items) {
+            const efectoNuevo = (tipo_documento_id === '06' ? -1 : 1) * parseFloat(item.cantidad);
+            newEffects[item.product_id] = (newEffects[item.product_id] || 0) + efectoNuevo;
+            newPrices[item.product_id] = parseFloat(item.precio_unitario);
+        }
+
+        for (const productKey of new Set([...Object.keys(oldEffects), ...Object.keys(newEffects)])) {
+            const productId = parseInt(productKey, 10);
+            const delta = (newEffects[productId] || 0) - (oldEffects[productId] || 0);
+            if (delta === 0) continue;
+
+            const effectiveProductId = await getEffectiveProductId(connection, productId);
+            const movBranch = newEffects[productId] !== undefined ? branch_id : oldBranchId;
             await connection.query(`
                 INSERT INTO inventory_movements 
                 (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, documento_id, tipo_documento)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'EDICION_COMPRA')
-            `, [companyId, branch_id, effectiveProductId, newEsNC ? 'SALIDA' : 'ENTRADA', qty, price, id]);
+            `, [companyId, movBranch, effectiveProductId, delta > 0 ? 'ENTRADA' : 'SALIDA', Math.abs(delta), newPrices[productId] || 0, id]);
         }
 
         await connection.commit();
