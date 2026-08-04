@@ -285,6 +285,11 @@ async function generateDTE(payload) {
             itemTributos = ['20', ...itemTributos];
         }
 
+        // Ítem gravado sin tributos: el esquema exige mínimo 1 (minItems) — forzar IVA
+        if (!item.exento && itemTributos.length === 0) {
+            itemTributos = ['20'];
+        }
+
         const relatedDoc = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0)
             ? payload.documentoRelacionado[0].numeroDocumento
             : ".";
