@@ -49,6 +49,11 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         if (custRows.length > 0) customer = custRows[0];
     }
 
+    // Guardia: Hacienda exige distrito en receptor.direccion (codigoMsg 096)
+    if (customer && !customer.distrito) {
+        throw new Error(`El cliente "${customer.nombre}" no tiene distrito configurado. Complete el distrito en el registro del cliente antes de reintentar.`);
+    }
+
     // 5. Obtener datos de sucursal para el emisor_adicional
     const [pos] = await pool.query(
         'SELECT codigo FROM points_of_sale WHERE id = ?',
@@ -80,7 +85,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         pais_name: customer?.pais_name || newReceptor?.pais_name || null,
         codActividad: customer?.codigo_actividad || newReceptor?.codActividad || '10005',
         descActividad: customer?.actividad_economica || newReceptor?.descActividad || 'Otros',
-        direccion: customer?.direccion ? {
+        direccion: customer ? {
             departamento: customer.departamento || '06',
             municipio: customer.municipio || '01',
             distrito: customer.distrito || '01',

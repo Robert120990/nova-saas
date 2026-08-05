@@ -539,13 +539,11 @@ async function generateDTE(payload) {
     if (rawMuni === '00') rawMuni = '01';
 
     let rawDistrito = null;
-    if (tipoDte !== '01') {
-        if (receptor.direccion && receptor.direccion.distrito && !/^\d+$/.test(receptor.direccion.distrito)) {
-            throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
-        }
-        rawDistrito = String(receptor.direccion?.distrito || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
-        if (rawDistrito === '00') rawDistrito = '01';
+    if (receptor.direccion && receptor.direccion.distrito && !/^\d+$/.test(receptor.direccion.distrito)) {
+        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
     }
+    rawDistrito = String(receptor.direccion?.distrito || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
+    if (rawDistrito === '00') rawDistrito = '01';
 
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
@@ -554,7 +552,7 @@ async function generateDTE(payload) {
         direccion: receptor.direccion ? {
             departamento: rawDepto,
             municipio: rawMuni,
-            ...(tipoDte !== '01' ? { distrito: rawDistrito } : {}),
+            distrito: rawDistrito,
             complemento: sanitizeText(receptor.direccion.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
         } : null,
         telefono: cleanNumbers(receptor.telefono || '00000000').substring(0, 30),
