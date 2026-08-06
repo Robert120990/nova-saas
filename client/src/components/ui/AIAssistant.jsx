@@ -1,10 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, Sparkles, TrendingUp, Package, Users, DollarSign, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
-import { toast } from 'sonner';
 
 /**
  * Novas AI Assistant Component

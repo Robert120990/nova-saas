@@ -1,11 +1,10 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save,
-    Users, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle
+    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -51,6 +50,30 @@ const GasCloseout = () => {
         try { return new Date(v).toISOString().slice(0, 10); } catch { return ''; }
     };
 
+    const toDateStrDDMMYYYY = (v) => {
+        if (!v) return '';
+        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+            const [y, m, d] = v.slice(0, 10).split('-');
+            return `${d}/${m}/${y}`;
+        }
+        try {
+            const d = new Date(v);
+            if (isNaN(d.getTime())) return '';
+            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        } catch { return ''; }
+    };
+
+    const formatHora = (v) => {
+        if (!v) return '';
+        try {
+            const d = new Date(v);
+            if (isNaN(d.getTime())) return '';
+            return d.toTimeString().slice(0, 5);
+        } catch { return ''; }
+    };
+
+    const shiftEstado = (s) => (s?.status === 'open' ? 'ABIERTO' : 'CERRADO');
+
     const [closeoutId, setCloseoutId] = useState(null);
     const [estado, setEstado] = useState(null);
     const [readings, setReadings] = useState([]);
@@ -92,6 +115,9 @@ const GasCloseout = () => {
     const [diferenciasData, setDiferenciasData] = useState(null);
     const [diferenciasLoading, setDiferenciasLoading] = useState(false);
     const [showConfirmComplementaria, setShowConfirmComplementaria] = useState(false);
+    const [targetShiftId, setTargetShiftId] = useState('');
+    const [closeoutBranchId, setCloseoutBranchId] = useState(null);
+    const [matchedShiftId, setMatchedShiftId] = useState(null);
     const [despachadorNozzleAssignments, setDespachadorNozzleAssignments] = useState([]);
     const [showNozzleAssignModal, setShowNozzleAssignModal] = useState(false);
     const [modalAssignments, setModalAssignments] = useState([]);
@@ -572,7 +598,7 @@ const GasCloseout = () => {
     });
 
     const generarComplementariaMutation = useMutation({
-        mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/generar-complementaria`),
+        mutationFn: ({ shift_id }) => axios.post(`/api/gas-station/closeouts/${closeoutId}/generar-complementaria`, { shift_id }),
         onSuccess: (res) => {
             const { resultados, total_exitosos, total_fallidos } = res.data;
             if (total_fallidos > 0) {
@@ -586,6 +612,23 @@ const GasCloseout = () => {
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al generar complementaria')
     });
+
+    const dayStr = diferenciasData?.fecha ? String(diferenciasData.fecha).split('T')[0] : null;
+    const dayShiftsQuery = useQuery({
+        queryKey: ['shifts', 'day', closeoutBranchId, dayStr],
+        queryFn: async () => (await axios.get('/api/shifts', { params: { branch_id: closeoutBranchId, start_date: dayStr, end_date: dayStr, limit: 50 } })).data,
+        enabled: showDiferenciasModal && !!closeoutBranchId && !!dayStr,
+    });
+
+    useEffect(() => {
+        if (matchedShiftId && dayShiftsQuery.data?.data?.some(s => Number(s.id) === Number(matchedShiftId))) {
+            setTargetShiftId(String(matchedShiftId));
+        } else if (!targetShiftId && dayShiftsQuery.data?.data?.length) {
+            setTargetShiftId(String(dayShiftsQuery.data.data[0].id));
+        }
+    }, [dayShiftsQuery.data, matchedShiftId]);
+
+    const selectedTargetShift = dayShiftsQuery.data?.data?.find(s => String(s.id) === String(targetShiftId)) || null;
 
     const lubricantTotal = useMemo(() =>
         lubricantReadings.reduce((s, r) => s + (parseFloat(r.total) || 0), 0),
@@ -707,7 +750,7 @@ const GasCloseout = () => {
         const cuentaBancaria = gasSettings?.cuenta_bancaria_pista || '';
         const barcodeValue = `${remesa.codigo || remesa.id}|${remesa.id}`;
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remesa</title>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3/dist/JsBarcode.all.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3/dist/JsBarcode.all.min.js"></script>
 <style>
     @page { margin: 0; }
     * { box-sizing: border-box; }
@@ -776,7 +819,7 @@ const GasCloseout = () => {
             });
         } catch(e) { console.error(e); }
         setTimeout(() => { window.print(); }, 300);
-    <\/script>
+    </script>
 </body></html>`;
 
         const win = window.open('', '_blank');
@@ -842,8 +885,6 @@ const GasCloseout = () => {
             return updated;
         }));
     };
-
-    const toFloat = (v) => { const f = parseFloat(v); return isNaN(f) ? '' : f; };
 
     const handleRemoveDescuento = (id) => {
         setDescuentos(prev => prev.filter(d => d.id !== id));
@@ -969,9 +1010,12 @@ const GasCloseout = () => {
     const handleOpenDiferencias = async () => {
         setShowDiferenciasModal(true);
         setDiferenciasLoading(true);
+        setTargetShiftId('');
         try {
             const { data } = await axios.get(`/api/gas-station/closeouts/${closeoutId}/ventas-comparacion`);
             setDiferenciasData(data);
+            setCloseoutBranchId(data.branch_id);
+            setMatchedShiftId(data.matchedShiftId || null);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al obtener datos de comparacion');
             setShowDiferenciasModal(false);
@@ -3067,7 +3111,6 @@ const GasCloseout = () => {
                                             </tr>
                                         )}
                                         {tarjetas.map(t => {
-                                            const posType = posTypesList.find(p => p.id === parseInt(t.pos_type_id));
                                             return (
                                                 <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-1.5 py-1">
@@ -3915,7 +3958,7 @@ const GasCloseout = () => {
                                     <BarChart3 size={16} className="text-indigo-600" />
                                     Lecturas vs Ventas
                                     <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                        {diferenciasData?.fecha?.split('T')[0] || diferenciasData?.fecha} — Turno #{diferenciasData?.turno}
+                                        {toDateStrDDMMYYYY(diferenciasData?.fecha) || '—'} — Turno #{diferenciasData?.turno}
                                     </span>
                                 </h3>
                                 <button
@@ -3933,12 +3976,43 @@ const GasCloseout = () => {
                                     </div>
                                 ) : diferenciasData ? (
                                     <>
+                                        <div className="flex flex-wrap items-center gap-3 mt-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Enviar a turno</span>
+                                            {dayShiftsQuery.isLoading ? (
+                                                <span className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
+                                                    <Loader2 size={12} className="animate-spin" /> Cargando turnos...
+                                                </span>
+                                            ) : (dayShiftsQuery.data?.data || []).length === 0 ? (
+                                                <span className="flex items-center gap-2 text-[11px] font-bold text-amber-700">
+                                                    <AlertTriangle size={12} /> No hay turnos para esta fecha en la sucursal
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <select
+                                                        value={targetShiftId}
+                                                        onChange={e => setTargetShiftId(e.target.value)}
+                                                        className="text-[12px] font-bold text-slate-700 border border-slate-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                                    >
+                                                        {dayShiftsQuery.data.data.map(s => (
+                                                            <option key={s.id} value={s.id}>
+                                                                Turno #{s.shift_number} — {toDateStrDDMMYYYY(s.shift_date)}{formatHora(s.start_time) ? ` ${formatHora(s.start_time)}` : ''} — {s.pos_name}{s.seller_name ? ` — ${s.seller_name}` : ''} — {shiftEstado(s)}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    {selectedTargetShift && (
+                                                        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-tight">
+                                                            Las complementarias se asignarán a este turno
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                         {diferenciasData.shiftMatch !== true && (
                                             <div className="flex items-start gap-3 p-3 mt-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
                                                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                                                 <div className="text-[11px] font-medium">
                                                     <p className="font-bold mb-0.5">Turno de facturación no encontrado</p>
-                                                    <p>No se encontró un turno POS (punto de venta) que coincida con el Turno #{diferenciasData.turno} de este cierre en la fecha {diferenciasData.fecha?.split('T')[0] || diferenciasData.fecha}. Las ventas mostradas corresponden a todas las ventas del día sin filtrar por turno.</p>
+                                                    <p>No se encontró un turno POS (punto de venta) que coincida con el Turno #{diferenciasData.turno} de este cierre en la fecha {toDateStrDDMMYYYY(diferenciasData.fecha) || diferenciasData.fecha}. Las ventas mostradas corresponden a todas las ventas del día sin filtrar por turno. Seleccione el turno abierto al que desea enviar la complementaria.</p>
                                                 </div>
                                             </div>
                                         )}
@@ -3999,7 +4073,7 @@ const GasCloseout = () => {
                                             </span>
                                             <button
                                                 onClick={() => setShowConfirmComplementaria(true)}
-                                                disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0 || diferenciasData.shiftMatch !== true}
+                                                disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0 || !targetShiftId}
                                                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
                                             >
                                                 {generarComplementariaMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
@@ -4040,6 +4114,12 @@ const GasCloseout = () => {
                                             <p className="text-xs text-slate-600 mb-3">
                                                 Se generará <strong className="text-slate-800">{productos.length} DTE{productos.length !== 1 ? 's' : ''}</strong> de tipo Factura Consumidor Final (CF), uno por cada producto con diferencia positiva:
                                             </p>
+                                            {selectedTargetShift && (
+                                                <p className="text-[11px] font-bold text-indigo-600 mb-3 flex items-center gap-2">
+                                                    <Calendar size={12} />
+                                                    Se enviarán al Turno #{selectedTargetShift.shift_number} — {toDateStrDDMMYYYY(selectedTargetShift.shift_date)}{formatHora(selectedTargetShift.start_time) ? ` ${formatHora(selectedTargetShift.start_time)}` : ''} — {selectedTargetShift.pos_name}{selectedTargetShift.seller_name ? ` — ${selectedTargetShift.seller_name}` : ''} — {shiftEstado(selectedTargetShift)}
+                                                </p>
+                                            )}
                                             <table className="w-full text-left border-collapse text-[11px]">
                                                 <thead>
                                                     <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
@@ -4095,7 +4175,7 @@ const GasCloseout = () => {
                                                     Cancelar
                                                 </button>
                                                 <button
-                                                    onClick={() => generarComplementariaMutation.mutate()}
+                                                    onClick={() => generarComplementariaMutation.mutate({ shift_id: targetShiftId })}
                                                     disabled={generarComplementariaMutation.isPending}
                                                     className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
                                                 >

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { AlertTriangle, Trash2, XCircle, HelpCircle, CheckCircle } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { AlertTriangle, Trash2, HelpCircle, CheckCircle } from 'lucide-react';
 
 const VARIANTS = {
     danger: {

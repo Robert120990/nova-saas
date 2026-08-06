@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../../components/ui/Table';
@@ -378,29 +378,6 @@ const Liquidaciones = () => {
         };
         mutation.mutate(payload);
     };
-
-    const PeriodRow = ({ label, period, setPeriod, dias, setDias }) => (
-        <div className={`${sectionCls}`}>
-            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</div>
-            <div className="grid grid-cols-5 gap-3">
-                <div>
-                    <label className={labelCls}>Desde</label>
-                    <input type="date" value={period.desde} onChange={e => { setPeriod({ ...period, desde: e.target.value }); setDias(calcDays(e.target.value, period.hasta)); }}
-                        className={fieldCls} />
-                </div>
-                <div>
-                    <label className={labelCls}>Hasta</label>
-                    <input type="date" value={period.hasta} onChange={e => { setPeriod({ ...period, hasta: e.target.value }); setDias(calcDays(period.desde, e.target.value)); }}
-                        className={fieldCls} />
-                </div>
-                <div>
-                    <label className={labelCls}>Dias</label>
-                    <input type="number" value={dias || ''} onChange={e => setDias(parseInt(e.target.value) || 0)}
-                        className={fieldCls} min="0" />
-                </div>
-            </div>
-        </div>
-    );
 
     return (
         <div className="space-y-3 text-slate-900">

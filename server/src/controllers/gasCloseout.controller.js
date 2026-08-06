@@ -2330,6 +2330,7 @@ exports.getVentasComparacion = async (req, res) => {
         const turnoNum = parseInt(numero_turno, 10) || 0;
 
         let shiftMatch = null;
+        let matchedShiftId = null;
         if (turnoNum > 0) {
             const [posShift] = await pool.query(
                 `SELECT id FROM pos_shifts
@@ -2338,6 +2339,7 @@ exports.getVentasComparacion = async (req, res) => {
                 [company_id, branch_id, fecha_turno, turnoNum]
             );
             shiftMatch = posShift.length > 0;
+            matchedShiftId = posShift.length > 0 ? posShift[0].id : null;
         }
 
         const [rows] = await pool.query(`
@@ -2405,7 +2407,7 @@ exports.getVentasComparacion = async (req, res) => {
             totales.diferencia_monto += parseFloat(row.diferencia_monto) || 0;
         }
 
-        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno, shiftMatch });
+        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno, shiftMatch, matchedShiftId, branch_id });
     } catch (error) {
         console.error('Error getVentasComparacion:', error);
         res.status(500).json({ message: 'Error al obtener comparacion de ventas' });
@@ -2427,14 +2429,33 @@ exports.generarComplementaria = async (req, res) => {
         const { fecha_turno, numero_turno, branch_id } = closeouts[0];
         const turnoNum = parseInt(numero_turno, 10) || 0;
 
-        const [posShift] = await pool.query(
-            `SELECT id, seller_id, pos_id FROM pos_shifts
-             WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
-             LIMIT 1`,
-            [company_id, branch_id, fecha_turno, turnoNum]
-        );
-        if (posShift.length === 0) {
-            return res.status(400).json({ message: `No se encontro un turno de facturacion (POS) para la fecha ${fecha_turno} turno #${turnoNum}. Debe crear el turno de facturacion primero.` });
+        const { shift_id } = req.body || {};
+
+        let posShift;
+        if (shift_id) {
+            const [rows] = await pool.query(
+                `SELECT id, seller_id, pos_id, branch_id, status FROM pos_shifts
+                 WHERE id = ? AND company_id = ?`,
+                [Number(shift_id), company_id]
+            );
+            if (rows.length === 0) {
+                return res.status(400).json({ message: 'El turno destino no existe o no pertenece a esta empresa' });
+            }
+            if (Number(rows[0].branch_id) !== Number(branch_id)) {
+                return res.status(400).json({ message: 'El turno destino no pertenece a la sucursal del cierre' });
+            }
+            posShift = rows;
+        } else {
+            const [rows] = await pool.query(
+                `SELECT id, seller_id, pos_id FROM pos_shifts
+                 WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
+                 LIMIT 1`,
+                [company_id, branch_id, fecha_turno, turnoNum]
+            );
+            if (rows.length === 0) {
+                return res.status(400).json({ message: `No se encontro un turno de facturacion (POS) para la fecha ${fecha_turno} turno #${turnoNum}. Debe crear el turno de facturacion primero.` });
+            }
+            posShift = rows;
         }
 
         let codPuntoVentaMH = null;
@@ -2638,7 +2659,7 @@ exports.generarComplementaria = async (req, res) => {
                         success: true,
                         codigo_generacion: dteResult.data.codigo_generacion,
                         numero_control: dteResult.data.numero_control,
-                        total: totalPagar,
+                        total: ventaGravada,
                         sale_id: saleId
                     });
                 } else if (dteResult.codigo_generacion) {

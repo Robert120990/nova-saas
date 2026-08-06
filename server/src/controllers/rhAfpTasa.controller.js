@@ -39,8 +39,8 @@ const getAfpTasas = async (req, res) => {
 };
 
 const createAfpTasa = async (req, res) => {
+    const { afp_id, fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
     try {
-        const { afp_id, fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
         const [result] = await pool.query(
             `INSERT INTO ${TABLE} (afp_id, fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual, company_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [afp_id, fecha_desde, fecha_hasta || null, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual, req.company_id]
@@ -55,9 +55,9 @@ const createAfpTasa = async (req, res) => {
 };
 
 const updateAfpTasa = async (req, res) => {
+    const { id } = req.params;
+    const { afp_id, fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
     try {
-        const { id } = req.params;
-        const { afp_id, fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
         const [result] = await pool.query(
             `UPDATE ${TABLE} SET afp_id = ?, fecha_desde = ?, fecha_hasta = ?, porcentaje_empleado = ?, porcentaje_patrono = ?, tope_quincenal = ?, tope_mensual = ? WHERE id = ? AND company_id = ?`,
             [afp_id, fecha_desde, fecha_hasta || null, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual, id, req.company_id]

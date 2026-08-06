@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { History, GitCommitHorizontal, Clock, User } from 'lucide-react';
@@ -90,7 +90,7 @@ const Changelog = () => {
                         <div className="relative">
                             <div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-slate-200" />
                             <div className="space-y-0">
-                                {commits.map((commit, i) => (
+                                {commits.map((commit) => (
                                     <div key={commit.hash} className="relative flex gap-4 pb-5">
                                         <div className="relative z-10 mt-1.5 flex-shrink-0">
                                             <div className="w-[20px] h-[20px] rounded-full bg-white border-2 border-indigo-300 flex items-center justify-center">

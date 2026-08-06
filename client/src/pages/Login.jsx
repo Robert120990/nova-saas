@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { Building2, MapPin, ChevronRight, LogIn } from 'lucide-react';
@@ -35,7 +35,7 @@ const Login = () => {
     const handleSelectContext = async (e) => {
         e.preventDefault();
         try {
-            await selectContext(selectedCompanyId, selectedBranchId);
+            await selectContext(Number(selectedCompanyId), Number(selectedBranchId));
             toast.success('¡Bienvenido!');
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al seleccionar contexto');

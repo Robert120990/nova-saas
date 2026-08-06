@@ -1845,7 +1845,7 @@ const generateLiquidacionPDF = (data) => {
             if (data.num_nit) { doc.text(`NIT: ${data.num_nit}`, M, extraY); }
 
             doc.fontSize(7).fillColor('grey')
-                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM_FOOTER, { align: 'center', width: pageW });
+                .text('Documento generado automaticamente por el Sistema SaaS.', M, BOTTOM, { align: 'center', width: pageW });
 
             doc.end();
         } catch (err) {

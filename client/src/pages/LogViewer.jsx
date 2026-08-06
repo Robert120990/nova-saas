@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Terminal, Pause, Play, Trash2 } from 'lucide-react';
 
 const SERVICES = [

@@ -4,7 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { IMaskInput } from 'react-imask';
-import { Plus, Shield, Edit, GitBranch, User, Trash2, Search } from 'lucide-react';
+import { Plus, Shield, Edit, User, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';

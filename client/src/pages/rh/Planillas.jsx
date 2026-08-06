@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../../components/ui/Table';
@@ -307,22 +307,6 @@ const Planillas = () => {
             cacheRef.current[empleadoId] = { detalles: updated, calculo: calculo ? { ...calculo } : null, planilla_id: selected?.id };
         }
     };
-
-    const mutation = useMutation({
-        mutationFn: (data) => {
-            if (selected?.id) return axios.put(`/api/rh/planillas/${selected.id}`, data);
-            return axios.post('/api/rh/planillas', data);
-        },
-        onSuccess: (res) => {
-            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
-            if (empleadoId) delete cacheRef.current[empleadoId];
-            if (!selected?.id) {
-                setSelected(prev => ({ ...prev, id: res.data.id }));
-            }
-            toast.success(selected?.id ? 'Planilla actualizada' : 'Planilla creada');
-        },
-        onError: (error) => { toast.error(error.response?.data?.message || 'Error al guardar'); }
-    });
 
     const handleDownloadRecibosMasivos = async (anio, mes, quincena) => {
         try {

@@ -43,18 +43,22 @@ const checkPermission = (permission) => {
                 return res.status(403).json({ message: 'Role not found' });
             }
 
-            const raw = rows[0].permissions || '[]';
+            const raw = rows[0].permissions;
             let permissions = [];
-            try {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) {
-                    permissions = parsed;
-                } else if (typeof parsed === 'string') {
-                    const doubleParsed = JSON.parse(parsed);
-                    if (Array.isArray(doubleParsed)) permissions = doubleParsed;
+            if (Array.isArray(raw)) {
+                permissions = raw;
+            } else if (typeof raw === 'string') {
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        permissions = parsed;
+                    } else if (typeof parsed === 'string') {
+                        const doubleParsed = JSON.parse(parsed);
+                        if (Array.isArray(doubleParsed)) permissions = doubleParsed;
+                    }
+                } catch {
+                    permissions = [];
                 }
-            } catch {
-                permissions = [];
             }
             if (permissions.includes(permission)) {
                 return next();

@@ -2,21 +2,17 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
-    History, 
     Search, 
     ArrowUpCircle, 
     ArrowDownCircle, 
     Box, 
     Filter,
-    Store,
     Layers,
     Calendar,
-    Download,
     FileSpreadsheet,
     FileText as FilePdf,
     DollarSign,
     Barcode,
-    Plus,
     X,
     Maximize2
 } from 'lucide-react';
@@ -24,7 +20,6 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';

@@ -36,8 +36,8 @@ const getIsssTasas = async (req, res) => {
 };
 
 const createIsssTasa = async (req, res) => {
+    const { fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
     try {
-        const { fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
         const [result] = await pool.query(
             `INSERT INTO ${TABLE} (fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [fecha_desde, fecha_hasta || null, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual, req.company_id]
@@ -52,9 +52,9 @@ const createIsssTasa = async (req, res) => {
 };
 
 const updateIsssTasa = async (req, res) => {
+    const { id } = req.params;
+    const { fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
     try {
-        const { id } = req.params;
-        const { fecha_desde, fecha_hasta, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual } = req.body;
         const [result] = await pool.query(
             `UPDATE ${TABLE} SET fecha_desde = ?, fecha_hasta = ?, porcentaje_empleado = ?, porcentaje_patrono = ?, tope_quincenal = ?, tope_mensual = ? WHERE id = ? AND company_id = ?`,
             [fecha_desde, fecha_hasta || null, porcentaje_empleado, porcentaje_patrono, tope_quincenal, tope_mensual, id, req.company_id]

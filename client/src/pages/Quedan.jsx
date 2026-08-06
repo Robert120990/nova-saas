@@ -1,10 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    Plus, Trash2, Search, Edit, Handshake, Send, Undo2, Save, Loader2,
-    FileSignature, PlusCircle
+    Plus, Trash2, Search, Edit, Handshake, Send, Undo2, Save, Loader2, PlusCircle
 } from 'lucide-react';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -24,19 +23,6 @@ const formatDate = (dateStr) => {
         return dateStr;
     }
 };
-
-const emptyItem = () => ({
-    _key: Date.now() + Math.random(),
-    fecha: today(),
-    documento: '',
-    tipo: 'CCF',
-    gravadas: '',
-    iva: '',
-    retencion: '',
-    percepcion: '',
-    exentas: '',
-    total: ''
-});
 
 const Quedan = () => {
     const { user } = useAuth();
@@ -66,8 +52,6 @@ const Quedan = () => {
     const [itemForm, setItemForm] = useState({ fecha: today(), documento: '', tipo: 'CCF', gravadas: '', iva: '', retencion: '', percepcion: '', exentas: '' });
 
     const isEditing = editId !== null;
-
-    const [showRequestConfirm, setShowRequestConfirm] = useState(null);
 
     const { data: listData, isLoading: listLoading } = useQuery({
         queryKey: ['purchase-quedans', listSearch, listPage, branchFilter],
@@ -276,7 +260,7 @@ const Quedan = () => {
 
     const requestMutation = useMutation({
         mutationFn: (id) => axios.post(`/api/purchases/quedans/${id}/request`),
-        onSuccess: (res) => {
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['purchase-quedans'] });
             toast.success('Quedan enviado a RRS con éxito');
         },
@@ -352,7 +336,6 @@ const Quedan = () => {
         if (!formProviderId) { toast.error('El proveedor es requerido'); return; }
         if (!formFecha) { toast.error('La fecha es requerida'); return; }
 
-        const totals = calcTotals();
         const payload = {
             branch_id: formBranchId,
             num_quedan: formNumQuedan,

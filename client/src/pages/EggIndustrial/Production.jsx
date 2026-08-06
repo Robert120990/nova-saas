@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
 import {
     Activity,
     Plus,
-    FileSpreadsheet,
     Flame,
     Copy,
     Search,
-    Droplets,
-    ShieldAlert,
-    CheckCircle,
     XCircle,
     ClipboardList,
-    Clock,
     Wrench,
     AlertOctagon,
-    ArrowRight,
     Lock
 } from 'lucide-react';
 

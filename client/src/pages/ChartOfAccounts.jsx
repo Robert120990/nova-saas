@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Plus, Edit, Trash2, BookOpen, Search, Upload, HelpCircle, X } from 'lucide-react';
@@ -17,7 +17,7 @@ const ChartOfAccounts = () => {
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(15);
-    const [isImporting, setIsImporting] = useState(false);
+    const [, setIsImporting] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
 
     const { data: accounts = [], isLoading } = useQuery({
@@ -94,7 +94,6 @@ const ChartOfAccounts = () => {
                             try {
                                 const text = await file.text();
                                 const lines = text.split('\n').filter(l => l.trim());
-                                const headers = lines[0].toLowerCase().split(',');
                                 // Esperado: code,name,account_type_id,parent_code,allows_entries
                                 const accounts = lines.slice(1).map(line => {
                                     const vals = line.split(',');

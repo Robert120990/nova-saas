@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -16,10 +16,7 @@ import {
     Banknote,
     Calculator,
     Calendar,
-    AlertCircle,
-    FileText as FilePdf,
     Edit,
-    ArrowLeft,
     RefreshCw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -98,8 +95,8 @@ const Expenses = () => {
     const [isIvaDirty, setIsIvaDirty] = useState(false);
     const [isRetDirty, setIsRetDirty] = useState(false);
     const [isPercDirty, setIsPercDirty] = useState(false);
-    const [isFovDirty, setIsFovDirty] = useState(false);
-    const [isCotDirty, setIsCotDirty] = useState(false);
+    const [, setIsFovDirty] = useState(false);
+    const [, setIsCotDirty] = useState(false);
 
     // History State
     const [historySearch, setHistorySearch] = useState('');

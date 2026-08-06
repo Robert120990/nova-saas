@@ -12,7 +12,6 @@ export default function useWebSocket({ companyId, onMessage }) {
         if (!companyId) return;
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = window.location.port || (protocol === 'wss:' ? '443' : '80');
         const url = `${protocol}//${window.location.hostname}:4000/ws/inventory?company_id=${companyId}`;
 
         const ws = new WebSocket(url);

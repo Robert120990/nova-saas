@@ -1,15 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
-import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Trash2, Search, Gift, Calculator, Save, Eye, AlertCircle } from 'lucide-react';
-
-const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
-const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
+import { Plus, Trash2, Gift, Calculator, Save, Eye, AlertCircle } from 'lucide-react';
 
 const yearNow = new Date().getFullYear();
 const years = Array.from({ length: 6 }, (_, i) => yearNow - 2 + i);
@@ -25,8 +21,8 @@ const Aguinaldos = () => {
     const confirm = useConfirm();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [searchTerm] = useState('');
+    const [, setDebouncedSearch] = useState('');
     const [filterAño, setFilterAño] = useState(yearNow);
 
     // Modal form

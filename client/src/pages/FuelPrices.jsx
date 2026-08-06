@@ -6,11 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { 
     Fuel, 
     Save, 
-    RefreshCcw, 
-    TrendingUp, 
-    DollarSign,
+    RefreshCcw,
     AlertCircle,
-    CheckCircle2,
     Store
 } from 'lucide-react';
 

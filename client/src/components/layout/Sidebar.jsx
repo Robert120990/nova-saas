@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
-import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X, Save, Eye, EyeOff } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { useMenuItems } from "../../hooks/useMenuItems";
 
 const Sidebar = ({ onOpenSearch }) => {
-    const { user, updateUser } = useAuth();
+    const { user } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
         return saved === 'true';
@@ -35,21 +34,12 @@ const Sidebar = ({ onOpenSearch }) => {
 
     // Initialize groups as collapsed
     const [expandedGroups, setExpandedGroups] = useState({});
-    const [expandedSubGroups, setExpandedSubGroups] = useState({});
 
     const toggleGroup = (groupId) => {
         if (isCollapsed) return; // Don't expand groups when collapsed
         setExpandedGroups(prev => ({
             ...prev,
             [groupId]: !prev[groupId]
-        }));
-    };
-
-    const toggleSubGroup = (subGroupId) => {
-        if (isCollapsed) return;
-        setExpandedSubGroups(prev => ({
-            ...prev,
-            [subGroupId]: !prev[subGroupId]
         }));
     };
 
@@ -64,7 +54,7 @@ const Sidebar = ({ onOpenSearch }) => {
         queryFn: async () => (await axios.get('/api/settings')).data,
     });
 
-    const { topLevelItems, menuConfig, isLoading: menuLoading } = useMenuItems();
+    const { topLevelItems, menuConfig } = useMenuItems();
 
     const [hoveredItem, setHoveredItem] = useState(null);
     const [hoveredPos, setHoveredPos] = useState({ top: 0, left: 0 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -9,36 +9,27 @@ import {
     Calendar, 
     Search, 
     Package,
-    Save,
     CheckCircle2,
-    AlertCircle,
     User,
     GitBranch,
     Loader2,
     RefreshCw,
     Hash,
     Calculator,
-    Tags,
     ChevronRight,
     ArrowRightCircle,
     Download,
     FileSpreadsheet,
-    FileText as FilePdf,
     TrendingUp,
     Trash2,
     QrCode,
     Copy,
     Eye,
     X,
-    Wifi,
-    Smartphone,
     Check,
-    AlertTriangle,
     List
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
@@ -62,7 +53,7 @@ const PhysicalInventory = () => {
     const [items, setItems] = useState([]);
     const [inventoryId, setInventoryId] = useState(null);
     const [isAutoSaving, setIsAutoSaving] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [, setLoading] = useState(false);
     const autoSaveTimerRef = useRef(null);
     const userChangedRef = useRef(false);
 
@@ -95,7 +86,6 @@ const PhysicalInventory = () => {
     const [scanSessions, setScanSessions] = useState([]);
     const [isQRModalOpen, setIsQRModalOpen] = useState(false);
     const [newSessionName, setNewSessionName] = useState('');
-    const [creatingSession, setCreatingSession] = useState(false);
     const [qrPreviewSession, setQRPreviewSession] = useState(null);
     const [isQRPreviewOpen, setIsQRPreviewOpen] = useState(false);
     const [viewingScans, setViewingScans] = useState(null);

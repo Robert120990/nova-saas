@@ -557,7 +557,7 @@ const getEstadoResultados = async (req, res) => {
                 { header: 'Código', key: 'codigo', width: 14 },
                 { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 40 },
                 { header: 'Saldo', key: 'saldo', width: 16 },
-            ], `Estado_Resultados_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Estado_Resultados_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -673,7 +673,7 @@ const getBalanceGeneral = async (req, res) => {
                 { header: 'Código', key: 'codigo', width: 14 },
                 { header: 'Nombre Cuenta', key: 'nombre_cuenta', width: 40 },
                 { header: 'Saldo', key: 'saldo', width: 16 },
-            ], `Balance_General_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Balance_General_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -785,7 +785,7 @@ const getAnexoBalance = async (req, res) => {
                 { header: 'Débitos', key: 'debitos', width: 14 },
                 { header: 'Créditos', key: 'creditos', width: 14 },
                 { header: 'Saldo', key: 'saldo', width: 14 },
-            ], `Anexo_Balance_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Anexo_Balance_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -980,7 +980,7 @@ const getBalanceComprobacion = async (req, res) => {
                 { header: 'Débito', key: 'debito', width: 14 },
                 { header: 'Crédito', key: 'credito', width: 14 },
                 { header: 'Saldo', key: 'saldo', width: 14 },
-            ], `Balance_Comprobacion_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Balance_Comprobacion_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -1217,7 +1217,7 @@ const getCambiosPatrimonio = async (req, res) => {
                 { header: 'Débitos', key: 'debitos', width: 14 },
                 { header: 'Créditos', key: 'creditos', width: 14 },
                 { header: 'S. Final', key: 'saldo_final', width: 14 },
-            ], `Cambios_Patrimonio_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Cambios_Patrimonio_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -1394,7 +1394,7 @@ const getFlujoEfectivo = async (req, res) => {
             return buildExcelResponse(res, rowsForExcel, [
                 { header: 'Concepto', key: 'concepto', width: 40 },
                 { header: 'Monto', key: 'monto', width: 16 },
-            ], `Flujo_Efectivo_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Flujo_Efectivo_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -1546,7 +1546,7 @@ const getBalanceComparativo = async (req, res) => {
                 { header: String(prevYear), key: 'anterior', width: 14 },
                 { header: 'Variación', key: 'variacion', width: 14 },
                 { header: '%', key: 'porcentaje', width: 12 },
-            ], `Balance_Comparativo_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Balance_Comparativo_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {
@@ -1838,7 +1838,7 @@ const getRetenciones = async (req, res) => {
                 { header: 'Débito', key: 'debito', width: 14 },
                 { header: 'Crédito', key: 'credito', width: 14 },
                 { header: 'Saldo', key: 'saldo', width: 14 },
-            ], `Retenciones_${periodText.replace(/[/\\?*\[\]:]/g, '_')}.xlsx`);
+            ], `Retenciones_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
         buildPDF(res, (doc) => {

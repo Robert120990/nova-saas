@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -7,17 +7,11 @@ import {
     Plus,
     DollarSign,
     Wrench,
-    TrendingUp,
-    TrendingDown,
     Calculator,
     BarChart3,
-    Clock,
-    ShieldAlert,
-    CheckCircle,
     User,
     Calendar,
     Settings,
-    FileText,
     Info,
     XCircle,
     Trash2
@@ -35,27 +29,16 @@ const EggCostsMaintenance = () => {
     };
 
     // Lists
-    const [costs, setCosts] = useState([]);
+    const [, setCosts] = useState([]);
     const [batches, setBatches] = useState([]);
     const [maintenanceLogs, setMaintenanceLogs] = useState([]);
     const [forecast, setForecast] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [, setLoading] = useState(true);
 
     // Tab state
     const [activeTab, setActiveTab] = useState('costs'); // 'costs', 'maintenance', 'forecasting'
 
     // Form states
-    const [costForm, setCostForm] = useState({
-        batch_id: '',
-        diesel_cost: '150.00',
-        electricity_cost: '280.00',
-        water_cost: '35.00',
-        labor_cost: '180.00',
-        packaging_materials_cost: '520.00',
-        chemicals_cip_cost: '25.00',
-        quality_tests_cost: '60.00'
-    });
-
     const [maintenanceForm, setMaintenanceForm] = useState({
         equipment_name: 'pasteurizador',
         maintenance_type: 'preventivo',
@@ -102,47 +85,6 @@ const EggCostsMaintenance = () => {
         fetchData();
     }, [companyId]);
 
-    // Handle create cost record
-    const handleCreateCost = async (e) => {
-        e.preventDefault();
-
-        if (!costForm.batch_id) {
-            return toast.error('Debe seleccionar un lote de producción.');
-        }
-
-        setIsSubmitting(true);
-        try {
-            await axios.post('/api/egg-industrial/costs', {
-                batch_id: parseInt(costForm.batch_id),
-                diesel_cost: parseFloat(costForm.diesel_cost),
-                electricity_cost: parseFloat(costForm.electricity_cost),
-                water_cost: parseFloat(costForm.water_cost),
-                labor_cost: parseFloat(costForm.labor_cost),
-                packaging_materials_cost: parseFloat(costForm.packaging_materials_cost),
-                chemicals_cip_cost: parseFloat(costForm.chemicals_cip_cost),
-                quality_tests_cost: parseFloat(costForm.quality_tests_cost)
-            });
-            toast.success('Costos operativos industriales cargados al lote.');
-            setCostForm({
-                batch_id: '',
-                diesel_cost: '150.00',
-                electricity_cost: '280.00',
-                water_cost: '35.00',
-                labor_cost: '180.00',
-                packaging_materials_cost: '520.00',
-                chemicals_cip_cost: '25.00',
-                quality_tests_cost: '60.00'
-            });
-            fetchData();
-            setActiveTab('costs');
-        } catch (error) {
-            console.error('Error saving industrial cost:', error);
-            toast.error('Error al cargar costos.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const openVariableCosts = async (batch) => {
         setVariableCostsModal(batch);
         try {
@@ -173,7 +115,6 @@ const EggCostsMaintenance = () => {
     };
 
     const getTotalFixedCost = () => costConcepts.reduce((s, c) => s + parseFloat(c.default_value || 0), 0);
-    const getTotalVariableCost = () => variableCosts.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
     // Handle create maintenance log
     const handleCreateMaintenance = async (e) => {
@@ -214,13 +155,6 @@ const EggCostsMaintenance = () => {
         } finally {
             setIsSubmitting(false);
         }
-    };
-
-    // Cost calculations helpers
-    const calculateTotalCost = (c) => {
-        return parseFloat(c.diesel_cost) + parseFloat(c.electricity_cost) + parseFloat(c.water_cost) +
-            parseFloat(c.labor_cost) + parseFloat(c.packaging_materials_cost) +
-            parseFloat(c.chemicals_cip_cost) + parseFloat(c.quality_tests_cost);
     };
 
     return (
@@ -299,8 +233,6 @@ const EggCostsMaintenance = () => {
                                 const totalVar = filtered.reduce((s, b) => s + (b.variable_costs || []).reduce((ss, c) => ss + parseFloat(c.amount || 0), 0), 0);
                                 const totalAll = getTotalFixedCost() * filtered.length + totalVar;
                                 const totalWasteLbs = filtered.reduce((s, b) => s + parseFloat(b.waste_shell_lbs || 0) + parseFloat(b.waste_loss_lbs || 0), 0);
-                                const totalInput = filtered.reduce((s, b) => s + parseFloat(b.input_weight_lbs || 0), 0);
-                                const wasteCost = totalInput > 0 ? (totalWasteLbs / totalInput) * totalAll : 0;
                                 return (
                                     <>
                                         <div className="bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-center">

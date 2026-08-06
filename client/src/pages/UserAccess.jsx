@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { 
-    User, Building2, ShieldCheck, GitBranch, Save, 
+import { Building2, ShieldCheck, GitBranch, Save, 
     Search, Users as UsersIcon, Plus, Edit, Trash2, X 
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -123,7 +122,6 @@ const UserAccess = () => {
         acc.company_name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const cardCls = "bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all hover:shadow-md";
     const labelCls = "block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2";
     const selectCls = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-medium appearance-none cursor-pointer";
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -6,10 +6,7 @@ import {
     Plus,
     Trash2,
     Search,
-    X,
-    Eye,
     Edit,
-    CreditCard,
     CheckCircle,
     Loader2,
     Save,
@@ -147,7 +144,7 @@ const PurchaseChecks = () => {
 
     const requestMutation = useMutation({
         mutationFn: (id) => axios.post(`/api/purchases/checks/${id}/request`),
-        onSuccess: (res) => {
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['purchase-checks'] });
             toast.success('Solicitud enviada a RRS con éxito');
         },
@@ -203,8 +200,6 @@ const PurchaseChecks = () => {
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al sincronizar proveedores'),
     });
-
-    const [showRequestConfirm, setShowRequestConfirm] = useState(null);
 
     useMemo(() => {
         if (configData) {

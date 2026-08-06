@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -11,14 +11,10 @@ import {
     Calendar,
     User,
     Snowflake,
-    Thermometer,
-    CheckCircle,
     XCircle,
     Boxes,
     Search,
     Printer,
-    Info,
-    TrendingDown,
     Lock,
     Pencil,
     Trash2
@@ -58,7 +54,6 @@ const EggPackaging = () => {
     const [searchTerm, setSearchTerm] = useState('');
 
     // Tab state
-    const [activeTab, setActiveTab] = useState('records'); // 'records' only
     const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
     const [isFreezerModalOpen, setIsFreezerModalOpen] = useState(false);
     const [productConfig, setProductConfig] = useState([]);

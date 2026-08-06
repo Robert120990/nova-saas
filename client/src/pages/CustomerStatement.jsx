@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
@@ -11,7 +11,6 @@ import {
     Building2,
     DollarSign,
     FilterX,
-    Calendar,
     Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,7 +19,6 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Money from '../components/ui/Money';
 
-const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '—';
 
 const CustomerStatement = () => {

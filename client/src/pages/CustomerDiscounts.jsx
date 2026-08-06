@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
-    Tag, 
     Search, 
     Plus, 
     Trash2, 
     User, 
-    Package, 
     Percent, 
     DollarSign,
     Filter,

@@ -322,6 +322,8 @@ router.get('/sales/dte-json/:id', salesController.getDTEJson);
 router.get('/sales/settings', salesConfigController.getSettings);
 router.put('/sales/settings', salesConfigController.updateSettings);
 
+router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), salesController.changeSalesShift);
+
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);

@@ -1,18 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
-import SearchableSelect from '../../components/ui/SearchableSelect';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
 import { IMaskInput } from 'react-imask';
 import { MoneyInput } from '../../components/ui/Money';
 import {
-    Plus, Edit, Trash2, Search, Users,
-    UserCircle, Briefcase, Wallet, ScrollText, CalendarX,
-    ChevronDown, Loader2
+    Plus, Edit, Trash2, Search,
+    UserCircle, Briefcase, Wallet, ScrollText, CalendarX, Loader2
 } from 'lucide-react';
 
 const TABS = [
@@ -114,12 +112,6 @@ const Empleados = () => {
     const { data: descuentosAsignados = [], refetch: refetchDescuentos } = useQuery({
         queryKey: ['rh-empleado-descuentos', selected?.id],
         queryFn: async () => (await axios.get(`/api/rh/empleados/${selected.id}/descuentos`)).data,
-        enabled: !!selected?.id
-    });
-
-    const { data: indemnizaciones = [], refetch: refetchIndemnizaciones } = useQuery({
-        queryKey: ['rh-empleado-indemnizaciones', selected?.id],
-        queryFn: async () => (await axios.get(`/api/rh/empleados/${selected.id}/indemnizaciones`)).data,
         enabled: !!selected?.id
     });
 

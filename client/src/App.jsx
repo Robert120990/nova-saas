@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
@@ -83,6 +82,7 @@ import GasReadingHistory from './pages/GasReadingHistory';
 import GasExpenseCategories from './pages/GasExpenseCategories';
 import GasStationConfig from './pages/GasStationConfig';
 import SalesConfig from './pages/SalesConfig';
+import ShiftDTEs from './pages/ShiftDTEs';
 import GasDespachadores from './pages/GasDespachadores';
 import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
@@ -221,6 +221,7 @@ function App() {
                         <Route path="/ventas/contingencia" element={<Contingency />} />
                         <Route path="/ventas/retorno" element={<Eret />} />
                         <Route path="/ventas/configuracion" element={<SalesConfig />} />
+                        <Route path="/ventas/dtes-turno" element={<ShiftDTEs />} />
                         <Route path="/ventas" element={<SalesHistory />} />
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />

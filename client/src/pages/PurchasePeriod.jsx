@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Save, X, LogOut, Calendar, ChevronDown } from 'lucide-react';
+import { Save, X, Calendar, ChevronDown } from 'lucide-react';
 
 const PurchasePeriod = () => {
     const navigate = useNavigate();
@@ -54,10 +54,6 @@ const PurchasePeriod = () => {
             console.error('Error saving period:', error);
             toast.error('Error al guardar el periodo', { id: loadingToast });
         }
-    };
-
-    const handleExit = () => {
-        navigate('/dashboard');
     };
 
     if (loading) return (

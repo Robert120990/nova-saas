@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
@@ -8,7 +8,6 @@ import {
     Trash2, 
     Package, 
     User, 
-    ShoppingCart, 
     CreditCard, 
     Banknote, 
     ChevronRight, 
@@ -73,7 +72,7 @@ const SalesTerminal = () => {
     
     // Items State
     const [cart, setCart] = useState([]);
-    const [generalDiscount, setGeneralDiscount] = useState(0);
+    const [generalDiscount] = useState(0);
 
     // Payment State
     const [payments, setPayments] = useState([]);
@@ -91,7 +90,6 @@ const SalesTerminal = () => {
     const [productSearch, setProductSearch] = useState('');
     const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
     const [modalPage, setModalPage] = useState(1);
-    const [barcode, setBarcode] = useState('');
     
     // Quick Add State (Like Purchases)
     const [quickBarcode, setQuickBarcode] = useState('');
@@ -140,7 +138,6 @@ const SalesTerminal = () => {
     const qtyInputRef = useRef(null);
     const priceInputRef = useRef(null);
     const descInputRef = useRef(null);
-    const barcodeRef = useRef(null);
     const barcodeLookupInFlightRef = useRef(false);
     const scanEntryRef = useRef(null);
 
@@ -219,11 +216,6 @@ const SalesTerminal = () => {
         queryKey: ['combos-all', sellerSession?.branch_id],
         queryFn: async () => (await axios.get('/api/combos', { params: { limit: 1000, branch_id: sellerSession?.branch_id } })).data?.data || [],
         enabled: !!sellerSession?.branch_id
-    });
-
-    const { data: sellers = [] } = useQuery({
-        queryKey: ['sellers'],
-        queryFn: async () => (await axios.get('/api/sellers', { params: { limit: 1000 } })).data?.data || []
     });
 
     const { data: customerSales = [], isLoading: isLoadingCustomerSales } = useQuery({
@@ -489,14 +481,6 @@ const SalesTerminal = () => {
             // Document Type Switching (Up/Down Arrows) - ONLY in Auth Modal
             if (isAuthModalOpen) {
                 const allowedTypes = ['01', '03', '04', '05', '07', '11'];
-                const typeNames = {
-                    '01': 'Factura (01)',
-                    '03': 'Crédito Fiscal (03)',
-                    '04': 'Nota Remisión (04)',
-                    '05': 'Nota Crédito (05)',
-                    '07': 'Comprobante Retención (07)',
-                    '11': 'Factura de Exportación (11)'
-                };
                 const currentIndex = allowedTypes.indexOf(tipoDte);
 
                 if (e.key === 'ArrowDown') {
@@ -1096,7 +1080,6 @@ const SalesTerminal = () => {
     }, [cart, generalDiscount, currentCompany, selectedCustomerData, tipoDte, taxSettings, linkedDocs]);
 
     const addToCart = (itemData, isCombo = false) => {
-        const itemId = isCombo ? `combo-${itemData.id}` : itemData.id;
         const itemName = itemData.nombre || itemData.name;
         let itemPrice = itemData.precio_unitario || itemData.price || 0;
 
@@ -1292,7 +1275,7 @@ const SalesTerminal = () => {
             // Buscar directo en el servidor (búsqueda exacta por código o código de barras)
             try {
                 const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
-                    params: { branch_id: sellerSession?.branch_id }
+                    params: { branch_id: sellerSession?.branch_id, pos_id: sellerSession?.pos_id }
                 });
                 const product = res.data;
                 if (product.status === 'inactivo') {
@@ -1310,7 +1293,7 @@ const SalesTerminal = () => {
                     }
                     finishBarcodeLookup(combo, true, autoAdd);
                 } else {
-                    toast.error('Producto o Combo no encontrado');
+                    toast.error('El código no corresponde a un producto asignado a este punto de venta');
                     setQuickBarcode('');
                 }
             }
@@ -1393,22 +1376,6 @@ const SalesTerminal = () => {
         setQuickCant('1');
         setQuickPrecio('0');
         barcodeInputRef.current?.focus();
-    };
-
-    const addManualItem = () => {
-        if (!sellerSession?.allow_price_edit) {
-            return toast.error('No tiene permisos para agregar conceptos manuales (requiere edición de precio).');
-        }
-        const id = Date.now();
-        setCart([...cart, {
-            id,
-            nombre: 'Nuevo Concepto...',
-            codigo: 'VAR-01',
-            precio: 0,
-            cantidad: 1,
-            descuento: 0,
-            isManual: true
-        }]);
     };
 
     const removeFromCart = (id) => {
@@ -1766,7 +1733,7 @@ const SalesTerminal = () => {
                                         }} 
                                         placeholder={quickProd ? "DESCRIPCIÓN BLOQUEADA" : "ESCRIBIR NOTA..."} 
                                         disabled={!!quickProd}
-                                        className={`w-full px-3 py-1.5 rounded-lg text-[10px] font-black h-[30px] flex items-center transition-all outline-none ${!!quickProd ? 'bg-slate-100 text-slate-500 border border-slate-200 unselectable' : 'bg-white border border-indigo-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400'}`}
+                                        className={`w-full px-3 py-1.5 rounded-lg text-[10px] font-black h-[30px] flex items-center transition-all outline-none ${quickProd ? 'bg-slate-100 text-slate-500 border border-slate-200 unselectable' : 'bg-white border border-indigo-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400'}`}
                                     />
                                 </div>
                                 <div>

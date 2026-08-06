@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Building2, Globe, MapPin } from 'lucide-react';
+import { Plus, Edit, Trash2, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -35,7 +35,7 @@ const Companies = () => {
         return formatted;
     };
 
-    const { data: companies = [], isLoading } = useQuery({
+    const { data: companies = [] } = useQuery({
         queryKey: ['companies'],
         queryFn: async () => (await axios.get('/api/companies')).data
     });

@@ -7,22 +7,17 @@ import {
     ArrowRightLeft, 
     Plus, 
     Trash2, 
-    Save, 
-    Info, 
-    ArrowRight,
+    Save,
     Box,
     AlertCircle,
     ChevronRight,
     ShoppingBag,
     History,
-    FileText,
     Ban,
     Edit2,
-    Calendar,
     Search,
     X,
     Eye,
-    Download,
     FileSpreadsheet,
     FileText as FilePdf,
     Barcode,
@@ -31,7 +26,6 @@ import {
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 
@@ -96,7 +90,7 @@ const Transfers = () => {
     });
 
     // Fetch stock of origin branch when it changes
-    const { data: originInventory = [], isLoading: loadingStock } = useQuery({
+    const { data: originInventory = [] } = useQuery({
         queryKey: ['inventory', origenBranch],
         queryFn: async () => {
             if (!origenBranch) return [];

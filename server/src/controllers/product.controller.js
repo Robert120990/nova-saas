@@ -208,8 +208,8 @@ const updateProduct = async (req, res) => {
 const lookupProduct = async (req, res) => {
     try {
         const { code } = req.params;
-        const { branch_id } = req.query;
-        const [rows] = await pool.query(`
+        const { branch_id, pos_id } = req.query;
+        let query = `
             SELECT p.id, p.company_id, p.codigo, p.codigo_barra, p.nombre, p.descripcion,
                    p.costo, p.unidad_medida, p.tipo_item, p.category_id, p.provider_id,
                    p.tipo_combustible, p.tipo_operacion, p.stock_minimo, p.afecta_inventario,
@@ -219,8 +219,17 @@ const lookupProduct = async (req, res) => {
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = pb.branch_id
             WHERE p.company_id = ? AND (p.codigo = ? OR p.codigo_barra = ?)
-            LIMIT 1
-        `, [branch_id, req.company_id, code, code]);
+        `;
+        let params = [branch_id, req.company_id, code, code];
+
+        if (pos_id) {
+            query += ` AND (NOT EXISTS (SELECT 1 FROM product_pos pp WHERE pp.product_id = p.id)
+                            OR EXISTS (SELECT 1 FROM product_pos pp WHERE pp.product_id = p.id AND pp.pos_id = ?))`;
+            params.push(pos_id);
+        }
+
+        query += ` LIMIT 1`;
+        const [rows] = await pool.query(query, params);
         if (rows.length === 0) return res.status(404).json({ message: 'Producto no encontrado' });
 
         const [branches] = await pool.query('SELECT branch_id FROM product_branch WHERE product_id = ?', [rows[0].id]);

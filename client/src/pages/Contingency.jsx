@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { AlertTriangle, Play, StopCircle, RefreshCw, Clock, FileText } from 'lucide-react';
+import { AlertTriangle, Play, StopCircle, RefreshCw, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
 
@@ -19,7 +19,7 @@ const Contingency = () => {
     const [motivo, setMotivo] = useState('');
     const [tipoContingencia, setTipoContingencia] = useState(1);
 
-    const { data: status, isLoading, refetch } = useQuery({
+    const { data: status, refetch } = useQuery({
         queryKey: ['contingency', 'status'],
         queryFn: async () => (await axios.get('/api/contingency/status')).data,
         refetchInterval: 30000,

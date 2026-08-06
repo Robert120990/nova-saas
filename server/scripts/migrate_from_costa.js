@@ -122,7 +122,7 @@ async function main() {
         const catId = p.id_linea;
         if (!categoryKeywords[catId]) categoryKeywords[catId] = {};
         if (!p.descripcion) continue;
-        const words = p.descripcion.toUpperCase().split(/[\s\/]+/);
+        const words = p.descripcion.toUpperCase().split(/[\s/]+/);
         for (const word of words) {
             if (word.length < 3) continue;
             if (STOPWORDS.has(word)) continue;
@@ -158,7 +158,7 @@ async function main() {
 
     function detectCategoryByName(descripcion) {
         if (!descripcion) return null;
-        const words = descripcion.toUpperCase().split(/[\s\/]+/);
+        const words = descripcion.toUpperCase().split(/[\s/]+/);
         const scores = {};
         for (const word of words) {
             const cat = strongKeywordCategory[word];

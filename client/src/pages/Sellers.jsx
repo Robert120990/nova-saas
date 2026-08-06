@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { Plus, Search, Edit, Trash2, Power, UserPlus } from 'lucide-react';
+import { Search, Edit, Trash2, Power, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Sellers = () => {
@@ -16,7 +16,7 @@ const Sellers = () => {
     const [selectedSeller, setSelectedSeller] = useState(null);
     const [sellerToDelete, setSellerToDelete] = useState(null);
     const [selectedBranchId, setSelectedBranchId] = useState('');
-    const [selectedPosId, setSelectedPosId] = useState('');
+    const [, setSelectedPosId] = useState('');
 
     const { data, isLoading } = useQuery({
         queryKey: ['sellers', search, page, limit],
@@ -25,25 +25,6 @@ const Sellers = () => {
 
     const { data: branches = [] } = useQuery({ queryKey: ['branches'], queryFn: async () => (await axios.get('/api/branches')).data });
     
-    // POS globales para nombres en la tabla
-    const { data: allPos = [] } = useQuery({ 
-        queryKey: ['pos-all'], 
-        queryFn: async () => (await axios.get('/api/pos')).data 
-    });
-
-    // POS filtrados para el formulario (dependiente de la sucursal seleccionada)
-    const { data: filteredPos = [] } = useQuery({
-        queryKey: ['pos-filtered', selectedBranchId],
-        queryFn: async () => {
-            if (!selectedBranchId) return [];
-            const { data } = await axios.get('/api/pos', {
-                params: { branch_id: selectedBranchId, status: 'activo' }
-            });
-            return data;
-        },
-        enabled: !!selectedBranchId
-    });
-
     const mutation = useMutation({
         mutationFn: (sellerData) => {
             if (selectedSeller) return axios.put(`/api/sellers/${selectedSeller.id}`, sellerData);

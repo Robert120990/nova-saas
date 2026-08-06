@@ -37,8 +37,8 @@ const getSalarioMinimoConfigs = async (req, res) => {
 };
 
 const createSalarioMinimoConfig = async (req, res) => {
+    const { fecha_desde, fecha_hasta, monto } = req.body;
     try {
-        const { fecha_desde, fecha_hasta, monto } = req.body;
         const [result] = await pool.query(
             `INSERT INTO ${TABLE} (fecha_desde, fecha_hasta, monto, company_id) VALUES (?, ?, ?, ?)`,
             [fecha_desde, fecha_hasta || null, monto, req.company_id]
@@ -53,9 +53,9 @@ const createSalarioMinimoConfig = async (req, res) => {
 };
 
 const updateSalarioMinimoConfig = async (req, res) => {
+    const { id } = req.params;
+    const { fecha_desde, fecha_hasta, monto } = req.body;
     try {
-        const { id } = req.params;
-        const { fecha_desde, fecha_hasta, monto } = req.body;
         const [result] = await pool.query(
             `UPDATE ${TABLE} SET fecha_desde = ?, fecha_hasta = ?, monto = ? WHERE id = ? AND company_id = ?`,
             [fecha_desde, fecha_hasta || null, monto, id, req.company_id]

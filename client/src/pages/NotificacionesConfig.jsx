@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Bell, Plus, GitBranch, Settings, Trash2, Power, PowerOff, Edit3 } from 'lucide-react';
+import { Bell, Plus, GitBranch, Settings, Trash2, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import RuleEditor from '../components/ui/RuleEditor';
 import { useConfirm } from '../context/ConfirmContext';
@@ -87,14 +87,6 @@ const NotificacionesConfig = () => {
     setShowEditor(false);
     setEditingRule(null);
     queryClient.invalidateQueries(['notification-rules', selectedBranchId]);
-  };
-
-  const getActiveChannels = (rule) => {
-    const channels = [];
-    if (rule.channel_system) channels.push('Sistema');
-    if (rule.channel_email) channels.push('Email');
-    if (rule.channel_whatsapp) channels.push('WhatsApp');
-    return channels.join(', ');
   };
 
   const toggleCategory = (cat) => {

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Save, Upload, Trash2, Layout, Image as ImageIcon, Type, Settings, Calculator } from 'lucide-react';
+import { Save, Upload, Trash2, Image as ImageIcon, Type, Settings, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SystemSettings = () => {

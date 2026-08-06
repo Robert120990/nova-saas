@@ -3,7 +3,11 @@ const pool = require('../config/db');
 const { 
     generateAgingPDF,
     generateRTEE,
-    generateInvalidationPDF
+    generateInvalidationPDF,
+    generateStatementPDF,
+    generateProviderStatementPDF,
+    generateProviderAgingPDF,
+    generatePaymentReceiptPDF
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────

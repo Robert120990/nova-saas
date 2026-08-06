@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useRef, useState } from 'react';
+import { createContext, useContext, useCallback, useRef, useState } from 'react';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
 const ConfirmContext = createContext(null);

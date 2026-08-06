@@ -81,11 +81,6 @@ export function buildCloseoutPrintHtml(data) {
 
     const fecha = c.fecha_turno ? new Date(c.fecha_turno).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 
-    const tableStyle = 'width:100%;border-collapse:collapse;font-size:10px;';
-    const thStyle = 'background:#f8fafc;border-bottom:2px solid #e2e8f0;padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b;';
-    const thRight = thStyle + 'text-align:right;';
-    const tdStyle = 'padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px;';
-    const tdRight = tdStyle + 'text-align:right;';
     const tfootStyle = 'background:#f8fafc;border-top:2px solid #e2e8f0;padding:6px 8px;font-size:10px;font-weight:700;';
     const tfootRight = tfootStyle + 'text-align:right;';
 
@@ -258,7 +253,6 @@ export function buildCloseoutPrintHtml(data) {
         </table></div>`;
 
     // Diferencia
-    const diffClass = diferenciaTotal >= 0 ? 'diff-pos' : 'diff-neg';
     html += `<div class="section">
         <div class="section-title">Diferencia</div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;">
@@ -285,7 +279,6 @@ export function buildCloseoutPrintHtml(data) {
         const dNoPercibido = despachadorNoPercibido[did] || 0;
         const dEntregado = despachadorEntregado[did] || 0;
         const dDiff = (dNoPercibido + dEntregado) - dVenta;
-        const diffClass = dDiff >= 0 ? 'diff-pos' : 'diff-neg';
         html += `<tr>
             <td class="mono">${escHtml(d.despachador_codigo || '')}</td>
             <td>${escHtml(d.nombre || '')}</td>

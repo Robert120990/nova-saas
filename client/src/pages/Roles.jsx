@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import Modal from "../components/ui/Modal";
@@ -6,12 +6,9 @@ import {
     Plus, 
     Shield, 
     CheckCircle2, 
-    Circle, 
     Trash2, 
     X, 
-    Save, 
-    ChevronRight,
-    Search
+    Save
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMenuPermissions } from "../hooks/useMenuItems";

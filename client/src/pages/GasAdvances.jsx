@@ -1,19 +1,17 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import SearchableSelect from '../components/ui/SearchableSelect';
-import { Plus, Edit, Trash2, Search, Banknote } from 'lucide-react';
+import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 
 const GasAdvances = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
-    const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [selectedClienteId, setSelectedClienteId] = useState('');

@@ -85,8 +85,6 @@ const GasDespachadorNozzles = () => {
         nozzleAssignmentMap[a.nozzle_id] = { despachador_id: a.despachador_id, despachador_codigo: a.despachador_codigo };
     });
 
-    const selectedDespachador = safeDespachadores.find(d => d.id === parseInt(selectedDespachadorId));
-
     return (
         <div className="p-6 max-w-4xl mx-auto">
             <h1 className="text-lg font-bold text-slate-800 mb-1">Asignación de Mangueras</h1>

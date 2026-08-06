@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, X, Save, Users } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';

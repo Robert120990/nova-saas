@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -7,7 +7,7 @@ import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
 import {
     Undo2, Plus, Search, Code, Terminal,
-    CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, Info, Loader2, ShoppingCart
+    CheckCircle2, XCircle, Clock, AlertCircle, Info, Loader2, ShoppingCart
 } from 'lucide-react';
 
 const Eret = () => {

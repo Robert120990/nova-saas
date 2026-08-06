@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
-import { Search, FileText, Download, Send, FileJson, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Search, FileText, Download, Send, FileJson, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const dteTypeNames = {

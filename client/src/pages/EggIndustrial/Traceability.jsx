@@ -1,29 +1,18 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import {
     Activity,
     Search,
-    Boxes,
     Flame,
     Barcode,
     Snowflake,
     ClipboardList,
-    TrendingUp,
     ShieldCheck,
-    Lock,
-    User,
-    Calendar,
-    ArrowDown,
-    Building2,
-    DollarSign,
-    Award
+    Building2
 } from 'lucide-react';
 
 const EggTraceability = () => {
-    const { user } = useAuth();
-    const companyId = user?.company_id || 1;
 
     const [searchCode, setSearchCode] = useState('LOTE-260519-ENTERO'); // Pre-populate with realistic seeded lot code
     const [loading, setLoading] = useState(false);

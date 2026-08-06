@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   ShoppingCart, Ban, FileMinus, FilePlus,
   FileCheck, FileX, RefreshCcw, AlertTriangle, XCircle,

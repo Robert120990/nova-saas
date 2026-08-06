@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Lock, Calendar, TrendingDown, TrendingUp } from 'lucide-react';
+import { Lock, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -19,7 +19,6 @@ const YearClosing = () => {
 
     // Solo cuentas de resultado
     const incomeAccounts = trialBalance.filter(a => ['4', '5', '6'].includes(a.code.substring(0, 1)));
-    const balanceAccounts = trialBalance.filter(a => ['1', '2', '3'].includes(a.code.substring(0, 1)));
     const totalIncome = incomeAccounts.reduce((s, a) => s + parseFloat(a.balance || 0), 0);
 
     const closeMutation = useMutation({

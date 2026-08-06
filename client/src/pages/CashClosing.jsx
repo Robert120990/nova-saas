@@ -1,16 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { printTicket } from '../utils/qzPrint';
 import { 
     Calculator, 
     History, 
-    FileText, 
-    TrendingUp, 
-    Clock, 
-    User, 
-    Monitor,
-    ChevronRight,
+    Clock,
     Search,
     AlertCircle,
     CheckCircle2,
@@ -20,8 +15,6 @@ import {
     Printer,
     Trash2,
     Users,
-    Plus,
-    X,
     Pencil
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,7 +31,6 @@ const CashClosing = () => {
     const canEditShift = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('manage_shifts_edit');
     
     // UI State
-    const [selectedPos, setSelectedPos] = useState('');
     const [openingBalance, setOpeningBalance] = useState('');
     
     // History Filters State
@@ -103,7 +95,7 @@ const CashClosing = () => {
     });
 
     // Summary query for the current active shift
-    const { data: activeSummary, isLoading: isLoadingSummary } = useQuery({
+    const { data: activeSummary } = useQuery({
         queryKey: ['shifts', 'summary', selectedShiftId || currentShiftStatus?.shift?.id],
         queryFn: async () => {
             const shiftId = selectedShiftId || currentShiftStatus?.shift?.id;

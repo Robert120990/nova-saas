@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Plus, Eye, Ban, Edit, FileText, Trash2, Search } from 'lucide-react';
@@ -37,9 +37,6 @@ const AccountingEntries = () => {
         );
     }, [entries, search]);
 
-    const { data: accountTypes = [] } = useQuery({
-        queryKey: ['accountTypes'], queryFn: async () => (await axios.get('/api/accounting/account-types')).data,
-    });
     const { data: entryTypes = [] } = useQuery({
         queryKey: ['entryTypes'], queryFn: async () => (await axios.get('/api/accounting/entry-types')).data,
     });

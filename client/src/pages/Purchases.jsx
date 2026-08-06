@@ -7,17 +7,14 @@ import autoTable from 'jspdf-autotable';
 import { 
     Plus, 
     Trash2, 
-    Save, 
     History, 
     Search, 
     X,
     Barcode,
-    Check,
     Package,
     Eye,
     XCircle,
     FileSpreadsheet,
-    ShoppingCart,
     Truck,
     Calculator,
     Calendar,
@@ -25,8 +22,7 @@ import {
     FileText as FilePdf,
     Settings,
     Edit,
-    Zap,
-    FileJson
+    Zap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SearchableSelect from '../components/ui/SearchableSelect';

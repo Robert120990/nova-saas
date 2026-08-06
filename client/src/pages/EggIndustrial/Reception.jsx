@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -6,7 +6,6 @@ import SearchableSelect from '../../components/ui/SearchableSelect';
 import {
     Plus,
     FileText,
-    TrendingDown,
     User,
     Calendar,
     Thermometer,

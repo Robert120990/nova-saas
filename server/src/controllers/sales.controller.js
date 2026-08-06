@@ -302,7 +302,7 @@ const createSale = async (req, res) => {
  * Obtiene el historial de ventas paginado.
  */
 const getSales = async (req, res) => {
-    const { page = 1, limit = 15, dte_type, start_date, end_date, search = '', customer_id, status, only_processed, exclude_has_nc } = req.query;
+    const { page = 1, limit = 15, dte_type, start_date, end_date, search = '', customer_id, status, only_processed, exclude_has_nc, shift_id, has_dte } = req.query;
     const offset = (page - 1) * limit;
 
     try {
@@ -358,6 +358,15 @@ const getSales = async (req, res) => {
             params.push(customer_id);
         }
 
+        if (shift_id) {
+            sql += ' AND h.shift_id = ?';
+            params.push(shift_id);
+        }
+
+        if (has_dte === 'true') {
+            sql += ' AND (d_v.id IS NOT NULL OR d_c.id IS NOT NULL)';
+        }
+
         if (status) {
             sql += ' AND h.estado = ?';
             params.push(status);
@@ -402,6 +411,15 @@ const getSales = async (req, res) => {
         if (customer_id) {
             countSql += ' AND h.customer_id = ?';
             countParams.push(customer_id);
+        }
+
+        if (shift_id) {
+            countSql += ' AND h.shift_id = ?';
+            countParams.push(shift_id);
+        }
+
+        if (has_dte === 'true') {
+            countSql += ` AND (EXISTS (SELECT 1 FROM dtes d2 WHERE d2.venta_id = h.id AND d2.company_id = h.company_id) OR EXISTS (SELECT 1 FROM dtes d2 WHERE d2.codigo_generacion = h.codigo_generacion AND d2.company_id = h.company_id))`;
         }
 
         if (status) {
@@ -2603,6 +2621,73 @@ const sendPublicDTEEmail = async (req, res) => {
     }
 };
 
+/**
+ * Cambia el turno (pos_shift) de una o varias ventas con DTE emitido.
+ */
+const changeSalesShift = async (req, res) => {
+    const { ids = [], shift_id } = req.body;
+
+    try {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ message: 'Debe seleccionar al menos una venta' });
+        }
+        if (!shift_id) {
+            return res.status(400).json({ message: 'Debe indicar el turno destino' });
+        }
+
+        const [shiftRows] = await pool.query(
+            'SELECT id, company_id, branch_id, status, shift_number FROM pos_shifts WHERE id = ? AND company_id = ?',
+            [shift_id, req.company_id]
+        );
+        if (shiftRows.length === 0) {
+            return res.status(404).json({ message: 'El turno destino no existe o no pertenece a esta empresa' });
+        }
+        const targetShift = shiftRows[0];
+
+        const [sales] = await pool.query(
+            `SELECT h.id, h.shift_id, h.estado, h.branch_id, h.codigo_generacion,
+                    (SELECT COUNT(*) FROM dtes d WHERE d.venta_id = h.id AND d.company_id = h.company_id) as dte_venta_count,
+                    (SELECT COUNT(*) FROM dtes d WHERE d.codigo_generacion = h.codigo_generacion AND d.company_id = h.company_id) as dte_codigo_count
+             FROM sales_headers h
+             WHERE h.id IN (?) AND h.company_id = ?`,
+            [ids, req.company_id]
+        );
+
+        if (sales.length === 0) {
+            return res.status(404).json({ message: 'No se encontraron ventas con los ids indicados' });
+        }
+
+        const missing = ids.filter(id => !sales.some(s => Number(s.id) === Number(id)));
+        if (missing.length > 0) {
+            return res.status(404).json({ message: 'Algunas ventas no pertenecen a esta empresa', missing });
+        }
+
+        const userBranchId = req.user.branch_id ? Number(req.user.branch_id) : null;
+        const targetBranchId = Number(targetShift.branch_id);
+
+        const invalid = [];
+        for (const s of sales) {
+            if (s.estado !== 'emitido') invalid.push({ id: s.id, reason: 'La venta no está emitida' });
+            else if (s.dte_venta_count === 0 && s.dte_codigo_count === 0) invalid.push({ id: s.id, reason: 'La venta no tiene DTE asociado' });
+            else if (Number(s.branch_id) !== targetBranchId) invalid.push({ id: s.id, reason: 'La venta es de otra sucursal que el turno destino' });
+            else if (userBranchId && Number(s.branch_id) !== userBranchId) invalid.push({ id: s.id, reason: 'La venta no pertenece a su sucursal' });
+        }
+        if (invalid.length > 0) {
+            return res.status(400).json({ message: `${invalid.length} venta(s) no pueden cambiarse de turno`, invalid });
+        }
+
+        await pool.query(
+            'UPDATE sales_headers SET shift_id = ? WHERE id IN (?) AND company_id = ?',
+            [shift_id, ids, req.company_id]
+        );
+
+        res.json({ success: true, message: `${sales.length} venta(s) cambiada(s) de turno correctamente`, updated: sales.length });
+    } catch (error) {
+        console.error('Error in changeSalesShift:', error);
+        res.status(500).json({ message: 'Error al cambiar las ventas de turno', error: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -2632,5 +2717,6 @@ module.exports = {
     listRetornos,
     emitRetorno,
     getRetornoStatus,
-    getDTEByCodigoGeneracion
+    getDTEByCodigoGeneracion,
+    changeSalesShift
 };

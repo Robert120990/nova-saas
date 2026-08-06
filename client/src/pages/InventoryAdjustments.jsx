@@ -9,20 +9,15 @@ import {
     Save, 
     History, 
     FileText, 
-    Calendar, 
     Search, 
     X,
     Barcode,
     Check,
-    ArrowUpCircle,
-    ArrowDownCircle,
     Package,
     Settings,
-    Download,
     Eye,
     Edit2,
     XCircle,
-    CheckCircle2,
     AlertCircle,
     FileSpreadsheet,
     FileText as FilePdf
@@ -30,7 +25,6 @@ import {
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
@@ -274,7 +268,6 @@ const InventoryAdjustments = () => {
     const totalAjuste = selectedItems.reduce((acc, item) => acc + item.total, 0);
 
     const inputCls = "w-full px-4 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-[13px] font-medium";
-    const selectSmallCls = "w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-[11px] font-bold uppercase tracking-tight";
     const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 ml-1";
 
     const [viewingAdjustment, setViewingAdjustment] = useState(null);
@@ -989,7 +982,7 @@ const MotivosModal = ({ isOpen, onClose, tipo, motivos, handleCreateMotivo, labe
 };
 
 const AdjustmentDetailModal = ({ adjustment, onClose }) => {
-    const { data: detail, isLoading } = useQuery({
+    const { data: detail } = useQuery({
         queryKey: ['adjustment-detail', adjustment?.id],
         queryFn: async () => (await axios.get(`/api/inventory/adjustments/${adjustment.id}`)).data,
         enabled: !!adjustment

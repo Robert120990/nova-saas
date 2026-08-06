@@ -1,15 +1,12 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import axios from 'axios';
 import {
     Calendar
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../../context/AuthContext';
 import ReportLayout from '../../components/ui/ReportLayout';
 
 const Retenciones = () => {
-    const { user } = useAuth();
 
     const currentYear = new Date().getFullYear();
     const [filters, setFilters] = useState({
