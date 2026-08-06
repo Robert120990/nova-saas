@@ -73,7 +73,7 @@ const Customers = () => {
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['customers', debouncedSearch, page, limit],
-        queryFn: async () => (await axios.get('/api/customers', { params: { nombre: debouncedSearch, page, limit } })).data
+        queryFn: async () => (await axios.get('/api/customers', { params: { search: debouncedSearch, page, limit } })).data
     });
 
     const customers = response.data || [];
@@ -191,7 +191,7 @@ const Customers = () => {
     const handleSelectAllResults = useCallback(async () => {
         try {
             const params = { ids_only: '1' };
-            if (debouncedSearch) params.nombre = debouncedSearch;
+            if (debouncedSearch) params.search = debouncedSearch;
             const ids = await axios.get('/api/customers', { params }).then(r => r.data);
             setSelectedIds(new Set(ids));
             toast.success(`${ids.length} cliente(s) seleccionados`);
