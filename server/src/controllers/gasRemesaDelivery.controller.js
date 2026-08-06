@@ -52,10 +52,13 @@ exports.getPendingRemesas = async (req, res) => {
 
 exports.createDelivery = async (req, res) => {
     try {
-        const { fecha, hora, responsable, comentario, remesa_ids } = req.body;
+        const { fecha, hora, responsable, comentario, referencia, remesa_ids } = req.body;
 
         if (!fecha || !hora) {
             return res.status(400).json({ message: 'Fecha y hora son requeridas' });
+        }
+        if (!referencia || !String(referencia).trim()) {
+            return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
         if (!remesa_ids || !Array.isArray(remesa_ids) || remesa_ids.length === 0) {
             return res.status(400).json({ message: 'Debe seleccionar al menos una remesa' });
@@ -93,8 +96,8 @@ exports.createDelivery = async (req, res) => {
         const branch_id = req.user.branch_id || 0;
 
         const [result] = await pool.query(
-            `INSERT INTO gas_station_remesa_deliveries (company_id, branch_id, fecha, hora, responsable, comentario) VALUES (?, ?, ?, ?, ?, ?)`,
-            [req.company_id, branch_id, fecha, hora, responsable || '', comentario || '']
+            `INSERT INTO gas_station_remesa_deliveries (company_id, branch_id, fecha, hora, responsable, comentario, referencia) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [req.company_id, branch_id, fecha, hora, responsable || '', comentario || '', String(referencia).trim()]
         );
 
         const deliveryId = result.insertId;
@@ -132,7 +135,7 @@ exports.createDelivery = async (req, res) => {
 exports.updateDelivery = async (req, res) => {
     try {
         const { id } = req.params;
-        const { fecha, hora, responsable, comentario, remesa_ids } = req.body;
+        const { fecha, hora, responsable, comentario, referencia, remesa_ids } = req.body;
 
         const [deliveries] = await pool.query(
             `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
@@ -147,6 +150,9 @@ exports.updateDelivery = async (req, res) => {
 
         if (!fecha || !hora) {
             return res.status(400).json({ message: 'Fecha y hora son requeridas' });
+        }
+        if (!referencia || !String(referencia).trim()) {
+            return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
         if (!remesa_ids || !Array.isArray(remesa_ids) || remesa_ids.length === 0) {
             return res.status(400).json({ message: 'Debe seleccionar al menos una remesa' });
@@ -171,8 +177,8 @@ exports.updateDelivery = async (req, res) => {
         }
 
         await pool.query(
-            `UPDATE gas_station_remesa_deliveries SET fecha = ?, hora = ?, responsable = ?, comentario = ? WHERE id = ?`,
-            [fecha, hora, responsable || '', comentario || '', id]
+            `UPDATE gas_station_remesa_deliveries SET fecha = ?, hora = ?, responsable = ?, comentario = ?, referencia = ? WHERE id = ?`,
+            [fecha, hora, responsable || '', comentario || '', String(referencia).trim(), id]
         );
 
         await pool.query(
@@ -374,7 +380,7 @@ exports.entregarDelivery = async (req, res) => {
                     if (cuentas.length > 0) {
                         const cuenta = cuentas[0];
                         const llave = `${rrsIdEmpresa}-${delivery.id}`;
-                        const documento = String(delivery.id).padStart(7, '0');
+                        const documento = (delivery.referencia || '').trim() || String(delivery.id).padStart(7, '0');
                         const d = new Date(delivery.fecha);
                         const fechaStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
                         const now = new Date();

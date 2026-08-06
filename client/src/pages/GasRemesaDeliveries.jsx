@@ -27,6 +27,7 @@ const GasRemesaDeliveries = () => {
     const [hora, setHora] = useState(now());
     const [responsable, setResponsable] = useState('');
     const [comentario, setComentario] = useState('');
+    const [referencia, setReferencia] = useState('');
     const [addedRemesas, setAddedRemesas] = useState([]);
     const [scanInput, setScanInput] = useState('');
 
@@ -81,6 +82,7 @@ const GasRemesaDeliveries = () => {
             setHora(editData.hora || now());
             setResponsable(editData.responsable || '');
             setComentario(editData.comentario || '');
+            setReferencia(editData.referencia || '');
             setAddedRemesas(editData.remesas || []);
         }
     }, [editData]);
@@ -141,6 +143,7 @@ const GasRemesaDeliveries = () => {
         setHora(now());
         setResponsable('');
         setComentario('');
+        setReferencia('');
         setAddedRemesas([]);
         setScanInput('');
     };
@@ -214,10 +217,11 @@ const GasRemesaDeliveries = () => {
     const handleSave = () => {
         if (!fecha) { toast.error('La fecha es requerida'); return; }
         if (!hora) { toast.error('La hora es requerida'); return; }
+        if (!referencia.trim()) { toast.error('El número de referencia es requerido'); return; }
         if (addedRemesas.length === 0) { toast.error('Debe agregar al menos una remesa'); return; }
 
         const payload = {
-            fecha, hora, responsable, comentario,
+            fecha, hora, responsable, comentario, referencia: referencia.trim(),
             remesa_ids: addedRemesas.map(r => r.id),
         };
 
@@ -310,7 +314,7 @@ const GasRemesaDeliveries = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Fecha', 'Hora', 'Responsable', 'Comentario', 'No. Remesas', 'Monto Total', 'Estado', 'Acciones']}
+                    headers={['Fecha', 'Hora', 'Responsable', 'Referencia', 'Comentario', 'No. Remesas', 'Monto Total', 'Estado', 'Acciones']}
                     data={deliveries}
                     isLoading={listLoading}
                     renderRow={(item) => (
@@ -325,6 +329,9 @@ const GasRemesaDeliveries = () => {
                             </td>
                             <td className="px-3 py-1">
                                 <span className="text-xs font-medium text-slate-800">{item.responsable || '—'}</span>
+                            </td>
+                            <td className="px-3 py-1">
+                                <span className="text-xs font-bold font-mono text-indigo-600">{item.referencia || '—'}</span>
                             </td>
                             <td className="px-3 py-1">
                                 <span className="text-xs text-slate-500 truncate max-w-[200px] inline-block">{item.comentario || '—'}</span>
@@ -394,6 +401,10 @@ const GasRemesaDeliveries = () => {
                             <label className={`${labelCls} block mb-1`}>Comentario</label>
                             <input type="text" value={comentario} onChange={(e) => setComentario(e.target.value)} placeholder="Comentario opcional" className={inputCls} />
                         </div>
+                    </div>
+                    <div>
+                        <label className={`${labelCls} block mb-1`}>Número de Referencia</label>
+                        <input type="text" value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Número de referencia / documento" className={inputCls} />
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -563,6 +574,12 @@ const GasRemesaDeliveries = () => {
                                 )}
                             </div>
                         </div>
+                        {deliveryDetail.referencia && (
+                            <div className="px-4 -mt-3">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Número de Referencia</span>
+                                <span className="text-[13px] font-medium font-mono text-indigo-600">{deliveryDetail.referencia}</span>
+                            </div>
+                        )}
                         {deliveryDetail.comentario && (
                             <div className="px-4 -mt-3">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase block">Comentario</span>
