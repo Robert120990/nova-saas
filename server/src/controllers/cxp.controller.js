@@ -17,7 +17,19 @@ const getProviderStatement = async (req, res) => {
     }
 
     const offset = (page - 1) * limit;
-    const searchTerm = search ? `%${search}%` : null;
+    const getSearchWords = (term) => {
+        const words = term.trim().split(/\s+/).filter(Boolean);
+        return [...new Set(words)];
+    };
+    const searchWords = search ? getSearchWords(search) : [];
+
+    const buildSearchClause = (expr) => searchWords.length
+        ? ` AND ${searchWords.map(() => `(${expr})`).join(' AND ')}`
+        : '';
+    const purchaseSearchClause = buildSearchClause('h.numero_documento LIKE ? OR h.id LIKE ?');
+    const expenseSearchClause = buildSearchClause('e.numero_documento LIKE ? OR e.id LIKE ?');
+    const paymentSearchClause = buildSearchClause('p.referencia LIKE ? OR p.notas LIKE ?');
+    const searchClauseParams = searchWords.flatMap(w => [`%${w}%`, `%${w}%`]);
 
     try {
         const [totalRows] = await pool.query(`
@@ -26,25 +38,25 @@ const getProviderStatement = async (req, res) => {
                 WHERE h.company_id = ? AND h.branch_id = ? AND h.provider_id = ? 
                 AND h.condicion_operacion_id = '2'
                 AND h.status != 'ANULADO'
-                ${searchTerm ? 'AND (h.numero_documento LIKE ? OR h.id LIKE ?)' : ''}
+                ${purchaseSearchClause}
                 UNION ALL
                 SELECT e.id FROM expense_headers e
                 WHERE e.company_id = ? AND e.branch_id = ? AND e.provider_id = ? 
                 AND e.condicion_operacion_id = '2'
                 AND e.status != 'ANULADO'
-                ${searchTerm ? 'AND (e.numero_documento LIKE ? OR e.id LIKE ?)' : ''}
+                ${expenseSearchClause}
                 UNION ALL
                 SELECT p.id FROM provider_payments p
                 WHERE p.company_id = ? AND p.branch_id = ? AND p.provider_id = ?
-                ${searchTerm ? 'AND (p.referencia LIKE ? OR p.notas LIKE ?)' : ''}
+                ${paymentSearchClause}
             ) as combined
         `, [
             company_id, branch_id, provider_id,
-            ...(searchTerm ? [searchTerm, searchTerm] : []),
+            ...searchClauseParams,
             company_id, branch_id, provider_id,
-            ...(searchTerm ? [searchTerm, searchTerm] : []),
+            ...searchClauseParams,
             company_id, branch_id, provider_id,
-            ...(searchTerm ? [searchTerm, searchTerm] : [])
+            ...searchClauseParams
         ]);
 
         const totalItems = totalRows[0].total;
@@ -65,8 +77,8 @@ const getProviderStatement = async (req, res) => {
             WHERE h.company_id = ? AND h.branch_id = ? AND h.provider_id = ? 
             AND h.condicion_operacion_id = '2'
             AND h.status != 'ANULADO'
-            ${searchTerm ? 'AND (h.numero_documento LIKE ? OR h.id LIKE ?)' : ''}
-        `, [company_id, branch_id, provider_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
+            ${purchaseSearchClause}
+        `, [company_id, branch_id, provider_id, ...searchClauseParams]);
 
         const [expenses] = await pool.query(`
             SELECT 
@@ -84,8 +96,8 @@ const getProviderStatement = async (req, res) => {
             WHERE e.company_id = ? AND e.branch_id = ? AND e.provider_id = ? 
             AND e.condicion_operacion_id = '2'
             AND e.status != 'ANULADO'
-            ${searchTerm ? 'AND (e.numero_documento LIKE ? OR e.id LIKE ?)' : ''}
-        `, [company_id, branch_id, provider_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
+            ${expenseSearchClause}
+        `, [company_id, branch_id, provider_id, ...searchClauseParams]);
 
         const [payments] = await pool.query(`
             SELECT 
@@ -100,8 +112,8 @@ const getProviderStatement = async (req, res) => {
             FROM provider_payments p
             JOIN providers prov ON p.provider_id = prov.id
             WHERE p.company_id = ? AND p.branch_id = ? AND p.provider_id = ?
-            ${searchTerm ? 'AND (p.referencia LIKE ? OR p.notas LIKE ?)' : ''}
-        `, [company_id, branch_id, provider_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
+            ${paymentSearchClause}
+        `, [company_id, branch_id, provider_id, ...searchClauseParams]);
 
         const movementsAll = [...purchases, ...expenses, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
@@ -278,11 +290,17 @@ const getPaymentHistory = async (req, res) => {
         whereClauses.push('p.branch_id = ?');
         queryParams.push(branch_id);
     }
-    if (search) {
-        whereClauses.push('(p.referencia LIKE ? OR h.numero_documento LIKE ? OR pr.nombre LIKE ?)');
-        const s = `%${search}%`;
-        queryParams.push(s, s, s);
-    }
+    const getSearchWords = (term) => {
+        const words = term.trim().split(/\s+/).filter(Boolean);
+        return [...new Set(words)];
+    };
+
+    const searchWords = search ? getSearchWords(search) : [];
+    searchWords.forEach(word => {
+        whereClauses.push('(p.referencia LIKE ? OR h.numero_documento LIKE ? OR pr.nombre LIKE ? OR pr.nombre_comercial LIKE ? OR pr.nit LIKE ? OR pr.nrc LIKE ?)');
+        const s = `%${word}%`;
+        queryParams.push(s, s, s, s, s, s);
+    });
 
     const whereStr = whereClauses.join(' AND ');
 

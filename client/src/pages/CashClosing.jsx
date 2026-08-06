@@ -15,7 +15,8 @@ import {
     Printer,
     Trash2,
     Users,
-    Pencil
+    Pencil,
+    RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -44,6 +45,7 @@ const CashClosing = () => {
     const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
     const [selectedShiftId, setSelectedShiftId] = useState(null);
     const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+    const [isRefreshingSummary, setIsRefreshingSummary] = useState(false);
     const [actualCash, setActualCash] = useState('');
     const [shiftSummary, setShiftSummary] = useState(null);
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
@@ -221,6 +223,22 @@ const CashClosing = () => {
             return;
         }
         setIsClosingModalOpen(true);
+    };
+
+    const handleRefreshSummary = async () => {
+        const shiftId = shiftSummary?.id || selectedShiftId || currentShiftStatus?.shift?.id;
+        if (!shiftId) return;
+        setIsRefreshingSummary(true);
+        try {
+            const { data } = await axios.get(`/api/shifts/${shiftId}/summary`);
+            setShiftSummary(data);
+            queryClient.invalidateQueries({ queryKey: ['shifts'] });
+            toast.success('Totales de ventas actualizados');
+        } catch (err) {
+            toast.error('Error al actualizar los totales de ventas');
+        } finally {
+            setIsRefreshingSummary(false);
+        }
     };
 
     const handleViewHistoryReport = async (shiftId) => {
@@ -728,7 +746,17 @@ const CashClosing = () => {
                             {/* Resumen de Valores Esperados */}
                             <div className="md:col-span-5 bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6 flex flex-col justify-between">
                                 <div>
-                                    <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest mb-6">Desglose Detallado de Ventas</h4>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">Desglose Detallado de Ventas</h4>
+                                        <button
+                                            onClick={handleRefreshSummary}
+                                            disabled={isRefreshingSummary}
+                                            title="Actualizar totales de ventas"
+                                            className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-300 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            <RefreshCw size={14} className={isRefreshingSummary ? 'animate-spin' : ''} />
+                                        </button>
+                                    </div>
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center text-sm font-bold text-slate-400 italic">
                                             <span>Saldo Inicial (Fondo)</span>

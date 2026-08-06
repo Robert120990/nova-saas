@@ -37,11 +37,17 @@ const getChecks = async (req, res) => {
             params.push(status);
         }
 
-        if (search) {
-            query += ` AND (p.nombre LIKE ? OR pc.documento LIKE ?) `;
-            const searchTerm = `%${search}%`;
-            params.push(searchTerm, searchTerm);
-        }
+        const getSearchWords = (term) => {
+            const words = term.trim().split(/\s+/).filter(Boolean);
+            return [...new Set(words)];
+        };
+
+        const searchWords = search ? getSearchWords(search) : [];
+        searchWords.forEach(word => {
+            query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR pc.documento LIKE ?) `;
+            const searchTerm = `%${word}%`;
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        });
 
         const countQuery = `SELECT COUNT(*) as total FROM (${query}) as sub`;
         const [countResult] = await pool.query(countQuery, params);

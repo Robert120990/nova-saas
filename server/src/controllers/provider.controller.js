@@ -26,11 +26,17 @@ const getProviders = async (req, res) => {
             query += ' AND p.es_credito = 1';
         }
 
-        if (search) {
-            query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.numero_documento LIKE ?) `;
-            const searchTerm = `%${search}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm);
-        }
+        const getSearchWords = (term) => {
+            const words = term.trim().split(/\s+/).filter(Boolean);
+            return [...new Set(words)];
+        };
+
+        const searchWords = search ? getSearchWords(search) : [];
+        searchWords.forEach(word => {
+            query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR p.numero_documento LIKE ?) `;
+            const searchTerm = `%${word}%`;
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        });
 
         // Count total for pagination
         const countQuery = `SELECT COUNT(*) as total FROM (${query}) as sub`;
