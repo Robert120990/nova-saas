@@ -2,16 +2,39 @@ const pool = require('../config/db');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, es_credito, es_anticipado, ids_only } = req.query;
+        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, ids_only } = req.query;
         const offset = (page - 1) * limit;
 
         let whereClause = 'WHERE c.company_id = ?';
         let params = [req.company_id];
 
-        if (search) {
+        const getSearchWords = (term) => {
+            const words = term.trim().split(/\s+/).filter(Boolean);
+            return [...new Set(words)];
+        };
+
+        const searchWords = search ? getSearchWords(search) : [];
+        searchWords.forEach(word => {
             whereClause += ` AND (c.nombre LIKE ? OR c.nombre_comercial LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ? OR c.nrc LIKE ?) `;
-            const searchTerm = `%${search}%`;
+            const searchTerm = `%${word}%`;
             params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        });
+
+        const nombreWords = nombre ? getSearchWords(nombre) : [];
+        nombreWords.forEach(word => {
+            whereClause += ` AND (c.nombre LIKE ? OR c.nombre_comercial LIKE ?) `;
+            const searchTerm = `%${word}%`;
+            params.push(searchTerm, searchTerm);
+        });
+
+        if (nit) {
+            whereClause += ` AND c.nit LIKE ? `;
+            params.push(`%${nit}%`);
+        }
+
+        if (nrc) {
+            whereClause += ` AND c.nrc LIKE ? `;
+            params.push(`%${nrc}%`);
         }
 
         if (es_credito === '1') {

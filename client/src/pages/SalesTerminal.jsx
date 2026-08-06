@@ -112,6 +112,16 @@ const SalesTerminal = () => {
     const [selectedPais, setSelectedPais] = useState('9579');
     const [manualCustomerName, setManualCustomerName] = useState('');
 
+    // Customer Search Modal State
+    const [isCustomerSearchOpen, setIsCustomerSearchOpen] = useState(false);
+    const [customerName, setCustomerName] = useState('');
+    const [customerNit, setCustomerNit] = useState('');
+    const [customerNrc, setCustomerNrc] = useState('');
+    const [debouncedCustomerName, setDebouncedCustomerName] = useState('');
+    const [debouncedCustomerNit, setDebouncedCustomerNit] = useState('');
+    const [debouncedCustomerNrc, setDebouncedCustomerNrc] = useState('');
+    const [customerSearchPage, setCustomerSearchPage] = useState(1);
+
     // Shift Management State
     const [currentShift, setCurrentShift] = useState(null);
     const [isLoadingShift, setIsLoadingShift] = useState(false);
@@ -161,6 +171,30 @@ const SalesTerminal = () => {
         }
         return data;
     };
+
+    const { data: customerSearchData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingCustomerSearch } = useQuery({
+        queryKey: ['terminal-customers', debouncedCustomerName, debouncedCustomerNit, debouncedCustomerNrc, customerSearchPage],
+        queryFn: async () => (await axios.get('/api/customers', {
+            params: {
+                nombre: debouncedCustomerName || undefined,
+                nit: debouncedCustomerNit || undefined,
+                nrc: debouncedCustomerNrc || undefined,
+                page: customerSearchPage,
+                limit: 50
+            }
+        })).data,
+        enabled: isCustomerSearchOpen
+    });
+
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedCustomerName(customerName);
+            setDebouncedCustomerNit(customerNit);
+            setDebouncedCustomerNrc(customerNrc);
+            setCustomerSearchPage(1);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [customerName, customerNit, customerNrc]);
 
     const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
         queryKey: ['terminal-products', debouncedProductSearch, sellerSession?.branch_id, sellerSession?.pos_id, modalPage],
@@ -1485,6 +1519,13 @@ const SalesTerminal = () => {
                                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Cliente / Contribuyente</label>
                                 <div className="flex gap-2">
                                     <button 
+                                        onClick={() => setIsCustomerSearchOpen(true)}
+                                        className="text-indigo-600 hover:bg-indigo-50 p-1 rounded-lg transition-all"
+                                        title="Buscar Cliente"
+                                    >
+                                        <Search size={16} />
+                                    </button>
+                                    <button 
                                         onClick={() => {
                                             setEditingCustomer(null);
                                             setNitValue('');
@@ -1538,8 +1579,16 @@ const SalesTerminal = () => {
                                 </div>
                             )}
                             {selectedCustomerData && (
-                                <div className="p-3 bg-indigo-50/30 rounded-2xl border border-indigo-100/50 flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-200 shadow-inner">
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                <div className="relative p-3 bg-indigo-50/30 rounded-2xl border border-indigo-100/50 flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-200 shadow-inner">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleCustomerSelect('', null)}
+                                        className="absolute top-2 right-2 p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                                        title="Quitar Cliente"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 pr-8">
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Documentos</span>
                                             <span className="text-[10px] font-bold text-indigo-600 font-mono">
@@ -2221,6 +2270,112 @@ const SalesTerminal = () => {
                                     onPageChange={setModalPage}
                                     itemsOnPage={filteredProducts.length}
                                     isLoading={isLoadingModalProducts}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {isCustomerSearchOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
+                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Buscar Cliente</h3>
+                            <button onClick={() => setIsCustomerSearchOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm transition-all"><X size={20} /></button>
+                        </div>
+                        <div className="p-8 pb-4 flex flex-col gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        placeholder="Nombre / Razón Social"
+                                        value={customerName}
+                                        onChange={(e) => setCustomerName(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-[13px] font-bold transition-all shadow-inner"
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="NIT"
+                                        value={customerNit}
+                                        onChange={(e) => setCustomerNit(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-[13px] font-bold transition-all shadow-inner"
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="NRC"
+                                        value={customerNrc}
+                                        onChange={(e) => setCustomerNrc(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-[13px] font-bold transition-all shadow-inner"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handleCustomerSelect('', null);
+                                    setIsCustomerSearchOpen(false);
+                                }}
+                                className="self-start text-[11px] font-black text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg uppercase transition-all"
+                            >
+                                Consumidor Final (General)
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto px-8 py-4 custom-scrollbar">
+                            {isLoadingCustomerSearch ? (
+                                <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando clientes...</div>
+                            ) : customerSearchData.data.length === 0 ? (
+                                <div className="text-center py-16 opacity-30">
+                                    <User size={64} className="mx-auto mb-4" />
+                                    <p className="font-black uppercase tracking-widest text-sm">No se encontraron clientes</p>
+                                    <p className="text-[10px] font-bold mt-2 italic">Prueba con otro nombre, NIT o NRC</p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    {customerSearchData.data.map(c => (
+                                        <button
+                                            key={c.id}
+                                            onClick={() => {
+                                                handleCustomerSelect(c.id, c);
+                                                setIsCustomerSearchOpen(false);
+                                            }}
+                                            className="flex items-center gap-3 p-3 rounded-2xl border border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all text-left group"
+                                        >
+                                            <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-transform"><User size={20} /></div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-bold text-slate-900 text-sm truncate leading-tight">{c.nombre}</div>
+                                                <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">
+                                                    {c.nit ? `NIT: ${c.nit}` : ''}
+                                                    {c.nit && c.nrc ? ' | ' : ''}
+                                                    {c.nrc ? `NRC: ${c.nrc}` : ''}
+                                                    {!c.nit && !c.nrc ? (c.numero_documento || 'S/D') : ''}
+                                                </div>
+                                            </div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">
+                                                {personTypes.find(t => t.code === c.tipo_persona)?.description || 'NATURAL'}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {customerSearchData.totalPages > 1 && (
+                            <div className="border-t border-slate-100 p-4">
+                                <Pagination
+                                    currentPage={customerSearchPage}
+                                    totalPages={customerSearchData.totalPages}
+                                    totalItems={customerSearchData.total}
+                                    onPageChange={setCustomerSearchPage}
+                                    itemsOnPage={customerSearchData.data.length}
+                                    isLoading={isLoadingCustomerSearch}
                                 />
                             </div>
                         )}
