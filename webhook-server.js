@@ -80,6 +80,9 @@ function deploy() {
   const status = run('git status -b');
 
   if (status.includes(`origin/${BRANCH}`) && !status.includes('up to date')) {
+    // Descarta cambios locales en archivos trackeados (ej: package-lock.json
+    // modificado por npm install) para no bloquear el pull
+    run('git checkout -- .');
     run(`git pull origin ${BRANCH} --ff-only`);
 
     console.log('[webhook] Installing server dependencies...');
