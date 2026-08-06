@@ -346,6 +346,7 @@ router.get('/shifts', shiftController.getShiftsHistory);
 router.get('/shifts/current', shiftController.getCurrentShift);
 router.post('/shifts/open', shiftController.openShift);
 router.get('/shifts/:id/summary', shiftController.getShiftSummary);
+router.post('/shifts/:id/arqueo', shiftController.saveArqueo);
 router.post('/shifts/:id/close', shiftController.closeShift);
 router.get('/shifts/:id/sellers', shiftController.getShiftSellers);
 router.put('/shifts/:id/sellers', shiftController.updateShiftSellers);

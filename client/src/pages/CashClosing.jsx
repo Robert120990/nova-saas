@@ -27,12 +27,14 @@ import {
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import Pagination from '../components/ui/Pagination';
 
 const CashClosing = () => {
     const queryClient = useQueryClient();
     const { user } = useAuth();
+    const confirm = useConfirm();
     const canEditShift = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('manage_shifts_edit');
     
     // UI State
@@ -170,9 +172,22 @@ const CashClosing = () => {
             setExpenses([{ description: '', amount: '' }]); // Reset
             setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
             setRemesas([{ description: '', amount: '' }]); // Reset
-            toast.success('Turno cerrado correctamente');
+            toast.success('Turno finalizado correctamente');
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al cerrar turno')
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al finalizar turno')
+    });
+
+    const arqueoMutation = useMutation({
+        mutationFn: async ({ id, actualCash, expenses, incomes, remesas }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, expenses, incomes, remesas })).data,
+        onSuccess: () => {
+            queryClient.invalidateQueries(['shifts']);
+            setIsClosingModalOpen(false);
+            setExpenses([{ description: '', amount: '' }]); // Reset
+            setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
+            setRemesas([{ description: '', amount: '' }]); // Reset
+            toast.success('Arqueo guardado correctamente');
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar arqueo')
     });
 
     const updateSellersMutation = useMutation({
@@ -192,14 +207,27 @@ const CashClosing = () => {
         try {
             const { data } = await axios.get(`/api/shifts/${shiftId}/summary`);
             setShiftSummary(data);
+            if (data.arqueado) {
+                setActualCash(data.actual ? data.actual.toString() : '');
+                setExpenses(data.expenses?.length
+                    ? data.expenses.map(e => ({ description: e.description, amount: e.amount ? e.amount.toString() : '' }))
+                    : [{ description: '', amount: '' }]);
+                setIncomes(data.incomes?.length
+                    ? data.incomes.map(i => ({ description: i.description, amount: i.amount ? i.amount.toString() : '', payment_method: i.payment_method || '01' }))
+                    : [{ description: '', amount: '', payment_method: '01' }]);
+                setRemesas(data.remesas?.length
+                    ? data.remesas.map(r => ({ description: r.description, amount: r.amount ? r.amount.toString() : '' }))
+                    : [{ description: '', amount: '' }]);
+            } else {
+                setActualCash('');
+                setExpenses([{ description: '', amount: '' }]);
+                setIncomes([{ description: '', amount: '', payment_method: '01' }]);
+                setRemesas([{ description: '', amount: '' }]);
+            }
         } catch (err) {
             toast.error('Error al cargar el resumen del turno');
             return;
         }
-        setActualCash('');
-        setExpenses([{ description: '', amount: '' }]);
-        setIncomes([{ description: '', amount: '', payment_method: '01' }]);
-        setRemesas([{ description: '', amount: '' }]);
         setIsClosingModalOpen(true);
     };
 
@@ -325,11 +353,20 @@ const CashClosing = () => {
                         </div>
                     </div>
                     <button 
-                        onClick={() => { setSelectedShiftId(shift.id); loadSummary(shift.id); }}
-                        className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center justify-center gap-2 transition-all"
+                        onClick={async () => {
+                            const ok = await confirm({
+                                title: '¿Finalizar turno?',
+                                message: 'Una vez finalizado el turno no podrá registrar más ventas en esta terminal. Recuerde que el arqueo se realiza desde el historial de turnos.',
+                                confirmLabel: 'Sí, finalizar turno',
+                                variant: 'info',
+                            });
+                            if (ok) closeShiftMutation.mutate({ id: shift.id });
+                        }}
+                        disabled={closeShiftMutation.isPending}
+                        className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40"
                     >
-                        Realizar Arqueo
-                        <Calculator size={14} />
+                        {closeShiftMutation.isPending ? 'Finalizando...' : 'Finalizar Turno'}
+                        <CheckCircle2 size={14} />
                     </button>
                 </div>
                     ))}
@@ -423,55 +460,70 @@ const CashClosing = () => {
                         <table className="w-full">
                             <thead>
                                 <tr className="bg-slate-50/50 border-b border-slate-100">
-                                    <th className="px-6 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Inicio / Fin</th>
-                                    <th className="px-6 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Turno</th>
-                                    <th className="px-6 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Responsable</th>
-                                    <th className="px-6 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">POS</th>
-                                    <th className="px-6 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Esperado</th>
-                                    <th className="px-6 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Contado</th>
-                                    <th className="px-6 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Diferencia</th>
-                                    <th className="px-6 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Acciones</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest min-w-[160px]">Inicio / Fin</th>
+                                    <th className="px-2 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Turno</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest min-w-[200px]">Responsable</th>
+                                    <th className="px-2 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest min-w-[160px]">POS</th>
+                                    <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Esperado</th>
+                                    <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Contado</th>
+                                    <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Diferencia</th>
+                                    <th className="px-2 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Arqueo</th>
+                                    <th className="px-2 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {shiftsHistory.length > 0 ? shiftsHistory.map((shift) => (
                                     <tr key={shift.id} className="hover:bg-slate-50 transition-colors group">
-                                        <td className="px-6 py-3">
+                                        <td className="px-2 py-3 min-w-[160px]">
                                             <div className="flex flex-col">
-                                                <span className="text-sm font-black text-slate-900">{new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 tabular-nums">
+                                                <span className="text-xs font-black text-slate-900">{new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                                <span className="text-[9px] font-bold text-slate-400 tabular-nums">
                                                     {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })} - {shift.end_time ? new Date(shift.end_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' }) : 'Abierto'}
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3 text-center">
-                                            <span className="text-xs font-black text-indigo-600">#{shift.shift_number || '-'}</span>
+                                        <td className="px-2 py-3 text-center">
+                                            <span className="text-[11px] font-black text-indigo-600">#{shift.shift_number || '-'}</span>
                                         </td>
-                                        <td className="px-6 py-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-7 h-7 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 text-[10px] font-black">
+                                        <td className="px-2 py-3 min-w-[200px]">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 text-[9px] font-black">
                                                     {shift.seller_name?.charAt(0)}
                                                 </div>
-                                                <span className="text-sm font-bold text-slate-700">{shift.seller_name}</span>
+                                                <span className="text-xs font-bold text-slate-700 whitespace-nowrap">{shift.seller_name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3">
-                                            <span className="text-xs font-black text-slate-500 uppercase tracking-wider">{shift.pos_name}</span>
+                                        <td className="px-2 py-3 min-w-[160px]">
+                                            <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">{shift.pos_name}</span>
                                         </td>
-                                        <td className="px-6 py-3 text-right tabular-nums">
-                                            <span className="text-sm font-bold text-slate-700"><Money value={shift.expected_cash || 0} /></span>
+                                        <td className="px-2 py-3 text-right tabular-nums">
+                                            <span className="text-xs font-bold text-slate-700"><Money value={shift.expected_cash || 0} /></span>
                                         </td>
-                                        <td className="px-6 py-3 text-right tabular-nums">
-                                            <span className="text-sm font-bold text-slate-700"><Money value={shift.actual_cash || 0} /></span>
+                                        <td className="px-2 py-3 text-right tabular-nums">
+                                            <span className="text-xs font-bold text-slate-700"><Money value={shift.actual_cash || 0} /></span>
                                         </td>
-                                        <td className="px-6 py-3 text-right tabular-nums">
-                                            <span className={`text-sm font-black flex items-center justify-end gap-1 ${parseFloat(shift.actual_cash - shift.expected_cash) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        <td className="px-2 py-3 text-right tabular-nums">
+                                            <span className={`text-xs font-black flex items-center justify-end gap-1 ${parseFloat(shift.actual_cash - shift.expected_cash) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                 {parseFloat(shift.actual_cash - shift.expected_cash || 0).toFixed(2)}
-                                                {parseFloat(shift.actual_cash - shift.expected_cash || 0) >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                                                {parseFloat(shift.actual_cash - shift.expected_cash || 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-3 text-center">
+                                        <td className="px-2 py-3 text-center">
+                                            {shift.arqueado ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-700 font-bold text-[9px] rounded-lg"><CheckCircle2 size={10} /> Realizado</span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 font-bold text-[9px] rounded-lg"><Clock size={10} /> Pendiente</span>
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-3 text-center">
                                             <div className="flex items-center justify-center gap-1">
+                                                <button 
+                                                    title="Realizar Arqueo"
+                                                    onClick={() => { setSelectedShiftId(shift.id); loadSummary(shift.id); }}
+                                                    className="p-2.5 bg-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                                >
+                                                    <Calculator size={16} />
+                                                </button>
                                                 <button 
                                                     title="Ver Arqueo / Reporte"
                                                     onClick={() => handleViewHistoryReport(shift.id)}
@@ -502,7 +554,7 @@ const CashClosing = () => {
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan="8" className="px-8 py-12 text-center text-slate-400 font-medium italic">No hay historial de turnos disponible.</td>
+                                        <td colSpan="9" className="px-8 py-12 text-center text-slate-400 font-medium italic">No hay historial de turnos disponible.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -892,7 +944,7 @@ const CashClosing = () => {
                                         if (totalExp > totalCashIncomings) {
                                             return toast.error('El total de gastos y remesas no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
                                         }
-                                        closeShiftMutation.mutate({ 
+                                        arqueoMutation.mutate({ 
                                             id: shiftSummary?.id || selectedShiftId || activeShifts[0]?.id, 
                                             actualCash, 
                                             expenses: expenses.filter(e => parseFloat(e.amount) > 0),
@@ -900,10 +952,10 @@ const CashClosing = () => {
                                             remesas: remesas.filter(r => parseFloat(r.amount) > 0)
                                         });
                                     }}
-                                    disabled={!actualCash || closeShiftMutation.isPending}
+                                    disabled={!actualCash || arqueoMutation.isPending}
                                     className="w-full bg-slate-900 hover:bg-black text-white py-6 rounded-3xl font-black uppercase text-xs tracking-[0.2em] shadow-xl disabled:opacity-30 transition-all flex items-center justify-center gap-3"
                                 >
-                                    {closeShiftMutation.isPending ? 'Procesando...' : 'Finalizar Turno'}
+                                    {arqueoMutation.isPending ? 'Guardando...' : 'Guardar Arqueo'}
                                     <CheckCircle2 size={18} />
                                 </button>
                             </div>

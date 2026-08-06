@@ -234,7 +234,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         
         // Obtener Ingresos
         const [incomes] = await pool.query(`
-            SELECT i.description, i.amount, cat.description as payment_method_name 
+            SELECT i.description, i.amount, i.payment_method, cat.description as payment_method_name 
             FROM pos_shift_incomes i
             LEFT JOIN cat_017_forma_pago cat ON i.payment_method COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
             WHERE i.shift_id = ?
@@ -285,8 +285,9 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             cash: cashSales,
             methods: methods,
             expenses: expenses.map(e => ({ description: e.description, amount: parseFloat(e.amount || 0) })),
-            incomes: incomes.map(i => ({ description: i.description, amount: parseFloat(i.amount || 0), method: i.payment_method_name })),
+            incomes: incomes.map(i => ({ description: i.description, amount: parseFloat(i.amount || 0), method: i.payment_method_name, payment_method: i.payment_method })),
             remesas: remesas.map(r => ({ numero: r.numero, description: r.description, amount: parseFloat(r.amount || 0) })),
+            arqueado: shift.arqueado ? 1 : 0,
             total_expenses: parseFloat(shift.total_expenses || expenses.reduce((acc, e) => acc + parseFloat(e.amount || 0), 0)),
             total_incomes: parseFloat(shift.total_incomes || incomes.reduce((acc, i) => acc + parseFloat(i.amount || 0), 0)),
             total_remesas: parseFloat(shift.total_remesas || remesas.reduce((acc, r) => acc + parseFloat(r.amount || 0), 0)),
@@ -309,6 +310,135 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
     }
 };
 
+// Guarda (o re-guarda) los datos del arqueo de un turno sin cambiar su estado.
+// Se ejecuta en transacción: elimina gastos/ingresos/remesas previos y los re-inserta,
+// recalculando el efectivo esperado, el contado y la diferencia.
+const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes = [], remesas = [] }) => {
+    const { id } = shift;
+
+    // 1. Limpiar datos previos del arqueo (permite re-arqueo sin duplicados)
+    await conn.query(`DELETE FROM pos_shift_expenses WHERE shift_id = ?`, [id]);
+    await conn.query(`DELETE FROM pos_shift_incomes WHERE shift_id = ?`, [id]);
+    await conn.query(`DELETE FROM pos_shift_remesas WHERE shift_id = ?`, [id]);
+
+    // 2. Guardar gastos
+    let totalExpenses = 0;
+    for (const exp of expenses) {
+        const amount = parseFloat(exp.amount || 0);
+        if (amount > 0) {
+            await conn.query(`
+                INSERT INTO pos_shift_expenses (shift_id, description, amount)
+                VALUES (?, ?, ?)
+            `, [id, exp.description || 'Gasto operativo', amount]);
+            totalExpenses += amount;
+        }
+    }
+
+    // 3. Guardar otros ingresos
+    let totalIncomes = 0;
+    let cashIncomes = 0;
+    for (const inc of incomes) {
+        const amount = parseFloat(inc.amount || 0);
+        if (amount > 0) {
+            await conn.query(`
+                INSERT INTO pos_shift_incomes (shift_id, description, amount, payment_method)
+                VALUES (?, ?, ?, ?)
+            `, [id, inc.description || 'Ingreso adicional', amount, inc.payment_method || '01']);
+
+            totalIncomes += amount;
+            if (inc.payment_method === '01') {
+                cashIncomes += amount;
+            }
+        }
+    }
+
+    // 4. Guardar remesas
+    let totalRemesas = 0;
+    let remesaNum = 0;
+    for (const rem of remesas) {
+        const amount = parseFloat(rem.amount || 0);
+        if (amount > 0) {
+            remesaNum++;
+            await conn.query(`
+                INSERT INTO pos_shift_remesas (shift_id, numero, description, amount)
+                VALUES (?, ?, ?, ?)
+            `, [id, remesaNum, rem.description || 'Remesa', amount]);
+            totalRemesas += amount;
+        }
+    }
+
+    // 5. Calcular totales de ventas del turno
+    const [salesTotals] = await conn.query(`
+        SELECT 
+            SUM(CASE WHEN p.metodo_pago = '01' THEN p.monto ELSE 0 END) as cash,
+            SUM(p.monto) as total
+        FROM sales_payments p
+        JOIN sales_headers h ON p.sale_id = h.id
+        WHERE h.shift_id = ? AND h.estado = 'emitido'
+        AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+    `, [id]);
+
+    const totals = salesTotals[0];
+    const cashSales = parseFloat(totals.cash || 0);
+
+    // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS
+    const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas;
+    const actualCash = parseFloat(actual_cash || 0);
+    const difference = actualCash - expectedCash;
+
+    await conn.query(`
+        UPDATE pos_shifts SET 
+            expected_cash = ?,
+            actual_cash = ?,
+            difference = ?,
+            cash_sales = ?,
+            total_sales = ?,
+            total_expenses = ?,
+            total_incomes = ?,
+            total_remesas = ?,
+            arqueado = 1
+        WHERE id = ?
+    `, [
+        expectedCash,
+        actualCash,
+        difference,
+        cashSales,
+        parseFloat(totals.total || 0),
+        totalExpenses,
+        totalIncomes,
+        totalRemesas,
+        id
+    ]);
+
+    return { expectedCash, actualCash, difference, totalExpenses, totalIncomes, totalRemesas };
+};
+
+const saveArqueo = async (req, res) => {
+    const { id } = req.params;
+    const { actual_cash, expenses = [], incomes = [], remesas = [] } = req.body;
+
+    try {
+        const [shifts] = await pool.query('SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
+        if (shifts.length === 0) return res.status(404).json({ message: 'Turno no encontrado' });
+
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            const result = await saveArqueoData(conn, shifts[0], { actual_cash, expenses, incomes, remesas });
+            await conn.commit();
+            res.json({ message: 'Arqueo guardado correctamente', summary: result });
+        } catch (error) {
+            await conn.rollback();
+            throw error;
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Error in saveArqueo:', error);
+        res.status(500).json({ message: 'Error al guardar arqueo' });
+    }
+};
+
 const closeShift = async (req, res) => {
     const { id } = req.params;
     const { actual_cash, expenses = [], incomes = [], remesas = [] } = req.body;
@@ -321,113 +451,55 @@ const closeShift = async (req, res) => {
 
         if (shift.status === 'closed') return res.status(400).json({ message: 'El turno ya se encuentra cerrado' });
 
-        // 1. Guardar gastos
-        let totalExpenses = 0;
-        if (expenses.length > 0) {
-            for (const exp of expenses) {
-                const amount = parseFloat(exp.amount || 0);
-                if (amount > 0) {
-                    await pool.query(`
-                        INSERT INTO pos_shift_expenses (shift_id, description, amount)
-                        VALUES (?, ?, ?)
-                    `, [id, exp.description || 'Gasto operativo', amount]);
-                    totalExpenses += amount;
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+
+            // Si vienen datos de arqueo, guardarlos antes de finalizar
+            let summary = null;
+            const hasArqueoData = actual_cash !== undefined && actual_cash !== null && actual_cash !== '';
+            if (hasArqueoData) {
+                summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas });
+            }
+
+            // Finalizar el turno (el arqueo no es requisito)
+            await conn.query(
+                `UPDATE pos_shifts SET end_time = NOW(), status = 'closed' WHERE id = ?`,
+                [id]
+            );
+
+            await conn.commit();
+
+            if (!summary) {
+                const [updated] = await pool.query('SELECT * FROM pos_shifts WHERE id = ?', [id]);
+                const s = updated[0];
+                summary = {
+                    expectedCash: parseFloat(s.expected_cash || 0),
+                    actualCash: parseFloat(s.actual_cash || 0),
+                    difference: parseFloat(s.difference || 0),
+                    totalExpenses: parseFloat(s.total_expenses || 0),
+                    totalIncomes: parseFloat(s.total_incomes || 0),
+                    totalRemesas: parseFloat(s.total_remesas || 0)
+                };
+            }
+
+            res.json({
+                message: 'Turno finalizado correctamente',
+                summary: {
+                    expected: summary.expectedCash,
+                    actual: summary.actualCash,
+                    difference: summary.difference,
+                    expenses: summary.totalExpenses,
+                    incomes: summary.totalIncomes,
+                    remesas: summary.totalRemesas
                 }
-            }
+            });
+        } catch (error) {
+            await conn.rollback();
+            throw error;
+        } finally {
+            conn.release();
         }
-
-        // 2. Guardar otros ingresos
-        let totalIncomes = 0;
-        let cashIncomes = 0;
-        if (incomes.length > 0) {
-            for (const inc of incomes) {
-                const amount = parseFloat(inc.amount || 0);
-                if (amount > 0) {
-                    await pool.query(`
-                        INSERT INTO pos_shift_incomes (shift_id, description, amount, payment_method)
-                        VALUES (?, ?, ?, ?)
-                    `, [id, inc.description || 'Ingreso adicional', amount, inc.payment_method || '01']);
-                    
-                    totalIncomes += amount;
-                    if (inc.payment_method === '01') {
-                        cashIncomes += amount;
-                    }
-                }
-            }
-        }
-
-        // 3. Guardar remesas
-        let totalRemesas = 0;
-        let remesaNum = 0;
-        if (remesas.length > 0) {
-            for (const rem of remesas) {
-                const amount = parseFloat(rem.amount || 0);
-                if (amount > 0) {
-                    remesaNum++;
-                    await pool.query(`
-                        INSERT INTO pos_shift_remesas (shift_id, numero, description, amount)
-                        VALUES (?, ?, ?, ?)
-                    `, [id, remesaNum, rem.description || 'Remesa', amount]);
-                    totalRemesas += amount;
-                }
-            }
-        }
-
-        // 4. Calcular totales para el cierre persistente
-        const [salesTotals] = await pool.query(`
-            SELECT 
-                SUM(CASE WHEN p.metodo_pago = '01' THEN p.monto ELSE 0 END) as cash,
-                SUM(p.monto) as total
-            FROM sales_payments p
-            JOIN sales_headers h ON p.sale_id = h.id
-            WHERE h.shift_id = ? AND h.estado = 'emitido'
-            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
-        `, [id]);
-
-        const totals = salesTotals[0];
-        const cashSales = parseFloat(totals.cash || 0);
-        
-        // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS
-        const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas;
-        const actualCash = parseFloat(actual_cash || 0);
-        const difference = actualCash - expectedCash;
-
-        await pool.query(`
-            UPDATE pos_shifts SET 
-                end_time = NOW(),
-                expected_cash = ?,
-                actual_cash = ?,
-                difference = ?,
-                cash_sales = ?,
-                total_sales = ?,
-                total_expenses = ?,
-                total_incomes = ?,
-                total_remesas = ?,
-                status = 'closed'
-            WHERE id = ?
-        `, [
-            expectedCash, 
-            actualCash, 
-            difference, 
-            cashSales, 
-            parseFloat(totals.total || 0),
-            totalExpenses,
-            totalIncomes,
-            totalRemesas,
-            id
-        ]);
-
-        res.json({ 
-            message: 'Turno cerrado existosamente', 
-            summary: {
-                expected: expectedCash,
-                actual: actualCash,
-                difference: difference,
-                expenses: totalExpenses,
-                incomes: totalIncomes,
-                remesas: totalRemesas
-            }
-        });
     } catch (error) {
         console.error('Error in closeShift:', error);
         res.status(500).json({ message: 'Error al cerrar turno' });
@@ -676,4 +748,4 @@ const updateShift = async (req, res) => {
     }
 };
 
-module.exports = { getCurrentShift, openShift, getShiftSummary, closeShift, getShiftsHistory, getShiftSellers, updateShiftSellers, updateShift, deleteShift };
+module.exports = { getCurrentShift, openShift, getShiftSummary, saveArqueo, closeShift, getShiftsHistory, getShiftSellers, updateShiftSellers, updateShift, deleteShift };
