@@ -1244,7 +1244,7 @@ const getSalesReportPDF = async (req, res) => {
  * Obtiene el detalle de ventas por POS (listado detallado).
  */
 const getSalesByPOS = async (req, res) => {
-    const { start_date, end_date, branch_id } = req.query;
+    const { start_date, end_date, branch_id, pos_ids } = req.query;
     const companyId = req.company_id || req.user?.company_id;
 
     try {
@@ -1280,6 +1280,10 @@ const getSalesByPOS = async (req, res) => {
             sql += ' AND h.branch_id = ?';
             params.push(branch_id);
         }
+        if (pos_ids) {
+            const ids = pos_ids.split(',').map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
+            if (ids.length > 0) sql += ` AND h.pos_id IN (${ids.join(',')})`;
+        }
 
         sql += ' ORDER BY p.nombre, h.fecha_emision, h.id';
 
@@ -1296,7 +1300,7 @@ const getSalesByPOS = async (req, res) => {
  */
 const exportSalesByPOSPDF = async (req, res) => {
     try {
-        const { start_date, end_date, branch_id } = req.query;
+        const { start_date, end_date, branch_id, pos_ids } = req.query;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
@@ -1336,6 +1340,10 @@ const exportSalesByPOSPDF = async (req, res) => {
         const params = [companyId];
         if (start_date && end_date) { sql += ' AND h.fecha_emision BETWEEN ? AND ?'; params.push(start_date, end_date); }
         if (branch_id && branch_id !== 'all') { sql += ' AND h.branch_id = ?'; params.push(branch_id); }
+        if (pos_ids) {
+            const ids = pos_ids.split(',').map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
+            if (ids.length > 0) sql += ` AND h.pos_id IN (${ids.join(',')})`;
+        }
         sql += ' ORDER BY p.nombre, h.fecha_emision, h.id';
 
         const [rows] = await pool.query(sql, params);
