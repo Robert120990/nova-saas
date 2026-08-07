@@ -916,6 +916,16 @@ const generateSalesByPOSPDF = (data) => {
                 return `${day}/${month}/${year}`;
             };
             const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+            // Truncado manual confiable (PDFKit truncate/ellipsis no aplican de forma consistente)
+            const fitText = (text, maxWidth) => {
+                const str = text || '';
+                if (doc.widthOfString(str) <= maxWidth) return str;
+                let truncated = str;
+                while (truncated.length > 0 && doc.widthOfString(truncated + '...') > maxWidth) {
+                    truncated = truncated.slice(0, -1);
+                }
+                return truncated + '...';
+            };
 
             // Header
             doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
@@ -931,8 +941,8 @@ const generateSalesByPOSPDF = (data) => {
                 fecha: 40,
                 tipo: 55,
                 numero: 130,
-                cond: 30,
-                cliente: 260,
+                cond: 40,
+                cliente: 250,
                 fiscal: 130,
                 total: 65
             };
@@ -943,7 +953,7 @@ const generateSalesByPOSPDF = (data) => {
                 doc.text('FECHA', x, y); x += colWidths.fecha;
                 doc.text('TIPO DOC', x, y); x += colWidths.tipo;
                 doc.text('NUMERO', x, y); x += colWidths.numero;
-                doc.text('CONDICION', x, y); x += colWidths.cond;
+                doc.text('COND.', x, y); x += colWidths.cond;
                 doc.text('CLIENTE', x, y); x += colWidths.cliente;
                 doc.text('FISCAL/VENDEDOR', x, y); x += colWidths.fiscal;
                 doc.text('TOTAL', x, y, { align: 'right', width: colWidths.total });
@@ -1010,10 +1020,10 @@ const generateSalesByPOSPDF = (data) => {
                 let condLabel = row.condicion_operacion === 1 ? 'Contado' : 'Crédito';
                 doc.text(condLabel, x, y); x += colWidths.cond;
                 
-                doc.text(row.cliente_nombre || 'Consumidor Final', x, y, { width: colWidths.cliente, truncate: true }); x += colWidths.cliente;
+                doc.text(fitText(row.cliente_nombre || 'Consumidor Final', colWidths.cliente), x, y, { width: colWidths.cliente }); x += colWidths.cliente;
                 
                 const fiscalInfo = `${row.cliente_nit || row.cliente_nrc || ''} / ${row.vendedor_nombre || ''}`.trim();
-                doc.text(fiscalInfo || '---', x, y, { width: colWidths.fiscal, truncate: true }); x += colWidths.fiscal;
+                doc.text(fitText(fiscalInfo || '---', colWidths.fiscal), x, y, { width: colWidths.fiscal }); x += colWidths.fiscal;
                 
                 doc.text(formatVal(row.total_pagar), x, y, { align: 'right', width: colWidths.total });
 
