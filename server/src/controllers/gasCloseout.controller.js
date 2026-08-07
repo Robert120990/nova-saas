@@ -2329,17 +2329,17 @@ exports.getVentasComparacion = async (req, res) => {
 
         const turnoNum = parseInt(numero_turno, 10) || 0;
 
-        let shiftMatch = null;
-        let matchedShiftId = null;
-        if (turnoNum > 0) {
-            const [posShift] = await pool.query(
-                `SELECT id FROM pos_shifts
-                 WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
-                 LIMIT 1`,
-                [company_id, branch_id, fecha_turno, turnoNum]
-            );
-            shiftMatch = posShift.length > 0;
-            matchedShiftId = posShift.length > 0 ? posShift[0].id : null;
+        const shiftId = parseInt(req.query.shift_id, 10);
+        if (!shiftId) return res.status(400).json({ message: 'Debe seleccionar un turno para consultar las ventas' });
+
+        const [posShift] = await pool.query(
+            `SELECT id FROM pos_shifts
+             WHERE id = ? AND company_id = ? AND branch_id = ?
+             LIMIT 1`,
+            [shiftId, company_id, branch_id]
+        );
+        if (posShift.length === 0) {
+            return res.status(400).json({ message: 'El turno seleccionado no existe o no pertenece a la sucursal del cierre' });
         }
 
         const [rows] = await pool.query(`
@@ -2377,18 +2377,14 @@ exports.getVentasComparacion = async (req, res) => {
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
                   AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
-                  AND (? = 0 OR sh.shift_id IN (
-                      SELECT id FROM pos_shifts
-                      WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
-                  ))
+                  AND sh.shift_id = ?
                 GROUP BY si.product_id
             ) v ON p.id = v.product_id
             WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
             ORDER BY p.codigo
         `, [
             company_id, fecha_turno, branch_id, turnoNum, turnoNum,
-            company_id, fecha_turno, branch_id, turnoNum,
-            company_id, branch_id, fecha_turno, turnoNum,
+            company_id, fecha_turno, branch_id, shiftId,
             company_id
         ]);
 
@@ -2407,7 +2403,7 @@ exports.getVentasComparacion = async (req, res) => {
             totales.diferencia_monto += parseFloat(row.diferencia_monto) || 0;
         }
 
-        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno, shiftMatch, matchedShiftId, branch_id });
+        res.json({ data: rows, totales, fecha: fecha_turno, turno: numero_turno, shiftMatch: true, matchedShiftId: shiftId, branch_id });
     } catch (error) {
         console.error('Error getVentasComparacion:', error);
         res.status(500).json({ message: 'Error al obtener comparacion de ventas' });
@@ -2431,32 +2427,22 @@ exports.generarComplementaria = async (req, res) => {
 
         const { shift_id } = req.body || {};
 
-        let posShift;
-        if (shift_id) {
-            const [rows] = await pool.query(
-                `SELECT id, seller_id, pos_id, branch_id, status FROM pos_shifts
-                 WHERE id = ? AND company_id = ?`,
-                [Number(shift_id), company_id]
-            );
-            if (rows.length === 0) {
-                return res.status(400).json({ message: 'El turno destino no existe o no pertenece a esta empresa' });
-            }
-            if (Number(rows[0].branch_id) !== Number(branch_id)) {
-                return res.status(400).json({ message: 'El turno destino no pertenece a la sucursal del cierre' });
-            }
-            posShift = rows;
-        } else {
-            const [rows] = await pool.query(
-                `SELECT id, seller_id, pos_id FROM pos_shifts
-                 WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
-                 LIMIT 1`,
-                [company_id, branch_id, fecha_turno, turnoNum]
-            );
-            if (rows.length === 0) {
-                return res.status(400).json({ message: `No se encontro un turno de facturacion (POS) para la fecha ${fecha_turno} turno #${turnoNum}. Debe crear el turno de facturacion primero.` });
-            }
-            posShift = rows;
+        if (!shift_id) {
+            return res.status(400).json({ message: 'Debe seleccionar el turno destino para generar la complementaria' });
         }
+
+        const [posShiftRows] = await pool.query(
+            `SELECT id, seller_id, pos_id, branch_id, status FROM pos_shifts
+             WHERE id = ? AND company_id = ?`,
+            [Number(shift_id), company_id]
+        );
+        if (posShiftRows.length === 0) {
+            return res.status(400).json({ message: 'El turno destino no existe o no pertenece a esta empresa' });
+        }
+        if (Number(posShiftRows[0].branch_id) !== Number(branch_id)) {
+            return res.status(400).json({ message: 'El turno destino no pertenece a la sucursal del cierre' });
+        }
+        const posShift = posShiftRows;
 
         let codPuntoVentaMH = null;
         if (posShift[0].pos_id) {
@@ -2491,9 +2477,7 @@ exports.generarComplementaria = async (req, res) => {
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
                   AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
-                  AND (? = 0 OR sh.shift_id IN (
-                      SELECT id FROM pos_shifts WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
-                  ))
+                  AND sh.shift_id = ?
                 GROUP BY si.product_id
             ) v ON p.id = v.product_id
             WHERE p.company_id = ? AND p.tipo_combustible > 0 AND p.status = 'activo'
@@ -2501,8 +2485,7 @@ exports.generarComplementaria = async (req, res) => {
             ORDER BY p.codigo
         `, [
             company_id, fecha_turno, branch_id, turnoNum, turnoNum,
-            company_id, fecha_turno, branch_id, turnoNum,
-            company_id, branch_id, fecha_turno, turnoNum,
+            company_id, fecha_turno, branch_id, posShift[0].id,
             company_id
         ]);
 
