@@ -570,6 +570,7 @@ const Products = () => {
                                                 </div>
                                                 <div className="flex flex-col text-xs font-bold truncate">
                                                     <span>{p.nombre}</span>
+                                                    <span className="text-[10px] font-semibold text-slate-400">{p.branch_name || 'Sucursal'}</span>
                                                 </div>
                                             </label>
                                         ))}
