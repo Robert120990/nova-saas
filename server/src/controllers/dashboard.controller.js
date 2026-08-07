@@ -180,10 +180,28 @@ const getStats = async (req, res) => {
                     s.opening_balance,
                     s.start_time,
                     COALESCE((
-                        SELECT SUM(sp.monto) 
-                        FROM sales_payments sp 
-                        JOIN sales_headers sh ON sp.sale_id = sh.id 
-                        WHERE sh.shift_id = s.id AND sh.estado != 'anulado' AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO') AND sp.metodo_pago = '01'
+                        SELECT SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE 0 END)
+                        FROM (
+                            SELECT 
+                                h.id,
+                                h.total_pagar,
+                                h.non_cash,
+                                p.metodo_pago,
+                                SUM(p.monto) as sum_monto
+                            FROM (
+                                SELECT 
+                                    h.id, 
+                                    h.total_pagar,
+                                    COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash
+                                FROM sales_headers h
+                                JOIN sales_payments p ON p.sale_id = h.id
+                                WHERE h.shift_id = s.id AND h.estado != 'anulado'
+                                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                                GROUP BY h.id
+                            ) h
+                            JOIN sales_payments p ON p.sale_id = h.id
+                            GROUP BY h.id, h.total_pagar, h.non_cash, p.metodo_pago
+                        ) a
                     ), 0) as cash_sales,
                     COALESCE((
                         SELECT SUM(amount) 

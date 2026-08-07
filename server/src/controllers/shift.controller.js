@@ -214,18 +214,38 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         const shift = shifts[0];
         console.log(`[DEBUG] Found shift:`, JSON.stringify(shift));
 
-        // Sumar ventas por método de pago con nombres reales
+        // Sumar ventas por método de pago con nombres reales.
+        // sales_payments.monto para efectivo ('01') guarda el billete recibido (puede incluir vuelto),
+        // por lo que se asigna por venta: no-cash conserva su monto exacto y efectivo recibe el
+        // remanente de total_pagar (GREATEST(0, total_pagar - pagos no-cash)).
         const [salesByMethod] = await pool.query(`
             SELECT 
-                p.metodo_pago as code, 
+                a.metodo_pago as code, 
                 cat.description as name, 
-                SUM(p.monto) as total
-            FROM sales_payments p
-            JOIN sales_headers h ON p.sale_id = h.id
-            LEFT JOIN cat_017_forma_pago cat ON p.metodo_pago COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
-            WHERE h.shift_id = ? AND h.estado = 'emitido'
-            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
-            GROUP BY p.metodo_pago, cat.description
+                SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE a.sum_monto END) as total
+            FROM (
+                SELECT 
+                    h.id,
+                    h.total_pagar,
+                    h.non_cash,
+                    p.metodo_pago,
+                    SUM(p.monto) as sum_monto
+                FROM (
+                    SELECT 
+                        h.id, 
+                        h.total_pagar,
+                        COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash
+                    FROM sales_headers h
+                    JOIN sales_payments p ON p.sale_id = h.id
+                    WHERE h.shift_id = ? AND h.estado = 'emitido'
+                    AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                    GROUP BY h.id
+                ) h
+                JOIN sales_payments p ON p.sale_id = h.id
+                GROUP BY h.id, h.total_pagar, h.non_cash, p.metodo_pago
+            ) a
+            LEFT JOIN cat_017_forma_pago cat ON a.metodo_pago COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+            GROUP BY a.metodo_pago, cat.description
         `, [id]);
         console.log(`[DEBUG] Sales by Method:`, JSON.stringify(salesByMethod));
 
@@ -367,15 +387,33 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         }
     }
 
-    // 5. Calcular totales de ventas del turno
+    // 5. Calcular totales de ventas del turno.
+    // Misma asignación que getShiftSummary: efectivo = remanente de total_pagar por venta.
     const [salesTotals] = await conn.query(`
         SELECT 
-            SUM(CASE WHEN p.metodo_pago = '01' THEN p.monto ELSE 0 END) as cash,
-            SUM(p.monto) as total
-        FROM sales_payments p
-        JOIN sales_headers h ON p.sale_id = h.id
-        WHERE h.shift_id = ? AND h.estado = 'emitido'
-        AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+            SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE 0 END) as cash,
+            SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE a.sum_monto END) as total
+        FROM (
+            SELECT 
+                h.id,
+                h.total_pagar,
+                h.non_cash,
+                p.metodo_pago,
+                SUM(p.monto) as sum_monto
+            FROM (
+                SELECT 
+                    h.id, 
+                    h.total_pagar,
+                    COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash
+                FROM sales_headers h
+                JOIN sales_payments p ON p.sale_id = h.id
+                WHERE h.shift_id = ? AND h.estado = 'emitido'
+                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                GROUP BY h.id
+            ) h
+            JOIN sales_payments p ON p.sale_id = h.id
+            GROUP BY h.id, h.total_pagar, h.non_cash, p.metodo_pago
+        ) a
     `, [id]);
 
     const totals = salesTotals[0];
@@ -530,12 +568,32 @@ const getShiftsHistory = async (req, res) => {
             JOIN points_of_sale p ON s.pos_id = p.id
             JOIN branches b ON s.branch_id = b.id
             LEFT JOIN (
-                SELECT h.shift_id, SUM(p.monto) as total
-                FROM sales_payments p
-                JOIN sales_headers h ON p.sale_id = h.id
-                WHERE h.estado = 'emitido'
-                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
-                GROUP BY h.shift_id
+                SELECT 
+                    b.shift_id,
+                    SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE b.sum_monto END) as total
+                FROM (
+                    SELECT 
+                        h.shift_id,
+                        h.total_pagar,
+                        h.non_cash,
+                        p.metodo_pago,
+                        SUM(p.monto) as sum_monto
+                    FROM (
+                        SELECT 
+                            h.id, 
+                            h.shift_id,
+                            h.total_pagar,
+                            COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash
+                        FROM sales_headers h
+                        JOIN sales_payments p ON p.sale_id = h.id
+                        WHERE h.estado = 'emitido'
+                        AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                        GROUP BY h.id
+                    ) h
+                    JOIN sales_payments p ON p.sale_id = h.id
+                    GROUP BY h.id, h.shift_id, h.total_pagar, h.non_cash, p.metodo_pago
+                ) b
+                GROUP BY b.shift_id
             ) sales ON sales.shift_id = s.id
             WHERE s.company_id = ?
         `;

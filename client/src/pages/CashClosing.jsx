@@ -474,6 +474,7 @@ const CashClosing = () => {
                                     <th className="px-2 py-3 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Turno</th>
                                     <th className="px-2 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest min-w-[200px]">Responsable</th>
                                     <th className="px-2 py-3 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest min-w-[160px]">POS</th>
+                                    <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Ventas</th>
                                     <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Esperado</th>
                                     <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Contado</th>
                                     <th className="px-2 py-3 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Diferencia</th>
@@ -505,6 +506,9 @@ const CashClosing = () => {
                                         </td>
                                         <td className="px-2 py-3 min-w-[160px]">
                                             <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">{shift.pos_name}</span>
+                                        </td>
+                                        <td className="px-2 py-3 text-right tabular-nums">
+                                            <span className="text-xs font-bold text-indigo-600"><Money value={shift.total_sales || 0} /></span>
                                         </td>
                                         <td className="px-2 py-3 text-right tabular-nums">
                                             <span className="text-xs font-bold text-slate-700"><Money value={shift.expected_cash || 0} /></span>
