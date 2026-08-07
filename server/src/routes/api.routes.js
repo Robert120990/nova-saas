@@ -72,6 +72,7 @@ const gasPosTypeController = require('../controllers/gasPosType.controller');
 const gasAdvanceController = require('../controllers/gasAdvance.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
+const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
 
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
@@ -321,6 +322,16 @@ router.get('/sales/dte-json/:id', salesController.getDTEJson);
 // Sales Settings (Configuración Tienda) — antes de /sales/:id
 router.get('/sales/settings', salesConfigController.getSettings);
 router.put('/sales/settings', salesConfigController.updateSettings);
+
+// Sales - Remesa Deliveries (Entrega de Remesas - Ventas/Tienda) — antes de /sales/:id
+router.get('/sales/remesas/pending', salesRemesaDeliveryController.getPendingRemesas);
+router.get('/sales/remesa-deliveries', salesRemesaDeliveryController.getDeliveries);
+router.post('/sales/remesa-deliveries', salesRemesaDeliveryController.createDelivery);
+router.put('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.updateDelivery);
+router.get('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.getDelivery);
+router.put('/sales/remesa-deliveries/:id/entregar', salesRemesaDeliveryController.entregarDelivery);
+router.get('/sales/remesa-deliveries/:id/pdf', salesRemesaDeliveryController.getDeliveryPdf);
+router.delete('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.deleteDelivery);
 
 router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), salesController.changeSalesShift);
 
