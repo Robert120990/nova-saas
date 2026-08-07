@@ -136,7 +136,7 @@ const CashClosing = () => {
     const branchSellers = sellers.filter(s => s.branch_id == user.branch_id && s.status === 'activo');
     // Vendedores no asignados a ningún turno activo
     const availableSellers = branchSellers.filter(s => !s.assigned_shift_id);
-    const branchPOS = posList.filter(p => p.branch_id == user.branch_id);
+    const branchPOS = posList.filter(p => p.branch_id == user.branch_id && p.status === 'activo');
 
     const { data: paymentMethods = [] } = useQuery({
         queryKey: ['catalogs', 'cat_017_forma_pago'],
@@ -1259,7 +1259,7 @@ const CashClosing = () => {
                                     <select value={editForm.pos_id}
                                         onChange={(e) => setEditForm({ ...editForm, pos_id: e.target.value })}
                                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none">
-                                        {posList.map(p => (
+                                        {posList.filter(p => p.status === 'activo' || p.id == editingShift.pos_id).map(p => (
                                             <option key={p.id} value={p.id}>{p.nombre}</option>
                                         ))}
                                     </select>

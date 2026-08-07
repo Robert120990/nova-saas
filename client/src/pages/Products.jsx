@@ -53,6 +53,9 @@ const Products = () => {
         queryFn: async () => (await axios.get('/api/pos')).data
     });
 
+    // Solo terminales activas para asignación de disponibilidad
+    const activePos = allPos.filter(p => p.status === 'activo');
+
     // Catalogs
     const { data: catTipoItem = [] } = useQuery({
         queryKey: ['cat_011_tipo_item'],
@@ -180,7 +183,7 @@ const Products = () => {
             
             if (isCurrentlySelected) {
                 // Uncheck all POS belonging to this branch
-                const posOfBranch = allPos.filter(p => p.branch_id === id).map(p => p.id);
+                const posOfBranch = activePos.filter(p => p.branch_id === id).map(p => p.id);
                 setSelectedPos(prevPos => prevPos.filter(pId => !posOfBranch.includes(pId)));
             }
             
@@ -560,7 +563,7 @@ const Products = () => {
                                         <Monitor size={14} className="text-indigo-600"/> Puntos de Venta (POS)
                                     </label>
                                     <div className="grid grid-cols-2 gap-2">
-                                        {allPos.filter(p => selectedBranches.includes(p.branch_id)).map(p => (
+                                        {activePos.filter(p => selectedBranches.includes(p.branch_id)).map(p => (
                                             <label key={p.id} className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
                                                 selectedPos.includes(p.id) ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'
                                             }`}>
@@ -579,7 +582,7 @@ const Products = () => {
                                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecciona una sucursal para ver terminales</p>
                                             </div>
                                         )}
-                                        {selectedBranches.length > 0 && allPos.filter(p => selectedBranches.includes(p.branch_id)).length === 0 && (
+                                        {selectedBranches.length > 0 && activePos.filter(p => selectedBranches.includes(p.branch_id)).length === 0 && (
                                             <div className="col-span-2 py-8 text-center border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
                                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No hay terminales configuradas en estas sucursales</p>
                                             </div>
