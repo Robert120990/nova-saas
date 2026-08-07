@@ -333,7 +333,7 @@ const getLubricantProducts = async (req, res) => {
         }
 
         const [products] = await pool.query(`
-            SELECT p.id, p.codigo, p.descripcion, COALESCE(pbp.precio_unitario, 0) as precio_unitario
+            SELECT p.id, p.codigo, p.nombre AS descripcion, COALESCE(pbp.precio_unitario, 0) as precio_unitario
             FROM products p
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
