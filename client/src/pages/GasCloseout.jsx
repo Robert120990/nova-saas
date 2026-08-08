@@ -1589,7 +1589,7 @@ const GasCloseout = () => {
         return (
             <>
                 <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="flex items-center gap-3">
                             {editId && (
                                 <button
@@ -1611,7 +1611,7 @@ const GasCloseout = () => {
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                                 estado === 'cerrado'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -1652,7 +1652,7 @@ const GasCloseout = () => {
                         </div>
                     </div>
 
-                    <div className="flex gap-4">
+                    <div className="flex flex-col lg:flex-row gap-4">
                         <div className="flex-1 flex flex-col gap-4 min-w-0">
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
 
@@ -1691,7 +1691,7 @@ const GasCloseout = () => {
                                     </table>
                                 </div>
                             </div>
-                            <div className="flex gap-4">
+                            <div className="flex flex-col md:flex-row gap-4">
                                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1">
                                     <div className="px-4 py-2 border-b border-slate-100">
                                         <h3 className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Ingresos</h3>
@@ -1781,7 +1781,7 @@ const GasCloseout = () => {
                                     </table>
                                 </div>
                             </div>
-                            <div className="flex gap-4">
+                            <div className="flex flex-col lg:flex-row gap-4">
                                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                     <div className="px-4 py-2 border-b border-slate-100">
                                         <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Lecturas de Tanques</h3>
@@ -1832,7 +1832,7 @@ const GasCloseout = () => {
                                         </table>
                                     </div>
                                 </div>
-                                <div className="flex-none bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="lg:flex-none bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                     <div className="px-4 py-2 border-b border-slate-100">
                                         <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Comparación Lectura vs Tanque</h3>
                                     </div>
@@ -1973,7 +1973,7 @@ const GasCloseout = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="w-72 shrink-0">
+                        <div className="w-full lg:w-72 lg:shrink-0">
                             <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Opciones del Turno</h3>
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3">
                                 <div className="grid grid-cols-2 gap-1.5">
@@ -2074,7 +2074,7 @@ const GasCloseout = () => {
                                 </div>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1 relative">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 w-16 bg-slate-50 border-b border-slate-100">Pistola</th>
@@ -2093,13 +2093,13 @@ const GasCloseout = () => {
                                             const monto = diferencia * r.precio;
                                             return (
                                                 <tr key={r.nozzle_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-indigo-100 transition-colors text-[11px]`}>
-                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap">{r.codigo_pistola}</td>
-                                                    <td className="px-1.5 py-0.5 max-w-[120px] truncate">
+                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap" data-label="Pistola">{r.codigo_pistola}</td>
+                                                    <td className="px-1.5 py-0.5 max-w-[120px] truncate" data-label="Producto">
                                                         <span className="font-medium text-slate-800">{r.codigo_producto}</span>
                                                         <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_producto}</span>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap"><Money value={r.precio} /></td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap" data-label="Precio"><Money value={r.precio} /></td>
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Ant.">
                                                         {editAnterior ? (
                                                             <input
                                                                 ref={el => { inputRefs.current[`anterior-${r.nozzle_id}`] = el; }}
@@ -2117,7 +2117,7 @@ const GasCloseout = () => {
                                                         <span className="font-mono text-slate-500 whitespace-nowrap">{r.lectura_anterior.toFixed(5)}</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Actual">
                                                         <input
                                                             ref={el => { inputRefs.current[`lectura_actual-${r.nozzle_id}`] = el; }}
                                                             type="number"
@@ -2132,7 +2132,7 @@ const GasCloseout = () => {
                                                             className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Calibr.">
                                                         <input
                                                             ref={el => { inputRefs.current[`calibracion-${r.nozzle_id}`] = el; }}
                                                             type="number"
@@ -2147,8 +2147,8 @@ const GasCloseout = () => {
                                                             className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap">{diferencia.toFixed(5)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap"><Money value={monto} /></td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap" data-label="Monto"><Money value={monto} /></td>
                                                 </tr>
                                             );
                                         })}
@@ -2274,7 +2274,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Rubro</th>
@@ -2297,7 +2297,7 @@ const GasCloseout = () => {
                                         )}
                                         {gastos.map(g => (
                                             <tr key={g.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Rubro">
                                                     {showNewCategoryInput ? (
                                                         <div className="flex gap-1">
                                                             <input
@@ -2335,7 +2335,7 @@ const GasCloseout = () => {
                                                         </select>
                                                     )}
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Fecha">
                                                     <input
                                                         type="date"
                                                         value={g.fecha}
@@ -2344,7 +2344,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Documento">
                                                     <input
                                                         type="text"
                                                         value={g.documento}
@@ -2354,7 +2354,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Tipo">
                                                     <select
                                                         value={g.tipo}
                                                         onChange={(e) => handleGastoChange(g.id, 'tipo', e.target.value)}
@@ -2367,7 +2367,7 @@ const GasCloseout = () => {
                                                         <option value="tic">TIC</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Proveedor">
                                                     <SearchableSelect
                                                         loadOptions={loadProviders}
                                                         value={g.provider_id}
@@ -2386,7 +2386,7 @@ const GasCloseout = () => {
                                                         dropdownWidth={380}
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Despachador">
                                                     <select
                                                         value={g.despachador_id || ''}
                                                         onChange={(e) => handleGastoChange(g.id, 'despachador_id', e.target.value)}
@@ -2399,7 +2399,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Valor">
                                                     <MoneyInput
                                                         step="0.01"
                                                         value={g.valor || ''}
@@ -2410,7 +2410,7 @@ const GasCloseout = () => {
                                                         className="w-20 text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1 text-center">
+                                                <td className="px-1.5 py-1 text-center" data-label="">
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveGasto(g.id)}
@@ -2480,7 +2480,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Código</th>
@@ -2501,10 +2501,10 @@ const GasCloseout = () => {
                                         )}
                                         {remesas.map(r => (
                                             <tr key={r.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Código">
                                                     <span className="text-[11px] font-mono text-slate-600">${escHtml(r.codigo || '—')}</span>
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Documento">
                                                     <input
                                                         type="text"
                                                         value={r.documento}
@@ -2514,7 +2514,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Despachador">
                                                     <select
                                                         value={r.despachador_id || ''}
                                                         onChange={(e) => handleRemesaChange(r.id, 'despachador_id', e.target.value)}
@@ -2527,7 +2527,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Tipo de Operación">
                                                     <select
                                                         value={r.tipo_operacion}
                                                         onChange={(e) => handleRemesaChange(r.id, 'tipo_operacion', e.target.value)}
@@ -2539,7 +2539,7 @@ const GasCloseout = () => {
                                                         <option value="pago_anticipado">Pago Anticipado</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         value={r.monto || ''}
@@ -2550,7 +2550,7 @@ const GasCloseout = () => {
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1 text-center">
+                                                <td className="px-1.5 py-1 text-center" data-label="">
                                                     <div className="flex items-center justify-center gap-0.5">
                                                         <button
                                                             onClick={() => handlePrintRemesaLabel(r)}
@@ -2629,7 +2629,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cupón</th>
@@ -2650,7 +2650,7 @@ const GasCloseout = () => {
                                         )}
                                         {cupones.map(c => (
                                             <tr key={c.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Cupón">
                                                     <input
                                                         type="text"
                                                         value={c.cupon}
@@ -2660,7 +2660,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Distribuidora">
                                                     <select
                                                         value={c.distribuidora_id}
                                                         onChange={(e) => {
@@ -2678,7 +2678,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Producto">
                                                     <select
                                                         value={c.producto_codigo}
                                                         onChange={(e) => {
@@ -2696,7 +2696,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Despachador">
                                                     <select
                                                         value={c.despachador_id || ''}
                                                         onChange={(e) => handleCuponChange(c.id, 'despachador_id', e.target.value)}
@@ -2709,7 +2709,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         value={c.monto || ''}
@@ -2720,7 +2720,7 @@ const GasCloseout = () => {
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1 text-center">
+                                                <td className="px-1.5 py-1 text-center" data-label="">
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveCupon(c.id)}
@@ -2790,7 +2790,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
@@ -2813,7 +2813,7 @@ const GasCloseout = () => {
                                         )}
                                         {descuentos.map(d => (
                                             <tr key={d.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Documento">
                                                     <input
                                                         type="text"
                                                         value={d.documento}
@@ -2823,7 +2823,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Cliente">
                                                     <SearchableSelect
                                                         loadOptions={loadCustomers()}
                                                         value={d.cliente_id}
@@ -2842,7 +2842,7 @@ const GasCloseout = () => {
                                                         dropdownWidth={420}
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Producto">
                                                     <select
                                                         value={d.producto_codigo}
                                                         onChange={(e) => {
@@ -2860,7 +2860,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Despachador">
                                                     <select
                                                         value={d.despachador_id || ''}
                                                         onChange={(e) => handleDescuentoChange(d.id, 'despachador_id', e.target.value)}
@@ -2873,7 +2873,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Cantidad">
                                                     <input
                                                         type="number"
                                                         step="0.01"
@@ -2885,7 +2885,7 @@ const GasCloseout = () => {
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Valor">
                                                     <MoneyInput
                                                         step="0.01"
                                                         value={d.valor ?? ''}
@@ -2896,10 +2896,10 @@ const GasCloseout = () => {
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Total">
                                                     <span className="font-mono font-bold text-slate-900"><Money value={(parseFloat(d.cantidad) || 0) * (parseFloat(d.valor) || 0)} /></span>
                                                 </td>
-                                                <td className="px-1.5 py-1 text-center">
+                                                <td className="px-1.5 py-1 text-center" data-label="">
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveDescuento(d.id)}
@@ -2969,7 +2969,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Empleado</th>
@@ -2988,7 +2988,7 @@ const GasCloseout = () => {
                                         )}
                                         {adelantos.map(a => (
                                             <tr key={a.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Empleado">
                                                     <input
                                                         type="text"
                                                         value={a.empleado}
@@ -2998,7 +2998,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1">
+                                                <td className="px-1.5 py-1" data-label="Despachador">
                                                     <select
                                                         value={a.despachador_id || ''}
                                                         onChange={(e) => handleAdelantoChange(a.id, 'despachador_id', e.target.value)}
@@ -3011,7 +3011,7 @@ const GasCloseout = () => {
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-1.5 py-1 text-right">
+                                                <td className="px-1.5 py-1 text-right" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         value={a.monto ?? ''}
@@ -3022,7 +3022,7 @@ const GasCloseout = () => {
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-1 text-center">
+                                                <td className="px-1.5 py-1 text-center" data-label="">
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveAdelanto(a.id)}
@@ -3092,7 +3092,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse table-cards">
                                     <thead>
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Tarjeta</th>
@@ -3115,7 +3115,7 @@ const GasCloseout = () => {
                                         {tarjetas.map(t => {
                                             return (
                                                 <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="No. Tarjeta">
                                                         <input
                                                             type="text"
                                                             value={t.num_tarjeta}
@@ -3133,7 +3133,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="No. Autorización">
                                                         <input
                                                             type="text"
                                                             value={t.num_autorizacion}
@@ -3143,7 +3143,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Tipo POS">
                                                         <select
                                                             value={t.pos_type_id || ''}
                                                             onChange={(e) => handleTarjetaChange(t.id, 'pos_type_id', e.target.value)}
@@ -3156,7 +3156,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Despachador">
                                                         <select
                                                             value={t.despachador_id || ''}
                                                             onChange={(e) => handleTarjetaChange(t.id, 'despachador_id', e.target.value)}
@@ -3169,7 +3169,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Tipo Operación">
                                                         <select
                                                             value={t.tipo_operacion || 'venta_combustible'}
                                                             onChange={(e) => handleTarjetaChange(t.id, 'tipo_operacion', e.target.value)}
@@ -3181,7 +3181,7 @@ const GasCloseout = () => {
                                                             <option value="pago_anticipado">Pago Anticipado</option>
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         min="0"
@@ -3192,7 +3192,7 @@ const GasCloseout = () => {
                                                     />
                                                     </td>
                                                     {estado === 'abierto' && (
-                                                        <td className="px-1.5 py-1 text-center">
+                                                        <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveTarjeta(t.id)}
@@ -3270,7 +3270,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1 relative">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Código</th>
@@ -3298,11 +3298,11 @@ const GasCloseout = () => {
                                             const total = ventas * parseFloat(r.precio || 0);
                                             return (
                                                 <tr key={r.producto_id} className="hover:bg-slate-50 transition-colors text-[11px]">
-                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900">{r.producto_codigo}</td>
-                                                    <td className="px-1.5 py-0.5 max-w-[140px] truncate">
+                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900" data-label="Código">{r.producto_codigo}</td>
+                                                    <td className="px-1.5 py-0.5 max-w-[140px] truncate" data-label="Descripción">
                                                         <span className="font-medium text-slate-800">{r.producto_descripcion}</span>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Inicial">
                                                         {editAnterior ? (
                                                             <input type="number" step="0.00001"
                                                                 ref={(el) => { lubricantInputRefs.current[`lub-anterior-${r.producto_id}`] = el; }}
@@ -3324,7 +3324,7 @@ const GasCloseout = () => {
                                                             <span className="font-mono text-slate-600 whitespace-nowrap">{parseFloat(r.lectura_inicial || 0).toFixed(5)}</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Recarga">
                                                         <input type="number" step="0.00001"
                                                             ref={(el) => { lubricantInputRefs.current[`lub-recarga-${r.producto_id}`] = el; }}
                                                             value={r.recarga ?? ''}
@@ -3342,7 +3342,7 @@ const GasCloseout = () => {
                                                             className={estado === 'cerrado' ? inputDisabledCls : inputCls}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Final">
                                                         <input type="number" step="0.00001"
                                                             ref={(el) => { lubricantInputRefs.current[`lub-final-${r.producto_id}`] = el; }}
                                                             value={r.lectura_final ?? ''}
@@ -3360,9 +3360,9 @@ const GasCloseout = () => {
                                                             className={estado === 'cerrado' ? inputDisabledCls : inputCls}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-800">{ventas.toFixed(5)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700"><Money value={parseFloat(r.precio || 0)} /></td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900">
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-800" data-label="Ventas">{ventas.toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700" data-label="Precio"><Money value={parseFloat(r.precio || 0)} /></td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900" data-label="Total">
                                                         <Money value={total} />
                                                     </td>
                                                 </tr>
@@ -3401,7 +3401,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1 relative">
-                                <table className="w-full text-left border-separate border-spacing-0">
+                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
                                     <thead className="sticky top-0 z-20">
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-14">Tanque</th>
@@ -3420,12 +3420,12 @@ const GasCloseout = () => {
                                             const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
                                             return (
                                                 <tr key={r.tank_id} className="hover:bg-slate-50 transition-colors text-[11px]">
-                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap">{r.codigo_tanque}</td>
-                                                    <td className="px-1.5 py-0.5 truncate">
+                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap" data-label="Tanque">{r.codigo_tanque}</td>
+                                                    <td className="px-1.5 py-0.5 truncate" data-label="Descripción">
                                                         <span className="font-medium text-slate-800">{r.descripcion_tanque}</span>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap">{parseFloat(r.capacidad || 0).toFixed(2)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap" data-label="Capacidad">{parseFloat(r.capacidad || 0).toFixed(2)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Ant.">
                                                         {editAnterior ? (
                                                             <input
                                                                 ref={el => { tankInputRefs.current[`anterior-${r.tank_id}`] = el; }}
@@ -3443,7 +3443,7 @@ const GasCloseout = () => {
                                                             <span className="font-mono text-slate-500 whitespace-nowrap">{(r.lectura_anterior || 0).toFixed(5)}</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Recarga">
                                                         <input
                                                             ref={el => { tankInputRefs.current[`recarga-${r.tank_id}`] = el; }}
                                                             type="number"
@@ -3457,7 +3457,7 @@ const GasCloseout = () => {
                                                             className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right">
+                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Actual">
                                                         <input
                                                             ref={el => { tankInputRefs.current[`lectura_actual-${r.tank_id}`] = el; }}
                                                             type="number"
@@ -3471,7 +3471,7 @@ const GasCloseout = () => {
                                                             className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap">{diferencia.toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(5)}</td>
                                                 </tr>
                                             );
                                         })}
@@ -3509,7 +3509,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse table-cards">
                                     <thead>
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
@@ -3536,7 +3536,7 @@ const GasCloseout = () => {
                                         {creditos.map(c => {
                                             return (
                                                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Documento">
                                                         <input
                                                             type="text"
                                                             value={c.documento}
@@ -3546,7 +3546,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Tipo">
                                                         <select
                                                             value={c.tipo_documento || 'FAC'}
                                                             onChange={(e) => handleCreditoChange(c.id, 'tipo_documento', e.target.value)}
@@ -3557,7 +3557,7 @@ const GasCloseout = () => {
                                                             <option value="CCF">CCF</option>
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Cliente">
                                                         <SearchableSelect
                                                             loadOptions={loadCustomers({ es_credito: 1 })}
                                                             value={c.cliente_id}
@@ -3576,7 +3576,7 @@ const GasCloseout = () => {
                                                             dropdownWidth={420}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Producto">
                                                         <select
                                                             value={c.producto_codigo}
                                                             onChange={(e) => {
@@ -3594,7 +3594,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Despachador">
                                                         <select
                                                             value={c.despachador_id || ''}
                                                             onChange={(e) => handleCreditoChange(c.id, 'despachador_id', e.target.value)}
@@ -3607,7 +3607,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Cantidad">
                                                         <input
                                                             type="number"
                                                             step="0.00001"
@@ -3623,10 +3623,10 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
+                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600" data-label="Precio">
                                                         {parseFloat(c.cantidad) > 0 ? <Money value={parseFloat(c.monto) / parseFloat(c.cantidad)} /> : <Money value={0} />}
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         min="0"
@@ -3641,7 +3641,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                     />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Placa">
                                                         <input
                                                             type="text"
                                                             value={c.placa}
@@ -3651,7 +3651,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
                                                         <input
                                                             type="text"
                                                             value={c.kilometraje}
@@ -3662,7 +3662,7 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     {estado === 'abierto' && (
-                                                        <td className="px-1.5 py-1 text-center">
+                                                        <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveCredito(c.id)}
@@ -3740,7 +3740,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse table-cards">
                                     <thead>
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
@@ -3767,7 +3767,7 @@ const GasCloseout = () => {
                                         {vales.map(v => {
                                             return (
                                                 <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Documento">
                                                         <input
                                                             type="text"
                                                             value={v.documento}
@@ -3777,7 +3777,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Tipo">
                                                         <select
                                                             value={v.tipo_documento || 'FAC'}
                                                             onChange={(e) => handleValeChange(v.id, 'tipo_documento', e.target.value)}
@@ -3788,7 +3788,7 @@ const GasCloseout = () => {
                                                             <option value="CCF">CCF</option>
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Cliente">
                                                         <SearchableSelect
                                                             loadOptions={loadCustomers({ es_credito: 1 })}
                                                             value={v.cliente_id}
@@ -3807,7 +3807,7 @@ const GasCloseout = () => {
                                                             dropdownWidth={420}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Producto">
                                                         <select
                                                             value={v.producto_codigo}
                                                             onChange={(e) => {
@@ -3825,7 +3825,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Despachador">
                                                         <select
                                                             value={v.despachador_id || ''}
                                                             onChange={(e) => handleValeChange(v.id, 'despachador_id', e.target.value)}
@@ -3838,7 +3838,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Cantidad">
                                                         <input
                                                             type="number"
                                                             step="0.00001"
@@ -3854,10 +3854,10 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
+                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600" data-label="Precio">
                                                         {parseFloat(v.cantidad) > 0 ? <Money value={parseFloat(v.monto) / parseFloat(v.cantidad)} /> : <Money value={0} />}
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         min="0"
@@ -3872,7 +3872,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                     />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Placa">
                                                         <input
                                                             type="text"
                                                             value={v.placa}
@@ -3882,7 +3882,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
                                                         <input
                                                             type="text"
                                                             value={v.kilometraje}
@@ -3893,7 +3893,7 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     {estado === 'abierto' && (
-                                                        <td className="px-1.5 py-1 text-center">
+                                                        <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveVale(v.id)}
@@ -4015,7 +4015,7 @@ const GasCloseout = () => {
                                             </div>
                                         ) : (
                                             <>
-                                                <table className="w-full text-left border-collapse mt-3">
+                                                <table className="w-full text-left border-collapse mt-3 table-cards">
                                             <thead>
                                                 <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                                                     <th className="px-2 py-1 bg-slate-50 border-b border-slate-100">Código</th>
@@ -4032,17 +4032,17 @@ const GasCloseout = () => {
                                             <tbody className="divide-y divide-slate-50 text-[11px]">
                                                 {diferenciasData.data.map((row, i) => (
                                                     <tr key={i} className={`hover:bg-slate-50 transition-colors ${parseFloat(row.diferencia_monto) > 0 ? 'bg-amber-50/50' : ''}`}>
-                                                        <td className="px-2 py-1 font-bold text-slate-700">{row.codigo_producto}</td>
-                                                        <td className="px-2 py-1 text-slate-600">{row.descripcion_producto}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700"><Money value={parseFloat(row.precio)} /></td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">{parseFloat(row.lectura_galones).toFixed(5)}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700"><Money value={parseFloat(row.lectura_monto)} /></td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700">{parseFloat(row.venta_galones).toFixed(5)}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700"><Money value={parseFloat(row.venta_monto)} /></td>
-                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_galones) > 0 ? 'text-red-600' : parseFloat(row.diferencia_galones) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                        <td className="px-2 py-1 font-bold text-slate-700" data-label="Código">{row.codigo_producto}</td>
+                                                        <td className="px-2 py-1 text-slate-600" data-label="Producto">{row.descripcion_producto}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Precio"><Money value={parseFloat(row.precio)} /></td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Lectura (Gl)">{parseFloat(row.lectura_galones).toFixed(5)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Lectura ($)"><Money value={parseFloat(row.lectura_monto)} /></td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Venta (Gl)">{parseFloat(row.venta_galones).toFixed(5)}</td>
+                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Venta ($)"><Money value={parseFloat(row.venta_monto)} /></td>
+                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_galones) > 0 ? 'text-red-600' : parseFloat(row.diferencia_galones) < 0 ? 'text-emerald-600' : 'text-slate-500'}`} data-label="Dif. (Gl)">
                                                             {parseFloat(row.diferencia_galones).toFixed(5)}
                                                         </td>
-                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_monto) > 0 ? 'text-red-600' : parseFloat(row.diferencia_monto) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_monto) > 0 ? 'text-red-600' : parseFloat(row.diferencia_monto) < 0 ? 'text-emerald-600' : 'text-slate-500'}`} data-label="Dif. ($)">
                                                             <Money value={parseFloat(row.diferencia_monto)} />
                                                         </td>
                                                     </tr>
@@ -4119,7 +4119,7 @@ const GasCloseout = () => {
                                                     Se enviarán al Turno #{selectedTargetShift.shift_number} — {toDateStrDDMMYYYY(selectedTargetShift.shift_date)}{formatHora(selectedTargetShift.start_time) ? ` ${formatHora(selectedTargetShift.start_time)}` : ''} — {selectedTargetShift.pos_name}{selectedTargetShift.seller_name ? ` — ${selectedTargetShift.seller_name}` : ''} — {shiftEstado(selectedTargetShift)}
                                                 </p>
                                             )}
-                                            <table className="w-full text-left border-collapse text-[11px]">
+                                            <table className="w-full text-left border-collapse text-[11px] table-cards">
                                                 <thead>
                                                     <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
                                                         <th className="px-2 py-1">Producto</th>
@@ -4141,13 +4141,13 @@ const GasCloseout = () => {
                                                         const baseGrav = montoBruto - fovial - cotrans;
                                                         return (
                                                             <tr key={i} className="hover:bg-slate-50">
-                                                                <td className="px-2 py-1.5 font-medium text-slate-700">{row.descripcion_producto}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{gl.toFixed(5)}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={precio} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={montoBruto} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={fovial} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600"><Money value={cotrans} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800"><Money value={baseGrav} /></td>
+                                                                <td className="px-2 py-1.5 font-medium text-slate-700" data-label="Producto">{row.descripcion_producto}</td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Dif. (Gl)">{gl.toFixed(5)}</td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Precio/Gal"><Money value={precio} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Monto Bruto"><Money value={montoBruto} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="FOVIAL"><Money value={fovial} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="COTRANS"><Money value={cotrans} /></td>
+                                                                <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800" data-label="Base Gravable"><Money value={baseGrav} /></td>
                                                             </tr>
                                                         );
                                                     })}
@@ -4210,7 +4210,7 @@ const GasCloseout = () => {
                                 </button>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse table-cards">
                                     <thead>
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cliente</th>
@@ -4239,7 +4239,7 @@ const GasCloseout = () => {
                                             const excedeSaldo = parseFloat(a.monto) > 0 && parseFloat(a.saldo_disponible) > 0 && parseFloat(a.monto) > parseFloat(a.saldo_disponible);
                                             return (
                                                 <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Cliente">
                                                         <SearchableSelect
                                                             loadOptions={loadCustomers({ es_anticipado: 1 })}
                                                             value={a.cliente_id}
@@ -4258,7 +4258,7 @@ const GasCloseout = () => {
                                                             dropdownWidth={420}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1 text-center font-mono font-bold text-xs">
+                                                    <td className="px-1.5 py-1 text-center font-mono font-bold text-xs" data-label="Saldo Disp.">
                                                         {a.cliente_id ? (
                                                             <span className={`${parseFloat(a.saldo_disponible) && parseFloat(a.monto) > parseFloat(a.saldo_disponible) ? 'text-red-600' : 'text-indigo-600'}`}>
                                                                 <Money value={parseFloat(a.saldo_disponible || 0)} />
@@ -4267,7 +4267,7 @@ const GasCloseout = () => {
                                                             <span className="text-slate-300">---</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Documento">
                                                         <input
                                                             type="text"
                                                             value={a.documento}
@@ -4277,7 +4277,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Tipo">
                                                         <select
                                                             value={a.tipo_documento || 'FAC'}
                                                             onChange={(e) => handleAnticipoChange(a.id, 'tipo_documento', e.target.value)}
@@ -4288,7 +4288,7 @@ const GasCloseout = () => {
                                                             <option value="CCF">CCF</option>
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Producto">
                                                         <select
                                                             value={a.producto_codigo}
                                                             onChange={(e) => {
@@ -4306,7 +4306,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Despachador">
                                                         <select
                                                             value={a.despachador_id || ''}
                                                             onChange={(e) => handleAnticipoChange(a.id, 'despachador_id', e.target.value)}
@@ -4319,7 +4319,7 @@ const GasCloseout = () => {
                                                             ))}
                                                         </select>
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Cantidad">
                                                         <input
                                                             type="number"
                                                             step="0.00001"
@@ -4335,10 +4335,10 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600">
+                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600" data-label="Precio">
                                                         {parseFloat(a.cantidad) > 0 ? <Money value={parseFloat(a.monto) / parseFloat(a.cantidad)} /> : <Money value={0} />}
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Monto">
                                                     <MoneyInput
                                                         step="0.01"
                                                         min="0"
@@ -4353,7 +4353,7 @@ const GasCloseout = () => {
                                                         className={`w-full bg-white border rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono ${excedeSaldo ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
                                                     />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Placa">
                                                         <input
                                                             type="text"
                                                             value={a.placa}
@@ -4363,7 +4363,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-1">
+                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
                                                         <input
                                                             type="text"
                                                             value={a.kilometraje}
@@ -4374,7 +4374,7 @@ const GasCloseout = () => {
                                                         />
                                                     </td>
                                                     {estado === 'abierto' && (
-                                                        <td className="px-1.5 py-1 text-center">
+                                                        <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveAnticipo(a.id)}

@@ -73,3 +73,119 @@ body {
   100% { transform: rotate(0deg); }
 }
 .animate-bell-ring { animation: bell-ring 0.8s ease-in-out; }
+
+/* Tablas densas -> tarjetas apiladas en movil (solo < 768px, desktop intacto) */
+@media (max-width: 767px) {
+  .table-cards,
+  .table-cards tbody,
+  .table-cards tr,
+  .table-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-cards thead {
+    display: none;
+  }
+
+  .table-cards tbody {
+    padding: 0;
+  }
+
+  .table-cards tr {
+    margin-bottom: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 6px 10px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .table-cards tbody > tr + tr {
+    border-top: none;
+  }
+
+  .table-cards td[colspan] {
+    display: block;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .table-cards td[colspan]::before {
+    content: none;
+  }
+
+  .table-cards tr > td {
+    border-bottom: 1px solid #f1f5f9;
+    padding: 6px 2px !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    max-width: none !important;
+    white-space: normal;
+    text-align: right;
+  }
+
+  .table-cards tr > td:last-child {
+    border-bottom: none;
+  }
+
+  .table-cards td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  .table-cards td input,
+  .table-cards td select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .table-cards td button {
+    flex-shrink: 0;
+  }
+
+  .table-cards td > * {
+    max-width: none !important;
+    min-width: 0;
+  }
+
+  .table-cards tr > td .truncate {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .table-cards tfoot {
+    display: table;
+    width: 100%;
+  }
+
+  .table-cards tfoot tr {
+    display: table-row;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .table-cards tfoot td {
+    display: table-cell;
+    border-bottom: none;
+    padding: 6px 4px !important;
+    text-align: center;
+  }
+
+  .table-cards tfoot td::before {
+    content: none;
+  }
+}
