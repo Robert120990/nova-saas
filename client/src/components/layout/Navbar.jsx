@@ -124,7 +124,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
                     {isMenuOpen && (
                         <>
                             <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
-                            <div className="absolute top-full mt-2 left-0 w-[calc(100vw-24px)] sm:w-[450px] md:w-[500px] max-w-[500px] bg-[#0f172a] rounded-2xl shadow-2xl border border-slate-800 p-2 z-20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="fixed left-2 right-2 top-16 sm:absolute sm:left-0 sm:top-full sm:mt-2 sm:w-[450px] sm:max-w-[500px] md:w-[500px] bg-[#0f172a] rounded-2xl shadow-2xl border border-slate-800 p-2 z-20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                                 <div className="px-4 py-3 border-b border-slate-800/50 mb-2">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cambiar de Contexto</span>
                                 </div>
