@@ -9,38 +9,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.svg'],
+      includeAssets: ['favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png'],
+      manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-      },
-      manifest: {
-        name: 'SIPE-WEB',
-        short_name: 'SIPE-WEB',
-        description: 'Sistema Multi-Empresa de Facturacion Electronica DTE para El Salvador',
-        theme_color: '#0c1524',
-        background_color: '#0c1524',
-        display: 'standalone',
-        orientation: 'portrait-primary',
-        icons: [
-          {
-            src: '/icons/icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/icons/icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/icons/icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          }
-        ]
       }
     })
   ],

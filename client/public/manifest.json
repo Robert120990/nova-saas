@@ -2,6 +2,8 @@
   "name": "SIPE-WEB",
   "short_name": "SIPE-WEB",
   "description": "Sistema Multi-Empresa de Facturación Electrónica DTE para El Salvador",
+  "lang": "es",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0c1524",
