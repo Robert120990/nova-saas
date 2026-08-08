@@ -65,7 +65,7 @@ const getProducts = async (req, res) => {
         const total = countResult[0].total;
 
         // Final query with pagination
-        query += ` ORDER BY p.nombre ASC LIMIT ? OFFSET ?`;
+        query += ` ORDER BY c.name ASC, p.nombre ASC LIMIT ? OFFSET ?`;
         params.push(parseInt(limit), parseInt(offset));
 
         const [rows] = await pool.query(query, params);
