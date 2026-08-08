@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { Building2, MapPin, ChevronRight, LogIn } from 'lucide-react';
@@ -11,6 +11,14 @@ const Login = () => {
     const [selectionData, setSelectionData] = useState(null);
     const [selectedCompanyId, setSelectedCompanyId] = useState('');
     const [selectedBranchId, setSelectedBranchId] = useState('');
+    const [version, setVersion] = useState('...');
+
+    useEffect(() => {
+        fetch('/health')
+            .then(r => r.json())
+            .then(d => setVersion(d.version || '?'))
+            .catch(() => setVersion('?'));
+    }, []);
     
     const { login, selectContext } = useAuth();
 
@@ -177,8 +185,9 @@ const Login = () => {
                     </button>
                 </form>
 
-                <div className="mt-10 pt-6 border-t border-slate-100 text-center">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">© 2026 El Salvador DTE SaaS</p>
+                <div className="mt-10 pt-6 border-t border-slate-100 text-center space-y-1">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">© 2026 El Salvador DTE SIPE-WEB</p>
+                    <p className="text-[10px] font-mono text-slate-400 font-semibold">Versión: {version}</p>
                 </div>
             </div>
         </div>
