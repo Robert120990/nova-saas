@@ -216,6 +216,67 @@ const Users = () => {
                             </td>
                         </tr>
                     )}
+                    renderCard={(u) => (
+                        <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                                        <User size={16} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h4 className="text-sm font-bold text-slate-900 truncate">{u.nombre}</h4>
+                                        <p className="text-[11px] text-slate-500">@{u.username}</p>
+                                    </div>
+                                </div>
+                                {u.role_name ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-[9px] font-bold uppercase tracking-wider border border-indigo-100 shrink-0">
+                                        <Shield size={10} /> {u.role_name}
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-wider border border-slate-200 shrink-0">
+                                        Sin Acceso
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-1.5 text-xs pt-1 border-t border-slate-100">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Correo</span>
+                                    <span className="text-slate-700 break-all">{u.email}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Estado</span>
+                                    <button 
+                                        onClick={() => toggleStatusMutation.mutate({ id: u.id, status: u.status })}
+                                        disabled={toggleStatusMutation.isPending}
+                                        className={`px-3 py-1 text-[10px] font-bold rounded-full uppercase transition-all hover:scale-105 active:scale-95 disabled:opacity-50 ${
+                                            u.status === 'activo' 
+                                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
+                                            : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                        }`}
+                                        title="Click para cambiar estado"
+                                    >
+                                        {u.status}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                                <button 
+                                    onClick={() => handleEdit(u)} 
+                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100"
+                                >
+                                    <Edit size={14}/> Editar
+                                </button>
+                                <button 
+                                    onClick={() => handleDelete(u.id, u.nombre)} 
+                                    className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-red-100"
+                                >
+                                    <Trash2 size={14}/> Eliminar
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 />
             </div>
 
