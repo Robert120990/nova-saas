@@ -57,7 +57,7 @@ const ReportLayout = ({
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 {/* Filters Sidebar */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl p-8 space-y-8 h-fit">
+                    <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl p-4 md:p-8 space-y-8 h-fit">
                         <div className="space-y-6">
                             {children}
                         </div>
@@ -82,6 +82,16 @@ const ReportLayout = ({
                                 </button>
                             )}
 
+                            {pdfUrl && (
+                                <button 
+                                    onClick={() => window.open(pdfUrl, '_blank')}
+                                    className="w-full py-4 bg-slate-100 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-slate-200 hover:bg-slate-200 transition-all flex items-center justify-center gap-3 md:hidden"
+                                >
+                                    <FileText size={18} />
+                                    Abrir PDF
+                                </button>
+                            )}
+
                             {pdfUrl && onExportExcel && (
                                 <button 
                                     onClick={onExportExcel}
@@ -97,7 +107,7 @@ const ReportLayout = ({
 
                 {/* PDF Display Area */}
                 <div className="lg:col-span-3">
-                    <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden min-h-[750px] flex flex-col relative">
+                    <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden min-h-[420px] sm:min-h-[600px] lg:min-h-[750px] flex flex-col relative">
                         {pdfUrl ? (
                             <iframe 
                                 src={`${pdfUrl}#view=FitH`} 

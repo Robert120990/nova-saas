@@ -115,7 +115,7 @@ const SmtpConfig = () => {
                                     <span className="text-slate-400 font-medium">Cargando configuración...</span>
                                 </div>
                             ) : (
-                                <form key={selectedBranchId} onSubmit={handleSubmit} className="p-8 space-y-6 text-slate-900">
+                                <form key={selectedBranchId} onSubmit={handleSubmit} className="p-4 md:p-8 space-y-6 text-slate-900">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-4 md:col-span-2">
                                              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
@@ -213,12 +213,12 @@ const SmtpConfig = () => {
                                         </div>
                                     </div>
 
-                                    <div className="pt-6 border-t border-slate-100 flex justify-end gap-3">
+                                    <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row sm:justify-end gap-3">
                                         <button 
                                             type="button"
                                             onClick={handleTest}
                                             disabled={testMutation.isPending || mutation.isPending}
-                                            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
+                                            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
                                         >
                                             <CheckCircle2 size={20} className="text-emerald-500" />
                                             <span>{testMutation.isPending ? 'Probando...' : 'Probar Configuración'}</span>
@@ -226,7 +226,7 @@ const SmtpConfig = () => {
                                         <button 
                                             type="submit" 
                                             disabled={mutation.isPending || testMutation.isPending}
-                                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                                            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
                                         >
                                             <Save size={20} />
                                             <span>{mutation.isPending ? 'Guardando...' : 'Guardar Configuración'}</span>
