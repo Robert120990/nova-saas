@@ -76,6 +76,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     });
     const [retransmitLoading, setRetransmitLoading] = useState(false);
     const [menuState, setMenuState] = useState(null);
+    const [viewType, setViewType] = useState('detalle');
     const [isEditDTEModalOpen, setIsEditDTEModalOpen] = useState(false);
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
@@ -87,16 +88,19 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     });
 
     const handleViewSale = (id) => {
+        setViewType('detalle');
         setSelectedSaleId(id);
         setIsViewModalOpen(true);
     };
 
     const handleViewResponse = (id) => {
+        setViewType('respuesta');
         setSelectedSaleId(id);
         setIsViewModalOpen(true);
     };
 
     const handleViewJSON = (id) => {
+        setViewType('json');
         setSelectedSaleId(id);
         setIsViewModalOpen(true);
     };
@@ -667,6 +671,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                 saleId={selectedSaleId}
                 isOpen={isViewModalOpen}
                 onClose={() => setIsViewModalOpen(false)}
+                initialView={viewType}
             />
 
             {/* Modal de Anulación */}

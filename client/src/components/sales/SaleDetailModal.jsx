@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
 import { FileText, User, Tag, MapPin, ShoppingCart, CreditCard, Banknote, Code, Info, Terminal } from 'lucide-react';
 
-const SaleDetailModal = ({ saleId, isOpen, onClose }) => {
-    const [view, setView] = useState('detalle');
+const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) => {
+    const [view, setView] = useState(initialView);
+
+    useEffect(() => {
+        if (isOpen) setView(initialView);
+    }, [initialView, saleId, isOpen]);
 
     const { data: saleDetail, isLoading: isLoadingDetail } = useQuery({
         queryKey: ['sale-detail', saleId],
