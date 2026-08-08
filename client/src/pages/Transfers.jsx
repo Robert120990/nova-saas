@@ -280,12 +280,12 @@ const Transfers = () => {
 
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900">Traslados de Inventario</h2>
                     <p className="text-slate-500 mt-1 font-medium text-sm text-[Spanish]">Gestión y control de movimientos entre sucursales</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl">
+                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl">
                     <button 
                         onClick={() => setActiveTab('nuevo')}
                         className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -408,8 +408,8 @@ const Transfers = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                                     <div className="md:col-span-8">
                                         <label className={labelCls}>Producto (CÓDIGO / F3 BUSCAR)</label>
-                                        <div className="flex items-stretch">
-                                            <div className="relative w-40 shrink-0">
+                                        <div className="flex flex-col md:flex-row items-stretch">
+                                            <div className="relative w-full md:w-40 md:shrink-0">
                                                 <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
                                                 <input 
                                                     type="text"
@@ -459,8 +459,8 @@ const Transfers = () => {
                             )}
                         </div>
 
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]">
-                            <table className="w-full text-left border-collapse">
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto min-h-[400px]">
+                            <table className="w-full text-left border-collapse table-cards">
                                 <thead>
                                     <tr className="bg-slate-50/50 border-b border-slate-100 font-bold text-[10px] text-slate-500 uppercase tracking-widest">
                                         <th className="px-6 py-4">Código</th>
@@ -484,22 +484,22 @@ const Transfers = () => {
                                     ) : (
                                         selectedItems.map((item) => (
                                             <tr key={item.product_id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-6 py-4">
+                                                <td className="px-6 py-4" data-label="Código">
                                                     <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{item.codigo}</span>
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-6 py-4" data-label="Producto">
                                                     <div className="text-sm font-bold text-slate-900 text-[Spanish]">{item.nombre}</div>
                                                     {item.permitir_existencia_negativa && (
                                                         <span className="text-[10px] text-amber-600 font-bold">(Permite stock negativo)</span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
+                                                <td className="px-6 py-4 text-center" data-label="Disponible">
                                                     <span className={`text-xs font-bold ${item.stockAvailable < 0 || (item.stockAvailable === 0 && item.permitir_existencia_negativa) ? 'text-amber-500' : 'text-slate-500'}`}>{item.stockAvailable}</span>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
+                                                <td className="px-6 py-4 text-center" data-label="Cantidad a Mover">
                                                     <span className="text-sm font-black text-indigo-600">{item.cantidad}</span>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="px-6 py-4 text-right" data-label="">
                                                     <button
                                                         onClick={() => removeItem(item.product_id)}
                                                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -518,8 +518,8 @@ const Transfers = () => {
             ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
                     {/* Search Bar */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-4">
-                        <div className="flex-1 relative">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex-1 min-w-[180px] relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input 
                                 type="text"
@@ -650,7 +650,7 @@ const Transfers = () => {
             {isProductModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
+                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
                             <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Seleccionar Producto</h3>
                             <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all"><X size={20} /></button>
                         </div>
@@ -751,7 +751,7 @@ const TransferDetailModal = ({ transfer, onClose }) => {
                     </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8 p-6 border-b border-slate-100">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 border-b border-slate-100">
                     <div>
                         <div className="text-[10px] font-black uppercase text-slate-400 mb-1">Sucursal Origen</div>
                         <div className="text-sm font-bold text-slate-700">{transfer.origen_nombre}</div>
@@ -768,7 +768,7 @@ const TransferDetailModal = ({ transfer, onClose }) => {
                     )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-auto">
                     <table className="w-full text-left">
                         <thead className="sticky top-0 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest font-[Spanish]">
                             <tr>

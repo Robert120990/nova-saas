@@ -331,7 +331,7 @@ const Customers = () => {
 
     return (
         <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold text-slate-900 tracking-tight">Clientes</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Base de datos de contribuyentes y consumidores final</p>
@@ -371,7 +371,7 @@ const Customers = () => {
             </div>
 
             {canBatchDelete && selectedIds.size > 0 && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm">
                     <span className="text-xs font-bold text-indigo-700">{selectedIds.size} cliente(s) seleccionados</span>
                     <button
                         onClick={() => setSelectedIds(new Set())}
@@ -531,7 +531,7 @@ const Customers = () => {
                 maxWidth="max-w-lg"
             >
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Tipo de Persona</label>
                             <select name="tipo_persona" defaultValue={selectedCustomer?.tipo_persona || '1'} className={fieldCls} required>
@@ -545,7 +545,7 @@ const Customers = () => {
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Tipo Documento</label>
                             <select 
@@ -565,7 +565,7 @@ const Customers = () => {
                             <input name="numero_documento" defaultValue={selectedCustomer?.numero_documento} placeholder="00000000-0" className={fieldCls} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>NIT</label>
                             <input 
@@ -600,7 +600,7 @@ const Customers = () => {
                                 placeholder="Seleccionar actividad"
                             />
                         </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Condición Fiscal</label>
                             <select name="condicion_fiscal" value={condicionFiscal} onChange={(e) => {
@@ -617,7 +617,7 @@ const Customers = () => {
                         </div>
                         
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Teléfono</label>
                             <input name="telefono" defaultValue={selectedCustomer?.telefono} placeholder="2200-0000" className={fieldCls} />
@@ -627,7 +627,7 @@ const Customers = () => {
                             <input name="correo" type="email" defaultValue={selectedCustomer?.correo} placeholder="cliente@ejemplo.com" className={fieldCls} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Departamento</label>
                             <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
@@ -654,7 +654,7 @@ const Customers = () => {
                         <label className={labelCls}>Dirección Exacta</label>
                         <textarea name="direccion" defaultValue={selectedCustomer?.direccion} required placeholder="Dirección completa..." className={`${fieldCls} h-16 resize-none`} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {[
                             { id: 'exento_iva', label: 'Exento de IVA', checked: exentoIva, onChange: (e) => setExentoIva(e.target.checked) },
                             { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
@@ -674,7 +674,7 @@ const Customers = () => {
                             </label>
                         ))}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-200">
                         <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-[11px] font-semibold text-slate-600">
                             <input type="checkbox" name="es_credito" checked={esCredito} onChange={e => setEsCredito(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
                             Cliente Crédito (CxC)
@@ -709,7 +709,7 @@ const Customers = () => {
                             <label className={labelCls}>Nombre</label>
                             <input name="nombre" defaultValue={editingBranch?.nombre} required placeholder="Nombre de la sucursal" className={fieldCls} />
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                                 <label className={labelCls}>Departamento</label>
                                 <select name="departamento" className={fieldCls} value={branchDept} onChange={(e) => { setBranchDept(e.target.value); setBranchMun(''); setBranchDistrito(''); }} required>

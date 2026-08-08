@@ -321,7 +321,7 @@ function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, on
                             {item.path && <span className="text-[10px] font-mono text-slate-500 truncate hidden lg:block">{item.path}</span>}
                             {item.permission_key && <span className="text-[10px] font-mono text-indigo-400/60 truncate hidden xl:block">{item.permission_key}</span>}
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                             <button onClick={() => onMove(item, 'up')} className="p-1 text-slate-600 hover:text-white transition-colors" title="Subir">
                                 <ArrowUp size={14} />
                             </button>
@@ -384,7 +384,7 @@ function TreeNode({ item, allItems, editingId, form, setForm, onEdit, onSave, on
 function EditForm({ item, form, setForm, allItems, onSave, onCancel, isSaving }) {
     const parents = allItems.filter(i => !i.parent_id || i.id === item.parent_id);
     return (
-        <div className="flex-1 grid grid-cols-[2fr_1fr_1.5fr_1fr_1fr_auto] gap-3 items-center">
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[2fr_1fr_1.5fr_1fr_1fr_auto] gap-3 items-center">
             <input value={form.label} onChange={e => setForm({ ...form, label: e.target.value })}
                 className="bg-[#1e293b] border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/50" placeholder="Label" />
             <input value={form.path} onChange={e => setForm({ ...form, path: e.target.value })}
@@ -419,7 +419,7 @@ function CreateForm({ form, setForm, items, onSave, onCancel, isSaving }) {
     return (
         <div className="mt-4 p-4 bg-[#1e293b]/40 border border-indigo-500/30 rounded-2xl">
             <p className="text-xs font-bold text-indigo-400 uppercase mb-3">Nuevo Item</p>
-            <div className="grid grid-cols-[2fr_1fr_1.5fr_1fr_1fr_1fr_auto] gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1.5fr_1fr_1fr_1fr_auto] gap-3 items-end">
                 <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Label</label>
                     <input value={form.label} onChange={e => setForm({ ...form, label: e.target.value, permission_key: e.target.value.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_').replace(/^_|_$/g, '') || form.permission_key })}

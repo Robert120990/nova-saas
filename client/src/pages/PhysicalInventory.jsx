@@ -958,8 +958,8 @@ const PhysicalInventory = () => {
                     </div>
                     <div className="lg:col-span-3 space-y-6">
                         <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-xl p-4 transition-all ${!branchId ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
-                            <div className="flex items-end gap-3">
-                                <div className="flex-1 max-w-[200px]">
+                            <div className="flex flex-col md:flex-row items-end gap-3">
+                                <div className="flex-1 w-full md:max-w-[200px]">
                                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Cód. / Escáner</label>
                                     <div className="relative">
                                         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -979,13 +979,13 @@ const PhysicalInventory = () => {
                                         />
                                     </div>
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 w-full">
                                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Descripción (F3 para buscar)</label>
                                     <div className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold text-slate-400 truncate h-[44px] flex items-center">
                                         {quickProd?.nombre || 'Presione F3 para buscar manualmente...'}
                                     </div>
                                 </div>
-                                <div className="w-24">
+                                <div className="w-full md:w-24">
                                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Cant. Física</label>
                                     <input 
                                         id="quick-qty-input"
@@ -1003,7 +1003,7 @@ const PhysicalInventory = () => {
                                     id="btn-add-quick"
                                     onClick={handleAddQuick}
                                     disabled={!quickProd || quickCant === ''}
-                                    className="h-[44px] px-6 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg active:scale-95"
+                                    className="w-full md:w-auto h-[44px] px-6 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg active:scale-95"
                                 >
                                     <ArrowRightCircle size={20} />
                                 </button>
@@ -1231,7 +1231,7 @@ const PhysicalInventory = () => {
                             autoFocus
                         />
                     </div>
-                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden max-h-[400px] overflow-y-auto">
+                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-x-auto max-h-[400px] overflow-y-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
@@ -1412,7 +1412,7 @@ const PhysicalInventory = () => {
             >
                 {viewingScans && (
                     <div className="p-4 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-3">
                             <div>
                                 <h3 className="text-base font-bold text-slate-900">{viewingScans.nombre_sesion}</h3>
                                 <p className="text-xs text-slate-500">
@@ -1422,7 +1422,7 @@ const PhysicalInventory = () => {
                                     </span>
                                 </p>
                             </div>
-                            <div className="flex gap-1.5">
+                            <div className="flex flex-wrap gap-1.5">
                                 <button
                                     onClick={() => toggleSelectAllScans(viewingScans.scans || [])}
                                     disabled={!(viewingScans.scans?.length > 0)}
@@ -1619,7 +1619,7 @@ const PhysicalInventory = () => {
                         )}
                     </div>
 
-                    <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                    <div className="flex flex-wrap justify-between items-center gap-3 pt-4 border-t border-slate-100">
                         <span className="text-xs text-slate-400 font-medium">
                             {selectedCategoryIds.length === 0
                                 ? 'Se cargarán todas las categorías'

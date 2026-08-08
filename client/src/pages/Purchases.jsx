@@ -736,7 +736,7 @@ const Purchases = () => {
 
     return (
         <div className="max-w-7xl mx-auto pb-20 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-black tracking-tighter text-slate-900 uppercase leading-none">Gestión de Compras</h2>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -745,7 +745,7 @@ const Purchases = () => {
                         </span>
                     </div>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
+                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
                     <button onClick={() => setActiveTab('nuevo')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
                         <Plus size={12} /> {isEditing ? 'Editando' : 'Nueva'}
                     </button>
@@ -917,7 +917,7 @@ const Purchases = () => {
                                 </div>
                             )}
                             {/* Quick Add Bar */}
-                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-[110px_1fr_70px_90px_90px_40px] gap-2 items-end">
+                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-[110px_1fr_70px_90px_90px_40px] gap-2 items-end">
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
                                     <div className="relative">
@@ -958,7 +958,7 @@ const Purchases = () => {
 
                             {/* Table */}
                             <div className="min-h-[250px]">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse table-cards">
                                     <thead className="bg-slate-50/50 border-b border-slate-100 font-bold text-[9px] text-slate-400 uppercase tracking-[0.2em]">
                                         <tr>
                                             <th className="px-5 py-2">Código</th>
@@ -974,16 +974,16 @@ const Purchases = () => {
                                             <tr><td colSpan="6" className="px-5 py-16 text-center text-[9px] font-black text-slate-200 uppercase tracking-widest">Esperando Productos...</td></tr>
                                         ) : selectedItems.map(item => (
                                             <tr key={item.product_id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600">{item.codigo}</td>
-                                                <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase">{item.nombre}</td>
-                                                <td className="px-5 py-1.5">
+                                                <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600" data-label="Código">{item.codigo}</td>
+                                                <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase" data-label="Producto">{item.nombre}</td>
+                                                <td className="px-5 py-1.5" data-label="Cant.">
                                                     <input type="number" value={item.cantidad} onChange={(e) => updateItem(item.product_id, 'cantidad', parseFloat(e.target.value))} className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" />
                                                 </td>
-                                                <td className="px-5 py-1.5">
+                                                <td className="px-5 py-1.5" data-label="Costo U.">
                                                     <MoneyInput value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', parseFloat(e.target.value))} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
                                                 </td>
-                                                <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]">${item.total.toFixed(2)}</td>
-                                                <td className="px-5 py-1.5 text-right">
+                                                <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]" data-label="Subtotal"><Money value={item.total} /></td>
+                                                <td className="px-5 py-1.5 text-right" data-label="">
                                                     <button onClick={() => removeItem(item.product_id)} className="p-1 text-slate-300 hover:text-rose-500"><Trash2 size={12} /></button>
                                                 </td>
                                             </tr>
@@ -1084,8 +1084,8 @@ const Purchases = () => {
                 </div>
             ) : (
                 <div className="space-y-3 animate-in fade-in duration-300">
-                    <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
-                        <div className="flex-1 relative">
+                    <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex-1 min-w-[180px] relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                             <input 
                                 type="text"
@@ -1228,7 +1228,7 @@ const Purchases = () => {
 
                                     <div className="mt-8">
                                         <label className="text-[9px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4 block border-b border-slate-100 pb-2">Productos Comprados</label>
-                                        <div className="overflow-hidden rounded-2xl border border-slate-100">
+                                        <div className="overflow-x-auto rounded-2xl border border-slate-100">
                                             <table className="w-full text-left">
                                                 <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
                                                     <tr>

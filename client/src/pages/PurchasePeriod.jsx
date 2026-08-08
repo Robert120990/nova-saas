@@ -81,7 +81,7 @@ const PurchasePeriod = () => {
                 <div className="p-8 space-y-8">
                     {/* Content Section */}
                     <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Year Selection */}
                             <div className="space-y-1.5">
                                 <p className="ml-1 text-[9px] font-black text-slate-500 uppercase tracking-widest">Año Fiscal</p>

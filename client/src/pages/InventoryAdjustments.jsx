@@ -348,12 +348,12 @@ const InventoryAdjustments = () => {
     return (
         <div className="max-w-7xl mx-auto space-y-6 pb-20">
             {/* Header section */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900">Movimientos de Inventario</h2>
                     <p className="text-slate-500 mt-1 font-medium text-sm">Registro de entradas y salidas de stock</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl">
+                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl">
                     <button 
                         onClick={() => setActiveTab('nuevo')}
                         className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -505,7 +505,7 @@ const InventoryAdjustments = () => {
                             )}
                             <div className="p-6 space-y-6">
                                 <div className="flex items-center justify-between gap-4 p-4 border-b border-slate-100 bg-slate-50/30 rounded-xl">
-                                <div className="flex-1 grid grid-cols-[150px_1fr_100px_120px_100px_50px] gap-2 items-end">
+                                <div className="flex-1 grid grid-cols-2 md:grid-cols-[150px_1fr_100px_120px_100px_50px] gap-2 items-end">
                                     <div>
                                         <label className="text-[9px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
                                         <div className="relative">
@@ -570,8 +570,8 @@ const InventoryAdjustments = () => {
                                 </div>
                             </div>
 
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden min-h-[400px]">
-                                <table className="w-full text-left border-collapse">
+                            <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto min-h-[400px]">
+                                <table className="w-full text-left border-collapse table-cards">
                                     <thead>
                                         <tr className="bg-slate-50/50 border-b border-slate-100 font-bold text-[10px] text-slate-500 uppercase tracking-widest">
                                             <th className="px-6 py-2">Código</th>
@@ -596,13 +596,13 @@ const InventoryAdjustments = () => {
                                         ) : (
                                             selectedItems.map((item) => (
                                                 <tr key={item.product_id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 grow">
-                                                    <td className="px-6 py-1.5">
+                                                    <td className="px-6 py-1.5" data-label="Código">
                                                         <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50/50 px-2 py-0.5 rounded">{item.codigo}</span>
                                                     </td>
-                                                    <td className="px-6 py-1.5">
+                                                    <td className="px-6 py-1.5" data-label="Producto">
                                                         <div className="text-xs font-bold text-slate-700">{item.nombre}</div>
                                                     </td>
-                                                    <td className="px-6 py-1.5">
+                                                    <td className="px-6 py-1.5" data-label="Cant.">
                                                         <input 
                                                             type="number" 
                                                             value={item.cantidad}
@@ -611,7 +611,7 @@ const InventoryAdjustments = () => {
                                                             className="w-full bg-transparent border-none rounded-lg text-center font-black py-0.5 text-xs focus:ring-2 focus:ring-indigo-500/10"
                                                         />
                                                     </td>
-                                                    <td className="px-6 py-1.5">
+                                                    <td className="px-6 py-1.5" data-label="Costo U.">
                                                         <div className="relative">
                                                             <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-[10px]">$</span>
                                                             <input 
@@ -623,10 +623,10 @@ const InventoryAdjustments = () => {
                                                             />
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-1.5 text-right">
+                                                    <td className="px-6 py-1.5 text-right" data-label="Total">
                                                         <span className="text-xs font-black text-slate-900"><Money value={item.total} /></span>
                                                     </td>
-                                                    <td className="px-6 py-1.5 text-right">
+                                                    <td className="px-6 py-1.5 text-right" data-label="">
                                                         <button 
                                                             onClick={() => removeItem(item.product_id)}
                                                             className="p-1 text-slate-300 hover:text-rose-500 transition-colors"
@@ -647,8 +647,8 @@ const InventoryAdjustments = () => {
             ) : (
                 /* History Tab */
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-4">
-                        <div className="flex-1 relative">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex-1 min-w-[180px] relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input 
                                 type="text"
@@ -1011,7 +1011,7 @@ const AdjustmentDetailModal = ({ adjustment, onClose }) => {
                     </button>
                 </div>
 
-                <div className="grid grid-cols-4 gap-4 p-6 border-b border-slate-100 text-xs uppercase font-black text-slate-400">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 border-b border-slate-100 text-xs uppercase font-black text-slate-400">
                     <div>
                         <div className="mb-1 opacity-60">Sucursal</div>
                         <div className="text-slate-900">{detail?.branch_name}</div>
@@ -1032,7 +1032,7 @@ const AdjustmentDetailModal = ({ adjustment, onClose }) => {
                     )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-0">
+                <div className="flex-1 overflow-auto p-0">
                     <table className="w-full text-left">
                         <thead className="sticky top-0 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                             <tr>

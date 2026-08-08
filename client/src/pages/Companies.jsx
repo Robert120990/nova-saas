@@ -158,7 +158,7 @@ const Companies = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Gestión de Empresas</h2>
                     <p className="text-slate-500 mt-1 font-medium">Administra las identidades legales en tu plataforma</p>
@@ -263,7 +263,7 @@ const Companies = () => {
                     </div>
 
                     <div className={activeTab === 'general' ? 'space-y-4' : 'hidden'}>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>NIT</label>
                             <input 
@@ -306,7 +306,7 @@ const Companies = () => {
                             />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Departamento</label>
                             <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
@@ -333,7 +333,7 @@ const Companies = () => {
                         <label className={labelCls}>Dirección</label>
                         <textarea name="direccion" defaultValue={selectedCompany?.direccion} className={`${fieldCls} h-16 resize-none`} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Tipo de Persona</label>
                             <select name="tipo_persona" value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className={fieldCls} required>
@@ -353,8 +353,8 @@ const Companies = () => {
                     </div>
                         <div>
                         <label className={labelCls}>Logo de la Empresa</label>
-                        <div className="flex gap-4 items-center p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                            <div className="flex-1">
+                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                            <div className="flex-1 w-full">
                                 <input 
                                     name="logo" 
                                     type="file" 
@@ -427,7 +427,7 @@ const Companies = () => {
                         </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed space-y-3">
                         <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">Certificado .p12 / .pfx</h4>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className={labelCls}>Archivo de Certificado (.p12 / .pfx)</label>
                                 <input 
@@ -450,7 +450,7 @@ const Companies = () => {
                     </div>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed space-y-3">
                         <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">Certificado CRT</h4>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className={labelCls}>Archivo de Certificado (.crt / .pem)</label>
                                 <input 

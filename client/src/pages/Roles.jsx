@@ -129,9 +129,9 @@ const Roles = () => {
     if (isLoading) return <div className="p-8 text-slate-400">Cargando...</div>;
 
     return (
-        <div className="h-[calc(100vh-120px)] flex gap-6 p-2">
+        <div className="h-auto lg:h-[calc(100vh-120px)] flex flex-col lg:flex-row gap-6 p-2">
             {/* Sidebar de Roles */}
-            <div className="w-80 flex flex-col bg-[#0f172a] rounded-2xl border border-slate-800/50 overflow-hidden shadow-2xl">
+            <div className="w-full lg:w-80 lg:shrink-0 flex flex-col bg-[#0f172a] rounded-2xl border border-slate-800/50 overflow-hidden shadow-2xl max-h-[45vh] lg:max-h-none">
                 <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]/20">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-500/10 rounded-lg">
@@ -187,11 +187,11 @@ const Roles = () => {
             {/* Panel de Edición */}
             <div className="flex-1 bg-[#0f172a] rounded-2xl border border-slate-800/50 flex flex-col shadow-2xl overflow-hidden">
                 <form onSubmit={handleSubmit} className="flex flex-col h-full">
-                    <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]/20">
+                    <div className="p-6 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1e293b]/20">
                         <h2 className="text-xl font-bold text-white tracking-tight">
                             {selectedRole ? "Editar Rol" : "Nuevo Rol"}
                         </h2>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             <button 
                                 type="button"
                                 onClick={() => setSelectedRole(null)}
@@ -210,7 +210,7 @@ const Roles = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                        <div className="grid grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-400 px-1">Nombre del Rol</label>
                                 <input 
@@ -232,7 +232,7 @@ const Roles = () => {
                         </div>
 
                         <div className="space-y-6">
-                            <div className="flex justify-between items-center border-b border-slate-800/50 pb-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/50 pb-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-white tracking-wide">Módulos Mapeados Automáticamente</h3>
                                     <p className="text-[11px] text-slate-500 mt-1">
@@ -248,7 +248,7 @@ const Roles = () => {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 {permissionGroups.map(group => (
                                     <div key={group.id} className="bg-[#1e293b]/20 border border-slate-800/50 rounded-2xl overflow-hidden hover:border-slate-700/50 transition-all">
                                         <div className="px-5 py-4 flex justify-between items-center">

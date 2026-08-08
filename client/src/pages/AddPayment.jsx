@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import Money from '../components/ui/Money';
+import Money, { MoneyInput } from '../components/ui/Money';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,14 +41,14 @@ const DetailsModal = ({ doc, onClose }) => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
             <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl z-10 overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-100">
-                <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+                <div className="p-4 md:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
                     <div>
                         <h2 className="text-xl font-black text-slate-800 uppercase italic leading-none">Detalles del Documento</h2>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">{doc.tipo} #{doc.documento || doc.id}</p>
                     </div>
                     <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X size={20} /></button>
                 </div>
-                <div className="p-8 grid grid-cols-2 gap-8 text-sm">
+                <div className="p-4 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-8 text-sm">
                     <div className="space-y-6">
                         <div>
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Monto Original</span>
@@ -83,7 +83,7 @@ const ViewModal = ({ paymentId, onClose }) => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
             <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl z-10 overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
-                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div className="p-4 md:p-8 border-b border-slate-100 flex items-center justify-between">
                     <div>
                         <h2 className="text-xl font-black text-slate-800 uppercase italic leading-none text-indigo-600">Comprobante de Abono</h2>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">RECIBO #{paymentId}</p>
@@ -91,8 +91,8 @@ const ViewModal = ({ paymentId, onClose }) => {
                     <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400"><X size={20} /></button>
                 </div>
                 {pay ? (
-                    <div className="p-8 space-y-8">
-                        <div className="grid grid-cols-2 gap-8">
+                    <div className="p-4 md:p-8 space-y-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                             <div className="space-y-6">
                                 <div>
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Cliente</span>
@@ -291,12 +291,12 @@ const AddPayment = () => {
     return (
         <div className="max-w-7xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-black tracking-tighter text-slate-900 uppercase italic">Abonos de Clientes</h2>
                     <p className="text-slate-500 mt-1 font-medium text-xs uppercase tracking-widest">Distribución de saldos y gestión de CXC</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner">
+                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl shadow-inner">
                     <button 
                         onClick={() => setActiveTab('nuevo')}
                         className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
@@ -370,8 +370,8 @@ const AddPayment = () => {
             {activeTab === 'nuevo' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start animate-in slide-in-from-top-2 duration-300">
                     <div className="lg:col-span-3 space-y-6">
-                        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-                            <table className="w-full text-left text-sm italic">
+                        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-x-auto">
+                            <table className="w-full text-left text-sm italic table-cards">
                                 <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                     <tr>
                                         <th className="px-6 py-5">Documento</th>
@@ -384,23 +384,23 @@ const AddPayment = () => {
                                 <tbody className="divide-y divide-slate-50">
                                     {docRows.map((d, i) => (
                                         <tr key={d.id} className="hover:bg-indigo-50/30 transition-colors group">
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4" data-label="Documento">
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-black text-slate-700 uppercase leading-none mb-1">{d.tipo}</span>
                                                     <span className="text-[10px] font-bold text-indigo-500 font-mono tracking-tighter">#{d.documento || d.id}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">{formatDate(d.fecha)}</td>
-                                            <td className="px-6 py-4 text-right">
+                                            <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono" data-label="Fecha">{formatDate(d.fecha)}</td>
+                                            <td className="px-6 py-4 text-right" data-label="Saldo Pend.">
                                                 <span className="text-xs font-black text-slate-900 tracking-tighter"><Money value={d.originalSaldo || 0} /></span>
                                             </td>
-                                            <td className="px-6 py-4 text-right pr-10">
+                                            <td className="px-6 py-4 text-right pr-10" data-label="Abono">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <span className="text-[10px] font-bold text-slate-300">$</span>
-                                                    <input type="number" step="0.01" value={d.abono} onChange={e => handleAbonoChange(i, e.target.value)} className="w-24 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-right font-black text-indigo-600 outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all" />
+                                                    <MoneyInput step="0.01" value={d.abono} onChange={e => handleAbonoChange(i, e.target.value)} className="w-24 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-right font-black text-indigo-600 outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all" />
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-center">
+                                            <td className="px-6 py-4 text-center" data-label="">
                                                 <button onClick={() => setDetailsModal(d)} className="p-2 hover:bg-white rounded-xl text-slate-400 transition-colors hover:text-indigo-600 shadow-sm border border-transparent hover:border-slate-100"><Eye size={16} /></button>
                                             </td>
                                         </tr>
@@ -422,9 +422,9 @@ const AddPayment = () => {
                         <form onSubmit={handleSubmit} className="bg-slate-900 rounded-[2rem] p-6 shadow-xl text-white space-y-6 sticky top-6 border border-white/5 italic">
                             <div className="flex justify-between items-center text-[10px] opacity-40 uppercase font-black tracking-widest">
                                 <span>DISTRIBUCIÓN TOTAL</span>
-                                <span>${totalAbonado.toFixed(2)}</span>
+                                <span><Money value={totalAbonado} /></span>
                             </div>
-                            <div className="text-4xl font-black text-center border-b border-white/10 pb-6 tracking-tighter decoration-indigo-500 underline underline-offset-8">${totalAbonado.toFixed(2)}</div>
+                            <div className="text-4xl font-black text-center border-b border-white/10 pb-6 tracking-tighter decoration-indigo-500 underline underline-offset-8"><Money value={totalAbonado} /></div>
                             
                             <div className="space-y-5">
                                 <div>
@@ -469,7 +469,7 @@ const AddPayment = () => {
                             <input type="text" placeholder="FILTRAR MOVIMIENTOS POR NÚMERO O CLIENTE..." value={histSearch} onChange={e => setHistSearch(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50/50 border-none rounded-2xl text-[11px] font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" />
                         </div>
                     </div>
-                    <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden text-[11px]">
+                    <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-x-auto text-[11px]">
                         <table className="w-full text-left italic">
                             <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                 <tr>

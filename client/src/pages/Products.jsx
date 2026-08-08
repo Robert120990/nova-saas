@@ -203,7 +203,7 @@ const Products = () => {
 
     return (
         <div className="space-y-3 text-slate-900">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold tracking-tight">Catálogo de Productos</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Gestión de inventario y sección fiscal</p>
@@ -217,8 +217,8 @@ const Products = () => {
                 </button>
             </div>
 
-            <div className="flex gap-2">
-                <div className="relative max-w-sm flex-1">
+            <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative max-w-sm flex-1 w-full">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input 
                         type="text" 
@@ -231,7 +231,7 @@ const Products = () => {
                 <select
                     value={selectedCategory}
                     onChange={(e) => { setSelectedCategory(e.target.value); setPage(1); }}
-                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm sm:max-w-[220px]"
                 >
                     <option value="">Todas las categorías</option>
                     {categories.map(cat => (
@@ -370,7 +370,7 @@ const Products = () => {
                     )}
 
                     {/* Tab Navigation */}
-                    <div className="flex bg-slate-100 p-1 rounded-xl mb-4">
+                    <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl mb-4">
                         {[
                             { id: 'general', label: 'General', icon: <Box size={14} /> },
                             { id: 'fiscal', label: 'Fiscal', icon: <ShieldCheck size={14} /> },
@@ -381,7 +381,7 @@ const Products = () => {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                className={`flex-1 min-w-[100px] px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                                     activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                                 }`}
                             >
@@ -398,7 +398,7 @@ const Products = () => {
                                 <Box size={16} className="text-indigo-600" />
                                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Información General</h3>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelCls}>Código</label>
                                     <input name="codigo" defaultValue={selectedProduct?.codigo} required placeholder="PROD-001" className={fieldCls} />
@@ -423,7 +423,7 @@ const Products = () => {
                                     </select>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelCls}>Unidad de Medida</label>
                                     <select name="unidad_medida" defaultValue={selectedProduct?.unidad_medida || '59'} className={fieldCls}>
@@ -482,7 +482,7 @@ const Products = () => {
                                 <Tag size={16} className="text-indigo-600" />
                                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Configuración de Inventario</h3>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelCls}>Estado del Producto</label>
                                     <select name="status" defaultValue={selectedProduct?.status || 'activo'} className={fieldCls}>
@@ -498,7 +498,7 @@ const Products = () => {
                                     </select>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelCls}>Costo Unitario</label>
                                     <div className="relative">
@@ -572,7 +572,7 @@ const Products = () => {
                                     <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-2 mb-2">
                                         <Store size={14} className="text-indigo-600"/> Sucursales Autorizadas y Precios
                                     </label>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         {branches.map(b => (
                                             <label key={b.id} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all cursor-pointer ${
                                                 selectedBranches.includes(b.id) ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'
@@ -614,7 +614,7 @@ const Products = () => {
                                     <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-2 mb-2">
                                         <Monitor size={14} className="text-indigo-600"/> Puntos de Venta (POS)
                                     </label>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         {activePos.filter(p => selectedBranches.includes(p.branch_id)).map(p => (
                                             <label key={p.id} className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
                                                 selectedPos.includes(p.id) ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'
@@ -645,7 +645,7 @@ const Products = () => {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
+                    <div className="flex flex-wrap justify-end gap-3 pt-6 border-t border-slate-100">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
                         <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95">
                             {selectedProduct ? 'Guardar Cambios' : 'Registrar Producto'}

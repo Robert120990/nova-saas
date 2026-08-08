@@ -56,7 +56,7 @@ export default function GasStationConfig() {
 
     return (
         <div className="p-6 max-w-xl mx-auto">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-lg font-bold text-slate-800">Configuración Gasolinera</h1>
                 {user?.branch_name && (
                     <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded-lg">

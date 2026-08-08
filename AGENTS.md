@@ -108,6 +108,13 @@ MySQL migrations. Key tables: `companies`, `branches`, `products`, `customers`, 
 - F3 global shortcut opens product search modal
 - Product validation: must be `status === 'activo'` and branch in product's `branches` array
 
+### Responsividad Móvil (per RESPONSIVE_RULES.md) — OBLIGATORIO
+Toda modificación de pantallas existentes y toda nueva opción/pantalla en `client/` DEBE ser totalmente responsive en dispositivos móviles (320px-767px). Reglas clave:
+- Mobile-first: bases `grid-cols-1`/`grid-cols-2` con breakpoints `sm:`/`md:`/`lg:`; nunca grids fijos sin base móvil.
+- Cabeceras/tabs/barras de búsqueda con `flex-col md:flex-row` o `flex-wrap`.
+- Tablas nativas SIEMPRE con `overflow-x-auto`; tablas densas de edición con `.table-cards` + `data-label`.
+- Probar en 320px y 375px + ejecutar `npm run lint` y `npm run build` antes de terminar.
+
 ## Environment Configuration
 
 ### Main Server (`.env`)

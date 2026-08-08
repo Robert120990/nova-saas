@@ -157,7 +157,7 @@ const Providers = () => {
 
     return (
         <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold text-slate-900 tracking-tight">Proveedores</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Gestión de abastecimiento y servicios externos</p>
@@ -255,7 +255,7 @@ const Providers = () => {
                 maxWidth="max-w-lg"
             >
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Tipo de Persona</label>
                             <select name="tipo_persona" defaultValue={selectedProvider?.tipo_persona || '1'} className={fieldCls} required>
@@ -277,7 +277,7 @@ const Providers = () => {
                             <option value="No Domiciliado">No Domiciliado</option>
                         </select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Tipo Documento</label>
                             <select name="tipo_documento" defaultValue={selectedProvider?.tipo_documento} className={fieldCls}>
@@ -291,7 +291,7 @@ const Providers = () => {
                             <input name="numero_documento" defaultValue={selectedProvider?.numero_documento} placeholder="0000-000000-000-0" className={fieldCls} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>NIT</label>
                             <input 
@@ -309,23 +309,23 @@ const Providers = () => {
                         </div>
                     </div>
                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                             <input 
                                 type="checkbox" 
                                 name="exento_iva" 
                                 id="exento_iva"
                                 defaultChecked={selectedProvider?.exento_iva === 1}
                                 value="1"
-                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 shrink-0"
                             />
                             <label htmlFor="exento_iva" className="text-[11px] font-bold text-slate-700 cursor-pointer">
                                 ESTE PROVEEDOR ESTÁ EXENTO DE IVA
                             </label>
-                            <p className="text-[9px] text-slate-400 font-medium ml-auto">Aplica IVA 0% en compras</p>
+                            <p className="text-[9px] text-slate-400 font-medium sm:ml-auto">Aplica IVA 0% en compras</p>
                         </div>
                     </div>
                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
                             <input 
                                 type="checkbox" 
                                 name="es_credito"
@@ -333,12 +333,12 @@ const Providers = () => {
                                 checked={esCredito}
                                 onChange={(e) => { setEsCredito(e.target.checked); if (e.target.checked && !diasCredito) setDiasCredito('30'); }}
                                 value="1"
-                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 shrink-0"
                             />
                             <label htmlFor="es_credito" className="text-[11px] font-bold text-slate-700 cursor-pointer">
                                 ES CRÉDITO
                             </label>
-                            <p className="text-[9px] text-slate-400 font-medium ml-auto">El proveedor vende a crédito</p>
+                            <p className="text-[9px] text-slate-400 font-medium sm:ml-auto">El proveedor vende a crédito</p>
                         </div>
                         {esCredito && (
                             <div className="pl-6">
@@ -373,7 +373,7 @@ const Providers = () => {
                             valueKey="code"
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Teléfono</label>
                             <input name="telefono" defaultValue={selectedProvider?.telefono} placeholder="2200-0000" className={fieldCls} />
@@ -383,7 +383,7 @@ const Providers = () => {
                             <input name="correo" type="email" defaultValue={selectedProvider?.correo} placeholder="proveedor@empresa.com" className={fieldCls} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Departamento</label>
                             <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>

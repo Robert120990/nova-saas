@@ -408,7 +408,7 @@ const Expenses = () => {
 
     return (
         <div className="max-w-7xl mx-auto pb-20 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-black tracking-tighter text-slate-900 uppercase leading-none text-[Spanish]">Gastos Operativos</h2>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -417,7 +417,7 @@ const Expenses = () => {
                         </span>
                     </div>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
+                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
                     <button onClick={() => setActiveTab('nuevo')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
                         <Plus size={12} /> {isEditing ? 'Editando' : 'Nuevo'}
                     </button>
@@ -570,7 +570,7 @@ const Expenses = () => {
                             </div>
 
                             <div className="overflow-x-auto min-h-[200px]">
-                                <table className="w-full text-left">
+                                <table className="w-full text-left table-cards">
                                     <thead>
                                         <tr className="border-b border-slate-100 italic">
                                             <th className="py-3 px-2 text-[9px] font-black text-slate-400 uppercase tracking-widest text-[Spanish]">Descripción</th>
@@ -583,9 +583,9 @@ const Expenses = () => {
                                     <tbody className="divide-y divide-slate-50 italic">
                                         {selectedItems.map((item) => (
                                             <tr key={item.id} className="text-[10px] font-bold text-slate-600 hover:bg-slate-50/50 transition-colors group">
-                                                <td className="py-3 px-2 uppercase">{item.description}</td>
-                                                <td className="py-3 px-2 text-indigo-500 font-black">{item.expense_type_name.toUpperCase()}</td>
-                                                <td className="py-3 px-2">
+                                                <td className="py-3 px-2 uppercase" data-label="Descripción">{item.description}</td>
+                                                <td className="py-3 px-2 text-indigo-500 font-black" data-label="Tipo">{item.expense_type_name.toUpperCase()}</td>
+                                                <td className="py-3 px-2" data-label="Fiscal">
                                                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
                                                         item.tax_type === 'gravada' ? 'bg-green-50 text-green-600' :
                                                         item.tax_type === 'exenta' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500'
@@ -593,8 +593,8 @@ const Expenses = () => {
                                                         {item.tax_type}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-2 text-right font-black text-slate-900"><Money value={item.total} /></td>
-                                                <td className="py-3 px-2 text-right">
+                                                <td className="py-3 px-2 text-right font-black text-slate-900" data-label="Monto"><Money value={item.total} /></td>
+                                                <td className="py-3 px-2 text-right" data-label="">
                                                     <button onClick={() => removeItem(item.id)} className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100">
                                                         <Trash2 size={12} />
                                                     </button>
@@ -838,7 +838,7 @@ const Expenses = () => {
                                         </div>
                                     </div>
 
-                                    <div className="border border-slate-200 rounded-3xl overflow-hidden shadow-inner bg-slate-50/30 italic">
+                                    <div className="border border-slate-200 rounded-3xl overflow-x-auto shadow-inner bg-slate-50/30 italic">
                                         <table className="w-full text-left">
                                             <thead>
                                                 <tr className="bg-slate-100/50">
@@ -860,7 +860,7 @@ const Expenses = () => {
                                     </div>
 
                                     <div className="flex justify-end pt-4 border-t border-slate-100 text-[Spanish]">
-                                        <div className="w-64 space-y-2">
+                                        <div className="w-full md:w-64 space-y-2">
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-xl">
                                                     <span className="text-[8px] font-black text-slate-400">IVA</span>

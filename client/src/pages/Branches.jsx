@@ -105,7 +105,7 @@ const Branches = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Sucursales / Establecimientos</h2>
                     <p className="text-slate-500 mt-1 font-medium">Administra los puntos físicos y virtuales</p>
@@ -177,7 +177,7 @@ const Branches = () => {
                 maxWidth="max-w-lg"
             >
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Código</label>
                             <input name="codigo" defaultValue={selectedBranch?.codigo} required placeholder="001" className={fieldCls} />
@@ -196,7 +196,7 @@ const Branches = () => {
                         <label className={labelCls}>Nombre de Sucursal / Establecimiento</label>
                         <input name="nombre" defaultValue={selectedBranch?.nombre} required placeholder="Ej: Sucursal Escalón" className={fieldCls} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Teléfono</label>
                             <input name="telefono" defaultValue={selectedBranch?.telefono} placeholder="2200-0000" className={fieldCls} />
@@ -206,7 +206,7 @@ const Branches = () => {
                             <input name="correo" type="email" defaultValue={selectedBranch?.correo} placeholder="sucursal@empresa.com" className={fieldCls} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Código MH</label>
                             <input name="codigo_mh" defaultValue={selectedBranch?.codigo_mh} placeholder="Código Ministerio de Hacienda" className={fieldCls} />
@@ -219,7 +219,7 @@ const Branches = () => {
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Departamento</label>
                             <select
@@ -254,8 +254,8 @@ const Branches = () => {
                     </div>
                     <div>
                         <label className={labelCls}>Logo</label>
-                        <div className="flex gap-4 items-center p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                            <div className="flex-1">
+                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                            <div className="flex-1 w-full">
                                 <input 
                                     name="logo" 
                                     type="file" 

@@ -123,7 +123,7 @@ const Users = () => {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900">Gestión de Usuarios</h2>
                     <p className="text-slate-500 mt-1 font-medium italic">Empresa: {currentUser.company_name}</p>
@@ -237,7 +237,7 @@ const Users = () => {
                 maxWidth="max-w-2xl"
             >
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Nombre Completo</label>
                             <input name="nombre" defaultValue={selectedUser?.nombre} required placeholder="Juan Pérez" className={fieldCls} />
@@ -266,7 +266,7 @@ const Users = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>{selectedUser ? 'Cambiar Contraseña (opcional)' : 'Contraseña'}</label>
                             <input name="password" type="password" required={!selectedUser} className={fieldCls} />

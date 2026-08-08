@@ -83,7 +83,7 @@ const GasDistributors = () => {
 
     return (
         <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold text-slate-900">Distribuidoras de Cupones</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Gasolinera — Catálogos</p>

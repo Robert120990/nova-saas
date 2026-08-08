@@ -86,7 +86,7 @@ const Sellers = () => {
 
     return (
         <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-bold text-slate-900 tracking-tight">Catálogo de Vendedores</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Gestiona el personal de ventas y sus accesos al POS</p>
@@ -196,7 +196,7 @@ const Sellers = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Sucursal</label>
                             <select 

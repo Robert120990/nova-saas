@@ -85,7 +85,7 @@ const POS = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Puntos de Venta (POS)</h2>
                     <p className="text-slate-500 font-medium">Terminales de facturación por sucursal</p>

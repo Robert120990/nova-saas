@@ -39,7 +39,7 @@ const ReportLayout = ({
         <div className="max-w-[1400px] mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-700">
             {/* Header */}
             <div>
-                <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                <h1 className="text-4xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-3">
                     {title}
                     {category && (
                         <span className="text-sm font-black uppercase px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">

@@ -309,7 +309,7 @@ const SalesRemesaDeliveries = () => {
 
     return (
         <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <div className="p-2 bg-indigo-100 rounded-xl">
                         <Handshake size={22} className="text-indigo-600" />
@@ -414,7 +414,7 @@ const SalesRemesaDeliveries = () => {
                 maxWidth="max-w-4xl"
             >
                 <div className="space-y-4">
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                             <label className={`${labelCls} block mb-1`}>Fecha</label>
                             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
@@ -432,7 +432,7 @@ const SalesRemesaDeliveries = () => {
                             <input type="text" value={comentario} onChange={(e) => setComentario(e.target.value)} placeholder="Comentario opcional" className={inputCls} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={`${labelCls} block mb-1`}>Número de Referencia</label>
                             <input type="text" value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Número de referencia / documento" className={inputCls} />
@@ -451,7 +451,7 @@ const SalesRemesaDeliveries = () => {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
                         <div className="relative flex-1">
                             <Barcode size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
@@ -463,10 +463,10 @@ const SalesRemesaDeliveries = () => {
                                 className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px]"
                             />
                         </div>
-                        <button onClick={handleScanAdd} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs rounded-xl border border-indigo-200 transition-all">Agregar</button>
+                        <button onClick={handleScanAdd} className="w-full md:w-auto px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs rounded-xl border border-indigo-200 transition-all">Agregar</button>
                         <button
                             onClick={() => { setSearchPage(1); setSearchTerm(''); setSearchSelectedRemesas([]); setShowSearchModal(true); }}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-all"
+                            className="w-full md:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-all"
                         >
                             <Search size={14} />
                             Buscar Remesas
@@ -564,6 +564,7 @@ const SalesRemesaDeliveries = () => {
                             autoFocus
                         />
                     </div>
+                    <div className="overflow-x-auto">
                     <table className="w-full text-left border-separate border-spacing-0">
                         <thead>
                             <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
@@ -595,6 +596,7 @@ const SalesRemesaDeliveries = () => {
                             )}
                         </tbody>
                     </table>
+                    </div>
                     {totalPendingPages > 1 && (
                         <Pagination
                             currentPage={searchPage}
@@ -611,7 +613,7 @@ const SalesRemesaDeliveries = () => {
             <Modal isOpen={showDetailModal} onClose={() => { setShowDetailModal(false); setSelectedDeliveryId(null); }} title="Detalle de Entrega" maxWidth="max-w-4xl">
                 {deliveryDetail && (
                     <div className="space-y-4">
-                        <div className="grid grid-cols-4 gap-3 p-4 bg-slate-50 rounded-xl">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-slate-50 rounded-xl">
                             <div>
                                 <span className="text-[10px] font-bold text-slate-500 uppercase block">Fecha</span>
                                 <span className="text-[13px] font-medium">{new Date(deliveryDetail.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
@@ -645,7 +647,7 @@ const SalesRemesaDeliveries = () => {
                                 <span className="text-[13px] font-medium">{deliveryDetail.comentario}</span>
                             </div>
                         )}
-                        <div className="grid grid-cols-3 gap-3 px-4 -mt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 -mt-1">
                             <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
                                 <span className="text-[10px] font-bold text-emerald-600 uppercase block">Monto Entregado</span>
                                 <span className="text-lg font-mono font-bold text-emerald-700"><Money value={deliveryDetail.monto_entregado ?? deliveryDetail.monto_total} /></span>
@@ -761,12 +763,12 @@ const RemesaSelectRows = ({ remesas, addedIds, selectedRemesas, setSelectedRemes
             })}
             <tr>
                 <td colSpan={8} className="px-2 py-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
                             <input type="checkbox" checked={allSelectedOnPage} onChange={toggleAll} className="accent-indigo-600" />
                             Seleccionar todo ({remesas.length})
                         </label>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs text-slate-500">{selectedRemesas.length} seleccionadas</span>
                             <button onClick={() => onSelect(selectedRemesas)} disabled={selectedRemesas.length === 0} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20">Agregar Seleccionadas</button>
                         </div>
