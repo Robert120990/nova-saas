@@ -82,7 +82,8 @@ const Tanks = () => {
         { value: '0', label: 'Ninguno' },
         { value: '1', label: 'Regular' },
         { value: '2', label: 'Especial (Super)' },
-        { value: '3', label: 'Diesel' }
+        { value: '3', label: 'Diesel' },
+        { value: '4', label: 'Ion Diesel' }
     ];
     const getFuelTypeLabel = (v) => fuelTypes.find(f => f.value === String(v))?.label || 'Ninguno';
     const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";

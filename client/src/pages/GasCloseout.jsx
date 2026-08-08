@@ -1092,8 +1092,8 @@ const GasCloseout = () => {
         return Object.values(map);
     }, [nozzlesData]);
 
-    const fuelTypeNames = { 3: 'DIESEL', 1: 'REGULAR', 2: 'SUPER' };
-    const fuelTypeOrder = ['DIESEL', 'REGULAR', 'SUPER'];
+    const fuelTypeNames = { 3: 'DIESEL', 1: 'REGULAR', 2: 'SUPER', 4: 'ION DIESEL' };
+    const fuelTypeOrder = ['DIESEL', 'REGULAR', 'SUPER', 'ION DIESEL'];
 
     const summaryByProduct = useMemo(() => {
         const map = {};
@@ -1126,14 +1126,14 @@ const GasCloseout = () => {
         const tanqByType = {};
 
         readings.forEach(r => {
-            const t = r.tipo_combustible;
+            const t = r.tipo_combustible === 5 ? 3 : r.tipo_combustible;
             if (!t || t === 0) return;
             if (!lectByType[t]) lectByType[t] = 0;
             lectByType[t] += r.lectura_actual - r.lectura_anterior - (r.calibracion || 0);
         });
 
         tankReadings.forEach(r => {
-            const t = r.tipo_combustible;
+            const t = r.tipo_combustible === 5 ? 3 : r.tipo_combustible;
             if (!t || t === 0) return;
             if (!tanqByType[t]) tanqByType[t] = 0;
             tanqByType[t] += (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);

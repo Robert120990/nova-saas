@@ -2822,6 +2822,9 @@ const generateGalonajeVendidoPDF = (data) => {
                 { label: 'LECTURA', w: 55, accessor: 'lect_super', format: 'gal', align: 'right', group: 'SUPER' },
                 { label: 'VENTA', w: 55, accessor: 'vta_super', format: 'gal', align: 'right', group: 'SUPER' },
                 { label: 'DIF.', w: 55, accessor: 'dif_super', format: 'gal', align: 'right', group: 'SUPER' },
+                { label: 'LECTURA', w: 55, accessor: 'lect_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
+                { label: 'VENTA', w: 55, accessor: 'vta_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
+                { label: 'DIF.', w: 55, accessor: 'dif_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
             ];
 
             const groups = [];
@@ -2837,6 +2840,7 @@ const generateGalonajeVendidoPDF = (data) => {
                 'DIESEL': { headerBg: '#e0e7ff', colHeaderBg: '#eef2ff', textColor: '#4338ca' },
                 'REGULAR': { headerBg: '#dcfce7', colHeaderBg: '#f0fdf4', textColor: '#15803d' },
                 'SUPER': { headerBg: '#fed7aa', colHeaderBg: '#fff7ed', textColor: '#c2410c' },
+                'ION DIESEL': { headerBg: '#fae8ff', colHeaderBg: '#fdf4ff', textColor: '#a21caf' },
             };
 
             const drawTableHeader = () => {

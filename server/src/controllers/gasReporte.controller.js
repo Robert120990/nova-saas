@@ -452,23 +452,25 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
         for (const row of readingRows) {
             const fecha = row.fecha instanceof Date ? row.fecha.toISOString().slice(0, 10) : String(row.fecha).slice(0, 10);
             if (!dateMap[fecha]) {
-                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, dif_diesel: 0, lect_regular: 0, vta_regular: 0, dif_regular: 0, lect_super: 0, vta_super: 0, dif_super: 0 };
+                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, dif_diesel: 0, lect_regular: 0, vta_regular: 0, dif_regular: 0, lect_super: 0, vta_super: 0, dif_super: 0, lect_ion_diesel: 0, vta_ion_diesel: 0, dif_ion_diesel: 0 };
             }
-            const t = row.tipo_combustible;
-            if (t === 3) dateMap[fecha].lect_diesel = parseFloat(row.lect_galones) || 0;
-            else if (t === 1) dateMap[fecha].lect_regular = parseFloat(row.lect_galones) || 0;
-            else if (t === 2) dateMap[fecha].lect_super = parseFloat(row.lect_galones) || 0;
+            const t = row.tipo_combustible === 5 ? 3 : row.tipo_combustible;
+            if (t === 3) dateMap[fecha].lect_diesel += parseFloat(row.lect_galones) || 0;
+            else if (t === 1) dateMap[fecha].lect_regular += parseFloat(row.lect_galones) || 0;
+            else if (t === 2) dateMap[fecha].lect_super += parseFloat(row.lect_galones) || 0;
+            else if (t === 4) dateMap[fecha].lect_ion_diesel += parseFloat(row.lect_galones) || 0;
         }
 
         for (const row of salesRows) {
             const fecha = row.fecha instanceof Date ? row.fecha.toISOString().slice(0, 10) : String(row.fecha).slice(0, 10);
             if (!dateMap[fecha]) {
-                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, dif_diesel: 0, lect_regular: 0, vta_regular: 0, dif_regular: 0, lect_super: 0, vta_super: 0, dif_super: 0 };
+                dateMap[fecha] = { fecha, lect_diesel: 0, vta_diesel: 0, dif_diesel: 0, lect_regular: 0, vta_regular: 0, dif_regular: 0, lect_super: 0, vta_super: 0, dif_super: 0, lect_ion_diesel: 0, vta_ion_diesel: 0, dif_ion_diesel: 0 };
             }
-            const t = row.tipo_combustible;
-            if (t === 3) dateMap[fecha].vta_diesel = parseFloat(row.venta_galones) || 0;
-            else if (t === 1) dateMap[fecha].vta_regular = parseFloat(row.venta_galones) || 0;
-            else if (t === 2) dateMap[fecha].vta_super = parseFloat(row.venta_galones) || 0;
+            const t = row.tipo_combustible === 5 ? 3 : row.tipo_combustible;
+            if (t === 3) dateMap[fecha].vta_diesel += parseFloat(row.venta_galones) || 0;
+            else if (t === 1) dateMap[fecha].vta_regular += parseFloat(row.venta_galones) || 0;
+            else if (t === 2) dateMap[fecha].vta_super += parseFloat(row.venta_galones) || 0;
+            else if (t === 4) dateMap[fecha].vta_ion_diesel += parseFloat(row.venta_galones) || 0;
         }
 
         const rows = Object.values(dateMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -477,9 +479,10 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
             r.dif_diesel = r.lect_diesel - r.vta_diesel;
             r.dif_regular = r.lect_regular - r.vta_regular;
             r.dif_super = r.lect_super - r.vta_super;
+            r.dif_ion_diesel = r.lect_ion_diesel - r.vta_ion_diesel;
         }
 
-        const totales = { lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0, dif_diesel: 0, dif_regular: 0, dif_super: 0 };
+        const totales = { lect_diesel: 0, vta_diesel: 0, lect_regular: 0, vta_regular: 0, lect_super: 0, vta_super: 0, dif_diesel: 0, dif_regular: 0, dif_super: 0, lect_ion_diesel: 0, vta_ion_diesel: 0, dif_ion_diesel: 0 };
         for (const r of rows) {
             totales.lect_diesel += r.lect_diesel;
             totales.vta_diesel += r.vta_diesel;
@@ -490,12 +493,16 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
             totales.dif_diesel += r.dif_diesel;
             totales.dif_regular += r.dif_regular;
             totales.dif_super += r.dif_super;
+            totales.lect_ion_diesel += r.lect_ion_diesel;
+            totales.vta_ion_diesel += r.vta_ion_diesel;
+            totales.dif_ion_diesel += r.dif_ion_diesel;
         }
 
         const dif_diesel = totales.dif_diesel;
         const dif_regular = totales.dif_regular;
         const dif_super = totales.dif_super;
-        const dif_total = dif_diesel + dif_regular + dif_super;
+        const dif_ion_diesel = totales.dif_ion_diesel;
+        const dif_total = dif_diesel + dif_regular + dif_super + dif_ion_diesel;
 
         const reportData = {
             company: companyInfo,
@@ -505,7 +512,7 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
             end_date,
             rows,
             totales,
-            diferencias: { diesel: dif_diesel, regular: dif_regular, super: dif_super, total: dif_total }
+            diferencias: { diesel: dif_diesel, regular: dif_regular, super: dif_super, ion_diesel: dif_ion_diesel, total: dif_total }
         };
 
         if (req.query.format === 'excel') {
@@ -520,6 +527,9 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
                 lect_super: parseFloat(r.lect_super || 0).toFixed(2),
                 vta_super: parseFloat(r.vta_super || 0).toFixed(2),
                 dif_super: parseFloat(r.dif_super || 0).toFixed(2),
+                lect_ion_diesel: parseFloat(r.lect_ion_diesel || 0).toFixed(2),
+                vta_ion_diesel: parseFloat(r.vta_ion_diesel || 0).toFixed(2),
+                dif_ion_diesel: parseFloat(r.dif_ion_diesel || 0).toFixed(2),
             }));
 
             sheetData.push({
@@ -533,6 +543,9 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
                 lect_super: totales.lect_super.toFixed(2),
                 vta_super: totales.vta_super.toFixed(2),
                 dif_super: totales.dif_super.toFixed(2),
+                lect_ion_diesel: totales.lect_ion_diesel.toFixed(2),
+                vta_ion_diesel: totales.vta_ion_diesel.toFixed(2),
+                dif_ion_diesel: totales.dif_ion_diesel.toFixed(2),
             });
 
             const buffer = await excelService.createExcelBuffer({
@@ -549,6 +562,9 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
                         { header: 'Lect. Super', key: 'lect_super', width: 14 },
                         { header: 'Vta. Super', key: 'vta_super', width: 14 },
                         { header: 'Dif. Super', key: 'dif_super', width: 14 },
+                        { header: 'Lect. Ion Diesel', key: 'lect_ion_diesel', width: 14 },
+                        { header: 'Vta. Ion Diesel', key: 'vta_ion_diesel', width: 14 },
+                        { header: 'Dif. Ion Diesel', key: 'dif_ion_diesel', width: 14 },
                     ],
                     data: sheetData
                 }]
