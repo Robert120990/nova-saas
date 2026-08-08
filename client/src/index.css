@@ -8,17 +8,19 @@
   font-weight: 400;
 }
 
+html, body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
-  min-height: 100vh;
-  background-color: #f9fafb;
+  background-color: #0c1524;
 }
 
 #root {
   width: 100%;
+  height: 100%;
 }
 
 /* Custom Scrollbar for Sidebar */

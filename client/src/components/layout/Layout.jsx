@@ -34,7 +34,7 @@ const Layout = () => {
     }, []);
 
     return (
-        <div className="flex h-screen bg-slate-50 overflow-hidden text-slate-900">
+        <div className="flex h-screen bg-slate-50 overflow-hidden text-slate-900" style={{ height: '100dvh' }}>
             <Sidebar 
                 onOpenSearch={openPalette} 
                 isMobileOpen={mobileMenuOpen} 
