@@ -168,6 +168,11 @@ const ScanInventory = () => {
         if (lastScan === code) return;
         setLastScan(code);
 
+        // Feedback háptico en móvil
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(100); } catch (e) { /* ignore */ }
+        }
+
         // Pausar escáner si está activo
         if (scanner && scanning) {
             await scanner.pause();

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
-import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { useMenuItems } from "../../hooks/useMenuItems";
 
-const Sidebar = ({ onOpenSearch }) => {
+const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const { user } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -113,7 +113,10 @@ const Sidebar = ({ onOpenSearch }) => {
                 key={item.path || item.id}
                 to={item.path}
                 end
-                onMouseEnter={() => setHoveredItem(null)} // Clear flyout when hovering a simple link
+                onClick={() => {
+                    setHoveredItem(null);
+                    if (onCloseMobile) onCloseMobile();
+                }}
                 title={isCollapsed ? item.label : ""}
                 className={({ isActive }) =>
                     `flex items-center gap-3 ${isCollapsed ? 'justify-center w-10 h-10 mx-auto' : `${paddingLeft} py-1.5 w-full`} rounded-xl transition-all duration-200 group ${
@@ -138,7 +141,7 @@ const Sidebar = ({ onOpenSearch }) => {
             .catch(() => setVersion('?'));
     }, []);
 
-    return (
+    const sidebarContent = (
         <aside 
             onMouseLeave={handleMouseLeave}
             className={`${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-300 flex flex-col h-full border-r border-slate-800 transition-all duration-300 ease-in-out relative group/sidebar`}
@@ -168,12 +171,24 @@ const Sidebar = ({ onOpenSearch }) => {
                     >
                         <Search size={18} />
                     </button>
+                    {/* En móvil mostramos botón de cerrar X, en desktop el botón de plegar */}
                     <button 
-                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        onClick={() => {
+                            if (isMobileOpen && onCloseMobile) {
+                                onCloseMobile();
+                            } else {
+                                setIsCollapsed(!isCollapsed);
+                            }
+                        }}
                         className="p-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all hover:bg-indigo-600/20 hover:border-indigo-500/50"
-                        title={isCollapsed ? "Expandir" : "Contraer"}
+                        title={isMobileOpen ? "Cerrar" : (isCollapsed ? "Expandir" : "Contraer")}
                     >
-                        {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+                        <div className="md:hidden">
+                            <X size={18} />
+                        </div>
+                        <div className="hidden md:block">
+                            {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+                        </div>
                     </button>
                 </div>
             </div>
@@ -250,7 +265,10 @@ const Sidebar = ({ onOpenSearch }) => {
                                 key={child.path}
                                 to={child.path}
                                 end
-                                onClick={handleMouseLeave}
+                                onClick={() => {
+                                    handleMouseLeave();
+                                    if (onCloseMobile) onCloseMobile();
+                                }}
                                 className={({ isActive }) =>
                                     `flex items-center gap-3 pl-6 pr-3 py-1.5 rounded-lg transition-all duration-200 ${
                                         isActive
@@ -267,6 +285,28 @@ const Sidebar = ({ onOpenSearch }) => {
                 </div>
             )}
         </aside>
+    );
+
+    return (
+        <>
+            {/* Desktop Sidebar (oculto en pantallas pequeñas) */}
+            <div className="hidden md:flex h-full shrink-0">
+                {sidebarContent}
+            </div>
+
+            {/* Mobile Drawer (flotante con backdrop) */}
+            {isMobileOpen && (
+                <div className="fixed inset-0 z-50 md:hidden flex">
+                    <div 
+                        className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" 
+                        onClick={onCloseMobile}
+                    />
+                    <div className="relative z-50 h-full w-72 max-w-[80vw]">
+                        {sidebarContent}
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

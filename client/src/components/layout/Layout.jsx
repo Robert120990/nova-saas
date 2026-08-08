@@ -9,9 +9,17 @@ import ErrorBoundary from '../ui/ErrorBoundary';
 const Layout = () => {
     const location = useLocation();
     const [paletteOpen, setPaletteOpen] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const openPalette = useCallback(() => setPaletteOpen(true), []);
     const closePalette = useCallback(() => setPaletteOpen(false), []);
+    const toggleMobileMenu = useCallback(() => setMobileMenuOpen(prev => !prev), []);
+    const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
+
+    // Auto-cerrar menú móvil cuando cambia la ruta
+    useEffect(() => {
+        setMobileMenuOpen(false);
+    }, [location.pathname]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -27,10 +35,14 @@ const Layout = () => {
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden text-slate-900">
-            <Sidebar onOpenSearch={openPalette} />
+            <Sidebar 
+                onOpenSearch={openPalette} 
+                isMobileOpen={mobileMenuOpen} 
+                onCloseMobile={closeMobileMenu} 
+            />
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                <Navbar />
-                <main className="flex-1 overflow-y-auto p-6 md:p-8">
+                <Navbar onToggleMobileMenu={toggleMobileMenu} />
+                <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8">
                     <div className="max-w-7xl mx-auto" key={location.pathname}>
                         <ErrorBoundary showDetails>
                             <Outlet />

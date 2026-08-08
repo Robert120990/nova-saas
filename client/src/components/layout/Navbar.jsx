@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, HelpCircle } from 'lucide-react';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, HelpCircle, Menu } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 
-const Navbar = () => {
+const Navbar = ({ onToggleMobileMenu }) => {
     const { logout, user, selectContext, updateUser } = useAuth();
     console.log('Navbar user object:', user);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -74,119 +74,130 @@ const Navbar = () => {
     };
 
     return (
-        <header className="h-16 bg-[#0c1524] border-b border-slate-800/70 flex items-center justify-between px-6 sticky top-0 z-50 shadow-lg">
-            {/* Context Switcher / Breadcrumb */}
-            <div className="relative">
-                <button 
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className="flex items-center gap-4 bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 rounded-xl px-5 py-2 transition-all group min-w-[450px]"
+        <header className="h-16 bg-[#0c1524] border-b border-slate-800/70 flex items-center justify-between px-2.5 sm:px-6 sticky top-0 z-40 shadow-lg gap-1.5 sm:gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
+                {/* Botón menú hamburguesa para móvil */}
+                <button
+                    onClick={onToggleMobileMenu}
+                    className="md:hidden p-2 text-slate-300 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl border border-slate-700/50 transition-colors shrink-0"
+                    title="Abrir menú"
                 >
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
-                            <Building2 size={16} className="text-indigo-400" />
-                        </div>
-                        <div className="flex flex-col items-start leading-tight overflow-hidden">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Empresa</span>
-                            <span className="text-sm font-bold text-slate-200 truncate w-full text-left">
-                                {user?.company_name || 'Seleccionar Empresa'}
-                            </span>
-                        </div>
-                    </div>
-                    
-                    <ChevronRight size={14} className="text-slate-600 flex-shrink-0" />
-                    
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                            <GitBranch size={16} className="text-emerald-400" />
-                        </div>
-                        <div className="flex flex-col items-start leading-tight overflow-hidden">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sucursal</span>
-                            <span className="text-sm font-bold text-slate-200 truncate w-full text-left">
-                                {user?.branch_name || 'Seleccionar Sucursal'}
-                            </span>
-                        </div>
-                    </div>
-
-                    <ChevronDown size={16} className={`ml-2 text-slate-500 transition-transform flex-shrink-0 ${isMenuOpen ? 'rotate-180' : ''}`} />
+                    <Menu size={18} />
                 </button>
 
-                {/* Dropdown Menu */}
-                {isMenuOpen && (
-                    <>
-                        <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
-                        <div className="absolute top-full mt-2 left-0 w-[500px] bg-[#0f172a] rounded-2xl shadow-2xl border border-slate-800 p-2 z-20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="px-4 py-3 border-b border-slate-800/50 mb-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cambiar de Contexto</span>
+                {/* Context Switcher / Breadcrumb */}
+                <div className="relative min-w-0 flex-1 md:flex-initial">
+                    <button 
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        className="flex items-center gap-1.5 sm:gap-4 bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 rounded-xl px-2 sm:px-5 py-1.5 sm:py-2 transition-all group w-full max-w-[170px] xs:max-w-[220px] sm:max-w-none md:min-w-[450px]"
+                    >
+                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 shrink-0">
+                                <Building2 size={15} className="text-indigo-400" />
                             </div>
-                            <div className="max-h-[500px] overflow-y-auto custom-scrollbar px-1">
-                                {access.map(company => (
-                                    <div key={company.id} className="mb-3">
-                                        <div className="px-3 py-1.5 flex items-center gap-2 text-[10px] font-bold text-indigo-400 bg-indigo-500/5 rounded-lg mb-1 border border-indigo-500/10">
-                                            <Building2 size={12} />
-                                            {company.razon_social}
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            {company.branches.map(branch => {
-                                                const isActive = user?.company_id === company.id && user?.branch_id === branch.id;
-                                                return (
-                                                    <button
-                                                        key={branch.id}
-                                                        onClick={() => !isActive && handleSwitch(company.id, branch.id)}
-                                                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all ${
-                                                            isActive 
-                                                            ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 cursor-default' 
-                                                            : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100 group border border-transparent'
-                                                        }`}
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <GitBranch size={16} className={isActive ? 'text-indigo-400' : 'text-slate-500 group-hover:text-emerald-400'} />
-                                                            <span className="text-sm font-medium">{branch.nombre}</span>
-                                                        </div>
-                                                        {isActive && <Check size={16} className="text-indigo-400" />}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
+                            <div className="flex flex-col items-start leading-tight overflow-hidden min-w-0">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest">Empresa</span>
+                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate w-full text-left">
+                                    {user?.company_name || 'Empresa'}
+                                </span>
                             </div>
                         </div>
-                    </>
-                )}
+                        
+                        <ChevronRight size={14} className="text-slate-600 flex-shrink-0 hidden sm:block" />
+                        
+                        <div className="hidden sm:flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shrink-0">
+                                <GitBranch size={16} className="text-emerald-400" />
+                            </div>
+                            <div className="flex flex-col items-start leading-tight overflow-hidden min-w-0">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sucursal</span>
+                                <span className="text-sm font-bold text-slate-200 truncate w-full text-left">
+                                    {user?.branch_name || 'Sucursal'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <ChevronDown size={16} className={`ml-1 sm:ml-2 text-slate-500 transition-transform flex-shrink-0 ${isMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isMenuOpen && (
+                        <>
+                            <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
+                            <div className="absolute top-full mt-2 left-0 w-[calc(100vw-24px)] sm:w-[450px] md:w-[500px] max-w-[500px] bg-[#0f172a] rounded-2xl shadow-2xl border border-slate-800 p-2 z-20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="px-4 py-3 border-b border-slate-800/50 mb-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cambiar de Contexto</span>
+                                </div>
+                                <div className="max-h-[350px] sm:max-h-[500px] overflow-y-auto custom-scrollbar px-1">
+                                    {access.map(company => (
+                                        <div key={company.id} className="mb-3">
+                                            <div className="px-3 py-1.5 flex items-center gap-2 text-[10px] font-bold text-indigo-400 bg-indigo-500/5 rounded-lg mb-1 border border-indigo-500/10">
+                                                <Building2 size={12} />
+                                                {company.razon_social}
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                {company.branches.map(branch => {
+                                                    const isActive = user?.company_id === company.id && user?.branch_id === branch.id;
+                                                    return (
+                                                        <button
+                                                            key={branch.id}
+                                                            onClick={() => !isActive && handleSwitch(company.id, branch.id)}
+                                                            className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all ${
+                                                                isActive 
+                                                                ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 cursor-default' 
+                                                                : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100 group border border-transparent'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <GitBranch size={16} className={isActive ? 'text-indigo-400' : 'text-slate-500 group-hover:text-emerald-400'} />
+                                                                <span className="text-sm font-medium">{branch.nombre}</span>
+                                                            </div>
+                                                            {isActive && <Check size={16} className="text-indigo-400" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Right actions */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                 <NotificationBell />
                 <button
                     onClick={() => window.location.href = '/manual'}
-                    className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group"
+                    className="hidden sm:flex w-9 h-9 sm:w-10 sm:h-10 items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group shrink-0"
                     title="Manual de Usuario"
                 >
-                    <HelpCircle size={20} />
+                    <HelpCircle size={18} />
                 </button>
 
-                <div className="h-8 w-px bg-slate-800/60" />
+                <div className="hidden md:block h-8 w-px bg-slate-800/60" />
 
-                <div className="flex items-center gap-3 bg-slate-800/20 pl-3 pr-1 py-1 rounded-xl border border-slate-700/30">
+                <div className="flex items-center gap-1.5 sm:gap-3 bg-slate-800/20 p-1 sm:pl-3 sm:pr-1 sm:py-1 rounded-xl border border-slate-700/30 shrink-0">
                     <button 
                         onClick={openProfile}
-                        className="flex items-center gap-3 hover:opacity-80 transition-opacity text-left"
+                        className="flex items-center gap-2.5 hover:opacity-80 transition-opacity text-left shrink-0"
                     >
-                        <div className="flex flex-col items-end leading-tight">
+                        <div className="hidden md:flex flex-col items-end leading-tight">
                             <span className="text-sm font-bold text-slate-200">{user?.nombre || user?.username}</span>
                             <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{user?.role}</span>
                         </div>
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-indigo-600/20">
+                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-indigo-600/20 shrink-0">
                             {user?.nombre?.substring(0, 2).toUpperCase() || 'AD'}
                         </div>
                     </button>
                     <button
                         onClick={logout}
-                        className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all group"
+                        className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all group shrink-0"
                         title="Cerrar Sesión"
                     >
-                        <LogOut size={18} />
+                        <LogOut size={16} />
                     </button>
                 </div>
             </div>

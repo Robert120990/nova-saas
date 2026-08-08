@@ -283,6 +283,58 @@ const Products = () => {
                             </td>
                         </tr>
                     )}
+                    renderCard={(p) => (
+                        <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mr-1.5">{p.codigo}</span>
+                                    <h4 className="text-sm font-bold text-slate-900 inline">{p.nombre}</h4>
+                                    {p.codigo_barra && (
+                                        <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                                            <Barcode size={10}/> {p.codigo_barra}
+                                        </p>
+                                    )}
+                                </div>
+                                {p.category_name && (
+                                    <span className="text-[9px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded uppercase shrink-0">
+                                        {p.category_name}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                                <div className="text-xs">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Precios</span>
+                                    {p.branches && p.branches.length > 0 ? (
+                                        <div className="flex flex-wrap gap-2 text-xs">
+                                            {branches.filter(b => p.branches.includes(b.id)).map(b => (
+                                                <span key={b.id} className="font-semibold text-slate-800">
+                                                    {b.nombre}: <Money value={p.branchPrices?.[b.id] ?? 0} />
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <span className="text-[10px] text-slate-400 italic">Sin asignar</span>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button 
+                                        onClick={() => handleEdit(p)} 
+                                        className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100"
+                                    >
+                                        <Edit size={14}/> Editar
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteProduct(p.id)} 
+                                        className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                                    >
+                                        <Trash2 size={14}/>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 />
             </div>
 

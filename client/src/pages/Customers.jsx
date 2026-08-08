@@ -463,6 +463,53 @@ const Customers = () => {
                             </td>
                         </tr>
                     )}
+                    renderCard={(c) => (
+                        <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 truncate">{c.nombre}</h4>
+                                    {c.nombre_comercial && <p className="text-xs text-slate-500 truncate">{c.nombre_comercial}</p>}
+                                </div>
+                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase shrink-0 ${
+                                    c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                    {c.condicion_fiscal}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Documento</span>
+                                    <span className="font-mono text-slate-700 font-semibold">{c.nit || c.numero_documento}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Ubicación</span>
+                                    <span className="text-slate-600 truncate block">{c.municipio_nombre || c.municipio || 'N/A'}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                <button 
+                                    onClick={() => handleEdit(c)} 
+                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100"
+                                >
+                                    <Edit size={14}/> Editar
+                                </button>
+                                <button 
+                                    onClick={() => handleOpenBranches(c)} 
+                                    className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-emerald-100"
+                                >
+                                    <Building2 size={14}/> Sucursales
+                                </button>
+                                <button 
+                                    onClick={() => handleDeleteCustomer(c.id)} 
+                                    className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100"
+                                >
+                                    <Trash2 size={14}/>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 />
             </div>
 
