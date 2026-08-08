@@ -13,6 +13,9 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         return saved === 'true';
     });
 
+    // En el drawer móvil siempre mostramos el sidebar expandido
+    const effectiveCollapsed = isMobileOpen ? false : isCollapsed;
+
     useEffect(() => {
         localStorage.setItem('sidebar-collapsed', isCollapsed);
     }, [isCollapsed]);
@@ -36,7 +39,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const [expandedGroups, setExpandedGroups] = useState({});
 
     const toggleGroup = (groupId) => {
-        if (isCollapsed) return; // Don't expand groups when collapsed
+        if (effectiveCollapsed) return; // Don't expand groups when collapsed
         setExpandedGroups(prev => ({
             ...prev,
             [groupId]: !prev[groupId]
@@ -89,7 +92,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
         const visibleChildren = item.children?.filter(c => !c.hideInMenu) || [];
         const hasChildren = visibleChildren.length > 0;
-        const paddingLeft = isCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
+        const paddingLeft = effectiveCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
 
         if (hasChildren) {
             return (
@@ -99,10 +102,10 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                         className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 text-slate-400 hover:bg-white/5 hover:text-white group`}
                     >
                         <div className="flex items-center gap-3">
-                            <item.icon size={isCollapsed ? 20 : 18} className="group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100" />
-                            {!isCollapsed && <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>}
+                            <item.icon size={effectiveCollapsed ? 20 : 18} className="group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100" />
+                            {!effectiveCollapsed && <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>}
                         </div>
-                        {!isCollapsed && <ChevronRight size={14} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />}
+                        {!effectiveCollapsed && <ChevronRight size={14} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />}
                     </button>
                 </div>
             );
@@ -117,17 +120,17 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                     setHoveredItem(null);
                     if (onCloseMobile) onCloseMobile();
                 }}
-                title={isCollapsed ? item.label : ""}
+                title={effectiveCollapsed ? item.label : ""}
                 className={({ isActive }) =>
-                    `flex items-center gap-3 ${isCollapsed ? 'justify-center w-10 h-10 mx-auto' : `${paddingLeft} py-1.5 w-full`} rounded-xl transition-all duration-200 group ${
+                    `flex items-center gap-3 ${effectiveCollapsed ? 'justify-center w-10 h-10 mx-auto' : `${paddingLeft} py-1.5 w-full`} rounded-xl transition-all duration-200 group ${
                         isActive
                         ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-600/20 shadow-sm'
                         : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
                     }`
                 }
             >
-                <item.icon size={isCollapsed ? 20 : 18} className="group-hover:scale-110 transition-transform shrink-0" />
-                {!isCollapsed && <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>}
+                <item.icon size={effectiveCollapsed ? 20 : 18} className="group-hover:scale-110 transition-transform shrink-0" />
+                {!effectiveCollapsed && <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>}
             </NavLink>
         );
     };
@@ -144,10 +147,10 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const sidebarContent = (
         <aside 
             onMouseLeave={handleMouseLeave}
-            className={`${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-300 flex flex-col h-full border-r border-slate-800 transition-all duration-300 ease-in-out relative group/sidebar`}
+            className={`${effectiveCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-300 flex flex-col h-full border-r border-slate-800 transition-all duration-300 ease-in-out relative group/sidebar`}
         >
             {/* Header / Logo */}
-            <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-between'} border-b border-slate-800/50`}>
+            <div className={`p-6 flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between'} border-b border-slate-800/50`}>
                 <div className="flex items-center gap-3 overflow-hidden">
                     {settings?.logo_url ? (
                         <img src={settings.logo_url} alt="Logo" className="h-8 w-auto object-contain min-w-[32px]" />
@@ -156,7 +159,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                             {(settings?.system_name || 'SAAS').charAt(0).toUpperCase()}
                         </div>
                     )}
-                    {!isCollapsed && (
+                    {!effectiveCollapsed && (
                         <h1 className="text-sm font-bold text-white tracking-widest uppercase truncate animate-in fade-in slide-in-from-left-2 duration-300">
                             {settings?.system_name || 'SAAS SV'}
                         </h1>
@@ -193,7 +196,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 </div>
             </div>
 
-            {!isCollapsed && (
+            {!effectiveCollapsed && (
                 <div className="px-6 py-2 border-b border-slate-800/30">
                     <p className="text-[11px] font-mono text-indigo-400/70 font-semibold tracking-wide">
                         Versión: {version}
@@ -217,7 +220,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
                     return (
                         <div key={group.id} className="mb-4">
-                            {!isCollapsed ? (
+                            {!effectiveCollapsed ? (
                                 <button
                                     onClick={() => toggleGroup(group.id)}
                                     className="w-full px-4 py-2 text-[10px] font-bold text-slate-500 hover:text-slate-300 uppercase tracking-widest flex items-center justify-between transition-colors group"
@@ -236,7 +239,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                                 </div>
                             )}
 
-                            <div className={`mt-1 space-y-2 transition-all duration-300 ${!isCollapsed && !isExpanded ? 'hidden' : 'block'}`}>
+                            <div className={`mt-1 space-y-2 transition-all duration-300 ${!effectiveCollapsed && !isExpanded ? 'hidden' : 'block'}`}>
                                 {group.children.map((item) => renderMenuItem(item))}
                             </div>
                         </div>
