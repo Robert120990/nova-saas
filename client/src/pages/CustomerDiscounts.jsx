@@ -15,7 +15,7 @@ import {
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useConfirm } from '../context/ConfirmContext';
-import Money from '../components/ui/Money';
+import Money, { MoneyInput } from '../components/ui/Money';
 
 const CustomerDiscounts = () => {
     const queryClient = useQueryClient();
@@ -147,7 +147,7 @@ const CustomerDiscounts = () => {
             </div>
 
             {/* List Table Card */}
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden min-h-[600px] flex flex-col">
+            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <div className="p-6 border-b border-slate-50 bg-slate-50/10 flex flex-col md:flex-row md:items-center gap-4">
                     <div className="relative flex-1 max-w-md">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -210,7 +210,7 @@ const CustomerDiscounts = () => {
                                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${
                                                 d.discount_type === 'PORCENTAJE' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
                                             }`}>
-                                                {d.discount_type === 'PORCENTAJE' ? 'POCENT' : 'VALOR'}
+                                                {d.discount_type === 'PORCENTAJE' ? 'PORCENT' : 'VALOR'}
                                             </span>
                                         </td>
                                         <td className="px-8 py-4 text-right">
@@ -246,7 +246,7 @@ const CustomerDiscounts = () => {
             {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                    <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
                         <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
                             <div>
                                 <h3 className="text-xl font-black text-slate-900 uppercase italic leading-none">Nueva Regla Personalizada</h3>
@@ -304,7 +304,7 @@ const CustomerDiscounts = () => {
                                     {!formData.branch_id && <p className="text-[9px] font-bold text-rose-400 uppercase italic animate-pulse">Debe seleccionar una sucursal para listar los productos disponibles.</p>}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-5 pt-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
                                     <div className="space-y-1.5 font-spanish">
                                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 uppercase">Tipo Descuento</label>
                                         <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
@@ -326,9 +326,7 @@ const CustomerDiscounts = () => {
                                     </div>
                                     <div className="space-y-1.5 font-spanish">
                                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Valor</label>
-                                        <input 
-                                            type="number"
-                                            step="any"
+                                        <MoneyInput 
                                             placeholder="0.00"
                                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 font-bold text-sm transition-all"
                                             value={formData.discount_value}
