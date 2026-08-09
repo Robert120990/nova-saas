@@ -198,7 +198,69 @@ exports.initCloseout = async (req, res) => {
             });
         }
 
-        res.status(201).json({ id: closeoutId, readings, tankReadings, despachadores: savedDespachadores, despachadorNozzleAssignments: savedNozzleAssignments });
+        // === Sembrar lecturas de lubricantes (inicial = último final del turno anterior cerrado con lecturas) ===
+        const lubricantReadings = [];
+        try {
+            const [lubSettings] = await pool.query(
+                `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'lubricant_category_id'`,
+                [req.company_id, branchId, branchId]
+            );
+            const lubricantCategoryId = lubSettings[0]?.setting_value;
+            if (lubricantCategoryId) {
+                const [lubProducts] = await pool.query(`
+                    SELECT p.id, p.codigo, p.nombre AS descripcion, COALESCE(pbp.precio_unitario, 0) as precio_unitario
+                    FROM products p
+                    JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+                    LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
+                    WHERE p.company_id = ? AND p.category_id = ? AND p.status = 'activo'
+                    ORDER BY p.codigo ASC
+                `, [branchId, branchId, req.company_id, lubricantCategoryId]);
+
+                if (lubProducts.length > 0) {
+                    const [lastLubReadings] = await pool.query(`
+                        SELECT lr.producto_id, lr.lectura_final
+                        FROM gas_station_closeout_lubricant_readings lr
+                        WHERE lr.closeout_id = (
+                            SELECT MAX(c2.id) FROM gas_station_closeouts c2
+                            WHERE c2.company_id = ? AND c2.estado = 'cerrado'
+                            AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
+                            AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
+                        )
+                    `, [req.company_id, branchId, branchId]);
+
+                    const lastMap = {};
+                    lastLubReadings.forEach(r => {
+                        if (!lastMap[r.producto_id]) lastMap[r.producto_id] = parseFloat(r.lectura_final) || 0;
+                    });
+
+                    for (const p of lubProducts) {
+                        const inicial = lastMap[p.id] || 0;
+                        const [lubResult] = await pool.query(`
+                            INSERT INTO gas_station_closeout_lubricant_readings
+                            (closeout_id, producto_id, producto_codigo, producto_descripcion, lectura_inicial, recarga, lectura_final, ventas, precio, total)
+                            VALUES (?, ?, ?, ?, ?, 0, ?, 0, ?, 0)
+                        `, [closeoutId, p.id, p.codigo, p.descripcion, inicial, inicial, p.precio_unitario]);
+
+                        lubricantReadings.push({
+                            id: lubResult.insertId,
+                            producto_id: p.id,
+                            producto_codigo: p.codigo,
+                            producto_descripcion: p.descripcion,
+                            lectura_inicial: inicial,
+                            recarga: 0,
+                            lectura_final: inicial,
+                            ventas: 0,
+                            precio: parseFloat(p.precio_unitario) || 0,
+                            total: 0
+                        });
+                    }
+                }
+            }
+        } catch (lubError) {
+            console.error('Error sembrando lubricantes en initCloseout:', lubError);
+        }
+
+        res.status(201).json({ id: closeoutId, readings, tankReadings, lubricantReadings, despachadores: savedDespachadores, despachadorNozzleAssignments: savedNozzleAssignments });
     } catch (error) {
         console.error('Error initCloseout:', error);
         res.status(500).json({ message: 'Error al iniciar cierre de lecturas' });
@@ -807,6 +869,50 @@ exports.reopenCloseout = async (req, res) => {
     } catch (error) {
         console.error('Error reopenCloseout:', error);
         res.status(500).json({ message: 'Error al reabrir cierre de lecturas' });
+    }
+};
+
+exports.updateCloseoutFechaTurno = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { fecha_turno, numero_turno } = req.body;
+
+        if (!fecha_turno || numero_turno === undefined || numero_turno === null || numero_turno === '') {
+            return res.status(400).json({ message: 'fecha_turno y numero_turno son requeridos' });
+        }
+
+        const [closeouts] = await pool.query(
+            `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const newNumeroTurno = parseInt(numero_turno, 10);
+        const branchId = closeouts[0].branch_id;
+
+        const [existingTurno] = await pool.query(
+            `SELECT id FROM gas_station_closeouts
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             AND fecha_turno = ? AND numero_turno = ? AND id != ?
+             LIMIT 1`,
+            [req.company_id, branchId, branchId, fecha_turno, newNumeroTurno, id]
+        );
+        if (existingTurno.length > 0) {
+            return res.status(400).json({ message: `El turno #${newNumeroTurno} ya existe para la fecha ${fecha_turno}` });
+        }
+
+        await pool.query(
+            `UPDATE gas_station_closeouts SET fecha_turno = ?, numero_turno = ?, rrs_enviado_at = NULL WHERE id = ? AND company_id = ?`,
+            [fecha_turno, newNumeroTurno, id, req.company_id]
+        );
+
+        res.json({ id: parseInt(id), fecha_turno, numero_turno: newNumeroTurno });
+    } catch (error) {
+        console.error('Error updateCloseoutFechaTurno:', error);
+        res.status(500).json({ message: 'Error al actualizar fecha y turno del cierre' });
     }
 };
 

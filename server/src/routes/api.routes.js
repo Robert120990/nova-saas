@@ -550,6 +550,7 @@ router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutContr
 router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', gasCloseoutController.updateTankReading);
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.post('/gas-station/closeouts/:id/reopen', gasCloseoutController.reopenCloseout);
+router.patch('/gas-station/closeouts/:id/fecha-turno', gasCloseoutController.updateCloseoutFechaTurno);
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.updateCloseoutDespachadores);
 router.put('/gas-station/closeouts/:id/despachador-nozzles', gasCloseoutController.updateCloseoutDespachadorNozzles);

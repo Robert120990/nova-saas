@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle, LockOpen } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +21,11 @@ const GasReadingHistory = () => {
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [rrsModal, setRrsModal] = useState(null);
     const [reopenConfirm, setReopenConfirm] = useState(null);
+    const [fechaTurnoModal, setFechaTurnoModal] = useState(null);
+    const [editFecha, setEditFecha] = useState('');
+    const [editNumeroTurno, setEditNumeroTurno] = useState('');
+    const clickTimerRef = useRef(null);
+    const clickCountsRef = useRef({});
 
     React.useEffect(() => {
         const timer = setTimeout(() => {
@@ -66,6 +71,17 @@ const GasReadingHistory = () => {
         onError: (error) => toast.error(error.response?.data?.message || 'Error al reabrir cierre')
     });
 
+    const updateFechaTurnoMutation = useMutation({
+        mutationFn: ({ id, fecha_turno, numero_turno }) => axios.patch(`/api/gas-station/closeouts/${id}/fecha-turno`, { fecha_turno, numero_turno }),
+        onSuccess: () => {
+            toast.success('Fecha y turno actualizados correctamente');
+            setFechaTurnoModal(null);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al actualizar fecha y turno')
+    });
+
     const permissions = user?.permissions || [];
     const isSuperAdmin = user?.role === 'SuperAdmin';
     const canReopenCloseout = isSuperAdmin || permissions.includes('manage_gas_closeout_reopen');
@@ -85,6 +101,32 @@ const GasReadingHistory = () => {
         } catch (error) {
             toast.error('Error al generar PDF');
         }
+    };
+
+    const handleTurnoClicks = (c) => {
+        if (!isSuperAdmin) return;
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = setTimeout(() => {
+            clickCountsRef.current[c.id] = 0;
+        }, 3000);
+        const nextCount = (clickCountsRef.current[c.id] || 0) + 1;
+        clickCountsRef.current[c.id] = nextCount;
+        if (nextCount >= 5) {
+            clickCountsRef.current[c.id] = 0;
+            clearTimeout(clickTimerRef.current);
+            setEditFecha(c.fecha_turno ? c.fecha_turno.split('T')[0] : '');
+            setEditNumeroTurno(c.numero_turno ?? '');
+            setFechaTurnoModal(c);
+        }
+    };
+
+    const handleSaveFechaTurno = () => {
+        if (!fechaTurnoModal || !editFecha || !editNumeroTurno) return;
+        updateFechaTurnoMutation.mutate({
+            id: fechaTurnoModal.id,
+            fecha_turno: editFecha,
+            numero_turno: editNumeroTurno
+        });
     };
 
     return (
@@ -123,7 +165,13 @@ const GasReadingHistory = () => {
                                 </span>
                             </td>
                             <td className="px-3 py-1">
-                                <span className="text-xs font-mono font-bold text-slate-900">{c.numero_turno}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleTurnoClicks(c)}
+                                    className="text-xs font-mono font-bold text-slate-900 cursor-pointer select-none hover:text-indigo-600 transition-colors"
+                                >
+                                    {c.numero_turno}
+                                </button>
                             </td>
                             <td className="px-3 py-1 text-xs text-slate-600">{c.seller_name}</td>
                             <td className="px-3 py-1">
@@ -331,6 +379,63 @@ const GasReadingHistory = () => {
                     >
                         {reopenMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <LockOpen size={14} />}
                         {reopenMutation.isPending ? 'Reabriendo...' : 'Reabrir'}
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Cambiar fecha y turno (acceso oculto SuperAdmin) */}
+            <Modal
+                isOpen={!!fechaTurnoModal}
+                onClose={() => setFechaTurnoModal(null)}
+                title="Cambiar Fecha y Turno"
+                maxWidth="max-w-sm"
+            >
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Fecha de Turno</label>
+                        <div className="relative">
+                            <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="date"
+                                value={editFecha}
+                                onChange={(e) => setEditFecha(e.target.value)}
+                                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Número de Turno</label>
+                        <div className="relative">
+                            <Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editNumeroTurno}
+                                onChange={(e) => setEditNumeroTurno(e.target.value)}
+                                placeholder="Ej: 1"
+                                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium"
+                            />
+                        </div>
+                    </div>
+                    <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                        El cambio aplica sin importar el estado del cierre. Si el cierre fue enviado a RRS, el envío se reiniciará para poder reenviarlo.
+                    </p>
+                </div>
+                <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                    <button
+                        onClick={() => setFechaTurnoModal(null)}
+                        className="px-4 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={handleSaveFechaTurno}
+                        disabled={updateFechaTurnoMutation.isPending || !editFecha || !editNumeroTurno}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-1"
+                    >
+                        {updateFechaTurnoMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
+                        {updateFechaTurnoMutation.isPending ? 'Guardando...' : 'Guardar'}
                     </button>
                 </div>
             </Modal>
