@@ -425,14 +425,16 @@ const CategorySalesChart = () => {
                     <TrendingUp size={14} className="text-indigo-500" />
                     <h3 className="text-[10px] font-black text-slate-900 tracking-widest uppercase">Ventas por Categoría</h3>
                 </div>
-                <div className="flex items-center gap-2">
-                    <select value={branchId} onChange={e => setBranchId(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                    <select value={branchId} onChange={e => setBranchId(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold w-full sm:w-auto">
                         <option value="">Todas las sucursales</option>
                         {branches.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                     </select>
-                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold w-[140px]" />
-                    <span className="text-[10px] text-slate-400">a</span>
-                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold w-[140px]" />
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold w-[140px] flex-1 min-w-0 sm:flex-none" />
+                        <span className="text-[10px] text-slate-400">a</span>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold w-[140px] flex-1 min-w-0 sm:flex-none" />
+                    </div>
                 </div>
             </div>
             <div className="p-5">

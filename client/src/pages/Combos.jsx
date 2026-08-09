@@ -179,14 +179,14 @@ const Combos = () => {
 
     return (
         <div className="space-y-6 text-slate-900">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Combos de Productos</h2>
                     <p className="text-slate-500 mt-1 font-medium text-sm">Gestiona paquetes y promociones especiales</p>
                 </div>
                 <button 
                     onClick={() => { setSelectedCombo(null); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 w-full md:w-auto"
                 >
                     <Plus size={20}/>
                     <span>Nuevo Combo</span>
@@ -244,6 +244,49 @@ const Combos = () => {
                             </td>
                         </tr>
                     )}
+                    renderCard={(c) => (
+                        <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 truncate">{c.name}</h4>
+                                    <div className="text-[10px] text-slate-400 flex items-center gap-1 font-mono font-bold mt-0.5">
+                                        <Barcode size={10} /> {c.barcode}
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <div className="text-sm font-black text-indigo-600"><Money value={c.price} /></div>
+                                    <div className="text-[8px] text-slate-400 uppercase font-black tracking-widest">IVA Incluido</div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                    {c.branch_name || 'Global'}
+                                </span>
+                            </div>
+
+                            {c.description && (
+                                <p className="text-xs text-slate-500 truncate">{c.description}</p>
+                            )}
+
+                            <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-100">
+                                {c.items?.map((item, i) => (
+                                    <span key={i} className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">
+                                        {item.quantity}x {item.product_name}
+                                    </span>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                <button onClick={() => { setSelectedCombo(c); setIsModalOpen(true); }} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100">
+                                    <Edit size={14} /> Editar
+                                </button>
+                                <button onClick={() => handleDeleteCombo(c.id)} className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-rose-100">
+                                    <Trash2 size={14} /> Eliminar
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 />
             </div>
 
@@ -264,9 +307,9 @@ const Combos = () => {
                 title={selectedCombo ? 'Editar Combo' : 'Nuevo Combo'}
                 maxWidth="max-w-4xl"
             >
-                <form onSubmit={handleSubmit} className="grid grid-cols-5 gap-6">
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     {/* Columna Izquierda: Datos del Combo */}
-                    <div className="col-span-2 space-y-4 border-r border-slate-100 pr-6">
+                    <div className="lg:col-span-2 space-y-4 lg:border-r lg:border-slate-100 lg:pr-6 border-b border-slate-100 pb-6 lg:pb-0">
                         <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
                             <Package size={16} className="text-indigo-600" />
                             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Detalles Básicos</h3>
@@ -331,7 +374,7 @@ const Combos = () => {
                     </div>
 
                     {/* Columna Derecha: Items del Combo */}
-                    <div className="col-span-3 flex flex-col h-full bg-slate-50/50 -m-6 p-6 rounded-r-3xl">
+                    <div className="lg:col-span-3 lg:flex lg:flex-col lg:h-full lg:bg-slate-50/50 lg:-m-6 lg:p-6 lg:rounded-r-3xl">
                         <div className="flex items-center gap-2 border-b border-slate-200 pb-2 mb-4">
                             <Package size={16} className="text-indigo-600" />
                             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Productos Incluidos</h3>
@@ -378,7 +421,7 @@ const Combos = () => {
                                 </div>
                             ) : (
                                 comboItems.map(item => (
-                                    <div key={item.product_id} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-4 group">
+                                    <div key={item.product_id} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-2 sm:gap-4 group">
                                         <div className="flex-1">
                                             <div className="text-xs font-bold text-slate-700">{item.name}</div>
                                             <div className="text-[10px] text-slate-400 font-medium">Unitario: <Money value={item.price} /></div>
@@ -408,9 +451,9 @@ const Combos = () => {
                             )}
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-6 border-t border-slate-200 mt-4">
-                            <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
-                            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95">
+                        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 border-t border-slate-200 mt-4">
+                            <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm w-full sm:w-auto">Cancelar</button>
+                            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95 w-full sm:w-auto">
                                 {selectedCombo ? 'Guardar Combo' : 'Crear Combo'}
                             </button>
                         </div>

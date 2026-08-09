@@ -1693,8 +1693,8 @@ const SalesTerminal = () => {
                     <div className="flex-none flex flex-col lg:flex-row gap-4 mb-6">
                         <div className="flex-[8] bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col">
                             {/* Quick Add Bar (Like Purchases) */}
-                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-[120px_1fr_80px_100px_100px_40px] gap-2 items-end">
-                                <div>
+                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-[120px_1fr_80px_100px_100px_40px] gap-2 items-end">
+                                <div className="col-span-2 md:col-span-1">
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
                                     <div className="relative">
                                         <Barcode className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
@@ -1715,7 +1715,7 @@ const SalesTerminal = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <div>
+                                <div className="col-span-2 md:col-span-1">
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Descripción / Nota</label>
                                     <input 
                                         ref={descInputRef}
@@ -1787,14 +1787,14 @@ const SalesTerminal = () => {
                                 <button 
                                     onClick={handleAddQuick} 
                                     disabled={!quickProd} 
-                                    className="h-[30px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-black disabled:opacity-20 active:scale-95 transition-all shadow-sm"
+                                    className="h-10 md:h-[30px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-black disabled:opacity-20 active:scale-95 transition-all shadow-sm"
                                 >
                                     <Plus size={16} />
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                <table className="w-full text-left">
+                            <div className="flex-1 overflow-x-auto custom-scrollbar">
+                                <table className="w-full text-left table-cards">
                                     <thead className="sticky top-0 bg-white/80 backdrop-blur-md border-b text-[10px] font-black text-slate-400 uppercase tracking-widest z-10">
                                         <tr>
                                             <th className="pl-6 py-4">Ítem</th>
@@ -1808,7 +1808,7 @@ const SalesTerminal = () => {
                                     <tbody className="divide-y divide-slate-50">
                                         {cart.map((item) => (
                                             <tr key={item.id} className="group hover:bg-slate-50/50 transition-colors">
-                                                <td className="pl-6 py-4">
+                                                <td className="pl-6 py-4" data-label="Ítem">
                                                     <div className="font-bold text-slate-800 text-xs">{item.nombre}</div>
                                                     <div className="text-[9px] font-mono text-indigo-400">{item.codigo}</div>
                                                     {item.discountRule && !item.discountApplied && (
@@ -1829,7 +1829,7 @@ const SalesTerminal = () => {
                                                         </span>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-4 text-center">
+                                                <td className="px-4 py-4 text-center" data-label="Cant.">
                                                     <input 
                                                         type="number"
                                                         className="w-14 text-center bg-slate-100 rounded-lg font-black text-xs py-1"
@@ -1837,7 +1837,7 @@ const SalesTerminal = () => {
                                                         onChange={(e) => updateItem(item.id, 'cantidad', parseFloat(e.target.value) || 0)}
                                                     />
                                                 </td>
-                                                <td className="px-4 py-4 text-right">
+                                                <td className="px-4 py-4 text-right" data-label="Precio">
                                                     {tipoDte === '05' ? (
                                                         <div className="flex items-center justify-end gap-1">
                                                             <span className="text-slate-400 text-[10px]">$</span>
@@ -1854,8 +1854,8 @@ const SalesTerminal = () => {
                                                         <div className="font-bold text-xs text-slate-700">${(tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : parseFloat(item.precio || 0)).toFixed(2)}</div>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs">-<Money value={item.descuento || 0} /></td>
-                                                <td className="px-4 py-4 text-right font-black text-slate-900 text-xs">
+                                                <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs" data-label="Desc.">-<Money value={item.descuento || 0} /></td>
+                                                <td className="px-4 py-4 text-right font-black text-slate-900 text-xs" data-label="Subtotal">
                                                     ${(tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))).toFixed(2)}
                                                 </td>
                                                 <td className="pr-6 py-4 text-right">
@@ -1906,7 +1906,7 @@ const SalesTerminal = () => {
                     </div>
                 </>
             ) : (
-                <div className="flex-1 flex flex-col gap-2 bg-white rounded-[3rem] pt-4 pb-5 px-6 shadow-sm border border-slate-100 animate-in zoom-in-95 duration-300">
+                <div className="flex-1 flex flex-col gap-2 bg-white rounded-[3rem] pt-4 pb-5 px-4 md:px-6 shadow-sm border border-slate-100 animate-in zoom-in-95 duration-300">
                     <div className="flex items-center justify-between mb-0">
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">Caja de Cobro</h2>
                         <button onClick={() => setActiveView('pos')} className="bg-slate-100 p-4 rounded-2xl"><X size={24} className="text-slate-600" /></button>
@@ -2141,7 +2141,7 @@ const SalesTerminal = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-6">
+                                        <div className="flex items-center gap-2 sm:gap-6">
                                             <span className="text-xl font-black text-slate-900 tracking-tight"><Money value={p.monto} /></span>
                                             <button onClick={() => setPayments(payments.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={20} /></button>
                                         </div>
@@ -2175,11 +2175,11 @@ const SalesTerminal = () => {
             {isProductModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
+                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">Seleccionar Ítem</h3>
                             <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm transition-all"><X size={20} /></button>
                         </div>
-                        <div className="p-8 pb-4">
+                        <div className="p-4 md:p-8 md:pb-4">
                             <div className="relative">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                                 <input 
@@ -2192,7 +2192,7 @@ const SalesTerminal = () => {
                                 />
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-8 pt-4 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 md:pt-4 custom-scrollbar">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                 {/* Combos */}
                                 {filteredCombos.map(c => (
@@ -2247,11 +2247,11 @@ const SalesTerminal = () => {
             {isCustomerSearchOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
+                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">Buscar Cliente</h3>
                             <button onClick={() => setIsCustomerSearchOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm transition-all"><X size={20} /></button>
                         </div>
-                        <div className="p-8 pb-4 flex flex-col gap-3">
+                        <div className="p-4 md:p-8 md:pb-4 flex flex-col gap-3">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <div className="relative">
                                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -2296,7 +2296,7 @@ const SalesTerminal = () => {
                                 Consumidor Final (General)
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto px-8 py-4 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-4 custom-scrollbar">
                             {isLoadingCustomerSearch ? (
                                 <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando clientes...</div>
                             ) : customerSearchData.data.length === 0 ? (
@@ -2353,11 +2353,11 @@ const SalesTerminal = () => {
             {isLinkedDocModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
+                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
                             <h3 className="text-2xl font-black text-slate-900">Referencias Documentales</h3>
                             <button onClick={() => setIsLinkedDocModalOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm"><X size={20} /></button>
                         </div>
-                            <div className="p-8 space-y-4">
+                            <div className="p-4 md:p-8 space-y-4">
                                 {tipoDte === '05' && customerId ? (
                                     <div className="flex flex-col gap-4">
                                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Seleccionar Documento del Cliente</label>
@@ -2432,7 +2432,7 @@ const SalesTerminal = () => {
                                 {tipoDte === '07' ? (
                                     /* CR: formulario con campos de retención */
                                     <div className="space-y-3">
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <select id="link-type" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20">
                                                 <option value="01">Factura (01)</option>
                                                 <option value="03">Créd. Fiscal (03)</option>
@@ -2442,11 +2442,11 @@ const SalesTerminal = () => {
                                                 <option value="2">Electrónico</option>
                                             </select>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <input id="link-number" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Número de Documento" />
                                             <input id="link-date" type="date" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={new Date().toISOString().split('T')[0]} />
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
                                                 <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Monto Gravado ($)</label>
                                                 <input id="link-gravadas" type="number" step="0.01" className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="0.00" onChange={(e) => {
@@ -2508,7 +2508,7 @@ const SalesTerminal = () => {
                                 ) : (
                                     /* Formulario estándar para otros tipos de DTE */
                                     <>  
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <select id="link-type" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={tipoDte === '05' ? '01' : '01'}>
                                         <option value="01">Factura</option>
                                         <option value="03">C. Fiscal</option>
@@ -2557,7 +2557,7 @@ const SalesTerminal = () => {
             {/* Modal de Autenticación Logística */}
             {isAuthModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                    <form onSubmit={handleSellerAuth} className="bg-white rounded-[3rem] w-full max-w-md p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
+                    <form onSubmit={handleSellerAuth} className="bg-white rounded-[3rem] w-full max-w-md p-6 md:p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
                         <div className="flex flex-col items-center text-center mb-8">
                             <div className="p-4 bg-indigo-100 rounded-3xl text-indigo-600 mb-4">
                                 <FileText size={40} />
@@ -2622,7 +2622,7 @@ const SalesTerminal = () => {
                 maxWidth="max-w-lg"
             >
                 <form onSubmit={handleCustomerSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo de Persona</label>
                             <select name="tipo_persona" defaultValue={editingCustomer?.tipo_persona || '1'} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
@@ -2636,7 +2636,7 @@ const SalesTerminal = () => {
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo Documento</label>
                             <select 
@@ -2656,7 +2656,7 @@ const SalesTerminal = () => {
                             <input name="numero_documento" defaultValue={editingCustomer?.numero_documento} placeholder="00000000-0" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">NIT</label>
                             <input 
@@ -2691,7 +2691,7 @@ const SalesTerminal = () => {
                             placeholder="Seleccionar actividad"
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Teléfono</label>
                             <input name="telefono" defaultValue={editingCustomer?.telefono} placeholder="2200-0000" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
@@ -2701,7 +2701,7 @@ const SalesTerminal = () => {
                             <input name="correo" type="email" defaultValue={editingCustomer?.correo} placeholder="cliente@ejemplo.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Departamento</label>
                             <select name="departamento" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
@@ -2751,7 +2751,7 @@ const SalesTerminal = () => {
             {/* Modal de Ingreso de Combustible */}
             {isFuelModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
+                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-6 md:p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
                         <div className="flex flex-col items-center text-center mb-8">
                             <div className="p-4 bg-orange-100 rounded-3xl text-orange-600 mb-4">
                                 <Zap size={40} />
@@ -2776,7 +2776,7 @@ const SalesTerminal = () => {
                         </div>
 
                         <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Monto en Dólares ($)</label>
                                     <div className="relative">
@@ -2832,7 +2832,7 @@ const SalesTerminal = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-4 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {[5, 10, 20, 40].map(val => (
                                     <button 
                                         key={val}
@@ -2874,7 +2874,7 @@ const SalesTerminal = () => {
             {/* Modal de Éxito de Venta */}
             {isSuccessModalOpen && saleResult && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[400] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
+                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-6 md:p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
                         <div className="flex flex-col items-center text-center mb-8">
                             <div className="p-4 bg-emerald-100 rounded-3xl text-emerald-600 mb-4">
                                 <CheckCircle2 size={40} />
