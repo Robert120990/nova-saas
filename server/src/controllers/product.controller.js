@@ -347,10 +347,10 @@ const getLubricantProducts = async (req, res) => {
             SELECT lr.producto_id, lr.lectura_final
             FROM gas_station_closeout_lubricant_readings lr
             WHERE lr.closeout_id = (
-                SELECT c2.id FROM gas_station_closeouts c2
+                SELECT MAX(c2.id) FROM gas_station_closeouts c2
                 WHERE c2.company_id = ? AND c2.estado = 'cerrado'
                 AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
-                ORDER BY c2.id DESC LIMIT 1
+                AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
             )
         `, [req.company_id, branchId, branchId]);
 

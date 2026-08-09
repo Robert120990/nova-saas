@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import {
-    Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
+    Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X, RefreshCw,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
     FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle
 } from 'lucide-react';
@@ -103,6 +103,7 @@ const GasCloseout = () => {
     const [adelantos, setAdelantos] = useState([]);
     const [showLubricantesModal, setShowLubricantesModal] = useState(false);
     const [lubricantReadings, setLubricantReadings] = useState([]);
+    const [lubricantLoading, setLubricantLoading] = useState(false);
     const [showTarjetasModal, setShowTarjetasModal] = useState(false);
     const [tarjetas, setTarjetas] = useState([]);
     const [showCreditosModal, setShowCreditosModal] = useState(false);
@@ -1361,32 +1362,79 @@ const GasCloseout = () => {
         setEditAnterior(false);
     };
 
+    const fetchLubricantInitials = async () => {
+        if (!closeoutId) return [];
+        setLubricantLoading(true);
+        try {
+            const res = await axios.get(`/api/products/lubricants?branch_id=${user?.branch_id || ''}`);
+            const products = res.data;
+            if (products.length > 0) {
+                const mapped = products.map(p => {
+                    const inicial = parseFloat(p.lectura_inicial) || 0;
+                    return {
+                        producto_id: p.id,
+                        producto_codigo: p.codigo,
+                        producto_descripcion: p.descripcion,
+                        lectura_inicial: inicial,
+                        recarga: 0,
+                        lectura_final: inicial,
+                        ventas: 0,
+                        precio: parseFloat(p.precio_unitario) || 0,
+                        total: 0,
+                    };
+                });
+                setLubricantReadings(mapped);
+                return mapped;
+            }
+            return [];
+        } catch (error) {
+            console.error('Error cargando lubricantes:', error);
+            toast.error('Error al cargar lubricantes');
+            return [];
+        } finally {
+            setLubricantLoading(false);
+        }
+    };
+
     const handleOpenLubricantes = async () => {
         if (lubricantReadings.length === 0 && closeoutId) {
-            try {
-                const res = await axios.get(`/api/products/lubricants?branch_id=${user?.branch_id || ''}`);
-                const products = res.data;
-                if (products.length > 0) {
-                    const mapped = products.map(p => {
-                        const inicial = parseFloat(p.lectura_inicial) || 0;
-                        return {
-                            producto_id: p.id,
-                            producto_codigo: p.codigo,
-                            producto_descripcion: p.descripcion,
-                            lectura_inicial: inicial,
-                            recarga: 0,
-                            lectura_final: inicial,
-                            ventas: 0,
-                            precio: parseFloat(p.precio_unitario) || 0,
-                            total: 0,
-                        };
-                    });
-                    setLubricantReadings(mapped);
-                }
-            } catch { }
+            await fetchLubricantInitials();
         }
         setShowLubricantesModal(true);
         setEditAnterior(false);
+    };
+
+    const handleRecargarLubricantes = async () => {
+        const ok = await confirm({
+            title: 'Reinicializar Lubricantes',
+            message: '¿Reinicializar los lubricantes leyendo las lecturas iniciales del último turno? Los valores actuales se sobrescribirán.',
+            confirmLabel: 'Sí, reinicializar',
+            cancelLabel: 'Cancelar',
+            variant: 'warning',
+        });
+        if (!ok) return;
+        const mapped = await fetchLubricantInitials();
+        if (mapped.length === 0) {
+            toast.info('No hay productos de lubricantes configurados');
+            return;
+        }
+        if (estado !== 'cerrado') {
+            const updated = mapped.map(r => {
+                const ventas = parseFloat(r.lectura_inicial || 0) + parseFloat(r.recarga || 0) - parseFloat(r.lectura_final || 0);
+                const total = ventas * parseFloat(r.precio || 0);
+                return {
+                    ...r,
+                    ventas: parseFloat(ventas.toFixed(5)),
+                    total: parseFloat(total.toFixed(2)),
+                };
+            });
+            try {
+                await saveLubricantesMutation.mutateAsync(updated);
+                toast.success('Lubricantes reinicializados desde el último turno');
+            } catch { }
+        } else {
+            toast.success('Valores cargados desde el último turno (turno cerrado, solo lectura)');
+        }
     };
 
     const actionButtons = [
@@ -3262,12 +3310,26 @@ const GasCloseout = () => {
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
-                                <button
-                                    onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={handleRecargarLubricantes}
+                                        disabled={lubricantLoading}
+                                        title="Reinicializar desde el último turno"
+                                        className="p-1.5 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                                    >
+                                        {lubricantLoading ? (
+                                            <Loader2 size={16} className="text-indigo-500 animate-spin" />
+                                        ) : (
+                                            <RefreshCw size={16} className="text-slate-400" />
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }}
+                                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                                    >
+                                        <X size={16} className="text-slate-400" />
+                                    </button>
+                                </div>
                             </div>
                             <div className="overflow-auto px-4 pb-4 flex-1 relative">
                                 <table className="w-full text-left border-separate border-spacing-0 table-cards">
