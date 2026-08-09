@@ -1428,10 +1428,14 @@ const GasCloseout = () => {
                     total: parseFloat(total.toFixed(2)),
                 };
             });
+            console.log(`[Recargar Lubricantes] Guardando ${updated.length} lecturas para closeout ${closeoutId}`);
             try {
                 await saveLubricantesMutation.mutateAsync(updated);
-                toast.success('Lubricantes reinicializados desde el último turno');
-            } catch { }
+                toast.success(`${updated.length} lubricantes reinicializados desde el último turno`);
+            } catch (err) {
+                console.error('[Recargar Lubricantes] Error al guardar:', err);
+                toast.error('Error al guardar lubricantes: ' + (err?.response?.data?.error || err.message || 'Error desconocido'));
+            }
         } else {
             toast.success('Valores cargados desde el último turno (turno cerrado, solo lectura)');
         }
