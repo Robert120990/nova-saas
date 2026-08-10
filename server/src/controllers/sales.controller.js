@@ -988,6 +988,177 @@ const exportDailySalesPDF = async (req, res) => {
 };
 
 /**
+ * Exporta el reporte de ventas por cliente en formato PDF/Excel.
+ * Formato similar a ventas diarias, filtrado por cliente, detallando
+ * los productos de cada venta y mostrando el cliente en el encabezado.
+ */
+const exportSalesByCustomerPDF = async (req, res) => {
+    try {
+        const { customer_id, start_date, end_date, branch_id } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) {
+            return res.status(401).json({ message: 'No se pudo identificar la empresa' });
+        }
+
+        if (!customer_id) {
+            return res.status(400).json({ message: 'El cliente es requerido' });
+        }
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Rango de fechas es requerido' });
+        }
+
+        // 1. Datos del cliente (encabezado del reporte)
+        const [customerRows] = await pool.query(
+            'SELECT * FROM customers WHERE id = ? AND company_id = ?',
+            [customer_id, companyId]
+        );
+        if (customerRows.length === 0) {
+            return res.status(404).json({ message: 'Cliente no encontrado' });
+        }
+        const customer = customerRows[0];
+
+        // 2. Info de Empresa y Sucursal
+        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [companyId]);
+        const companyName = companyRows.length > 0 ? companyRows[0].nombre : 'Empresa';
+
+        let branchName = 'Todas las sucursales';
+        if (branch_id && branch_id !== 'all') {
+            const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (branchRows.length > 0) branchName = branchRows[0].nombre;
+        }
+
+        // 3. Consulta de detalle (productos por venta del cliente)
+        let sql = `
+            SELECT 
+                h.fecha_emision as fecha,
+                CASE h.tipo_documento 
+                    WHEN '01' THEN 'Factura'
+                    WHEN '03' THEN 'Crédito Fiscal'
+                    WHEN '04' THEN 'Nota de Remisión'
+                    WHEN '05' THEN 'Nota de Crédito'
+                    WHEN '06' THEN 'Nota de Débito'
+                    WHEN '11' THEN 'Factura de Exportación'
+                    ELSE h.tipo_documento 
+                END as tipo,
+                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(p.descripcion, si.descripcion) as producto,
+                si.cantidad,
+                ROUND(COALESCE(si.venta_gravada, 0) + COALESCE(si.venta_exenta, 0) + ROUND(COALESCE(si.venta_gravada, 0) * 0.13, 2), 2) as total
+            FROM sales_headers h
+            JOIN sales_items si ON h.id = si.sale_id
+            LEFT JOIN products p ON si.product_id = p.id
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            WHERE h.company_id = ? AND h.customer_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+        `;
+        const params = [companyId, customer_id];
+
+        sql += ' AND h.fecha_emision BETWEEN ? AND ?';
+        params.push(start_date, end_date);
+
+        if (branch_id && branch_id !== 'all') {
+            sql += ' AND h.branch_id = ?';
+            params.push(branch_id);
+        }
+
+        sql += ' ORDER BY h.fecha_emision ASC, h.id ASC, si.id ASC';
+
+        const [rows] = await pool.query(sql, params);
+
+        // 4. Totales (desde las cabeceras de venta)
+        let totalsSql = `
+            SELECT 
+                SUM(h.total_gravado) as gravadas,
+                SUM(h.total_exento) as exentas,
+                SUM(h.total_iva) as iva,
+                SUM(h.fovial) as fovial,
+                SUM(h.cotrans) as cotrans,
+                SUM(h.iva_retenido) as retencion,
+                SUM(h.iva_percibido) as percepcion,
+                SUM(h.total_pagar) as total
+            FROM sales_headers h
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            WHERE h.company_id = ? AND h.customer_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND h.fecha_emision BETWEEN ? AND ?
+        `;
+        const totalsParams = [companyId, customer_id, start_date, end_date];
+        if (branch_id && branch_id !== 'all') {
+            totalsSql += ' AND h.branch_id = ?';
+            totalsParams.push(branch_id);
+        }
+        const [totalsRows] = await pool.query(totalsSql, totalsParams);
+        const totals = totalsRows[0] || {};
+
+        // 5. Datos para el reporte
+        const total_cantidad = rows.reduce((acc, r) => acc + parseFloat(r.cantidad || 0), 0);
+        const reportData = {
+            company_name: companyName,
+            branch_name: branchName,
+            startDate: start_date,
+            endDate: end_date,
+            customer: {
+                nombre: customer.nombre,
+                nombre_comercial: customer.nombre_comercial || null,
+                nit: customer.nit || null,
+                nrc: customer.nrc || null,
+                telefono: customer.telefono || null,
+                correo: customer.correo || null,
+                direccion: customer.direccion || null,
+                departamento: customer.departamento || null,
+                municipio: customer.municipio || null
+            },
+            sales: rows,
+            total_cantidad,
+            total_gravadas: parseFloat(totals.gravadas || 0),
+            total_exentas: parseFloat(totals.exentas || 0),
+            total_iva: parseFloat(totals.iva || 0),
+            total_fovial: parseFloat(totals.fovial || 0),
+            total_cotrans: parseFloat(totals.cotrans || 0),
+            total_retencion: parseFloat(totals.retencion || 0),
+            total_percepcion: parseFloat(totals.percepcion || 0),
+            total_general: parseFloat(totals.total || 0)
+        };
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Ventas por Cliente',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Tipo Doc', key: 'tipo', width: 16 },
+                        { header: 'Documento', key: 'documento', width: 20 },
+                        { header: 'Producto', key: 'producto', width: 35 },
+                        { header: 'Cantidad', key: 'cantidad', width: 12 },
+                        { header: 'Total', key: 'total', width: 16 },
+                    ],
+                    data: rows.map(r => ({
+                        fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                        tipo: r.tipo,
+                        documento: r.documento,
+                        producto: r.producto,
+                        cantidad: parseFloat(r.cantidad || 0).toFixed(2),
+                        total: parseFloat(r.total || 0).toFixed(2),
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Ventas_por_Cliente_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        const pdfBuffer = await pdfService.generateSalesByCustomerPDF(reportData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename=reporte-ventas-por-cliente.pdf');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[ExportSalesByCustomerPDF] Error:', error);
+        res.status(500).json({ message: 'Error al generar PDF de ventas por cliente', error: error.message });
+    }
+};
+
+/**
  * Generar Reporte de Ventas en PDF (Landscape)
  */
 const getSalesReportPDF = async (req, res) => {
@@ -2708,6 +2879,7 @@ module.exports = {
     exportSalesByCategoryPDF,
     getDailySales,
     exportDailySalesPDF,
+    exportSalesByCustomerPDF,
     getSalesReportPDF,
     getSalesByPOS,
     exportSalesByPOSPDF,

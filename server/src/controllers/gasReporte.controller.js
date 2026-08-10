@@ -712,13 +712,34 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 ];
                 break;
             }
+            case 'tarjetas': {
+                sql = `
+                    SELECT g.fecha_turno, g.numero_turno,
+                           COALESCE(pt.nombre, 'SIN TIPO') as tipo_pos,
+                           COALESCE(d.descripcion, '—') as despachador,
+                           t.monto
+                    FROM gas_station_closeout_tarjetas t
+                    JOIN gas_station_closeouts g ON t.closeout_id = g.id
+                    LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
+                    LEFT JOIN gas_station_pos_types pt ON t.pos_type_id = pt.id
+                    WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
+                    ORDER BY tipo_pos, g.fecha_turno, g.numero_turno, t.id
+                `;
+                params = [companyId, start_date, end_date, ...branchParams];
+                columns = [
+                    { label: 'Tipo POS', w: 110, accessor: 'tipo_pos' },
+                    { label: 'Turno', w: 80, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 120, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Despachador', w: 250, accessor: 'despachador' },
+                    { label: 'Monto', w: 120, accessor: 'monto', format: 'money', align: 'right' }
+                ];
+                break;
+            }
             case 'adelantos':
-            case 'tarjetas':
             case 'vales':
             case 'anticipos_desp': {
                 const tableMap = {
                     adelantos: { table: 'gas_station_closeout_adelantos', montoField: 'monto' },
-                    tarjetas: { table: 'gas_station_closeout_tarjetas', montoField: 'monto' },
                     vales: { table: 'gas_station_closeout_vales', montoField: 'monto' },
                     anticipos_desp: { table: 'gas_station_closeout_anticipos_despachados', montoField: 'monto' }
                 };
@@ -766,6 +787,19 @@ exports.getCloseoutDetailPDF = async (req, res) => {
 
         const [rows] = await pool.query(sql, params);
 
+        let groups = null;
+        if (tipo_reporte === 'tarjetas') {
+            const groupMap = new Map();
+            rows.forEach(r => {
+                const key = r.tipo_pos || 'SIN TIPO';
+                if (!groupMap.has(key)) groupMap.set(key, { label: key, rows: [], subtotal: 0 });
+                const g = groupMap.get(key);
+                g.rows.push(r);
+                g.subtotal += parseFloat(r.monto || 0);
+            });
+            groups = Array.from(groupMap.values());
+        }
+
         const reportData = {
             company: companyInfo,
             company_name: companyInfo.razon_social,
@@ -775,7 +809,8 @@ exports.getCloseoutDetailPDF = async (req, res) => {
             tipo_reporte,
             tipo_nombre: tipoNombres[tipo_reporte],
             columns,
-            rows
+            rows,
+            groups
         };
 
         if (req.query.format === 'excel') {
@@ -785,7 +820,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 width: Math.max(Math.round(c.w / 7), 10)
             }));
 
-            const excelData = rows.map(r => {
+            const mapRow = (r) => {
                 const rowData = {};
                 columns.forEach(c => {
                     const val = r[c.accessor];
@@ -800,7 +835,33 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                     }
                 });
                 return rowData;
-            });
+            };
+            const emptyRow = () => {
+                const rowData = {};
+                columns.forEach(c => { rowData[c.accessor] = ''; });
+                return rowData;
+            };
+
+            let excelData = rows.map(mapRow);
+            if (groups) {
+                const moneyCol = columns.find(c => c.format === 'money');
+                excelData = [];
+                groups.forEach(g => {
+                    const sub = emptyRow();
+                    sub[columns[0].accessor] = `SUBTOTAL ${g.label}`;
+                    if (moneyCol) sub[moneyCol.accessor] = g.subtotal.toFixed(2);
+                    excelData.push(sub);
+                    g.rows.forEach(r => excelData.push(mapRow(r)));
+                });
+                const totalRow = emptyRow();
+                totalRow[columns[0].accessor] = 'TOTAL';
+                if (moneyCol) {
+                    totalRow[moneyCol.accessor] = rows
+                        .reduce((s, r) => s + (parseFloat(r[moneyCol.accessor]) || 0), 0)
+                        .toFixed(2);
+                }
+                excelData.push(totalRow);
+            }
 
             const buffer = await excelService.createExcelBuffer({
                 sheets: [{

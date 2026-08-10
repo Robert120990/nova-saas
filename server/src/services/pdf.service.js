@@ -791,6 +791,117 @@ const generateDailySalesReportPDF = (data) => {
 };
 
 /**
+ * Generates a PDF report for sales by customer (detalle de productos).
+ * Formato similar a ventas diarias pero filtrado por cliente,
+ * con los datos del cliente en el encabezado.
+ */
+const generateSalesByCustomerPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            // Header
+            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
+            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`);
+            doc.text(`Período: ${data.startDate} al ${data.endDate}`);
+            doc.moveDown();
+
+            doc.fontSize(14).font('Helvetica-Bold').text('REPORTE DE VENTAS POR CLIENTE', { align: 'center', underline: true });
+            doc.moveDown();
+
+            // Bloque de datos del cliente
+            const c = data.customer || {};
+            doc.fontSize(9).font('Helvetica-Bold').text('CLIENTE:', { underline: true });
+            doc.font('Helvetica');
+            doc.text(`Nombre: ${c.nombre || '---'}${c.nombre_comercial ? ` (${c.nombre_comercial})` : ''}`);
+            doc.text(`NIT: ${c.nit || '---'}  |  NRC: ${c.nrc || '---'}  |  Tel: ${c.telefono || '---'}`);
+            doc.text(`Correo: ${c.correo || '---'}`);
+            const dirParts = [c.direccion, c.departamento, c.municipio].filter(Boolean).join(', ');
+            doc.text(`Dirección: ${dirParts || '---'}`);
+            doc.moveDown();
+
+            const startX = 20;
+            const colWidths = {
+                fecha: 40, tipo: 50, doc: 130, producto: 230, cant: 35, total: 45
+            };
+            const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
+
+            const drawTableHeader = () => {
+                const y = doc.y;
+                doc.fontSize(8).font('Helvetica-Bold');
+                let x = startX;
+                doc.text('Fecha', x, y); x += colWidths.fecha;
+                doc.text('Tipo', x, y); x += colWidths.tipo;
+                doc.text('Doc', x, y); x += colWidths.doc;
+                doc.text('Producto', x, y); x += colWidths.producto;
+                doc.text('Cant.', x, y, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
+                doc.text('Total', x, y, { align: 'right', width: colWidths.total });
+
+                doc.moveDown(0.5);
+                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(7);
+            };
+
+            drawTableHeader();
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '---';
+                const d = new Date(dateStr);
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const year = d.getUTCFullYear();
+                return `${day}/${month}/${year}`;
+            };
+
+            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+            const formatQty = (val) => {
+                const n = parseFloat(val || 0);
+                return Number.isInteger(n) ? String(n) : n.toFixed(2);
+            };
+
+            data.sales.forEach(s => {
+                if (doc.y > 740) {
+                    doc.addPage();
+                    drawTableHeader();
+                }
+
+                const y = doc.y;
+                let x = startX;
+
+                doc.text(formatDate(s.fecha), x, y, { width: colWidths.fecha }); x += colWidths.fecha;
+                doc.text(s.tipo || '---', x, y, { width: colWidths.tipo }); x += colWidths.tipo;
+                doc.text(s.documento || '---', x, y, { width: colWidths.doc }); x += colWidths.doc;
+                doc.text(s.producto || '---', x, y, { width: colWidths.producto }); x += colWidths.producto;
+                doc.text(formatQty(s.cantidad), x, y, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
+                doc.text(formatVal(s.total), x, y, { align: 'right', width: colWidths.total });
+
+                doc.moveDown(0.7);
+            });
+
+            doc.moveDown();
+            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
+            doc.moveDown(1);
+
+            // Fila de totales
+            doc.font('Helvetica-Bold');
+            const totalsY = doc.y;
+            let tX = startX + colWidths.fecha + colWidths.tipo + colWidths.doc;
+
+            doc.text('TOTAL', tX, totalsY, { align: 'right', width: colWidths.producto }); tX += colWidths.producto;
+            doc.text(formatQty(data.total_cantidad), tX, totalsY, { align: 'right', width: colWidths.cant }); tX += colWidths.cant;
+            doc.text(formatVal(data.total_general), tX, totalsY, { align: 'right', width: colWidths.total });
+
+            doc.end();
+        } catch (err) { reject(err); }
+    });
+};
+
+/**
  * Generates a PDF report for sales by category
  */
 const generateSalesByCategoryPDF = (data) => {
@@ -2568,7 +2679,8 @@ const generateCloseoutDetailPDF = (data) => {
 
             drawTableHeader();
 
-            (data.rows || []).forEach((row, i) => {
+            let rowIndex = 0;
+            const renderRow = (row) => {
                 if (doc.y > 520) {
                     doc.addPage();
                     drawTableHeader();
@@ -2576,9 +2688,10 @@ const generateCloseoutDetailPDF = (data) => {
                 const y = doc.y;
                 let x = startX;
                 doc.fontSize(8).font('Helvetica');
-                if (i % 2 === 0) {
+                if (rowIndex % 2 === 0) {
                     doc.rect(startX, y - 2, pageW, 14).fill('#f8fafc');
                 }
+                rowIndex++;
                 colDefs.forEach(c => {
                     const val = c.accessor ? row[c.accessor] : row[c.label];
                     doc.fillColor('#1e293b').fontSize(8);
@@ -2592,7 +2705,35 @@ const generateCloseoutDetailPDF = (data) => {
                     x += c.w;
                 });
                 doc.moveDown(0.9);
-            });
+            };
+
+            const renderGroupHeader = (group) => {
+                if (doc.y > 520) {
+                    doc.addPage();
+                    drawTableHeader();
+                }
+                const y = doc.y;
+                let x = startX;
+                doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155');
+                doc.rect(startX, y - 2, pageW, 14).fill('#e2e8f0');
+                colDefs.forEach(c => {
+                    const isMoney = c.format === 'money';
+                    const text = isMoney ? fmtVal(group.subtotal || 0) : (x === startX ? String(group.label ?? '—') : '');
+                    doc.text(text, x, y, { width: c.w, align: isMoney ? 'right' : 'left' });
+                    x += c.w;
+                });
+                doc.fillColor('#1e293b').font('Helvetica');
+                doc.moveDown(0.9);
+            };
+
+            if (data.groups && data.groups.length) {
+                data.groups.forEach(g => {
+                    renderGroupHeader(g);
+                    g.rows.forEach(renderRow);
+                });
+            } else {
+                (data.rows || []).forEach(renderRow);
+            }
 
             // Totals
             doc.moveDown(0.3);
@@ -3499,6 +3640,7 @@ module.exports = {
     generateProviderBalancesPDF,
     generatePaymentReceiptPDF,
     generateDailySalesReportPDF,
+    generateSalesByCustomerPDF,
     generateSalesByCategoryPDF,
     generateSalesByPOSPDF,
     generatePendingDocumentsDetailedPDF,

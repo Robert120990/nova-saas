@@ -42,6 +42,7 @@ import YearClosing from './pages/YearClosing';
 import YearOpening from './pages/YearOpening';
 import AccountingSettings from './pages/AccountingSettings';
 import DailySalesReport from './pages/DailySalesReport';
+import SalesByCustomerReport from './pages/SalesByCustomerReport';
 import Contingency from './pages/Contingency';
 import Eret from './pages/Eret';
 import AuditLog from './pages/AuditLog';
@@ -213,6 +214,7 @@ function App() {
                         <Route path="/ventas/cierre" element={<CashClosing />} />
                         <Route path="/ventas/reportes/ventas" element={<SalesReport />} />
                         <Route path="/ventas/reportes/diarias" element={<DailySalesReport />} />
+                        <Route path="/ventas/reportes/cliente" element={<SalesByCustomerReport />} />
                         <Route path="/ventas/reportes/categoria" element={<SalesByCategoryReport />} />
                         <Route path="/ventas/reportes/pos" element={<SalesByPOSReport />} />
                         <Route path="/ventas/combos" element={<Combos />} />

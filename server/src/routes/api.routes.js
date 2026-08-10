@@ -312,6 +312,7 @@ router.get('/sales/reports/by-category', salesController.getSalesByCategory);
 router.get('/sales/reports/category/pdf', salesController.exportSalesByCategoryPDF);
 router.get('/sales/reports/daily', salesController.getDailySales);
 router.get('/sales/reports/daily/pdf', salesController.exportDailySalesPDF);
+router.get('/sales/reports/by-customer/pdf', salesController.exportSalesByCustomerPDF);
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
 router.post('/sales', salesController.createSale);
