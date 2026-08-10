@@ -1391,7 +1391,7 @@ const generateRTEE = (data) => {
             doc.text(`${docIdentLabel} ${receptor.nit || receptor.numDocumento || 'Consumidor Final'}`, startX + 10, receptorY + 30);
             
             if (dte.tipoDte === '03') {
-                doc.text(`NRC: ${receptor.nrc || 'N/A'}`, startX + 10, receptorY + 42);
+                doc.text(`NRC: ${receptor.nrc || '—'}`, startX + 10, receptorY + 42);
                 doc.text(`Actividad: ${receptor.descActividad || receptor.codActividad || 'N/A'}`, startX + 10, receptorY + 54);
             } else if (dte.tipoDte === '11') {
                 doc.text(`País: ${receptor.nombrePais || receptor.codPais || 'N/A'}`, startX + 10, receptorY + 42);

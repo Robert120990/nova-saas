@@ -382,11 +382,13 @@ module.exports = {
             let query = `
                 SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
                        c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                       cu.nrc as customer_nrc,
                        b.nombre as branch_name, cat.description as tipo_documento_name
                 FROM sales_headers h
                 JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
                 JOIN companies c ON h.company_id = c.id
                 JOIN branches b ON h.branch_id = b.id
+                LEFT JOIN customers cu ON h.customer_id = cu.id
                 LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
                 WHERE h.id = ?
             `;
@@ -452,6 +454,7 @@ module.exports = {
                 receptor: {
                     nombre: dteJson.receptor.nombre,
                     nit: dteJson.receptor.nit,
+                    nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                     numDocumento: dteJson.receptor.numDocumento,
                     direccion: dteJson.receptor.direccion
                 },
@@ -535,11 +538,13 @@ module.exports = {
             let query = `
                 SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
                        c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                       cu.nrc as customer_nrc,
                        b.id as branch_id, b.nombre as branch_name, cat.description as tipo_documento_name
                 FROM sales_headers h
                 JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
                 JOIN companies c ON h.company_id = c.id
                 JOIN branches b ON h.branch_id = b.id
+                LEFT JOIN customers cu ON h.customer_id = cu.id
                 LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
                 WHERE h.id = ?
             `;
@@ -592,6 +597,7 @@ module.exports = {
                 receptor: {
                     nombre: dteJson.receptor.nombre,
                     nit: dteJson.receptor.nit,
+                    nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                     numDocumento: dteJson.receptor.numDocumento,
                     direccion: dteJson.receptor.direccion
                 },

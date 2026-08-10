@@ -1404,6 +1404,7 @@ const exportRTEE = async (req, res) => {
         const [header] = await pool.query(
             `SELECT h.*, h.estado as sale_estado,
             s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
+            c.nrc as customer_nrc,
             COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
             COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
@@ -1466,7 +1467,7 @@ const exportRTEE = async (req, res) => {
             receptor: {
                 nombre: dteJson.receptor.nombre,
                 nit: dteJson.receptor.nit,
-                nrc: dteJson.receptor.nrc || null,
+                nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                 numDocumento: dteJson.receptor.numDocumento,
                 direccion: dteJson.receptor.direccion,
                 codActividad: dteJson.receptor.codActividad || null,
@@ -1532,7 +1533,8 @@ const getPublicRTEE = async (req, res) => {
     try {
         // 1. Obtener datos detallados de la venta y DTE por codigo_generacion
         const [header] = await pool.query(
-            `SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
+            `SELECT h.*,             s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
+            c.nrc as customer_nrc,
             d.status as dte_status, d.numero_control as dte_control, d.respuesta_hacienda, d.respuesta_hacienda as dte_error,
             d.json_original, d.sello_recepcion, d.fh_procesamiento
             FROM sales_headers h
@@ -1588,7 +1590,7 @@ const getPublicRTEE = async (req, res) => {
             receptor: {
                 nombre: dteJson.receptor.nombre,
                 nit: dteJson.receptor.nit,
-                nrc: dteJson.receptor.nrc || null,
+                nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                 numDocumento: dteJson.receptor.numDocumento,
                 direccion: dteJson.receptor.direccion,
                 codActividad: dteJson.receptor.codActividad || null,
@@ -2515,11 +2517,13 @@ const sendPublicDTEEmail = async (req, res) => {
         const [rows] = await pool.query(
             `SELECT h.*, d.status as dte_status, d.json_original, d.sello_recepcion, d.numero_control,
                     c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                    cu.nrc as customer_nrc,
                     b.nombre as branch_name, cat.description as tipo_documento_name
              FROM dtes d
              JOIN sales_headers h ON d.codigo_generacion = h.codigo_generacion
              JOIN companies c ON h.company_id = c.id
              JOIN branches b ON h.branch_id = b.id
+             LEFT JOIN customers cu ON h.customer_id = cu.id
              LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
              WHERE d.codigo_generacion = ?`,
             [codigo]
@@ -2559,7 +2563,7 @@ const sendPublicDTEEmail = async (req, res) => {
             receptor: {
                 nombre: dteJson.receptor?.nombre,
                 nit: dteJson.receptor?.nit,
-                nrc: dteJson.receptor?.nrc || null,
+                nrc: dteJson.receptor?.nrc || venta.customer_nrc || null,
                 numDocumento: dteJson.receptor?.numDocumento,
                 direccion: dteJson.receptor?.direccion
             },
