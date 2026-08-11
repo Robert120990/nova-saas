@@ -120,12 +120,13 @@ const createQuedan = async (req, res) => {
                 const r = parseFloat(item.retencion) || 0;
                 const p = parseFloat(item.percepcion) || 0;
                 const e = parseFloat(item.exentas) || 0;
-                const t = Math.round((g + i + e - r + p) * 100) / 100;
-                totalGravadas += g;
-                totalIva += i;
-                totalRetencion += r;
-                totalPercepcion += p;
-                totalExentas += e;
+                const sign = item.tipo === 'NCR' ? -1 : 1;
+                const t = Math.round(sign * (g + i + e - r + p) * 100) / 100;
+                totalGravadas += sign * g;
+                totalIva += sign * i;
+                totalRetencion += sign * r;
+                totalPercepcion += sign * p;
+                totalExentas += sign * e;
                 total += t;
             }
         }
@@ -141,16 +142,19 @@ const createQuedan = async (req, res) => {
         const quedanId = result.insertId;
 
         if (items && items.length > 0) {
-            const itemValues = items.map(item => [
-                quedanId, item.fecha || fecha, item.documento || '',
-                item.tipo || 'CCF',
-                parseFloat(item.gravadas) || 0,
-                parseFloat(item.iva) || 0,
-                parseFloat(item.retencion) || 0,
-                parseFloat(item.percepcion) || 0,
-                parseFloat(item.exentas) || 0,
-                parseFloat(item.total) || Math.round(((parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0) - (parseFloat(item.retencion) || 0) + (parseFloat(item.percepcion) || 0)) * 100) / 100
-            ]);
+            const itemValues = items.map(item => {
+                const sign = item.tipo === 'NCR' ? -1 : 1;
+                return [
+                    quedanId, item.fecha || fecha, item.documento || '',
+                    item.tipo || 'CCF',
+                    parseFloat(item.gravadas) || 0,
+                    parseFloat(item.iva) || 0,
+                    parseFloat(item.retencion) || 0,
+                    parseFloat(item.percepcion) || 0,
+                    parseFloat(item.exentas) || 0,
+                    parseFloat(item.total) || Math.round(sign * ((parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0) - (parseFloat(item.retencion) || 0) + (parseFloat(item.percepcion) || 0)) * 100) / 100
+                ];
+            });
 
             await pool.query(`
                 INSERT INTO purchase_quedan_items
@@ -206,12 +210,13 @@ const updateQuedan = async (req, res) => {
                 const r = parseFloat(item.retencion) || 0;
                 const p = parseFloat(item.percepcion) || 0;
                 const e = parseFloat(item.exentas) || 0;
-                const t = Math.round((g + i + e - r + p) * 100) / 100;
-                totalGravadas += g;
-                totalIva += i;
-                totalRetencion += r;
-                totalPercepcion += p;
-                totalExentas += e;
+                const sign = item.tipo === 'NCR' ? -1 : 1;
+                const t = Math.round(sign * (g + i + e - r + p) * 100) / 100;
+                totalGravadas += sign * g;
+                totalIva += sign * i;
+                totalRetencion += sign * r;
+                totalPercepcion += sign * p;
+                totalExentas += sign * e;
                 total += t;
             }
         }
@@ -237,16 +242,19 @@ const updateQuedan = async (req, res) => {
         await pool.query('DELETE FROM purchase_quedan_items WHERE quedan_id = ?', [id]);
 
         if (items && items.length > 0) {
-            const itemValues = items.map(item => [
-                id, item.fecha || fecha, item.documento || '',
-                item.tipo || 'CCF',
-                parseFloat(item.gravadas) || 0,
-                parseFloat(item.iva) || 0,
-                parseFloat(item.retencion) || 0,
-                parseFloat(item.percepcion) || 0,
-                parseFloat(item.exentas) || 0,
-                parseFloat(item.total) || Math.round(((parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0) - (parseFloat(item.retencion) || 0) + (parseFloat(item.percepcion) || 0)) * 100) / 100
-            ]);
+            const itemValues = items.map(item => {
+                const sign = item.tipo === 'NCR' ? -1 : 1;
+                return [
+                    id, item.fecha || fecha, item.documento || '',
+                    item.tipo || 'CCF',
+                    parseFloat(item.gravadas) || 0,
+                    parseFloat(item.iva) || 0,
+                    parseFloat(item.retencion) || 0,
+                    parseFloat(item.percepcion) || 0,
+                    parseFloat(item.exentas) || 0,
+                    parseFloat(item.total) || Math.round(sign * ((parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0) - (parseFloat(item.retencion) || 0) + (parseFloat(item.percepcion) || 0)) * 100) / 100
+                ];
+            });
 
             await pool.query(`
                 INSERT INTO purchase_quedan_items

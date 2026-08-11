@@ -143,13 +143,15 @@ const Quedan = () => {
         setFormFechaVenc(recalcVenc(val, formProviderDias));
     };
 
+    const getItemSign = (tipo) => (tipo === 'NCR' ? -1 : 1);
+
     const recalcItemTotal = (item) => {
         const g = parseFloat(item.gravadas) || 0;
         const i = parseFloat(item.iva) || 0;
         const e = parseFloat(item.exentas) || 0;
         const r = parseFloat(item.retencion) || 0;
         const p = parseFloat(item.percepcion) || 0;
-        return Math.round((g + i + e - r + p) * 100) / 100;
+        return getItemSign(item.tipo) * Math.round((g + i + e - r + p) * 100) / 100;
     };
 
     const removeItem = (key) => {
@@ -210,11 +212,12 @@ const Quedan = () => {
     const calcTotals = () => {
         let g = 0, i = 0, r = 0, p = 0, e = 0, t = 0;
         for (const item of formItems) {
-            g += parseFloat(item.gravadas) || 0;
-            i += parseFloat(item.iva) || 0;
-            r += parseFloat(item.retencion) || 0;
-            p += parseFloat(item.percepcion) || 0;
-            e += parseFloat(item.exentas) || 0;
+            const sign = getItemSign(item.tipo);
+            g += sign * (parseFloat(item.gravadas) || 0);
+            i += sign * (parseFloat(item.iva) || 0);
+            r += sign * (parseFloat(item.retencion) || 0);
+            p += sign * (parseFloat(item.percepcion) || 0);
+            e += sign * (parseFloat(item.exentas) || 0);
             t += recalcItemTotal(item);
         }
         return { gravadas: g, iva: i, retencion: r, percepcion: p, exentas: e, total: t };
@@ -623,16 +626,18 @@ const Quedan = () => {
                                             <td className="py-2 px-2 text-[10px] font-bold text-slate-600">{formatDate(item.fecha)}</td>
                                             <td className="py-2 px-2 text-[10px] font-mono font-bold text-slate-700">{item.documento || '—'}</td>
                                             <td className="py-2 px-2">
-                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${item.tipo === 'CCF' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${item.tipo === 'CCF' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
                                                     {item.tipo}
                                                 </span>
                                             </td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.gravadas) || 0} /></td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.iva) || 0} /></td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.retencion) || 0} /></td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.percepcion) || 0} /></td>
-                                            <td className="py-2 px-2 text-[10px] font-bold text-slate-600 text-right"><Money value={parseFloat(item.exentas) || 0} /></td>
-                                            <td className="py-2 px-2 text-[11px] font-black text-slate-800 text-right"><Money value={recalcItemTotal(item)} /></td>
+                                            <td className="py-2 px-2 text-[10px] text-right"><Money value={getItemSign(item.tipo) * (parseFloat(item.gravadas) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} /></td>
+                                            <td className="py-2 px-2 text-[10px] text-right"><Money value={getItemSign(item.tipo) * (parseFloat(item.iva) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} /></td>
+                                            <td className="py-2 px-2 text-[10px] text-right"><Money value={getItemSign(item.tipo) * (parseFloat(item.retencion) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} /></td>
+                                            <td className="py-2 px-2 text-[10px] text-right"><Money value={getItemSign(item.tipo) * (parseFloat(item.percepcion) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} /></td>
+                                            <td className="py-2 px-2 text-[10px] text-right"><Money value={getItemSign(item.tipo) * (parseFloat(item.exentas) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} /></td>
+                                            <td className="py-2 px-2 text-[11px] font-black text-right">
+                                                <Money value={recalcItemTotal(item)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-800'} />
+                                            </td>
                                             <td className="py-2 px-2">
                                                 <div className="flex gap-1">
                                                     <button onClick={() => openEditItem(item._key)}
