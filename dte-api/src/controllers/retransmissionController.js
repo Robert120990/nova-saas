@@ -54,6 +54,11 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         throw new Error(`El cliente "${customer.nombre}" no tiene distrito configurado. Complete el distrito en el registro del cliente antes de reintentar.`);
     }
 
+    // Guardia: Crédito Fiscal (CCF) requiere NIT del receptor identificado
+    if (dteRecord.tipo_dte === '03' && customer && !customer.nit) {
+        throw new Error(`El cliente "${customer.nombre}" no tiene NIT registrado. Para emitir Crédito Fiscal (CCF) el cliente debe tener NIT. Regístrelo en el catálogo de clientes antes de reintentar.`);
+    }
+
     // 5. Obtener datos de sucursal para el emisor_adicional
     const [pos] = await pool.query(
         'SELECT codigo FROM points_of_sale WHERE id = ?',
@@ -75,7 +80,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         nombre: customer?.nombre || newReceptor?.nombre || sale.cliente_nombre || 'Consumidor Final',
         nit: customer?.nit || newReceptor?.nit || null,
         nrc: customer?.nrc || newReceptor?.nrc || null,
-        numDocumento: customer?.num_documento || newReceptor?.numDocumento || null,
+        numDocumento: customer?.numero_documento || customer?.num_documento || newReceptor?.numDocumento || null,
         tipoDocumento: customer?.tipo_documento || newReceptor?.tipoDocumento || null,
         correo: customer?.correo || newReceptor?.correo || null,
         telefono: customer?.telefono || newReceptor?.telefono || null,
@@ -286,7 +291,8 @@ async function retransmit(req, res) {
         console.error('Retransmit Error:', error);
         res.status(400).json({
             success: false,
-            message: error.message
+            message: error.message,
+            details: error.details || []
         });
     }
 }

@@ -207,7 +207,8 @@ class DteService {
             } else {
                 return {
                     success: false,
-                    error: result.data || result.message || 'Error en retransmisión DTE'
+                    error: result.data || result.message || 'Error en retransmisión DTE',
+                    details: result.details || null
                 };
             }
         } catch (error) {

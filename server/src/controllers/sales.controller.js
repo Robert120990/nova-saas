@@ -66,6 +66,21 @@ const createSale = async (req, res) => {
             }
         }
 
+        // 0c. Validar NIT del cliente para Crédito Fiscal (requisito Hacienda)
+        if (company && company.dte_active && header.dte_type === '03' && header.customer_id) {
+            const [cust] = await connection.query(
+                'SELECT nit, nombre FROM customers WHERE id = ? AND company_id = ?',
+                [header.customer_id, req.company_id]
+            );
+            if (cust.length > 0 && !cust[0].nit) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `El cliente "${cust[0].nombre}" no tiene NIT registrado. Para emitir Crédito Fiscal (CCF) el cliente debe tener NIT.`,
+                    success: false
+                });
+            }
+        }
+
         // Obtener código de terminal si existe pos_id
         let codPuntoVentaMH = null;
         if (header.pos_id) {
@@ -2148,7 +2163,8 @@ const retransmitSaleDTE = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'El reintento fue rechazado nuevamente por Hacienda',
-                error: result.error
+                error: result.error,
+                details: result.details || null
             });
         }
 
