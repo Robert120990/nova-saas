@@ -14,7 +14,7 @@ async function runMigration() {
     });
 
     try {
-        const migrationPath = path.join(__dirname, 'migration_v126_pos_shifts_arqueado.sql');
+        const migrationPath = path.join(__dirname, 'migration_v129_pos_shift_puntos.sql');
         const sql = fs.readFileSync(migrationPath, 'utf8');
         console.log('Running migration...');
         await pool.query(sql);

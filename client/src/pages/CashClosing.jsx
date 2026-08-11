@@ -52,6 +52,7 @@ const CashClosing = () => {
     const [expenses, setExpenses] = useState([{ description: '', amount: '' }]);
     const [incomes, setIncomes] = useState([{ description: '', amount: '', payment_method: '01' }]);
     const [remesas, setRemesas] = useState([{ description: '', amount: '' }]);
+    const [puntos, setPuntos] = useState([{ description: '', amount: '' }]);
     const [arqueoActiveTab, setArqueoActiveTab] = useState('incomes');
     const [selectedResponsibleId, setSelectedResponsibleId] = useState('');
     const [selectedSellers, setSelectedSellers] = useState([]);
@@ -157,7 +158,7 @@ const CashClosing = () => {
     });
 
     const closeShiftMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes, remesas }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes, remesas })).data,
+        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes, remesas, puntos })).data,
         onSuccess: (data) => {
             queryClient.invalidateQueries(['shifts']);
             setShiftSummary(data.summary);
@@ -166,19 +167,21 @@ const CashClosing = () => {
             setExpenses([{ description: '', amount: '' }]); // Reset
             setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
             setRemesas([{ description: '', amount: '' }]); // Reset
+            setPuntos([{ description: '', amount: '' }]); // Reset
             toast.success('Turno finalizado correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al finalizar turno')
     });
 
     const arqueoMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes, remesas }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, expenses, incomes, remesas })).data,
+        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, expenses, incomes, remesas, puntos })).data,
         onSuccess: () => {
             queryClient.invalidateQueries(['shifts']);
             setIsClosingModalOpen(false);
             setExpenses([{ description: '', amount: '' }]); // Reset
             setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
             setRemesas([{ description: '', amount: '' }]); // Reset
+            setPuntos([{ description: '', amount: '' }]); // Reset
             toast.success('Arqueo guardado correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar arqueo')
@@ -212,11 +215,15 @@ const CashClosing = () => {
                 setRemesas(data.remesas?.length
                     ? data.remesas.map(r => ({ description: r.description, amount: r.amount ? r.amount.toString() : '' }))
                     : [{ description: '', amount: '' }]);
+                setPuntos(data.puntos?.length
+                    ? data.puntos.map(p => ({ description: p.description, amount: p.amount ? p.amount.toString() : '' }))
+                    : [{ description: '', amount: '' }]);
             } else {
                 setActualCash('');
                 setExpenses([{ description: '', amount: '' }]);
                 setIncomes([{ description: '', amount: '', payment_method: '01' }]);
                 setRemesas([{ description: '', amount: '' }]);
+                setPuntos([{ description: '', amount: '' }]);
             }
         } catch (err) {
             toast.error('Error al cargar el resumen del turno');
@@ -800,6 +807,14 @@ const CashClosing = () => {
                                                 <span>-${remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
                                             </div>
                                         )}
+
+                                        {/* Sección de Puntos (Resumen) */}
+                                        {puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
+                                            <div className="flex justify-between items-center text-sm font-bold text-violet-600 italic">
+                                                <span>Total Puntos</span>
+                                                <span>-${puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -807,7 +822,7 @@ const CashClosing = () => {
                                 <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
                                     <div className="flex flex-col">
                                         <span className="text-xs font-black uppercase text-slate-900 tracking-widest">Efectivo Físico Esperado</span>
-                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas)</span>
+                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas - Puntos)</span>
                                     </div>
                                     <span className="text-3xl font-black text-emerald-600">
                                         ${(
@@ -815,7 +830,8 @@ const CashClosing = () => {
                                             (parseFloat(shiftSummary.cash) || 0) + 
                                             incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
-                                            remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                            remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                            puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                         ).toFixed(2)}
                                     </span>
                                 </div>
@@ -828,6 +844,7 @@ const CashClosing = () => {
                                     {[
                                         { key: 'incomes', label: 'Ingresos', color: 'emerald', total: incomes.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                         { key: 'remesas', label: 'Remesas', color: 'amber', total: remesas.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
+                                        { key: 'puntos', label: 'Puntos', color: 'violet', total: puntos.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                         { key: 'expenses', label: 'Gastos', color: 'rose', total: expenses.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                     ].map(tab => (
                                         <button key={tab.key} onClick={() => setArqueoActiveTab(tab.key)}
@@ -860,9 +877,15 @@ const CashClosing = () => {
                                                     <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right"
                                                         placeholder="0.00" value={inc.amount}
                                                         onChange={(e) => { const n = [...incomes]; n[idx].amount = e.target.value; setIncomes(n); }} />
-                                                    {incomes.length > 1 && (
-                                                        <button onClick={() => setIncomes(incomes.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                                                    )}
+                                                    <button onClick={() => {
+                                                        if (incomes.length > 1) {
+                                                            setIncomes(incomes.filter((_, i) => i !== idx));
+                                                        } else {
+                                                            const n = [...incomes];
+                                                            n[idx] = { description: '', amount: '', payment_method: '01' };
+                                                            setIncomes(n);
+                                                        }
+                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -887,9 +910,47 @@ const CashClosing = () => {
                                                     <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 text-right"
                                                         placeholder="0.00" value={rem.amount}
                                                         onChange={(e) => { const n = [...remesas]; n[idx].amount = e.target.value; setRemesas(n); }} />
-                                                    {remesas.length > 1 && (
-                                                        <button onClick={() => setRemesas(remesas.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                                                    )}
+                                                    <button onClick={() => {
+                                                        if (remesas.length > 1) {
+                                                            setRemesas(remesas.filter((_, i) => i !== idx));
+                                                        } else {
+                                                            const n = [...remesas];
+                                                            n[idx] = { description: '', amount: '' };
+                                                            setRemesas(n);
+                                                        }
+                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tab Content: Puntos */}
+                                {arqueoActiveTab === 'puntos' && (
+                                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="text-[10px] font-black uppercase text-violet-500 tracking-widest">Canje de Puntos</h5>
+                                            <button onClick={() => setPuntos([...puntos, { description: '', amount: '' }])}
+                                                className="text-[10px] font-black text-violet-600 hover:text-violet-700 uppercase">+ Agregar</button>
+                                        </div>
+                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                            {puntos.map((pto, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center">
+                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-violet-300"
+                                                        placeholder="Descripción" value={pto.description}
+                                                        onChange={(e) => { const n = [...puntos]; n[idx].description = e.target.value; setPuntos(n); }} />
+                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-violet-300 text-right"
+                                                        placeholder="0.00" value={pto.amount}
+                                                        onChange={(e) => { const n = [...puntos]; n[idx].amount = e.target.value; setPuntos(n); }} />
+                                                    <button onClick={() => {
+                                                        if (puntos.length > 1) {
+                                                            setPuntos(puntos.filter((_, i) => i !== idx));
+                                                        } else {
+                                                            const n = [...puntos];
+                                                            n[idx] = { description: '', amount: '' };
+                                                            setPuntos(n);
+                                                        }
+                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -913,9 +974,15 @@ const CashClosing = () => {
                                                     <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right"
                                                         placeholder="0.00" value={exp.amount}
                                                         onChange={(e) => { const n = [...expenses]; n[idx].amount = e.target.value; setExpenses(n); }} />
-                                                    {expenses.length > 1 && (
-                                                        <button onClick={() => setExpenses(expenses.filter((_, i) => i !== idx))} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
-                                                    )}
+                                                    <button onClick={() => {
+                                                        if (expenses.length > 1) {
+                                                            setExpenses(expenses.filter((_, i) => i !== idx));
+                                                        } else {
+                                                            const n = [...expenses];
+                                                            n[idx] = { description: '', amount: '' };
+                                                            setExpenses(n);
+                                                        }
+                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -944,7 +1011,8 @@ const CashClosing = () => {
                                                 (parseFloat(shiftSummary.cash) || 0) + 
                                                 incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                 expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
-                                                remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                                puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                             )) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
                                         }`}>
                                             <span className="text-[10px] font-black uppercase tracking-widest">Diferencia</span>
@@ -954,7 +1022,8 @@ const CashClosing = () => {
                                                     (parseFloat(shiftSummary.cash) || 0) + 
                                                     incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
-                                                    remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                    remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                                    puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                                 )).toFixed(2)}
                                             </span>
                                         </div>
@@ -964,16 +1033,17 @@ const CashClosing = () => {
                                 <button 
                                 onClick={() => {
                                         const totalCashIncomings = (parseFloat(shiftSummary.opening_balance) || 0) + (parseFloat(shiftSummary.cash) || 0) + incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
-                                        const totalExp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) + remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
+                                        const totalExp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) + remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) + puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
                                         if (totalExp > totalCashIncomings) {
-                                            return toast.error('El total de gastos y remesas no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
+                                            return toast.error('El total de gastos, remesas y puntos no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
                                         }
                                         arqueoMutation.mutate({ 
                                             id: shiftSummary?.id || selectedShiftId || activeShifts[0]?.id, 
                                             actualCash, 
                                             expenses: expenses.filter(e => parseFloat(e.amount) > 0),
                                             incomes: incomes.filter(i => parseFloat(i.amount) > 0),
-                                            remesas: remesas.filter(r => parseFloat(r.amount) > 0)
+                                            remesas: remesas.filter(r => parseFloat(r.amount) > 0),
+                                            puntos: puntos.filter(p => parseFloat(p.amount) > 0)
                                         });
                                     }}
                                     disabled={!actualCash || arqueoMutation.isPending}
@@ -1098,6 +1168,22 @@ const CashClosing = () => {
                                         </div>
                                     </div>
                                 )}
+                                {parseFloat(shiftSummary.total_puntos || 0) > 0 && (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center text-[10px] font-black text-violet-600 uppercase tracking-widest bg-violet-50 p-2 rounded-lg">
+                                            <span>Canje de Puntos</span>
+                                            <span>-<Money value={shiftSummary.total_puntos || 0} /></span>
+                                        </div>
+                                        <div className="px-1 space-y-1">
+                                            {shiftSummary.puntos?.map((pto, i) => (
+                                                <div key={i} className="flex justify-between text-[10px] font-bold text-slate-400">
+                                                    <span className="truncate pr-4">{pto.description}</span>
+                                                    <span className="shrink-0">-<Money value={pto.amount} /></span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1122,6 +1208,9 @@ const CashClosing = () => {
                                     ).join('');
                                     const remesasHtml = (s.remesas || []).map(r =>
                                         `<div class="row"><span>#${r.numero} ${r.description}</span><span>-$${r.amount.toFixed(2)}</span></div>`
+                                    ).join('');
+                                    const puntosHtml = (s.puntos || []).map(p =>
+                                        `<div class="row"><span>Puntos: ${p.description}</span><span>-$${p.amount.toFixed(2)}</span></div>`
                                     ).join('');
 
                                     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Arqueo</title>
@@ -1156,6 +1245,7 @@ const CashClosing = () => {
                                     ${catsHtml ? `<div class="bold" style="margin-bottom:2px;">VENTAS POR CATEGORÍA</div>${catsHtml}<div class="dashed"></div>` : ''}
                                     ${incomesHtml ? `<div class="bold" style="margin-bottom:2px;">INGRESOS</div>${incomesHtml}<div class="dashed"></div>` : ''}
                                     ${remesasHtml ? `<div class="bold" style="margin-bottom:2px;">REMAS</div>${remesasHtml}<div class="dashed"></div>` : ''}
+                                    ${puntosHtml ? `<div class="bold" style="margin-bottom:2px;">PUNTOS</div>${puntosHtml}<div class="dashed"></div>` : ''}
                                     ${expensesHtml ? `<div class="bold" style="margin-bottom:2px;">GASTOS</div>${expensesHtml}<div class="dashed"></div>` : ''}
                                     <div class="row bold"><span>Esperado en Caja</span><span>$${(s.expected || 0).toFixed(2)}</span></div>
                                     <div class="row bold"><span>Contado Físico</span><span>$${(s.actual || 0).toFixed(2)}</span></div>

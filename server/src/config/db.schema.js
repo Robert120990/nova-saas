@@ -240,15 +240,19 @@ REGLAS DE MULTI-TENENCIA:
 - id, company_id, branch_id, pos_id, seller_id
 - start_time DATETIME, end_time DATETIME, opening_balance DECIMAL
 - total_expenses DECIMAL, total_incomes DECIMAL
+- total_remesas DECIMAL, total_puntos DECIMAL
 - expected_cash, actual_cash, difference DECIMAL
 - cash_sales, card_sales, transfer_sales, other_sales, total_sales DECIMAL
-- status ENUM('open','closed'), created_at
+- status ENUM('open','closed'), arqueado TINYINT, created_at
 
 ### pos_shift_expenses (Gastos de turno POS)
 - id, shift_id, description VARCHAR(255), amount DECIMAL, created_at
 
 ### pos_shift_incomes (Ingresos extra de turno POS)
 - id, shift_id, description, amount DECIMAL, payment_method VARCHAR(2), created_at
+
+### pos_shift_puntos (Canje de puntos de turno POS)
+- id, shift_id, description VARCHAR(255), amount DECIMAL, created_at
 
 ---
 

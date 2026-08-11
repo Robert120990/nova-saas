@@ -263,6 +263,9 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         // Obtener Remesas
         const [remesas] = await pool.query('SELECT numero, description, amount FROM pos_shift_remesas WHERE shift_id = ? ORDER BY numero', [id]);
 
+        // Obtener Canjes de Puntos
+        const [puntos] = await pool.query('SELECT description, amount FROM pos_shift_puntos WHERE shift_id = ?', [id]);
+
         // Ventas por categoría de producto
         const [salesByCategory] = await pool.query(`
             SELECT 
@@ -307,10 +310,12 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             expenses: expenses.map(e => ({ description: e.description, amount: parseFloat(e.amount || 0) })),
             incomes: incomes.map(i => ({ description: i.description, amount: parseFloat(i.amount || 0), method: i.payment_method_name, payment_method: i.payment_method })),
             remesas: remesas.map(r => ({ numero: r.numero, description: r.description, amount: parseFloat(r.amount || 0) })),
+            puntos: puntos.map(p => ({ description: p.description, amount: parseFloat(p.amount || 0) })),
             arqueado: shift.arqueado ? 1 : 0,
             total_expenses: parseFloat(shift.total_expenses || expenses.reduce((acc, e) => acc + parseFloat(e.amount || 0), 0)),
             total_incomes: parseFloat(shift.total_incomes || incomes.reduce((acc, i) => acc + parseFloat(i.amount || 0), 0)),
             total_remesas: parseFloat(shift.total_remesas || remesas.reduce((acc, r) => acc + parseFloat(r.amount || 0), 0)),
+            total_puntos: parseFloat(shift.total_puntos || puntos.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)),
             actual: parseFloat(shift.actual_cash || 0),
             expected: parseFloat(shift.expected_cash || (parseFloat(shift.opening_balance || 0) + cashSales)),
             difference: parseFloat(shift.difference || 0),
@@ -320,7 +325,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             }))
         };
 
-        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses - summary.total_remesas;
+        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses - summary.total_remesas - summary.total_puntos;
 
         console.log(`[DEBUG] Final Summary:`, JSON.stringify(summary));
         res.json(summary);
@@ -333,13 +338,14 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
 // Guarda (o re-guarda) los datos del arqueo de un turno sin cambiar su estado.
 // Se ejecuta en transacción: elimina gastos/ingresos/remesas previos y los re-inserta,
 // recalculando el efectivo esperado, el contado y la diferencia.
-const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes = [], remesas = [] }) => {
+const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [] }) => {
     const { id } = shift;
 
     // 1. Limpiar datos previos del arqueo (permite re-arqueo sin duplicados)
     await conn.query(`DELETE FROM pos_shift_expenses WHERE shift_id = ?`, [id]);
     await conn.query(`DELETE FROM pos_shift_incomes WHERE shift_id = ?`, [id]);
     await conn.query(`DELETE FROM pos_shift_remesas WHERE shift_id = ?`, [id]);
+    await conn.query(`DELETE FROM pos_shift_puntos WHERE shift_id = ?`, [id]);
 
     // 2. Guardar gastos
     let totalExpenses = 0;
@@ -387,6 +393,19 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         }
     }
 
+    // 4b. Guardar canjes de puntos
+    let totalPuntos = 0;
+    for (const punto of puntos) {
+        const amount = parseFloat(punto.amount || 0);
+        if (amount > 0) {
+            await conn.query(`
+                INSERT INTO pos_shift_puntos (shift_id, description, amount)
+                VALUES (?, ?, ?)
+            `, [id, punto.description || 'Canje de puntos', amount]);
+            totalPuntos += amount;
+        }
+    }
+
     // 5. Calcular totales de ventas del turno.
     // Misma asignación que getShiftSummary: efectivo = remanente de total_pagar por venta.
     const [salesTotals] = await conn.query(`
@@ -419,8 +438,8 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
     const totals = salesTotals[0];
     const cashSales = parseFloat(totals.cash || 0);
 
-    // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS
-    const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas;
+    // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS - PUNTOS
+    const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas - totalPuntos;
     const actualCash = parseFloat(actual_cash || 0);
     const difference = actualCash - expectedCash;
 
@@ -434,6 +453,7 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
             total_expenses = ?,
             total_incomes = ?,
             total_remesas = ?,
+            total_puntos = ?,
             arqueado = 1
         WHERE id = ?
     `, [
@@ -445,15 +465,16 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         totalExpenses,
         totalIncomes,
         totalRemesas,
+        totalPuntos,
         id
     ]);
 
-    return { expectedCash, actualCash, difference, totalExpenses, totalIncomes, totalRemesas };
+    return { expectedCash, actualCash, difference, totalExpenses, totalIncomes, totalRemesas, totalPuntos };
 };
 
 const saveArqueo = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [], remesas = [] } = req.body;
+    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [] } = req.body;
 
     try {
         const [shifts] = await pool.query('SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
@@ -462,7 +483,7 @@ const saveArqueo = async (req, res) => {
         const conn = await pool.getConnection();
         try {
             await conn.beginTransaction();
-            const result = await saveArqueoData(conn, shifts[0], { actual_cash, expenses, incomes, remesas });
+            const result = await saveArqueoData(conn, shifts[0], { actual_cash, expenses, incomes, remesas, puntos });
             await conn.commit();
             res.json({ message: 'Arqueo guardado correctamente', summary: result });
         } catch (error) {
@@ -479,7 +500,7 @@ const saveArqueo = async (req, res) => {
 
 const closeShift = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [], remesas = [] } = req.body;
+    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [] } = req.body;
 
     try {
         // Obtener resumen actual
@@ -497,7 +518,7 @@ const closeShift = async (req, res) => {
             let summary = null;
             const hasArqueoData = actual_cash !== undefined && actual_cash !== null && actual_cash !== '';
             if (hasArqueoData) {
-                summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas });
+                summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas, puntos });
             }
 
             // Finalizar el turno (el arqueo no es requisito)
@@ -517,7 +538,8 @@ const closeShift = async (req, res) => {
                     difference: parseFloat(s.difference || 0),
                     totalExpenses: parseFloat(s.total_expenses || 0),
                     totalIncomes: parseFloat(s.total_incomes || 0),
-                    totalRemesas: parseFloat(s.total_remesas || 0)
+                    totalRemesas: parseFloat(s.total_remesas || 0),
+                    totalPuntos: parseFloat(s.total_puntos || 0)
                 };
             }
 
@@ -529,7 +551,8 @@ const closeShift = async (req, res) => {
                     difference: summary.difference,
                     expenses: summary.totalExpenses,
                     incomes: summary.totalIncomes,
-                    remesas: summary.totalRemesas
+                    remesas: summary.totalRemesas,
+                    puntos: summary.totalPuntos
                 }
             });
         } catch (error) {
@@ -759,6 +782,7 @@ const deleteShift = async (req, res) => {
         await pool.query('DELETE FROM pos_shift_incomes WHERE shift_id = ?', [id]);
         await pool.query('DELETE FROM pos_shift_expenses WHERE shift_id = ?', [id]);
         await pool.query('DELETE FROM pos_shift_remesas WHERE shift_id = ?', [id]);
+        await pool.query('DELETE FROM pos_shift_puntos WHERE shift_id = ?', [id]);
         await pool.query('DELETE FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
 
         res.json({ message: 'Turno eliminado correctamente' });
