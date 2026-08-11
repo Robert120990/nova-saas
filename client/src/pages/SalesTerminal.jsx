@@ -759,7 +759,7 @@ const SalesTerminal = () => {
                     <title>Ticket de Venta</title>
                     <style>
                         @page { margin: 0; }
-                        body { width: 72mm; font-family: 'Courier New', monospace; font-size: 10px; margin: 0; padding: 5px 4px 5px 7px; }
+                        body { width: 72mm; font-family: 'Courier New', monospace; font-size: 11px; font-weight: 600; margin: 0; padding: 5px 4px 5px 7px; }
                         .center { text-align: center; }
                         .bold { font-weight: bold; }
                         .dashed { border-top: 1px dashed #000; margin: 4px 0; }
