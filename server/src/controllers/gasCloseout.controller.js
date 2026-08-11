@@ -2871,7 +2871,7 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
         const [allReadings] = await pool.query(`
             SELECT * FROM gas_station_closeout_readings
             WHERE closeout_id IN (${placeholders})
-            ORDER BY codigo_pistola ASC
+            ORDER BY codigo_pistola ASC, closeout_id ASC
         `, closeoutIds);
 
         const aggrReadings = {};
@@ -2916,11 +2916,21 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
                 ORDER BY tr.codigo_tanque ASC, tr.closeout_id ASC
             `, closeoutIds);
 
-            const lastTank = {};
+            const aggrTank = {};
             for (const tr of allTankReadings) {
-                lastTank[tr.tank_id] = tr;
+                if (aggrTank[tr.tank_id]) {
+                    aggrTank[tr.tank_id].lectura_actual = tr.lectura_actual;
+                    aggrTank[tr.tank_id].recarga = (parseFloat(aggrTank[tr.tank_id].recarga) || 0) + (parseFloat(tr.recarga) || 0);
+                } else {
+                    aggrTank[tr.tank_id] = {
+                        ...tr,
+                        lectura_anterior: tr.lectura_anterior,
+                        lectura_actual: tr.lectura_actual,
+                        recarga: tr.recarga
+                    };
+                }
             }
-            tankReadings = Object.values(lastTank);
+            tankReadings = Object.values(aggrTank);
         } catch (e) { /* table may not exist */ }
 
         // Despachadores - aggregate
