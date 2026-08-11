@@ -773,7 +773,7 @@ const SalesTerminal = () => {
                     <div class="center" style="font-size: 9px;">NIT: ${currentCompany?.nit || ''} | NRC: ${currentCompany?.nrc || ''}</div>
                     <div class="dashed"></div>
                     <div class="flex-between"><span>TIPO DTE:</span><span>${sale.tipoDteName || 'FACTURA'}</span></div>
-                    <div class="flex-between"><span>N° CONTROL:</span><span>${sale.dte?.numero_control || '---'}</span></div>
+                    <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${sale.dte?.numero_control || '---'}</span></div>
                     <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${sale.dte?.codigo_generacion || '---'}</span></div>
                     ${sale.dte?.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${sale.dte.sello_recepcion}</span></div>` : ''}
                     <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>

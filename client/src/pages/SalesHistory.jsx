@@ -348,7 +348,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                         <div class="center" style="font-size: 9px;">NIT: ${company?.nit || ''} | NRC: ${company?.nrc || ''}</div>
                         <div class="dashed"></div>
                         <div class="flex-between"><span>TIPO DTE:</span><span>${detail.tipo_documento_name || 'FACTURA'}</span></div>
-                        <div class="flex-between"><span>N° CONTROL:</span><span>${detail.numero_control || '---'}</span></div>
+                        <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${detail.numero_control || '---'}</span></div>
                         <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${detail.codigo_generacion || '---'}</span></div>
                         ${detail.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${detail.sello_recepcion}</span></div>` : ''}
                         <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>

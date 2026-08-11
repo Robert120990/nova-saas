@@ -109,40 +109,40 @@ const DiscountRules = () => {
                 isLoading={isLoading}
                 renderRow={(rule) => (
                     <tr key={rule.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4">
-                            <p className="font-bold text-sm text-slate-800">{rule.product_name || 'Producto ' + rule.product_id}</p>
+                        <td className="px-4 py-1">
+                            <p className="text-xs font-bold text-slate-800">{rule.product_name || 'Producto ' + rule.product_id}</p>
                             <p className="text-[10px] text-slate-400">{rule.product_code}</p>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-1">
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${rule.discount_type === 'percentage' ? 'bg-purple-50 text-purple-600' : 'bg-amber-50 text-amber-600'}`}>
                                 {rule.discount_type === 'percentage' ? <Percent size={12} /> : <DollarSign size={12} />}
                                 {rule.discount_type === 'percentage' ? 'Porcentaje' : 'Fijo'}
                             </span>
                         </td>
-                        <td className="px-6 py-4 font-bold text-sm">
+                        <td className="px-4 py-1 font-bold text-xs">
                             {rule.discount_type === 'percentage' ? `${parseFloat(rule.discount_value)}%` : <Money value={rule.discount_value} />}
                         </td>
-                        <td className="px-6 py-4 text-xs text-slate-500">
+                        <td className="px-4 py-1 text-[10px] text-slate-500">
                             {rule.start_date || rule.end_date ? (
                                 <span>{rule.start_date || '—'} → {rule.end_date || 'Indefinido'}</span>
                             ) : 'Indefinido'}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-1">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rule.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
                                 {rule.active ? 'Activo' : 'Inactivo'}
                             </span>
                         </td>
-                        <td className="px-6 py-4">
-                            <div className="flex gap-2">
+                        <td className="px-4 py-1">
+                            <div className="flex gap-1">
                                 <button
                                     onClick={() => { setEditingRule(rule); setSelectedProductId(rule.product_id); setIsModalOpen(true); }}
-                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                 >
                                     <Edit size={14} />
                                 </button>
                                 <button
                                     onClick={() => { if (confirm('¿Eliminar esta regla?')) deleteMutation.mutate(rule.id); }}
-                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                 >
                                     <Trash2 size={14} />
                                 </button>
