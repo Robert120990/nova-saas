@@ -39,6 +39,7 @@ export const MoneyInput = ({ value, onChange, className = '', readOnly = false, 
       placeholder={placeholder}
       className={className}
       readOnly={readOnly}
+      onWheel={(e) => { e.preventDefault(); e.currentTarget.blur(); }}
       {...props}
     />
   );

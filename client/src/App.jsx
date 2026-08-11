@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
@@ -151,6 +152,16 @@ const ProtectedRoute = () => {
 };
 
 function App() {
+  useEffect(() => {
+    const preventNumberInputScroll = (e) => {
+      if (e.target && e.target.type === 'number') {
+        e.target.blur();
+      }
+    };
+    document.addEventListener('wheel', preventNumberInputScroll, { passive: true });
+    return () => document.removeEventListener('wheel', preventNumberInputScroll);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
         <ConfirmProvider>
