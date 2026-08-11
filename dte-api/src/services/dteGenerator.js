@@ -281,7 +281,9 @@ async function generateDTE(payload) {
         }
 
         // Ítem gravado: asegurar que el IVA (20) esté declarado en los tributos del ítem
-        if (!item.exento && itemTributos.length > 0 && !itemTributos.includes('20') && (parseFloat(item.ventaGravada || 0) > 0 || parseFloat(item.venta_gravada || 0) > 0)) {
+        // Usar el valor calculado (calcItem) — el payload puede omitir venta_gravada (ver dte.service.js)
+        if (!item.exento && itemTributos.length > 0 && !itemTributos.includes('20') &&
+            parseFloat(calcItem.ventaGravada || 0) > 0) {
             itemTributos = ['20', ...itemTributos];
         }
 
