@@ -52,7 +52,7 @@ exports.getPendingRemesas = async (req, res) => {
 
 exports.createDelivery = async (req, res) => {
     try {
-        const { fecha, hora, responsable, comentario, referencia, remesa_ids } = req.body;
+        const { fecha, hora, responsable, comentario, referencia, remesa_ids, remesas_extra } = req.body;
 
         if (!fecha || !hora) {
             return res.status(400).json({ message: 'Fecha y hora son requeridas' });
@@ -60,37 +60,43 @@ exports.createDelivery = async (req, res) => {
         if (!referencia || !String(referencia).trim()) {
             return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
-        if (!remesa_ids || !Array.isArray(remesa_ids) || remesa_ids.length === 0) {
-            return res.status(400).json({ message: 'Debe seleccionar al menos una remesa' });
+
+        const hasRemesas = remesa_ids && Array.isArray(remesa_ids) && remesa_ids.length > 0;
+        const extras = (remesas_extra || []).filter(x => parseFloat(x.monto) > 0);
+
+        if (!hasRemesas && extras.length === 0) {
+            return res.status(400).json({ message: 'Debe seleccionar al menos una remesa o agregar otras remesas' });
         }
 
-        let remesaQuery = `SELECT r.id FROM gas_station_closeout_remesas r
-             JOIN gas_station_closeouts c ON r.closeout_id = c.id
-             WHERE r.id IN (?) AND c.company_id = ? AND r.entregada = 0`;
-        const remesaParams = [remesa_ids, req.company_id];
+        if (hasRemesas) {
+            let remesaQuery = `SELECT r.id FROM gas_station_closeout_remesas r
+                 JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                 WHERE r.id IN (?) AND c.company_id = ? AND r.entregada = 0`;
+            const remesaParams = [remesa_ids, req.company_id];
 
-        if (req.user.branch_id) {
-            remesaQuery += ` AND c.branch_id = ?`;
-            remesaParams.push(req.user.branch_id);
-        }
+            if (req.user.branch_id) {
+                remesaQuery += ` AND c.branch_id = ?`;
+                remesaParams.push(req.user.branch_id);
+            }
 
-        const [remesas] = await pool.query(remesaQuery, remesaParams);
+            const [remesas] = await pool.query(remesaQuery, remesaParams);
 
-        if (remesas.length !== remesa_ids.length) {
-            const foundIds = remesas.map(r => r.id);
-            const missing = remesa_ids.filter(id => !foundIds.includes(id));
-            const [alreadyDelivered] = await pool.query(
-                `SELECT id FROM gas_station_closeout_remesas WHERE id IN (?) AND entregada = 1`,
-                [missing]
-            );
-            if (alreadyDelivered.length > 0) {
+            if (remesas.length !== remesa_ids.length) {
+                const foundIds = remesas.map(r => r.id);
+                const missing = remesa_ids.filter(id => !foundIds.includes(id));
+                const [alreadyDelivered] = await pool.query(
+                    `SELECT id FROM gas_station_closeout_remesas WHERE id IN (?) AND entregada = 1`,
+                    [missing]
+                );
+                if (alreadyDelivered.length > 0) {
+                    return res.status(400).json({
+                        message: `Algunas remesas ya están entregadas (IDs: ${alreadyDelivered.map(r => r.id).join(', ')})`
+                    });
+                }
                 return res.status(400).json({
-                    message: `Algunas remesas ya están entregadas (IDs: ${alreadyDelivered.map(r => r.id).join(', ')})`
+                    message: 'Algunas remesas no fueron encontradas o no están disponibles'
                 });
             }
-            return res.status(400).json({
-                message: 'Algunas remesas no fueron encontradas o no están disponibles'
-            });
         }
 
         const branch_id = req.user.branch_id || 0;
@@ -102,15 +108,25 @@ exports.createDelivery = async (req, res) => {
 
         const deliveryId = result.insertId;
 
-        await pool.query(
-            `UPDATE gas_station_closeout_remesas SET entregada = 1, entrega_id = ? WHERE id IN (?)`,
-            [deliveryId, remesa_ids]
-        );
+        if (hasRemesas) {
+            await pool.query(
+                `UPDATE gas_station_closeout_remesas SET entregada = 1, entrega_id = ? WHERE id IN (?)`,
+                [deliveryId, remesa_ids]
+            );
+        }
+
+        if (extras.length > 0) {
+            await pool.query(
+                `INSERT INTO gas_station_delivery_remesas_extra (delivery_id, descripcion, monto) VALUES ?`,
+                [extras.map(x => [deliveryId, String(x.descripcion || '').trim().toUpperCase(), parseFloat(x.monto).toFixed(2)])]
+            );
+        }
 
         const [delivery] = await pool.query(`
             SELECT d.*,
                    COUNT(r.id) as total_remesas,
-                   COALESCE(SUM(r.monto), 0) as monto_total
+                   COALESCE((SELECT COUNT(*) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as total_otras,
+                   COALESCE(SUM(r.monto), 0) + COALESCE((SELECT SUM(e.monto) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as monto_total
             FROM gas_station_remesa_deliveries d
             LEFT JOIN gas_station_closeout_remesas r ON d.id = r.entrega_id
             WHERE d.id = ?
@@ -135,7 +151,7 @@ exports.createDelivery = async (req, res) => {
 exports.updateDelivery = async (req, res) => {
     try {
         const { id } = req.params;
-        const { fecha, hora, responsable, comentario, referencia, remesa_ids } = req.body;
+        const { fecha, hora, responsable, comentario, referencia, remesa_ids, remesas_extra } = req.body;
 
         const [deliveries] = await pool.query(
             `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
@@ -154,26 +170,32 @@ exports.updateDelivery = async (req, res) => {
         if (!referencia || !String(referencia).trim()) {
             return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
-        if (!remesa_ids || !Array.isArray(remesa_ids) || remesa_ids.length === 0) {
-            return res.status(400).json({ message: 'Debe seleccionar al menos una remesa' });
+
+        const hasRemesas = remesa_ids && Array.isArray(remesa_ids) && remesa_ids.length > 0;
+        const extras = (remesas_extra || []).filter(x => parseFloat(x.monto) > 0);
+
+        if (!hasRemesas && extras.length === 0) {
+            return res.status(400).json({ message: 'Debe seleccionar al menos una remesa o agregar otras remesas' });
         }
 
-        let remesaQuery = `SELECT r.id FROM gas_station_closeout_remesas r
-             JOIN gas_station_closeouts c ON r.closeout_id = c.id
-             WHERE r.id IN (?) AND c.company_id = ? AND (r.entregada = 0 OR r.entrega_id = ?)`;
-        const remesaParams = [remesa_ids, req.company_id, parseInt(id)];
+        if (hasRemesas) {
+            let remesaQuery = `SELECT r.id FROM gas_station_closeout_remesas r
+                 JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                 WHERE r.id IN (?) AND c.company_id = ? AND (r.entregada = 0 OR r.entrega_id = ?)`;
+            const remesaParams = [remesa_ids, req.company_id, parseInt(id)];
 
-        if (req.user.branch_id) {
-            remesaQuery += ` AND c.branch_id = ?`;
-            remesaParams.push(req.user.branch_id);
-        }
+            if (req.user.branch_id) {
+                remesaQuery += ` AND c.branch_id = ?`;
+                remesaParams.push(req.user.branch_id);
+            }
 
-        const [remesas] = await pool.query(remesaQuery, remesaParams);
+            const [remesas] = await pool.query(remesaQuery, remesaParams);
 
-        if (remesas.length !== remesa_ids.length) {
-            return res.status(400).json({
-                message: 'Algunas remesas no están disponibles (ya entregadas en otra entrega o no encontradas)'
-            });
+            if (remesas.length !== remesa_ids.length) {
+                return res.status(400).json({
+                    message: 'Algunas remesas no están disponibles (ya entregadas en otra entrega o no encontradas)'
+                });
+            }
         }
 
         await pool.query(
@@ -181,20 +203,40 @@ exports.updateDelivery = async (req, res) => {
             [fecha, hora, responsable || '', comentario || '', String(referencia).trim(), id]
         );
 
-        await pool.query(
-            `UPDATE gas_station_closeout_remesas SET entregada = 0, entrega_id = NULL WHERE entrega_id = ? AND id NOT IN (?)`,
-            [id, remesa_ids]
-        );
+        if (hasRemesas) {
+            await pool.query(
+                `UPDATE gas_station_closeout_remesas SET entregada = 0, entrega_id = NULL WHERE entrega_id = ? AND id NOT IN (?)`,
+                [id, remesa_ids]
+            );
+
+            await pool.query(
+                `UPDATE gas_station_closeout_remesas SET entregada = 1, entrega_id = ? WHERE id IN (?) AND entregada = 0`,
+                [id, remesa_ids]
+            );
+        } else {
+            await pool.query(
+                `UPDATE gas_station_closeout_remesas SET entregada = 0, entrega_id = NULL WHERE entrega_id = ?`,
+                [id]
+            );
+        }
 
         await pool.query(
-            `UPDATE gas_station_closeout_remesas SET entregada = 1, entrega_id = ? WHERE id IN (?) AND entregada = 0`,
-            [id, remesa_ids]
+            `DELETE FROM gas_station_delivery_remesas_extra WHERE delivery_id = ?`,
+            [id]
         );
+
+        if (extras.length > 0) {
+            await pool.query(
+                `INSERT INTO gas_station_delivery_remesas_extra (delivery_id, descripcion, monto) VALUES ?`,
+                [extras.map(x => [id, String(x.descripcion || '').trim().toUpperCase(), parseFloat(x.monto).toFixed(2)])]
+            );
+        }
 
         const [delivery] = await pool.query(`
             SELECT d.*,
                    COUNT(r.id) as total_remesas,
-                   COALESCE(SUM(r.monto), 0) as monto_total
+                   COALESCE((SELECT COUNT(*) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as total_otras,
+                   COALESCE(SUM(r.monto), 0) + COALESCE((SELECT SUM(e.monto) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as monto_total
             FROM gas_station_remesa_deliveries d
             LEFT JOIN gas_station_closeout_remesas r ON d.id = r.entrega_id
             WHERE d.id = ?
@@ -235,7 +277,8 @@ exports.getDeliveries = async (req, res) => {
         const [rows] = await pool.query(
             `SELECT d.*,
                     COUNT(r.id) as total_remesas,
-                    COALESCE(SUM(r.monto), 0) as monto_total
+                    COALESCE((SELECT COUNT(*) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as total_otras,
+                    COALESCE(SUM(r.monto), 0) + COALESCE((SELECT SUM(e.monto) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as monto_total
              FROM gas_station_remesa_deliveries d
              LEFT JOIN gas_station_closeout_remesas r ON d.id = r.entrega_id
              ${where}
@@ -276,7 +319,14 @@ exports.getDelivery = async (req, res) => {
             [id]
         );
 
-        res.json({ ...deliveries[0], remesas });
+        const [remesasExtra] = await pool.query(
+            `SELECT id, descripcion, monto FROM gas_station_delivery_remesas_extra
+             WHERE delivery_id = ?
+             ORDER BY id ASC`,
+            [id]
+        );
+
+        res.json({ ...deliveries[0], remesas, remesas_extra: remesasExtra });
     } catch (error) {
         console.error('Error getDelivery:', error);
         res.status(500).json({ message: 'Error al obtener entrega' });
@@ -348,6 +398,13 @@ exports.entregarDelivery = async (req, res) => {
 
         const montoTotal = remesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0);
 
+        const [remesasExtra] = await pool.query(
+            `SELECT id, descripcion, monto FROM gas_station_delivery_remesas_extra
+             WHERE delivery_id = ?
+             ORDER BY id ASC`,
+            [id]
+        );
+
         try {
             const [settingsRows] = await pool.query(
                 `SELECT setting_value FROM gas_station_settings 
@@ -405,6 +462,34 @@ exports.entregarDelivery = async (req, res) => {
                                 'P'
                             ]
                         );
+
+                        for (const extra of remesasExtra) {
+                            const montoExtra = parseFloat(extra.monto) || 0;
+                            if (montoExtra <= 0) continue;
+
+                            const llaveExtra = `${rrsIdEmpresa}-${delivery.id}-E${extra.id}`;
+                            const conceptoExtra = String(extra.descripcion || 'Otras remesas').trim().toUpperCase().slice(0, 120);
+
+                            await rrsPool.query(
+                                `INSERT INTO movimientos_bancarios 
+                                 (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    cuenta.id_empresa,
+                                    llaveExtra,
+                                    '01',
+                                    documento,
+                                    cuenta.numero,
+                                    conceptoExtra,
+                                    montoExtra.toFixed(2),
+                                    '0.0',
+                                    '',
+                                    fechaStr,
+                                    montoExtra.toFixed(2),
+                                    'P'
+                                ]
+                            );
+                        }
                     }
                 }
             }
@@ -415,7 +500,8 @@ exports.entregarDelivery = async (req, res) => {
         const [result] = await pool.query(`
             SELECT d.*,
                    COUNT(r.id) as total_remesas,
-                   COALESCE(SUM(r.monto), 0) as monto_total
+                   COALESCE((SELECT COUNT(*) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as total_otras,
+                   COALESCE(SUM(r.monto), 0) + COALESCE((SELECT SUM(e.monto) FROM gas_station_delivery_remesas_extra e WHERE e.delivery_id = d.id), 0) as monto_total
             FROM gas_station_remesa_deliveries d
             LEFT JOIN gas_station_closeout_remesas r ON d.id = r.entrega_id
             WHERE d.id = ?
@@ -452,6 +538,13 @@ exports.getDeliveryPdf = async (req, res) => {
              LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
              WHERE r.entrega_id = ?
              ORDER BY r.id ASC`,
+            [id]
+        );
+
+        const [remesasExtra] = await pool.query(
+            `SELECT id, descripcion, monto FROM gas_station_delivery_remesas_extra
+             WHERE delivery_id = ?
+             ORDER BY id ASC`,
             [id]
         );
 
@@ -594,11 +687,50 @@ exports.getDeliveryPdf = async (req, res) => {
         doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(leftMargin, y).lineTo(rightMargin, y).stroke();
         y += 8;
 
+        const totalExtras = remesasExtra.reduce((s, e) => s + (parseFloat(e.monto) || 0), 0);
+
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#000000');
-        doc.text(`Total Remesas: ${remesas.length}`, leftMargin, y);
-        doc.text(`Total: ${fmtMoney(total)}`, rightMargin - 150, y, { align: 'right', width: 150 });
+        doc.text(`Total Remesas: ${remesas.length}${remesasExtra.length > 0 ? ` / Otras: ${remesasExtra.length}` : ''}`, leftMargin, y);
+        doc.text(`Total: ${fmtMoney(total + totalExtras)}`, rightMargin - 150, y, { align: 'right', width: 150 });
 
         y = doc.y + 14;
+
+        if (remesasExtra.length > 0) {
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b');
+            doc.text('OTRAS REMESAS', leftMargin, y);
+            y = doc.y + 8;
+
+            const extraColX = {
+                descripcion: leftMargin,
+                monto: rightMargin - 70,
+            };
+            doc.text('DESCRIPCION', extraColX.descripcion, y);
+            doc.text('MONTO', extraColX.monto, y, { align: 'right' });
+            y = doc.y + 6;
+
+            doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(leftMargin, y).lineTo(rightMargin, y).stroke();
+            y += 6;
+
+            doc.fontSize(8).font('Helvetica').fillColor('#000000');
+            for (const ex of remesasExtra) {
+                if (y > 700) {
+                    doc.addPage();
+                    y = 40;
+                }
+
+                doc.text(ex.descripcion || 'Otras remesas', extraColX.descripcion, y, { width: 400 });
+                doc.text(fmtMoney(ex.monto), extraColX.monto, y, { align: 'right', width: 70 });
+                y = doc.y + 4;
+            }
+
+            y += 4;
+            doc.lineWidth(0.5).strokeColor('#e2e8f0').moveTo(leftMargin, y).lineTo(rightMargin, y).stroke();
+            y += 8;
+
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#000000');
+            doc.text(`Total Otras: ${fmtMoney(totalExtras)}`, rightMargin - 150, y, { align: 'right', width: 150 });
+            y = doc.y + 14;
+        }
 
         if (cuentaBancaria) {
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b');

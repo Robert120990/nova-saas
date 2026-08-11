@@ -8,7 +8,7 @@ import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3,
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import Money from '../components/ui/Money';
+import Money, { MoneyInput } from '../components/ui/Money';
 
 const today = () => new Date().toISOString().split('T')[0];
 const now = () => new Date().toTimeString().split(' ')[0].slice(0, 5);
@@ -30,6 +30,7 @@ const GasRemesaDeliveries = () => {
     const [referencia, setReferencia] = useState('');
     const [addedRemesas, setAddedRemesas] = useState([]);
     const [scanInput, setScanInput] = useState('');
+    const [extraRemesas, setExtraRemesas] = useState([]);
 
     const [showSearchModal, setShowSearchModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -74,6 +75,7 @@ const GasRemesaDeliveries = () => {
         queryKey: ['gas-remesa-delivery-edit', editId],
         queryFn: async () => (await axios.get(`/api/gas-station/remesa-deliveries/${editId}`)).data,
         enabled: !!editId && showFormModal,
+        staleTime: 0,
     });
 
     useEffect(() => {
@@ -84,6 +86,7 @@ const GasRemesaDeliveries = () => {
             setComentario(editData.comentario || '');
             setReferencia(editData.referencia || '');
             setAddedRemesas(editData.remesas || []);
+            setExtraRemesas(editData.remesas_extra?.map(x => ({ descripcion: x.descripcion || '', monto: String(x.monto ?? '') })) || []);
         }
     }, [editData]);
 
@@ -92,6 +95,8 @@ const GasRemesaDeliveries = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery-edit'] });
             closeForm();
             toast.success('Entrega registrada exitosamente');
         },
@@ -103,6 +108,8 @@ const GasRemesaDeliveries = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery-edit'] });
             closeForm();
             toast.success('Entrega actualizada exitosamente');
         },
@@ -114,6 +121,8 @@ const GasRemesaDeliveries = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery-edit'] });
             toast.success('Entrega eliminada');
             if (showDetailModal) setShowDetailModal(false);
         },
@@ -125,6 +134,8 @@ const GasRemesaDeliveries = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery-edit'] });
             toast.success('Entrega marcada como entregada');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al marcar entrega'),
@@ -146,6 +157,7 @@ const GasRemesaDeliveries = () => {
         setReferencia('');
         setAddedRemesas([]);
         setScanInput('');
+        setExtraRemesas([]);
     };
 
     const openNewForm = () => {
@@ -214,15 +226,33 @@ const GasRemesaDeliveries = () => {
         setAddedRemesas(prev => prev.filter(r => r.id !== id));
     };
 
+    const addExtraRow = () => {
+        setExtraRemesas(prev => [...prev, { descripcion: '', monto: '' }]);
+    };
+
+    const removeExtraRow = (index) => {
+        setExtraRemesas(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const updateExtraRow = (index, field, value) => {
+        setExtraRemesas(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+    };
+
     const handleSave = () => {
         if (!fecha) { toast.error('La fecha es requerida'); return; }
         if (!hora) { toast.error('La hora es requerida'); return; }
         if (!referencia.trim()) { toast.error('El número de referencia es requerido'); return; }
-        if (addedRemesas.length === 0) { toast.error('Debe agregar al menos una remesa'); return; }
+
+        const extrasValidos = extraRemesas.filter(r => parseFloat(r.monto) > 0);
+        if (addedRemesas.length === 0 && extrasValidos.length === 0) {
+            toast.error('Debe agregar al menos una remesa o ingresar otras remesas');
+            return;
+        }
 
         const payload = {
             fecha, hora, responsable, comentario, referencia: referencia.trim(),
             remesa_ids: addedRemesas.map(r => r.id),
+            remesas_extra: extrasValidos.map(r => ({ descripcion: r.descripcion, monto: parseFloat(r.monto) })),
         };
 
         if (isEditing) {
@@ -272,9 +302,12 @@ const GasRemesaDeliveries = () => {
     };
 
     const totalMonto = useMemo(() =>
-        addedRemesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0),
-        [addedRemesas]
+        addedRemesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0) +
+        extraRemesas.reduce((s, r) => s + (parseFloat(r.monto) || 0), 0),
+        [addedRemesas, extraRemesas]
     );
+
+    const extrasValidosCount = useMemo(() => extraRemesas.filter(r => parseFloat(r.monto) > 0).length, [extraRemesas]);
 
     const inputCls = "w-full bg-white border border-slate-200 rounded-xl text-[13px] font-medium py-2 px-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all";
     const labelCls = "text-[11px] font-bold text-slate-500 uppercase";
@@ -337,7 +370,7 @@ const GasRemesaDeliveries = () => {
                                 <span className="text-xs text-slate-500 truncate max-w-[200px] inline-block">{item.comentario || '—'}</span>
                             </td>
                             <td className="px-3 py-1">
-                                <span className="text-xs font-bold font-mono text-indigo-600">{item.total_remesas}</span>
+                                <span className="text-xs font-bold font-mono text-indigo-600">{Number(item.total_remesas) + Number(item.total_otras || 0)}</span>
                             </td>
                             <td className="px-3 py-1">
                                 <span className="text-xs font-bold font-mono text-emerald-600"><Money value={item.monto_total} /></span>
@@ -472,13 +505,56 @@ const GasRemesaDeliveries = () => {
                             {addedRemesas.length > 0 && (
                                 <tfoot>
                                     <tr className="bg-slate-50">
-                                        <td colSpan={5} className="px-3 py-2 text-[11px] font-bold text-slate-600 text-right">Total: {addedRemesas.length} remesas</td>
+                                        <td colSpan={5} className="px-3 py-2 text-[11px] font-bold text-slate-600 text-right">Total: {addedRemesas.length} remesas{extrasValidosCount > 0 ? ` + ${extrasValidosCount} otras` : ''}</td>
                                         <td className="px-3 py-2 text-right font-mono font-bold text-lg text-indigo-600"><Money value={totalMonto} /></td>
                                         <td></td>
                                     </tr>
                                 </tfoot>
                             )}
                         </table>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className={labelCls}>Otras Remesas</label>
+                            <button
+                                onClick={addExtraRow}
+                                className="flex items-center gap-1 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs rounded-xl border border-indigo-200 transition-all"
+                            >
+                                <Plus size={13} /> Agregar
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            {extraRemesas.length === 0 && (
+                                <div className="px-3 py-3 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
+                                    Sin otras remesas. Clic en "+ Agregar" para ingresar descripción y monto.
+                                </div>
+                            )}
+                            {extraRemesas.map((r, i) => (
+                                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_150px_40px] gap-2 items-center">
+                                    <input
+                                        type="text"
+                                        value={r.descripcion}
+                                        onChange={(e) => updateExtraRow(i, 'descripcion', e.target.value.toUpperCase())}
+                                        placeholder="Descripción..."
+                                        className={inputCls}
+                                    />
+                                    <MoneyInput
+                                        value={r.monto}
+                                        onChange={(e) => updateExtraRow(i, 'monto', e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full bg-white border border-slate-200 rounded-xl text-[13px] font-medium py-2 px-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
+                                    />
+                                    <button
+                                        onClick={() => removeExtraRow(i)}
+                                        className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all self-center"
+                                        title="Eliminar"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-2">
@@ -616,6 +692,26 @@ const GasRemesaDeliveries = () => {
                                 </tbody>
                             </table>
                         </div>
+                        {deliveryDetail.remesas_extra?.length > 0 && (
+                            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead>
+                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <th className="px-3 py-2 bg-slate-50 border-b border-slate-100">Descripción</th>
+                                            <th className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-right">Monto</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {deliveryDetail.remesas_extra.map(r => (
+                                            <tr key={r.id} className="text-[12px]">
+                                                <td className="px-3 py-2 font-medium text-slate-800">{r.descripcion || 'Otras remesas'}</td>
+                                                <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600"><Money value={r.monto} /></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                         <div className="flex justify-end gap-2">
                             <button
                                 onClick={() => handlePrintPdf(deliveryDetail.id)}
