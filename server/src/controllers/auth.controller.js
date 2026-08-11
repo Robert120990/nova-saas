@@ -362,7 +362,7 @@ const heartbeat = async (req, res) => {
             global._lastSessionCleanup = Date.now();
             await pool.query(
                 `UPDATE user_sessions SET is_active = 0 
-                 WHERE is_active = 1 AND last_heartbeat < NOW() - INTERVAL 2 MINUTE`
+                 WHERE is_active = 1 AND last_heartbeat < NOW() - INTERVAL 2 HOUR`
             );
         }
 
