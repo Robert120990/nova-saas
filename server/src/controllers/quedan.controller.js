@@ -120,7 +120,7 @@ const createQuedan = async (req, res) => {
                 const r = parseFloat(item.retencion) || 0;
                 const p = parseFloat(item.percepcion) || 0;
                 const e = parseFloat(item.exentas) || 0;
-                const t = g + i + e;
+                const t = Math.round((g + i + e - r + p) * 100) / 100;
                 totalGravadas += g;
                 totalIva += i;
                 totalRetencion += r;
@@ -149,7 +149,7 @@ const createQuedan = async (req, res) => {
                 parseFloat(item.retencion) || 0,
                 parseFloat(item.percepcion) || 0,
                 parseFloat(item.exentas) || 0,
-                parseFloat(item.total) || (parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0)
+                parseFloat(item.total) || Math.round(((parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0) - (parseFloat(item.retencion) || 0) + (parseFloat(item.percepcion) || 0)) * 100) / 100
             ]);
 
             await pool.query(`
@@ -206,7 +206,7 @@ const updateQuedan = async (req, res) => {
                 const r = parseFloat(item.retencion) || 0;
                 const p = parseFloat(item.percepcion) || 0;
                 const e = parseFloat(item.exentas) || 0;
-                const t = g + i + e;
+                const t = Math.round((g + i + e - r + p) * 100) / 100;
                 totalGravadas += g;
                 totalIva += i;
                 totalRetencion += r;
@@ -245,7 +245,7 @@ const updateQuedan = async (req, res) => {
                 parseFloat(item.retencion) || 0,
                 parseFloat(item.percepcion) || 0,
                 parseFloat(item.exentas) || 0,
-                parseFloat(item.total) || (parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0)
+                parseFloat(item.total) || Math.round(((parseFloat(item.gravadas) || 0) + (parseFloat(item.iva) || 0) + (parseFloat(item.exentas) || 0) - (parseFloat(item.retencion) || 0) + (parseFloat(item.percepcion) || 0)) * 100) / 100
             ]);
 
             await pool.query(`

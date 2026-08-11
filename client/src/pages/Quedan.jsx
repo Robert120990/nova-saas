@@ -147,7 +147,9 @@ const Quedan = () => {
         const g = parseFloat(item.gravadas) || 0;
         const i = parseFloat(item.iva) || 0;
         const e = parseFloat(item.exentas) || 0;
-        return g + i + e;
+        const r = parseFloat(item.retencion) || 0;
+        const p = parseFloat(item.percepcion) || 0;
+        return Math.round((g + i + e - r + p) * 100) / 100;
     };
 
     const removeItem = (key) => {
