@@ -411,7 +411,10 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
     const [salesTotals] = await conn.query(`
         SELECT 
             SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE 0 END) as cash,
-            SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE a.sum_monto END) as total
+            SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE a.sum_monto END) as total,
+            SUM(CASE WHEN a.metodo_pago IN ('02', '03') THEN a.sum_monto ELSE 0 END) as card,
+            SUM(CASE WHEN a.metodo_pago = '20' THEN a.sum_monto ELSE 0 END) as transfer,
+            SUM(CASE WHEN a.metodo_pago NOT IN ('01', '02', '03', '20') THEN a.sum_monto ELSE 0 END) as other
         FROM (
             SELECT 
                 h.id,
@@ -437,6 +440,9 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
 
     const totals = salesTotals[0];
     const cashSales = parseFloat(totals.cash || 0);
+    const cardSales = parseFloat(totals.card || 0);
+    const transferSales = parseFloat(totals.transfer || 0);
+    const otherSales = parseFloat(totals.other || 0);
 
     // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS - PUNTOS
     const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas - totalPuntos;
@@ -449,6 +455,9 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
             actual_cash = ?,
             difference = ?,
             cash_sales = ?,
+            card_sales = ?,
+            transfer_sales = ?,
+            other_sales = ?,
             total_sales = ?,
             total_expenses = ?,
             total_incomes = ?,
@@ -461,6 +470,9 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         actualCash,
         difference,
         cashSales,
+        cardSales,
+        transferSales,
+        otherSales,
         parseFloat(totals.total || 0),
         totalExpenses,
         totalIncomes,
@@ -469,7 +481,7 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         id
     ]);
 
-    return { expectedCash, actualCash, difference, totalExpenses, totalIncomes, totalRemesas, totalPuntos };
+    return { expectedCash, actualCash, difference, cardSales, transferSales, otherSales, totalExpenses, totalIncomes, totalRemesas, totalPuntos };
 };
 
 const saveArqueo = async (req, res) => {
@@ -585,6 +597,10 @@ const getShiftsHistory = async (req, res) => {
         let dataSql = `
             SELECT s.*, 
                 COALESCE(sales.total, s.total_sales, 0) as total_sales,
+                COALESCE(sales.cash_sales, s.cash_sales, 0) as cash_sales,
+                COALESCE(sales.card_sales, s.card_sales, 0) as card_sales,
+                COALESCE(sales.transfer_sales, s.transfer_sales, 0) as transfer_sales,
+                COALESCE(sales.other_sales, s.other_sales, 0) as other_sales,
                 sel.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name
             FROM pos_shifts s
             JOIN sellers sel ON s.seller_id = sel.id
@@ -593,7 +609,11 @@ const getShiftsHistory = async (req, res) => {
             LEFT JOIN (
                 SELECT 
                     b.shift_id,
-                    SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE b.sum_monto END) as total
+                    SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE b.sum_monto END) as total,
+                    SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE 0 END) as cash_sales,
+                    SUM(CASE WHEN b.metodo_pago IN ('02', '03') THEN b.sum_monto ELSE 0 END) as card_sales,
+                    SUM(CASE WHEN b.metodo_pago = '20' THEN b.sum_monto ELSE 0 END) as transfer_sales,
+                    SUM(CASE WHEN b.metodo_pago NOT IN ('01', '02', '03', '20') THEN b.sum_monto ELSE 0 END) as other_sales
                 FROM (
                     SELECT 
                         h.shift_id,

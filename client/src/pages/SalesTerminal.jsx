@@ -2056,7 +2056,7 @@ const SalesTerminal = () => {
                                     </div>
                                 </div>
 
-                                {['02', '03', '04', '05'].includes(currentPayment.metodo_pago) && (
+                                {['02', '03', '10', '20', '30', '99'].includes(currentPayment.metodo_pago) && (
                                     <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                                         <div className="col-span-1">
                                             <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Referencia / Auth</label>
@@ -2068,7 +2068,7 @@ const SalesTerminal = () => {
                                                 className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                             />
                                         </div>
-                                        {currentPayment.metodo_pago === '05' ? (
+                                        {currentPayment.metodo_pago === '10' ? (
                                             <div>
                                                 <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Nro. de Cheque</label>
                                                 <input 
