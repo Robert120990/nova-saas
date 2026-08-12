@@ -497,7 +497,7 @@ exports.getCloseout = async (req, res) => {
                  GROUP BY cliente_id
              ) ga ON ga.cliente_id = ad.cliente_id
              WHERE ad.closeout_id = ?
-             ORDER BY ad.id ASC`, [companyId, id]
+             ORDER BY ad.id ASC`, [req.company_id, id]
         );
 
         const [lubricantes] = await pool.query(
@@ -2399,7 +2399,7 @@ exports.getCloseoutPrintData = async (req, res) => {
                  GROUP BY cliente_id
              ) ga ON ga.cliente_id = ad.cliente_id
              WHERE ad.closeout_id = ?
-             ORDER BY ad.id ASC`, [companyId, id]
+             ORDER BY ad.id ASC`, [req.company_id, id]
         );
 
         const [nozzleAssignments] = await pool.query(

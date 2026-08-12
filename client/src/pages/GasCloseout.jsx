@@ -190,7 +190,7 @@ const GasCloseout = () => {
                 .find(r => r && r.despachador_id);
             lastDespachadorRef.current = firstWithDesp?.despachador_id || editData.despachadores?.[0]?.despachador_id || null;
         }
-    }, [editId]);
+    }, [editId, editData]);
 
     useEffect(() => {
         if (!editId) {
