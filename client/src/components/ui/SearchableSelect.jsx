@@ -45,6 +45,13 @@ const SearchableSelect = ({
     const requestSeqRef = useRef(0);
     const skipDebounceRef = useRef(false);
 
+    // Mantener siempre la última referencia de loadOptions para evitar
+    // que cambios de identidad (re-renders del padre) disparen re-fetch en bucle
+    const loadOptionsRef = useRef(loadOptions);
+    useEffect(() => {
+        loadOptionsRef.current = loadOptions;
+    }, [loadOptions]);
+
     // Ensure options is always an array
     const safeOptions = Array.isArray(options) ? options : [];
 
@@ -52,7 +59,7 @@ const SearchableSelect = ({
         const seq = ++requestSeqRef.current;
         setRemoteLoading(true);
         try {
-            const res = await loadOptions(searchTerm, page);
+            const res = await loadOptionsRef.current(searchTerm, page);
             if (seq !== requestSeqRef.current) return;
             const data = Array.isArray(res?.data) ? res.data : [];
             setRemotePage(page);
@@ -64,7 +71,7 @@ const SearchableSelect = ({
         } finally {
             if (seq === requestSeqRef.current) setRemoteLoading(false);
         }
-    }, [loadOptions]);
+    }, []);
 
     const effectiveOptions = loadOptions ? remoteOptions : safeOptions;
 
@@ -120,14 +127,14 @@ const SearchableSelect = ({
 
     // Debounce de búsqueda remota
     useEffect(() => {
-        if (!isOpen || !loadOptions) return;
+        if (!isOpen || !loadOptionsRef.current) return;
         if (skipDebounceRef.current) { skipDebounceRef.current = false; return; }
         const timer = setTimeout(() => {
             setFocusIdx(-1);
             loadRemotePage(search, 1, false);
         }, debounceMs);
         return () => clearTimeout(timer);
-    }, [search, isOpen, loadOptions, loadRemotePage, debounceMs]);
+    }, [search, isOpen, loadRemotePage, debounceMs]);
 
     // Reposicionar panel ancho al hacer scroll/resize
     useEffect(() => {

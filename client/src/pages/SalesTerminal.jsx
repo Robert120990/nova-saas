@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -155,7 +155,7 @@ const SalesTerminal = () => {
 
     const [customersCache, setCustomersCache] = useState({});
 
-    const loadCustomersOptions = async (search, page) => {
+    const loadCustomersOptions = useCallback(async (search, page) => {
         const { data } = await axios.get('/api/customers', {
             params: { search: search || undefined, page, limit: 50 }
         });
@@ -167,7 +167,7 @@ const SalesTerminal = () => {
             });
         }
         return data;
-    };
+    }, []);
 
     const { data: customerSearchData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingCustomerSearch } = useQuery({
         queryKey: ['terminal-customers', debouncedCustomerName, debouncedCustomerNit, debouncedCustomerNrc, customerSearchPage],
