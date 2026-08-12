@@ -529,9 +529,11 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                  <div className="flex flex-col leading-tight">
                                      <span className="font-bold text-slate-700 text-[9px] truncate max-w-[300px]" title={sale.customer_name}>{sale.customer_name || 'Consumidor Final'}</span>
                                     <span className={`text-[8px] px-1 rounded w-fit font-black uppercase tracking-widest ${
-                                        sale.condicion_operacion == 1 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                                        sale.condicion_operacion == 1 ? 'bg-emerald-50 text-emerald-600'
+                                        : sale.condicion_operacion == 2 ? 'bg-amber-50 text-amber-600'
+                                        : 'bg-sky-50 text-sky-600'
                                     }`}>
-                                        {sale.condicion_operacion == 1 ? 'Contado' : 'Crédito'}
+                                        {sale.condicion_operacion == 1 ? 'Contado' : sale.condicion_operacion == 2 ? 'Crédito' : 'Otro'}
                                     </span>
                                 </div>
                             </td>

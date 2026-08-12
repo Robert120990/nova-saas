@@ -119,13 +119,17 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
                                     <div className={`p-3 rounded-2xl border ${
                                         saleDetail.condicion_operacion == 1 
                                             ? 'bg-emerald-50 border-emerald-100' 
-                                            : 'bg-amber-50 border-amber-100'
+                                            : saleDetail.condicion_operacion == 2
+                                            ? 'bg-amber-50 border-amber-100'
+                                            : 'bg-sky-50 border-sky-100'
                                     }`}>
                                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Condición</span>
                                         <span className={`font-black text-sm ${
-                                            saleDetail.condicion_operacion == 1 ? 'text-emerald-700' : 'text-amber-700'
+                                            saleDetail.condicion_operacion == 1 ? 'text-emerald-700'
+                                            : saleDetail.condicion_operacion == 2 ? 'text-amber-700'
+                                            : 'text-sky-700'
                                         }`}>
-                                            {saleDetail.condicion_operacion == 1 ? 'Contado' : 'Crédito'}
+                                            {saleDetail.condicion_operacion == 1 ? 'Contado' : saleDetail.condicion_operacion == 2 ? 'Crédito' : 'Otro'}
                                         </span>
                                     </div>
 
