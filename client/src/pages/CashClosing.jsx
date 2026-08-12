@@ -1034,11 +1034,6 @@ const CashClosing = () => {
 
                                 <button 
                                 onClick={() => {
-                                        const totalCashIncomings = (parseFloat(shiftSummary.opening_balance) || 0) + (parseFloat(shiftSummary.cash) || 0) + incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
-                                        const totalExp = expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) + remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) + puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0);
-                                        if (totalExp > totalCashIncomings) {
-                                            return toast.error('El total de gastos, remesas y puntos no puede superar el efectivo disponible (Fondo + Ventas Cash + Ingresos Cash)');
-                                        }
                                         arqueoMutation.mutate({ 
                                             id: shiftSummary?.id || selectedShiftId || activeShifts[0]?.id, 
                                             actualCash, 
