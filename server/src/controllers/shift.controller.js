@@ -1,4 +1,6 @@
 const pool = require('../config/db');
+const pdfService = require('../services/pdf.service');
+const excelService = require('../services/excel.service');
 
 /**
  * Gestión de Turnos de Punto de Venta (Corte de Caja)
@@ -687,6 +689,164 @@ const getShiftsHistory = async (req, res) => {
     }
 };
 
+const exportArqueosPDF = async (req, res) => {
+    try {
+        const { start_date, end_date, branch_id, pos_ids } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas es requerido' });
+
+        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
+        const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '' };
+
+        let branchName = 'Todas las sucursales';
+        if (branch_id && branch_id !== 'all') {
+            const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (branchRows.length > 0) branchName = branchRows[0].nombre;
+        }
+
+        let sql = `
+            SELECT
+                s.id,
+                s.shift_number,
+                s.start_time,
+                s.end_time,
+                s.status,
+                s.arqueado,
+                s.opening_balance,
+                s.total_sales,
+                s.cash_sales,
+                s.card_sales,
+                s.transfer_sales,
+                s.other_sales,
+                s.total_incomes,
+                s.total_expenses,
+                s.total_remesas,
+                s.total_puntos,
+                s.expected_cash,
+                s.actual_cash,
+                s.difference,
+                sel.nombre as seller_name,
+                p.nombre as pos_name,
+                b.nombre as branch_name
+            FROM pos_shifts s
+            JOIN sellers sel ON s.seller_id = sel.id
+            JOIN points_of_sale p ON s.pos_id = p.id
+            JOIN branches b ON s.branch_id = b.id
+            WHERE s.company_id = ?
+        `;
+        const params = [companyId];
+        sql += ' AND s.start_time BETWEEN ? AND ?';
+        params.push(`${start_date} 00:00:00`, `${end_date} 23:59:59`);
+        if (branch_id && branch_id !== 'all') {
+            sql += ' AND s.branch_id = ?';
+            params.push(branch_id);
+        }
+        if (pos_ids) {
+            const ids = pos_ids.split(',').map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n > 0);
+            if (ids.length > 0) sql += ` AND s.pos_id IN (${ids.join(',')})`;
+        }
+        sql += ' ORDER BY s.start_time ASC, s.id ASC';
+
+        const [rows] = await pool.query(sql, params);
+
+        const num = (v) => parseFloat(v || 0);
+        const mapRow = (r) => {
+            const start = r.start_time ? new Date(r.start_time) : null;
+            const end = r.end_time ? new Date(r.end_time) : null;
+            return {
+                fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
+                hora_inicio: start ? `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}` : '',
+                hora_fin: end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '',
+                turno: r.shift_number != null ? `#${r.shift_number}` : '---',
+                sucursal: r.branch_name || '---',
+                pos: r.pos_name || '---',
+                vendedor: r.seller_name || '---',
+                estado: r.arqueado ? 'Arqueado' : r.status === 'open' ? 'Abierto' : 'Cerrado',
+                fondo: num(r.opening_balance),
+                ventas: num(r.total_sales),
+                ingresos: num(r.total_incomes),
+                gastos: num(r.total_expenses),
+                remesas: num(r.total_remesas),
+                puntos: num(r.total_puntos),
+                esperado: num(r.expected_cash),
+                contado: num(r.actual_cash),
+                diferencia: num(r.difference),
+            };
+        };
+
+        const mappedRows = rows.map(mapRow);
+
+        const reportData = {
+            company_name: company.razon_social,
+            company_nit: company.nit,
+            branch_name: branchName,
+            start_date,
+            end_date,
+            data: mappedRows,
+            totales: {
+                fondo: mappedRows.reduce((s, r) => s + r.fondo, 0),
+                ventas: mappedRows.reduce((s, r) => s + r.ventas, 0),
+                ingresos: mappedRows.reduce((s, r) => s + r.ingresos, 0),
+                gastos: mappedRows.reduce((s, r) => s + r.gastos, 0),
+                remesas: mappedRows.reduce((s, r) => s + r.remesas, 0),
+                puntos: mappedRows.reduce((s, r) => s + r.puntos, 0),
+                esperado: mappedRows.reduce((s, r) => s + r.esperado, 0),
+                contado: mappedRows.reduce((s, r) => s + r.contado, 0),
+                diferencia: mappedRows.reduce((s, r) => s + r.diferencia, 0),
+            }
+        };
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `Reporte de Arqueos ${start_date} al ${end_date}`,
+                sheets: [{
+                    name: 'Arqueos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 16 },
+                        { header: 'Turno', key: 'turno', width: 10 },
+                        { header: 'Sucursal', key: 'sucursal', width: 24 },
+                        { header: 'POS', key: 'pos', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor', width: 22 },
+                        { header: 'Estado', key: 'estado', width: 12 },
+                        { header: 'Fondo', key: 'fondo', width: 12 },
+                        { header: 'Ventas', key: 'ventas', width: 12 },
+                        { header: 'Ingresos', key: 'ingresos', width: 12 },
+                        { header: 'Gastos', key: 'gastos', width: 12 },
+                        { header: 'Remesas', key: 'remesas', width: 12 },
+                        { header: 'Puntos', key: 'puntos', width: 12 },
+                        { header: 'Efectivo Esperado', key: 'esperado', width: 16 },
+                        { header: 'Efectivo Contado', key: 'contado', width: 16 },
+                        { header: 'Diferencia', key: 'diferencia', width: 14 },
+                    ],
+                    data: mappedRows.map(r => ({
+                        ...r,
+                        fondo: r.fondo.toFixed(2),
+                        ventas: r.ventas.toFixed(2),
+                        ingresos: r.ingresos.toFixed(2),
+                        gastos: r.gastos.toFixed(2),
+                        remesas: r.remesas.toFixed(2),
+                        puntos: r.puntos.toFixed(2),
+                        esperado: r.esperado.toFixed(2),
+                        contado: r.contado.toFixed(2),
+                        diferencia: r.diferencia.toFixed(2),
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Reporte_Arqueos_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        const pdfBuffer = await pdfService.generateArqueosReportPDF(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Reporte_Arqueos_${start_date}_al_${end_date}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error in exportArqueosPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de arqueos' });
+    }
+};
+
 const getShiftSellers = async (req, res) => {
     const { id } = req.params;
     try {
@@ -850,4 +1010,4 @@ const updateShift = async (req, res) => {
     }
 };
 
-module.exports = { getCurrentShift, openShift, getShiftSummary, saveArqueo, closeShift, getShiftsHistory, getShiftSellers, updateShiftSellers, updateShift, deleteShift };
+module.exports = { getCurrentShift, openShift, getShiftSummary, saveArqueo, closeShift, getShiftsHistory, exportArqueosPDF, getShiftSellers, updateShiftSellers, updateShift, deleteShift };

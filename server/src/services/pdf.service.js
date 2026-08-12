@@ -3628,6 +3628,111 @@ const generateInvalidationPDF = (invalidationJson) => {
     });
 };
 
+/**
+ * Generates a PDF buffer for the arqueos report (cortes de caja por turno POS)
+ */
+const generateArqueosReportPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'A4' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
+            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`);
+            doc.text(`Período: ${data.start_date} al ${data.end_date}`);
+            doc.moveDown();
+
+            doc.fontSize(14).font('Helvetica-Bold').text('REPORTE DE ARQUEOS (CORTES DE CAJA)', { align: 'center', underline: true });
+            doc.moveDown();
+
+            const startX = 20;
+            const colWidths = {
+                fecha: 62, turno: 25, sucursal: 75, pos: 65, vendedor: 70, estado: 42,
+                fondo: 45, ventas: 50, ingresos: 38, gastos: 38, remesas: 38, puntos: 32,
+                esperado: 55, contado: 55, diferencia: 50
+            };
+            const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
+
+            const drawTableHeader = () => {
+                const y = doc.y;
+                doc.fontSize(7).font('Helvetica-Bold');
+                let x = startX;
+                doc.text('Fecha', x, y); x += colWidths.fecha;
+                doc.text('#', x, y); x += colWidths.turno;
+                doc.text('Sucursal', x, y); x += colWidths.sucursal;
+                doc.text('POS', x, y); x += colWidths.pos;
+                doc.text('Vendedor', x, y); x += colWidths.vendedor;
+                doc.text('Estado', x, y); x += colWidths.estado;
+                doc.text('Fondo', x, y, { align: 'right', width: colWidths.fondo }); x += colWidths.fondo;
+                doc.text('Ventas', x, y, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
+                doc.text('Ingresos', x, y, { align: 'right', width: colWidths.ingresos }); x += colWidths.ingresos;
+                doc.text('Gastos', x, y, { align: 'right', width: colWidths.gastos }); x += colWidths.gastos;
+                doc.text('Remesas', x, y, { align: 'right', width: colWidths.remesas }); x += colWidths.remesas;
+                doc.text('Puntos', x, y, { align: 'right', width: colWidths.puntos }); x += colWidths.puntos;
+                doc.text('Esperado', x, y, { align: 'right', width: colWidths.esperado }); x += colWidths.esperado;
+                doc.text('Contado', x, y, { align: 'right', width: colWidths.contado }); x += colWidths.contado;
+                doc.text('Diferencia', x, y, { align: 'right', width: colWidths.diferencia });
+                doc.moveDown(0.5);
+                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(6.5);
+            };
+
+            drawTableHeader();
+
+            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+
+            (data.data || []).forEach(r => {
+                if (doc.y > 520) {
+                    doc.addPage();
+                    drawTableHeader();
+                }
+                const y = doc.y;
+                let x = startX;
+                doc.text(r.fecha || '---', x, y, { width: colWidths.fecha }); x += colWidths.fecha;
+                doc.text(r.turno || '---', x, y, { width: colWidths.turno }); x += colWidths.turno;
+                doc.text(r.sucursal || '---', x, y, { width: colWidths.sucursal }); x += colWidths.sucursal;
+                doc.text(r.pos || '---', x, y, { width: colWidths.pos }); x += colWidths.pos;
+                doc.text(r.vendedor || '---', x, y, { width: colWidths.vendedor }); x += colWidths.vendedor;
+                doc.text(r.estado || '---', x, y, { width: colWidths.estado }); x += colWidths.estado;
+                doc.text(formatVal(r.fondo), x, y, { align: 'right', width: colWidths.fondo }); x += colWidths.fondo;
+                doc.text(formatVal(r.ventas), x, y, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
+                doc.text(formatVal(r.ingresos), x, y, { align: 'right', width: colWidths.ingresos }); x += colWidths.ingresos;
+                doc.text(formatVal(r.gastos), x, y, { align: 'right', width: colWidths.gastos }); x += colWidths.gastos;
+                doc.text(formatVal(r.remesas), x, y, { align: 'right', width: colWidths.remesas }); x += colWidths.remesas;
+                doc.text(formatVal(r.puntos), x, y, { align: 'right', width: colWidths.puntos }); x += colWidths.puntos;
+                doc.text(formatVal(r.esperado), x, y, { align: 'right', width: colWidths.esperado }); x += colWidths.esperado;
+                doc.text(formatVal(r.contado), x, y, { align: 'right', width: colWidths.contado }); x += colWidths.contado;
+                doc.text(formatVal(r.diferencia), x, y, { align: 'right', width: colWidths.diferencia });
+                doc.moveDown(0.7);
+            });
+
+            doc.moveDown();
+            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
+            doc.moveDown(1);
+
+            doc.font('Helvetica-Bold').fontSize(7);
+            const totalsY = doc.y;
+            let tX = startX + colWidths.fecha + colWidths.turno + colWidths.sucursal + colWidths.pos + colWidths.vendedor + colWidths.estado;
+            doc.text('TOTALES', startX, totalsY, { width: colWidths.fecha + colWidths.turno + colWidths.sucursal + colWidths.pos + colWidths.vendedor + colWidths.estado });
+            doc.text(formatVal(data.totales?.fondo), tX, totalsY, { align: 'right', width: colWidths.fondo }); tX += colWidths.fondo;
+            doc.text(formatVal(data.totales?.ventas), tX, totalsY, { align: 'right', width: colWidths.ventas }); tX += colWidths.ventas;
+            doc.text(formatVal(data.totales?.ingresos), tX, totalsY, { align: 'right', width: colWidths.ingresos }); tX += colWidths.ingresos;
+            doc.text(formatVal(data.totales?.gastos), tX, totalsY, { align: 'right', width: colWidths.gastos }); tX += colWidths.gastos;
+            doc.text(formatVal(data.totales?.remesas), tX, totalsY, { align: 'right', width: colWidths.remesas }); tX += colWidths.remesas;
+            doc.text(formatVal(data.totales?.puntos), tX, totalsY, { align: 'right', width: colWidths.puntos }); tX += colWidths.puntos;
+            doc.text(formatVal(data.totales?.esperado), tX, totalsY, { align: 'right', width: colWidths.esperado }); tX += colWidths.esperado;
+            doc.text(formatVal(data.totales?.contado), tX, totalsY, { align: 'right', width: colWidths.contado }); tX += colWidths.contado;
+            doc.text(formatVal(data.totales?.diferencia), tX, totalsY, { align: 'right', width: colWidths.diferencia });
+
+            doc.end();
+        } catch (err) { reject(err); }
+    });
+};
+
 module.exports = {
     generateTransferPDF, 
     generateStatementPDF, 
@@ -3658,5 +3763,6 @@ module.exports = {
     generateFuelInventoryPDF,
     generateGalonajeVendidoPDF,
     generatePlanillaPDF,
-    generatePlanillaReciboPDF
+    generatePlanillaReciboPDF,
+    generateArqueosReportPDF
 };

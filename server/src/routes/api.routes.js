@@ -357,6 +357,7 @@ router.get('/dte/:codigoGeneracion', salesController.getDTEByCodigoGeneracion);
 
 // POS Shifts (Corte de Caja)
 router.get('/shifts', shiftController.getShiftsHistory);
+router.get('/shifts/reports/arqueos/pdf', shiftController.exportArqueosPDF);
 router.get('/shifts/current', shiftController.getCurrentShift);
 router.post('/shifts/open', shiftController.openShift);
 router.get('/shifts/:id/summary', shiftController.getShiftSummary);
