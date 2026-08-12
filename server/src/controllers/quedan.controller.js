@@ -370,7 +370,7 @@ const requestQuedan = async (req, res) => {
         const nrc = (quedan.provider_nrc || '').replace(/\s/g, '');
         const codProveedor = nrc;
         const llave = `${config.rrs_id_empresa}-${quedan.id}`;
-        const tipoDestino = 'PISTA';
+        const tipoDestino = 'TIENDA';
         const fechaDate = quedan.fecha instanceof Date
             ? quedan.fecha.toISOString().split('T')[0]
             : String(quedan.fecha).substring(0, 10);
