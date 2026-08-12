@@ -517,13 +517,6 @@ const CashClosing = () => {
                                         <td className="px-2 py-3 text-right tabular-nums">
                                             <div className="flex flex-col items-end">
                                                 <span className="text-xs font-bold text-indigo-600"><Money value={shift.total_sales || 0} /></span>
-                                                {(parseFloat(shift.card_sales) || 0) > 0 || (parseFloat(shift.transfer_sales) || 0) > 0 || (parseFloat(shift.other_sales) || 0) > 0 ? (
-                                                    <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap">
-                                                        Efec <Money value={shift.cash_sales || 0} />
-                                                        <span className="text-blue-500"> · Tarj <Money value={shift.card_sales || 0} /></span>
-                                                        <span className="text-slate-400"> · Otr <Money value={(parseFloat(shift.transfer_sales) || 0) + (parseFloat(shift.other_sales) || 0)} /></span>
-                                                    </span>
-                                                ) : null}
                                             </div>
                                         </td>
                                         <td className="px-2 py-3 text-right tabular-nums">
