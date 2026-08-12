@@ -113,6 +113,10 @@ exports.getFuelInventoryPDF = async (req, res) => {
     const companyId = req.company_id;
     const fuelType = parseInt(tipo_combustible, 10);
 
+    // Para DIESEL se incluye también el Combustible Master (tipo 5), variante diesel
+    const fuelTypesFilter = fuelType === 3 ? [3, 5] : [fuelType];
+    const fuelTypesPlaceholders = fuelTypesFilter.map(() => '?').join(',');
+
     try {
         if (!companyId) return res.status(401).json({ message: 'No session' });
         if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
@@ -145,11 +149,11 @@ exports.getFuelInventoryPDF = async (req, res) => {
             WHERE c.company_id = ?
                 AND c.fecha_turno BETWEEN ? AND ?
                 AND c.estado IN ('cerrado', 'reabierto')
-                AND p.tipo_combustible = ?
+                AND p.tipo_combustible IN (${fuelTypesPlaceholders})
                 ${branchFilter}
             GROUP BY c.fecha_turno, n.tipo
             ORDER BY c.fecha_turno, n.tipo
-        `, [companyId, start_date, end_date, fuelType, ...branchParams]);
+        `, [companyId, start_date, end_date, ...fuelTypesFilter, ...branchParams]);
 
         // Tank inventory (last closeout per day) — only lectura_actual from the latest turn
         const [tankRows] = await pool.query(`
@@ -161,7 +165,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
             WHERE c.company_id = ?
                 AND c.fecha_turno BETWEEN ? AND ?
                 AND c.estado IN ('cerrado', 'reabierto')
-                AND t.tipo_combustible = ?
+                AND t.tipo_combustible IN (${fuelTypesPlaceholders})
                 ${branchFilter}
                 AND c.id IN (
                     SELECT MAX(c2.id)
@@ -173,7 +177,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
                 )
             GROUP BY c.fecha_turno
             ORDER BY c.fecha_turno
-        `, [companyId, start_date, end_date, fuelType, ...branchParams, companyId, ...branchParams]);
+        `, [companyId, start_date, end_date, ...fuelTypesFilter, ...branchParams, companyId, ...branchParams]);
 
         // Tank recargas (ALL closeouts per day accumulated)
         const [recargaRows] = await pool.query(`
@@ -185,11 +189,11 @@ exports.getFuelInventoryPDF = async (req, res) => {
             WHERE c.company_id = ?
                 AND c.fecha_turno BETWEEN ? AND ?
                 AND c.estado IN ('cerrado', 'reabierto')
-                AND t.tipo_combustible = ?
+                AND t.tipo_combustible IN (${fuelTypesPlaceholders})
                 ${branchFilter}
             GROUP BY c.fecha_turno
             ORDER BY c.fecha_turno
-        `, [companyId, start_date, end_date, fuelType, ...branchParams]);
+        `, [companyId, start_date, end_date, ...fuelTypesFilter, ...branchParams]);
 
         // Purchase quantities per day
         const [purchaseRows] = await pool.query(`
@@ -201,18 +205,18 @@ exports.getFuelInventoryPDF = async (req, res) => {
             WHERE ph.company_id = ?
                 AND DATE(ph.fecha) BETWEEN ? AND ?
                 AND ph.status = 'COMPLETADO'
-                AND p.tipo_combustible = ?
+                AND p.tipo_combustible IN (${fuelTypesPlaceholders})
                 ${branchFilter2}
             GROUP BY DATE(ph.fecha)
             ORDER BY DATE(ph.fecha)
-        `, [companyId, start_date, end_date, fuelType, ...branchParams]);
+        `, [companyId, start_date, end_date, ...fuelTypesFilter, ...branchParams]);
 
         // Product cost for this fuel type
         const [costRows] = await pool.query(`
             SELECT AVG(costo) AS costo_promedio
             FROM products
-            WHERE company_id = ? AND tipo_combustible = ? AND status = 'activo'
-        `, [companyId, fuelType]);
+            WHERE company_id = ? AND tipo_combustible IN (${fuelTypesPlaceholders}) AND status = 'activo'
+        `, [companyId, ...fuelTypesFilter]);
         const costo = parseFloat(costRows[0]?.costo_promedio || 0);
 
         // Inventory from last closeout before start_date
@@ -226,7 +230,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
                 WHERE c.company_id = ?
                     AND c.fecha_turno < ?
                     AND c.estado IN ('cerrado', 'reabierto')
-                    AND t.tipo_combustible = ?
+                    AND t.tipo_combustible IN (${fuelTypesPlaceholders})
                     ${branchFilter}
                     AND c.id IN (
                         SELECT MAX(c2.id)
@@ -237,7 +241,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
                             ${branchFilter3}
                         GROUP BY c2.branch_id
                     )
-            `, [companyId, start_date, fuelType, ...branchParams, companyId, start_date, ...branchParams]);
+            `, [companyId, start_date, ...fuelTypesFilter, ...branchParams, companyId, start_date, ...branchParams]);
             inventario_inicial = parseFloat(initRows[0]?.inventario_inicial || 0);
         } catch (e) {
             console.error('Error fetching initial inventory:', e);
