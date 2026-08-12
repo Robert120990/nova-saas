@@ -1964,7 +1964,7 @@ const GasCloseout = () => {
                                         <UserCheck size={12} className="text-indigo-500" />
                                         Despachadores del Turno
                                     </h4>
-                                    {estado === 'abierto' && (
+                                    {estado !== 'cerrado' && (
                                         <button
                                             type="button"
                                             onClick={openNozzleModal}
@@ -2005,7 +2005,7 @@ const GasCloseout = () => {
                                                     <tr key={d.despachador_id} className="hover:bg-slate-50 transition-colors">
                                                         <td className="px-1.5 py-1 font-bold text-slate-700">{desp?.codigo || ''}</td>
                                                         <td className="px-1.5 py-1">
-                                                            {estado === 'abierto' ? (
+                                                            {estado !== 'cerrado' ? (
                                                                 <input
                                                                     type="text"
                                                                     value={d.nombre}
@@ -3166,13 +3166,13 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Tipo Operación</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Monto</th>
-                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 text-[11px]">
                                         {tarjetas.length === 0 && (
                                             <tr>
-                                                <td colSpan={estado === 'abierto' ? 7 : 6} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                <td colSpan={estado !== 'cerrado' ? 7 : 6} className="px-2 py-3 text-center text-[10px] text-slate-400">
                                                     Sin registros de tarjetas
                                                 </td>
                                             </tr>
@@ -3256,7 +3256,7 @@ const GasCloseout = () => {
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                     />
                                                     </td>
-                                                    {estado === 'abierto' && (
+{estado !== 'cerrado' && (
                                                         <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
@@ -3272,7 +3272,7 @@ const GasCloseout = () => {
                                             );
                                         })}
                                     </tbody>
-                                    {estado === 'abierto' && (
+                                    {estado !== 'cerrado' && (
                                         <tfoot className="bg-slate-50 border-t border-slate-100">
                                             <tr>
                                                 <td colSpan={7} className="px-2 py-1">
@@ -3601,13 +3601,13 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 text-[11px]">
                                         {creditos.length === 0 && (
                                             <tr>
-                                                <td colSpan={estado === 'abierto' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                <td colSpan={estado !== 'cerrado' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
                                                     Sin registros de créditos
                                                 </td>
                                             </tr>
@@ -3740,7 +3740,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    {estado === 'abierto' && (
+                                                    {estado !== 'cerrado' && (
                                                         <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
@@ -3756,7 +3756,7 @@ const GasCloseout = () => {
                                             );
                                         })}
                                     </tbody>
-                                    {estado === 'abierto' && (
+                                    {estado !== 'cerrado' && (
                                         <tfoot className="bg-slate-50 border-t border-slate-100">
                                             <tr>
                                                 <td colSpan={12} className="px-2 py-1">
@@ -3832,13 +3832,13 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 text-[11px]">
                                         {vales.length === 0 && (
                                             <tr>
-                                                <td colSpan={estado === 'abierto' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                <td colSpan={estado !== 'cerrado' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
                                                     Sin registros de vales
                                                 </td>
                                             </tr>
@@ -3869,7 +3869,7 @@ const GasCloseout = () => {
                                                     </td>
                                                     <td className="px-1.5 py-1" data-label="Cliente">
                                                         <SearchableSelect
-                                                            loadOptions={loadCustomers({ es_credito: 1 })}
+                                                            loadOptions={loadCustomers()}
                                                             value={v.cliente_id}
                                                             onChange={(e, opt) => {
                                                                 handleValeChange(v.id, 'cliente_id', e.target.value);
@@ -3971,7 +3971,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    {estado === 'abierto' && (
+{estado !== 'cerrado' && (
                                                         <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
@@ -3987,7 +3987,7 @@ const GasCloseout = () => {
                                             );
                                         })}
                                     </tbody>
-                                    {estado === 'abierto' && (
+                                    {estado !== 'cerrado' && (
                                         <tfoot className="bg-slate-50 border-t border-slate-100">
                                             <tr>
                                                 <td colSpan={12} className="px-2 py-1">
@@ -4303,13 +4303,13 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado === 'abierto' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
+                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 text-[11px]">
                                         {anticiposDesp.length === 0 && (
                                             <tr>
-                                                <td colSpan={estado === 'abierto' ? 13 : 12} className="px-2 py-3 text-center text-[10px] text-slate-400">
+                                                <td colSpan={estado !== 'cerrado' ? 13 : 12} className="px-2 py-3 text-center text-[10px] text-slate-400">
                                                     Sin registros de anticipos despachados
                                                 </td>
                                             </tr>
@@ -4455,7 +4455,7 @@ const GasCloseout = () => {
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
                                                     </td>
-                                                    {estado === 'abierto' && (
+{estado !== 'cerrado' && (
                                                         <td className="px-1.5 py-1 text-center" data-label="">
                                                             <button
                                                                 type="button"
@@ -4471,7 +4471,7 @@ const GasCloseout = () => {
                                             );
                                         })}
                                     </tbody>
-                                    {estado === 'abierto' && (
+                                    {estado !== 'cerrado' && (
                                         <tfoot className="bg-slate-50 border-t border-slate-100">
                                             <tr>
                                                 <td colSpan={13} className="px-2 py-1">
