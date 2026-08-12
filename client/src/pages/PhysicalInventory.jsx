@@ -143,6 +143,7 @@ const PhysicalInventory = () => {
                 };
             });
             setItems(formatted);
+            userChangedRef.current = true;
             toast.success(`${formatted.length} productos cargados para auditoría`);
         },
         onError: () => toast.error('Error al cargar productos')
