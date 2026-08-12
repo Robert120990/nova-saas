@@ -13,7 +13,8 @@ import ReportLayout from '../components/ui/ReportLayout';
 const fuelTypes = [
     { value: '1', label: 'REGULAR' },
     { value: '2', label: 'SUPER' },
-    { value: '3', label: 'DIESEL' }
+    { value: '3', label: 'DIESEL' },
+    { value: '4', label: 'ION DIESEL' }
 ];
 
 const FuelInventoryReport = () => {

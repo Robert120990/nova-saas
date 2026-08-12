@@ -106,7 +106,7 @@ const tipoNombres = {
     lubricantes: 'Lubricantes'
 };
 
-const fuelTypeLabels = { 1: 'REGULAR', 2: 'SUPER', 3: 'DIESEL' };
+const fuelTypeLabels = { 1: 'REGULAR', 2: 'SUPER', 3: 'DIESEL', 4: 'ION DIESEL' };
 
 exports.getFuelInventoryPDF = async (req, res) => {
     const { start_date, end_date, tipo_combustible, branch_id } = req.query;
@@ -120,7 +120,7 @@ exports.getFuelInventoryPDF = async (req, res) => {
     try {
         if (!companyId) return res.status(401).json({ message: 'No session' });
         if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
-        if (!fuelType || ![1, 2, 3].includes(fuelType)) return res.status(400).json({ message: 'Tipo de combustible inválido' });
+        if (!fuelType || ![1, 2, 3, 4].includes(fuelType)) return res.status(400).json({ message: 'Tipo de combustible inválido' });
 
         const [companyRows] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
         const companyInfo = companyRows[0] || { razon_social: 'Empresa' };
