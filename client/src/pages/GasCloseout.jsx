@@ -158,7 +158,9 @@ const GasCloseout = () => {
     const { data: editData, isLoading: editLoading } = useQuery({
         queryKey: ['gas-closeout-edit', editId],
         queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${editId}`)).data,
-        enabled: !!editId
+        enabled: !!editId,
+        staleTime: Infinity,
+        refetchOnWindowFocus: false,
     });
 
     useEffect(() => {
@@ -188,7 +190,7 @@ const GasCloseout = () => {
                 .find(r => r && r.despachador_id);
             lastDespachadorRef.current = firstWithDesp?.despachador_id || editData.despachadores?.[0]?.despachador_id || null;
         }
-    }, [editData]);
+    }, [editId]);
 
     useEffect(() => {
         if (!editId) {
@@ -552,6 +554,17 @@ const GasCloseout = () => {
     const anticiposDespTotal = useMemo(() =>
         anticiposDesp.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0),
     [anticiposDesp]);
+
+    const pendingAnticiposByClient = useMemo(() => {
+        const map = {};
+        anticiposDesp.forEach(a => {
+            if (!a.cliente_id) return;
+            if (Number(a.id) > 1e9) {
+                map[a.cliente_id] = (map[a.cliente_id] || 0) + (parseFloat(a.monto) || 0);
+            }
+        });
+        return map;
+    }, [anticiposDesp]);
 
     const saveTarjetasMutation = useMutation({
         mutationFn: (tarjetas) => axios.post(`/api/gas-station/closeouts/${closeoutId}/tarjetas`, { tarjetas }),
@@ -4302,7 +4315,10 @@ const GasCloseout = () => {
                                             </tr>
                                         )}
                                         {anticiposDesp.map(a => {
-                                            const excedeSaldo = parseFloat(a.monto) > 0 && parseFloat(a.saldo_disponible) > 0 && parseFloat(a.monto) > parseFloat(a.saldo_disponible);
+                                            const saldoBase = parseFloat(a.saldo_disponible) || 0;
+                                            const pendingSame = a.cliente_id ? (pendingAnticiposByClient[a.cliente_id] || 0) : 0;
+                                            const efectivoDisponible = saldoBase - pendingSame;
+                                            const excedeSaldo = parseFloat(a.monto) > 0 && efectivoDisponible < -0.0001;
                                             return (
                                                 <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
                                                     <td className="px-1.5 py-1" data-label="Cliente">
@@ -4326,8 +4342,8 @@ const GasCloseout = () => {
                                                     </td>
                                                     <td className="px-1.5 py-1 text-center font-mono font-bold text-xs" data-label="Saldo Disp.">
                                                         {a.cliente_id ? (
-                                                            <span className={`${parseFloat(a.saldo_disponible) && parseFloat(a.monto) > parseFloat(a.saldo_disponible) ? 'text-red-600' : 'text-indigo-600'}`}>
-                                                                <Money value={parseFloat(a.saldo_disponible || 0)} />
+                                                            <span className={`${excedeSaldo ? 'text-red-600' : 'text-indigo-600'}`}>
+                                                                <Money value={efectivoDisponible} />
                                                             </span>
                                                         ) : (
                                                             <span className="text-slate-300">---</span>

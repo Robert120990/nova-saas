@@ -487,7 +487,17 @@ exports.getCloseout = async (req, res) => {
         );
 
         const [anticiposDesp] = await pool.query(
-            `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT ad.*,
+                    COALESCE(ga.total_disponible, 0) AS saldo_disponible
+             FROM gas_station_closeout_anticipos_despachados ad
+             LEFT JOIN (
+                 SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
+                 FROM gas_station_advances
+                 WHERE company_id = ? AND monto_disponible > 0
+                 GROUP BY cliente_id
+             ) ga ON ga.cliente_id = ad.cliente_id
+             WHERE ad.closeout_id = ?
+             ORDER BY ad.id ASC`, [companyId, id]
         );
 
         const [lubricantes] = await pool.query(
@@ -2084,12 +2094,19 @@ exports.getAnticiposDesp = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+                   COALESCE(ga.total_disponible, 0) AS saldo_disponible
             FROM gas_station_closeout_anticipos_despachados ad
             LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+            LEFT JOIN (
+                SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
+                FROM gas_station_advances
+                WHERE company_id = ? AND monto_disponible > 0
+                GROUP BY cliente_id
+            ) ga ON ga.cliente_id = ad.cliente_id
             WHERE ad.closeout_id = ?
             ORDER BY ad.id ASC
-        `, [id]);
+        `, [req.company_id, id]);
         res.json(rows);
     } catch (error) {
         console.error('Error getAnticiposDesp:', error);
@@ -2136,6 +2153,11 @@ exports.saveAnticiposDesp = async (req, res) => {
             return res.status(400).json({ message: 'Todos los anticipos deben tener un despachador asignado' });
         }
 
+        const sinCliente = anticipos.filter(a => parseFloat(a.monto) > 0 && !a.cliente_id);
+        if (sinCliente.length > 0) {
+            return res.status(400).json({ message: 'Debe seleccionar un cliente para el anticipo despachado' });
+        }
+
         if (anticipos && anticipos.length > 0) {
             for (const a of anticipos) {
                     if (a.cliente_id && parseFloat(a.monto) > 0) {
@@ -2172,12 +2194,19 @@ exports.saveAnticiposDesp = async (req, res) => {
             }
 
             const [remaining] = await connection.query(`
-                SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+                SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+                       COALESCE(ga.total_disponible, 0) AS saldo_disponible
                 FROM gas_station_closeout_anticipos_despachados ad
                 LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+                LEFT JOIN (
+                    SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
+                    FROM gas_station_advances
+                    WHERE company_id = ? AND monto_disponible > 0
+                    GROUP BY cliente_id
+                ) ga ON ga.cliente_id = ad.cliente_id
                 WHERE ad.closeout_id = ?
                 ORDER BY ad.id ASC
-            `, [id]);
+            `, [req.company_id, id]);
 
             await connection.commit();
             res.json(remaining);
@@ -2360,7 +2389,17 @@ exports.getCloseoutPrintData = async (req, res) => {
         );
 
         const [anticiposDesp] = await pool.query(
-            `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT ad.*,
+                    COALESCE(ga.total_disponible, 0) AS saldo_disponible
+             FROM gas_station_closeout_anticipos_despachados ad
+             LEFT JOIN (
+                 SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
+                 FROM gas_station_advances
+                 WHERE company_id = ? AND monto_disponible > 0
+                 GROUP BY cliente_id
+             ) ga ON ga.cliente_id = ad.cliente_id
+             WHERE ad.closeout_id = ?
+             ORDER BY ad.id ASC`, [companyId, id]
         );
 
         const [nozzleAssignments] = await pool.query(
