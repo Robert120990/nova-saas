@@ -73,6 +73,7 @@ const gasAdvanceController = require('../controllers/gasAdvance.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
+const pozoController = require('../controllers/pozo.controller');
 
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
@@ -675,6 +676,31 @@ router.get('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.get
 router.put('/gas-station/remesa-deliveries/:id/entregar', gasRemesaDeliveryController.entregarDelivery);
 router.get('/gas-station/remesa-deliveries/:id/pdf', gasRemesaDeliveryController.getDeliveryPdf);
 router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
+
+// Control de Pozo - Servicios
+router.get('/pozo/servicios', pozoController.getServicios);
+router.post('/pozo/servicios', pozoController.createServicio);
+router.put('/pozo/servicios/:id', pozoController.updateServicio);
+router.delete('/pozo/servicios/:id', pozoController.deleteServicio);
+
+// Control de Pozo - Despachos
+router.get('/pozo/despachos', pozoController.getDespachos);
+router.get('/pozo/despachos/:id', pozoController.getDespacho);
+router.post('/pozo/despachos', pozoController.createDespacho);
+router.put('/pozo/despachos/:id', pozoController.updateDespacho);
+router.delete('/pozo/despachos/:id', pozoController.deleteDespacho);
+
+// Control de Pozo - Cortes
+    router.get('/pozo/cortes', pozoController.getCortes);
+    router.get('/pozo/cortes/consultar', pozoController.consultarCorte);
+    router.post('/pozo/cortes', pozoController.saveCorte);
+    router.get('/pozo/cortes/:id', pozoController.getCorte);
+    router.delete('/pozo/cortes/:id', pozoController.deleteCorte);
+
+    router.get('/pozo/entregas-efectivo', pozoController.getEntregasEfectivo);
+    router.post('/pozo/entregas-efectivo', pozoController.createEntregaEfectivo);
+    router.put('/pozo/entregas-efectivo/:id', pozoController.updateEntregaEfectivo);
+    router.delete('/pozo/entregas-efectivo/:id', pozoController.deleteEntregaEfectivo);
 
 // RRHH - AFPs
 router.get('/rh/afps', rhAfpController.getAfps);

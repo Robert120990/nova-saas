@@ -99,6 +99,12 @@ import SalesRemesaDeliveries from './pages/SalesRemesaDeliveries';
 import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
 import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
 
+// Control de Pozo Pages
+import PozoServicios from './pages/PozoServicios';
+import PozoDespachos from './pages/PozoDespachos';
+import PozoCorte from './pages/PozoCorte';
+import PozoEntregasEfectivo from './pages/PozoEntregasEfectivo';
+
 // RRHH Pages
 import Afps from './pages/rh/Afps';
 import Cargos from './pages/rh/Cargos';
@@ -278,6 +284,12 @@ function App() {
                         <Route path="/gas-station/galonaje-vendido" element={<GalonajeVendidoReport />} />
                         <Route path="/gas-station/reporte-acumulado-diario" element={<GasAccumulatedDailyReport />} />
                         <Route path="/gas-station/reporte-resumen-gln-vendidos" element={<FuelSalesSummaryReport />} />
+
+                        {/* Control de Pozo */}
+                        <Route path="/pozo/servicios" element={<PozoServicios />} />
+                        <Route path="/pozo/despachos" element={<PozoDespachos />} />
+                        <Route path="/pozo/corte" element={<PozoCorte />} />
+                        <Route path="/pozo/entregas-efectivo" element={<PozoEntregasEfectivo />} />
 
                         {/* RRHH */}
                         <Route path="/rh/afps" element={<Afps />} />
