@@ -223,10 +223,10 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                             {!effectiveCollapsed ? (
                                 <button
                                     onClick={() => toggleGroup(group.id)}
-                                    className="w-full px-4 py-2 text-[10px] font-bold text-slate-500 hover:text-slate-300 uppercase tracking-widest flex items-center justify-between transition-colors group"
+                                    className="w-full px-4 py-2 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-widest flex items-center justify-between transition-colors group"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <group.icon size={12} className="opacity-50 group-hover:opacity-100" />
+                                        <group.icon size={12} className="text-indigo-400/80 opacity-70 group-hover:opacity-100" />
                                         {group.label}
                                     </div>
                                     <div className="text-slate-600">
