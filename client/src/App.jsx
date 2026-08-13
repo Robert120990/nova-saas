@@ -128,6 +128,7 @@ import Planillas from './pages/rh/Planillas';
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
 import VatBookSalesConsumers from './pages/VatBooks/VatBookSalesConsumers';
+import VatBookAnexosIVA from './pages/VatBooks/VatBookAnexosIVA';
 
 // Egg Industrial Processing Pages
 import EggDashboard from './pages/EggIndustrial/Dashboard';
@@ -210,6 +211,7 @@ function App() {
                         <Route path="/iva/compras" element={<VatBookPurchases />} />
                         <Route path="/iva/ventas-ccf" element={<VatBookSalesTaxpayers />} />
                         <Route path="/iva/ventas-fac" element={<VatBookSalesConsumers />} />
+                        <Route path="/iva/anexos-iva" element={<VatBookAnexosIVA />} />
                         
                         {/* Procesamiento Industrial de Huevo */}
                         <Route path="/industrial/planta" element={<EggDashboard />} />

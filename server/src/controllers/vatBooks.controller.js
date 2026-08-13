@@ -574,8 +574,304 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
     } catch (e) { console.error('[VAT Books] Error FAC:', e); res.status(500).json({ message: 'Error', error: e.message }); }
 };
 
+/**
+ * 4. Anexos de IVA (consulta con rango de fechas + tipo DTE)
+ * Filtrado SIEMPRE por la sucursal actual del usuario (req.user.branch_id).
+ */
+const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tipo_dte, search, limit, offset }) => {
+    const whereClauses = [
+        'sh.company_id = ?',
+        'sh.branch_id = ?',
+        "sh.estado != 'ANULADO'",
+        "(d.status IS NULL OR d.status != 'INVALIDADO')"
+    ];
+    const params = [companyId, branchId];
+
+    if (fecha_inicio) { whereClauses.push('DATE(sh.fecha_emision) >= ?'); params.push(fecha_inicio); }
+    if (fecha_fin) { whereClauses.push('DATE(sh.fecha_emision) <= ?'); params.push(fecha_fin); }
+    if (tipo_dte) { whereClauses.push('sh.tipo_documento = ?'); params.push(tipo_dte); }
+    if (search) {
+        whereClauses.push(`(
+            COALESCE(sh.numero_control, '') LIKE ?
+            OR COALESCE(sh.codigo_generacion, '') LIKE ?
+            OR COALESCE(sh.sello_recepcion, '') LIKE ?
+            OR COALESCE(c.nombre, sh.cliente_nombre, '') LIKE ?
+            OR COALESCE(c.nit, '') LIKE ?
+            OR COALESCE(c.nrc, '') LIKE ?
+        )`);
+        const like = `%${search}%`;
+        params.push(like, like, like, like, like, like);
+    }
+
+    const where = whereClauses.join(' AND ');
+
+    const selectCols = `
+        sh.id,
+        sh.fecha_emision,
+        sh.codigo_generacion,
+        sh.numero_control,
+        COALESCE(sh.sello_recepcion, d.sello_recepcion) AS sello_recepcion,
+        d.status AS estado,
+        sh.tipo_documento,
+        cat.description AS tipo_dte,
+        COALESCE(c.nombre, sh.cliente_nombre, 'CONSUMIDOR FINAL') AS cliente,
+        COALESCE(c.nit, '') AS nit,
+        COALESCE(c.nrc, '') AS nrc,
+        sh.total_exento,
+        sh.total_gravado,
+        sh.total_iva,
+        sh.fovial,
+        sh.cotrans,
+        sh.iva_retenido,
+        sh.iva_percibido,
+        sh.total_pagar
+    `;
+
+    const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM sales_headers sh
+        LEFT JOIN customers c ON sh.customer_id = c.id
+        LEFT JOIN dtes d ON sh.id = d.venta_id
+        LEFT JOIN cat_002_tipo_dte cat ON sh.tipo_documento = cat.code
+        WHERE ${where}
+    `;
+
+    const dataQuery = `
+        SELECT ${selectCols}
+        FROM sales_headers sh
+        LEFT JOIN customers c ON sh.customer_id = c.id
+        LEFT JOIN dtes d ON sh.id = d.venta_id
+        LEFT JOIN cat_002_tipo_dte cat ON sh.tipo_documento = cat.code
+        WHERE ${where}
+        ORDER BY sh.fecha_emision ASC, COALESCE(d.numero_control, sh.numero_control) ASC
+    ` + (limit ? ' LIMIT ? OFFSET ?' : '');
+
+    return { countQuery, dataQuery, params: limit ? [...params, limit, offset] : params };
+};
+
+const getVatBookAnexosIVA = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const branchId = req.user?.branch_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+
+        const { fecha_inicio, fecha_fin, tipo_dte, search = '', page = 1, limit = 15 } = req.query;
+        const currentPage = Math.max(1, parseInt(page) || 1);
+        const currentLimit = Math.max(1, Math.min(100, parseInt(limit) || 15));
+        const offset = (currentPage - 1) * currentLimit;
+
+        const { countQuery, dataQuery, params } = buildAnexosIVAQuery({
+            companyId, branchId, fecha_inicio, fecha_fin, tipo_dte, search,
+            limit: currentLimit, offset
+        });
+
+        const [countRows] = await pool.query(countQuery, params);
+        const total = countRows[0]?.total || 0;
+        const [rows] = await pool.query(dataQuery, params);
+
+        const data = rows.map((r, idx) => ({
+            corr: offset + idx + 1,
+            fecha: safeFormatDate(r.fecha_emision),
+            codigo_generacion: cleanStr(r.codigo_generacion),
+            numero_control: cleanStr(r.numero_control),
+            sello_recepcion: cleanStr(r.sello_recepcion),
+            estado: cleanStr(r.estado) || 'PENDIENTE',
+            cliente: cleanStr(r.cliente).toUpperCase(),
+            nit: cleanStr(r.nit),
+            nrc: cleanStr(r.nrc),
+            tipo_dte: cleanStr(r.tipo_dte || r.tipo_documento),
+            exentas: n(r.total_exento),
+            gravadas: n(r.total_gravado),
+            iva: n(r.total_iva),
+            retencion: n(r.iva_retenido) + n(r.iva_percibido),
+            fovial: n(r.fovial),
+            cotrans: n(r.cotrans),
+            total: n(r.total_pagar)
+        }));
+
+        res.json({
+            data,
+            total,
+            page: currentPage,
+            totalPages: Math.ceil(total / currentLimit)
+        });
+    } catch (e) {
+        console.error('[VAT Books] Error Anexos IVA:', e);
+        res.status(500).json({ message: 'Error', error: e.message });
+    }
+};
+
+const getVatBookAnexosIVAPDF = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const branchId = req.user?.branch_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+
+        const { fecha_inicio, fecha_fin, tipo_dte, search = '' } = req.query;
+
+        const [companies] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
+        const company = companies[0] || { razon_social: 'EMPRESA' };
+
+        let branchName = '---';
+        if (branchId) {
+            const [branches] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
+            branchName = branches[0]?.nombre || '---';
+        }
+
+        const { dataQuery, params } = buildAnexosIVAQuery({
+            companyId, branchId, fecha_inicio, fecha_fin, tipo_dte, search
+        });
+        const [rows] = await pool.query(dataQuery, params);
+
+        const buffer = await generatePdfBuffer((doc) => {
+            doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
+            doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
+            doc.fontSize(8).font('Helvetica-Bold').text(`SUCURSAL: ${String(branchName)}`, 30, 58);
+            doc.fontSize(12).font('Helvetica-Bold').text('ANEXOS DE IVA', 30, 30, { align: 'right' });
+            doc.fontSize(10).text(`PERIODO: ${String(fecha_inicio || '---')} AL ${String(fecha_fin || '---')}`, 30, 45, { align: 'right' });
+            doc.moveDown(3);
+
+            const startX = 30;
+            let currentY = doc.y;
+
+            const drawHeader = (y) => {
+                doc.fontSize(6).font('Helvetica-Bold');
+                doc.text('N°', startX, y, { width: 20 });
+                doc.text('FECHA', startX + 20, y, { width: 48 });
+                doc.text('COD. GENERACIÓN', startX + 68, y, { width: 110 });
+                doc.text('N° CONTROL', startX + 178, y, { width: 80 });
+                doc.text('SELLO RECEPCIÓN', startX + 258, y, { width: 90 });
+                doc.text('ESTADO', startX + 348, y, { width: 56 });
+                doc.text('CLIENTE', startX + 404, y, { width: 130 });
+                doc.text('NIT', startX + 534, y, { width: 65 });
+                doc.text('NRC', startX + 599, y, { width: 40 });
+                doc.text('TIPO', startX + 639, y, { width: 30 });
+                doc.text('EXENTA', startX + 669, y, { width: 38, align: 'right' });
+                doc.text('GRAVADA', startX + 707, y, { width: 44, align: 'right' });
+                doc.text('IVA', startX + 751, y, { width: 36, align: 'right' });
+                doc.text('RET', startX + 787, y, { width: 30, align: 'right' });
+                doc.text('FOV', startX + 817, y, { width: 26, align: 'right' });
+                doc.text('COT', startX + 843, y, { width: 26, align: 'right' });
+                doc.text('TOTAL', startX + 869, y, { width: 40, align: 'right' });
+                doc.moveTo(startX, y + 9).lineTo(startX + 909, y + 9).stroke();
+                return y + 14;
+            };
+
+            currentY = drawHeader(currentY);
+            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+
+            rows.forEach((r, idx) => {
+                if (currentY > 545) { doc.addPage(); currentY = drawHeader(30); }
+                const g = n(r.total_gravado), e = n(r.total_exento), i = n(r.total_iva);
+                const f = n(r.fovial), c = n(r.cotrans), re = n(r.iva_retenido) + n(r.iva_percibido), to = n(r.total_pagar);
+
+                doc.fontSize(6).font('Helvetica');
+                doc.text(String(idx + 1), startX, currentY, { width: 20 });
+                doc.text(safeFormatDate(r.fecha_emision), startX + 20, currentY, { width: 46 });
+                doc.text(cleanStr(r.codigo_generacion || '---'), startX + 68, currentY, { width: 108, truncate: true });
+                doc.text(cleanStr(r.numero_control || '---'), startX + 178, currentY, { width: 78, truncate: true });
+                doc.text(cleanStr(r.sello_recepcion || '---'), startX + 258, currentY, { width: 88, truncate: true });
+                doc.text(cleanStr(r.estado || 'PENDIENTE'), startX + 348, currentY, { width: 54, truncate: true });
+                doc.text(String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(), startX + 404, currentY, { width: 128, truncate: true });
+                doc.text(cleanStr(r.nit || ''), startX + 534, currentY, { width: 63, truncate: true });
+                doc.text(cleanStr(r.nrc || ''), startX + 599, currentY, { width: 38, truncate: true });
+                doc.text(cleanStr(r.tipo_dte || r.tipo_documento), startX + 639, currentY, { width: 28, truncate: true });
+                doc.text(`$${e.toFixed(2)}`, startX + 669, currentY, { width: 38, align: 'right' });
+                doc.text(`$${g.toFixed(2)}`, startX + 707, currentY, { width: 44, align: 'right' });
+                doc.text(`$${i.toFixed(2)}`, startX + 751, currentY, { width: 36, align: 'right' });
+                doc.text(`$${re.toFixed(2)}`, startX + 787, currentY, { width: 30, align: 'right' });
+                doc.text(`$${f.toFixed(2)}`, startX + 817, currentY, { width: 26, align: 'right' });
+                doc.text(`$${c.toFixed(2)}`, startX + 843, currentY, { width: 26, align: 'right' });
+                doc.text(`$${to.toFixed(2)}`, startX + 869, currentY, { width: 40, align: 'right' });
+
+                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                currentY += 11;
+            });
+            drawPdfSummaryBox(doc, 560, currentY + 15, t, 'RESUMEN ANEXOS IVA');
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Anexos_IVA_${fecha_inicio || 'inicio'}_${fecha_fin || 'fin'}.pdf"`);
+        res.send(buffer);
+    } catch (e) {
+        console.error('[VAT Books] Error Anexos IVA PDF:', e);
+        res.status(500).json({ message: 'Error', error: e.message });
+    }
+};
+
+const getVatBookAnexosIVAExcel = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const branchId = req.user?.branch_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+
+        const { fecha_inicio, fecha_fin, tipo_dte, search = '' } = req.query;
+
+        const { dataQuery, params } = buildAnexosIVAQuery({
+            companyId, branchId, fecha_inicio, fecha_fin, tipo_dte, search
+        });
+        const [rows] = await pool.query(dataQuery, params);
+
+        const excelData = rows.map((r, idx) => ({
+            Correlativo: idx + 1,
+            Fecha: safeFormatDate(r.fecha_emision),
+            'Cod. Generación': cleanStr(r.codigo_generacion || '---'),
+            'N° Control': cleanStr(r.numero_control || '---'),
+            'Sello Recepción': cleanStr(r.sello_recepcion || '---'),
+            'Estado': cleanStr(r.estado || 'PENDIENTE'),
+            Cliente: String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(),
+            NIT: cleanStr(r.nit || ''),
+            NRC: cleanStr(r.nrc || ''),
+            'Tipo DTE': cleanStr(r.tipo_dte || r.tipo_documento),
+            Exentas: n(r.total_exento).toFixed(2),
+            Gravadas: n(r.total_gravado).toFixed(2),
+            IVA: n(r.total_iva).toFixed(2),
+            Retención: (n(r.iva_retenido) + n(r.iva_percibido)).toFixed(2),
+            FOVIAL: n(r.fovial).toFixed(2),
+            COTRANS: n(r.cotrans).toFixed(2),
+            Total: n(r.total_pagar).toFixed(2)
+        }));
+
+        const buffer = await excelService.createExcelBuffer({
+            sheets: [{
+                name: 'Anexos IVA',
+                columns: [
+                    { header: 'Correlativo', key: 'Correlativo', width: 12 },
+                    { header: 'Fecha', key: 'Fecha', width: 12 },
+                    { header: 'Cod. Generación', key: 'Cod. Generación', width: 30 },
+                    { header: 'N° Control', key: 'N° Control', width: 22 },
+                    { header: 'Sello Recepción', key: 'Sello Recepción', width: 26 },
+                    { header: 'Estado', key: 'Estado', width: 14 },
+                    { header: 'Cliente', key: 'Cliente', width: 35 },
+                    { header: 'NIT', key: 'NIT', width: 18 },
+                    { header: 'NRC', key: 'NRC', width: 15 },
+                    { header: 'Tipo DTE', key: 'Tipo DTE', width: 14 },
+                    { header: 'Exentas', key: 'Exentas', width: 12 },
+                    { header: 'Gravadas', key: 'Gravadas', width: 12 },
+                    { header: 'IVA', key: 'IVA', width: 12 },
+                    { header: 'Retención', key: 'Retención', width: 12 },
+                    { header: 'FOVIAL', key: 'FOVIAL', width: 12 },
+                    { header: 'COTRANS', key: 'COTRANS', width: 12 },
+                    { header: 'Total', key: 'Total', width: 14 }
+                ],
+                data: excelData
+            }]
+        });
+        return excelService.sendExcelResponse(res, buffer, `Anexos_IVA_${fecha_inicio || 'inicio'}_${fecha_fin || 'fin'}.xlsx`);
+    } catch (e) {
+        console.error('[VAT Books] Error Anexos IVA Excel:', e);
+        res.status(500).json({ message: 'Error', error: e.message });
+    }
+};
+
 module.exports = {
     getVatBookPurchasesPDF,
     getVatBookSalesTaxpayersPDF,
-    getVatBookSalesConsumersPDF
+    getVatBookSalesConsumersPDF,
+    getVatBookAnexosIVA,
+    getVatBookAnexosIVAPDF,
+    getVatBookAnexosIVAExcel
 };

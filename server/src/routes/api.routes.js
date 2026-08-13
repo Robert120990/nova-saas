@@ -432,6 +432,9 @@ router.get('/cxp/payments/:id/pdf', cxpController.exportPaymentPDF);
 router.get('/vat-books/purchases-pdf', vatBooksController.getVatBookPurchasesPDF);
 router.get('/vat-books/sales-taxpayers-pdf', vatBooksController.getVatBookSalesTaxpayersPDF);
 router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesConsumersPDF);
+router.get('/vat-books/anexos-iva', vatBooksController.getVatBookAnexosIVA);
+router.get('/vat-books/anexos-iva-pdf', vatBooksController.getVatBookAnexosIVAPDF);
+router.get('/vat-books/anexos-iva-excel', vatBooksController.getVatBookAnexosIVAExcel);
 
 // Accounting Module
 router.get('/accounting/account-types', accountingController.getAccountTypes);
