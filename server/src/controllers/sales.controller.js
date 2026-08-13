@@ -1582,6 +1582,297 @@ const exportSalesByPOSPDF = async (req, res) => {
     }
 };
 
+const IVA_DOC_TYPES = ['01', '03', '05', '06', '08', '09'];
+
+const parseItemTributos = (raw) => {
+    let arr = [];
+    try {
+        arr = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
+    } catch (e) {
+        arr = [];
+    }
+    let fovial = 0;
+    let cotrans = 0;
+    (arr || []).forEach(t => {
+        if (!t || typeof t !== 'object') return;
+        if (t.codigo === 'D1') fovial += parseFloat(t.valor) || 0;
+        if (t.codigo === 'C8') cotrans += parseFloat(t.valor) || 0;
+    });
+    return { fovial, cotrans };
+};
+
+const fmtDate = (d) => {
+    if (!d) return '---';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return '---';
+    return date.toLocaleDateString('es-SV');
+};
+
+const fmtMoney = (v) => {
+    const n = parseFloat(v) || 0;
+    return `$${n.toFixed(2)}`;
+};
+
+/**
+ * Reporte "Detalle de Facturación" - líneas de detalle por documento DTE.
+ * Params: start_date, end_date, branch_id, pos_ids, format=excel
+ */
+const exportSalesDetailPDF = async (req, res) => {
+    try {
+        const { start_date, end_date, branch_id, pos_ids } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Rango de fechas es requerido' });
+        }
+
+        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
+        const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '' };
+
+        let branchName = 'Todas las sucursales';
+        if (branch_id && branch_id !== 'all') {
+            const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (branchRows.length > 0) branchName = branchRows[0].nombre;
+        }
+
+        let posFilter = '';
+        let posIds = [];
+        if (pos_ids) {
+            posIds = pos_ids.split(',').map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
+            if (posIds.length > 0) posFilter = ` AND h.pos_id IN (${posIds.join(',')})`;
+        }
+
+        let posLabel = 'Todos los puntos de venta';
+        if (posIds.length > 0) {
+            const [posRows] = await pool.query(
+                `SELECT nombre FROM points_of_sale WHERE id IN (${posIds.join(',')})`
+            );
+            posLabel = posRows.map(p => p.nombre).join(', ');
+        }
+
+        // Detalle por línea
+        let sql = `
+            SELECT
+                h.fecha_emision,
+                h.tipo_documento,
+                cat.description AS tipo_dte,
+                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) AS numero_control,
+                COALESCE(c.nombre, h.cliente_nombre, 'CONSUMIDOR FINAL') AS cliente,
+                COALESCE(si.codigo, p.codigo, '') AS codigo_producto,
+                COALESCE(si.descripcion, p.descripcion, '') AS descripcion,
+                si.cantidad,
+                si.precio_unitario,
+                si.venta_gravada,
+                si.venta_exenta,
+                si.tributos
+            FROM sales_headers h
+            JOIN sales_items si ON h.id = si.sale_id
+            LEFT JOIN products p ON si.product_id = p.id
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+            WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND h.fecha_emision BETWEEN ? AND ?
+        `;
+        const params = [companyId, start_date, end_date];
+
+        if (branch_id && branch_id !== 'all') {
+            sql += ' AND h.branch_id = ?';
+            params.push(branch_id);
+        }
+        sql += posFilter;
+        sql += ' ORDER BY h.fecha_emision ASC, h.id ASC, si.id ASC';
+
+        const [rows] = await pool.query(sql, params);
+
+        // Totales autoritativos desde las cabeceras
+        let totalsSql = `
+            SELECT
+                COUNT(DISTINCT h.id) AS num_documentos,
+                SUM(h.total_iva) AS iva,
+                SUM(h.fovial) AS fovial,
+                SUM(h.cotrans) AS cotrans,
+                SUM(h.total_pagar) AS total
+            FROM sales_headers h
+            LEFT JOIN dtes d ON h.id = d.venta_id
+            WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
+            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND h.fecha_emision BETWEEN ? AND ?
+        `;
+        const totalsParams = [companyId, start_date, end_date];
+        if (branch_id && branch_id !== 'all') {
+            totalsSql += ' AND h.branch_id = ?';
+            totalsParams.push(branch_id);
+        }
+        totalsSql += posFilter;
+        const [totalsRows] = await pool.query(totalsSql, totalsParams);
+        const totals = totalsRows[0] || {};
+
+        const details = rows.map((r) => {
+            const { fovial, cotrans } = parseItemTributos(r.tributos);
+            const gravada = parseFloat(r.venta_gravada) || 0;
+            const exenta = parseFloat(r.venta_exenta) || 0;
+            const cantidad = parseFloat(r.cantidad) || 0;
+            const precio = parseFloat(r.precio_unitario) || 0;
+            const tipoDoc = String(r.tipo_documento || '');
+            const iva = IVA_DOC_TYPES.includes(tipoDoc) ? Math.round(gravada * (13 / 113) * 100) / 100 : 0;
+            return {
+                fecha: fmtDate(r.fecha_emision),
+                tipo_dte: String(r.tipo_dte || getDteTypeName(tipoDoc) || '---'),
+                numero_control: String(r.numero_control || '---'),
+                cliente: String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(),
+                codigo_producto: String(r.codigo_producto || ''),
+                descripcion: String(r.descripcion || ''),
+                cantidad,
+                precio,
+                iva,
+                fovial,
+                cotrans,
+                total: gravada + exenta + fovial + cotrans
+            };
+        });
+
+        let lineTotals = { cantidad: 0, iva: 0, fovial: 0, cotrans: 0, total: 0 };
+        details.forEach(d => {
+            lineTotals.cantidad += d.cantidad;
+            lineTotals.iva += d.iva;
+            lineTotals.fovial += d.fovial;
+            lineTotals.cotrans += d.cotrans;
+            lineTotals.total += d.total;
+        });
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Detalle Facturación',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Tipo DTE', key: 'tipo_dte', width: 18 },
+                        { header: 'N° Control', key: 'numero_control', width: 22 },
+                        { header: 'Cliente', key: 'cliente', width: 30 },
+                        { header: 'Código Producto', key: 'codigo_producto', width: 16 },
+                        { header: 'Descripción', key: 'descripcion', width: 35 },
+                        { header: 'Cantidad', key: 'cantidad', width: 10 },
+                        { header: 'Precio', key: 'precio', width: 12 },
+                        { header: 'IVA', key: 'iva', width: 12 },
+                        { header: 'FOVIAL', key: 'fovial', width: 12 },
+                        { header: 'COTRANS', key: 'cotrans', width: 12 },
+                        { header: 'Total', key: 'total', width: 14 }
+                    ],
+                    data: details.map(d => ({
+                        fecha: d.fecha,
+                        tipo_dte: d.tipo_dte,
+                        numero_control: d.numero_control,
+                        cliente: d.cliente,
+                        codigo_producto: d.codigo_producto,
+                        descripcion: d.descripcion,
+                        cantidad: d.cantidad.toFixed(5),
+                        precio: d.precio.toFixed(2),
+                        iva: d.iva.toFixed(2),
+                        fovial: d.fovial.toFixed(2),
+                        cotrans: d.cotrans.toFixed(2),
+                        total: d.total.toFixed(2)
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Detalle_Facturacion_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => {
+            const result = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `inline; filename=Detalle_Facturacion_${start_date}_al_${end_date}.pdf`);
+            res.send(result);
+        });
+
+        // Cabecera del documento
+        doc.fontSize(15).font('Helvetica-Bold').text(String(company.razon_social).toUpperCase(), { align: 'center' });
+        doc.fontSize(9).font('Helvetica').text(`NIT: ${String(company.nit || '')}`, { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(12).font('Helvetica-Bold').text('DETALLE DE FACTURACIÓN', { align: 'center' });
+        doc.fontSize(9).font('Helvetica').text(`PERIODO: ${start_date} AL ${end_date}`, { align: 'center' });
+        doc.text(`SUCURSAL: ${branchName}`, { align: 'center' });
+        doc.text(`PUNTOS DE VENTA: ${posLabel}`, { align: 'center' });
+        doc.moveDown(1.2);
+
+        const startX = 30;
+        let currentY = doc.y;
+
+        const drawTableHeader = (y) => {
+            doc.fontSize(7).font('Helvetica-Bold');
+            doc.text('FECHA', startX, y);
+            doc.text('TIPO DTE', startX + 44, y, { width: 50 });
+            doc.text('N° CONTROL', startX + 96, y, { width: 121 });
+            doc.text('CLIENTE', startX + 219, y, { width: 86 });
+            doc.text('CÓDIGO', startX + 307, y, { width: 44 });
+            doc.text('DESCRIPCIÓN', startX + 353, y, { width: 87 });
+            doc.text('CANT.', startX + 440, y, { width: 46, align: 'right' });
+            doc.text('PRECIO', startX + 488, y, { width: 48, align: 'right' });
+            doc.text('IVA', startX + 538, y, { width: 42, align: 'right' });
+            doc.text('FOVIAL', startX + 582, y, { width: 40, align: 'right' });
+            doc.text('COTRANS', startX + 624, y, { width: 40, align: 'right' });
+            doc.text('TOTAL', startX + 666, y, { width: 58, align: 'right' });
+            doc.moveTo(startX, y + 10).lineTo(startX + 724, y + 10).stroke();
+            return y + 14;
+        };
+
+        currentY = drawTableHeader(currentY);
+
+        details.forEach((r) => {
+            if (currentY > 545) {
+                doc.addPage();
+                currentY = drawTableHeader(30);
+            }
+
+            doc.fontSize(7).font('Helvetica');
+            doc.text(r.fecha, startX, currentY, { width: 42, height: 10, truncate: true });
+            doc.text(r.tipo_dte, startX + 44, currentY, { width: 50, height: 10, truncate: true });
+            doc.text(r.numero_control, startX + 96, currentY, { width: 121, height: 10, truncate: true });
+            doc.text(r.cliente, startX + 219, currentY, { width: 86, height: 10, truncate: true });
+            doc.text(r.codigo_producto, startX + 307, currentY, { width: 44, height: 10, truncate: true });
+            doc.text(r.descripcion, startX + 353, currentY, { width: 87, height: 10, truncate: true });
+            doc.text(r.cantidad.toFixed(5), startX + 440, currentY, { width: 46, height: 10, align: 'right' });
+            doc.text(fmtMoney(r.precio), startX + 488, currentY, { width: 48, height: 10, align: 'right' });
+            doc.text(fmtMoney(r.iva), startX + 538, currentY, { width: 42, height: 10, align: 'right' });
+            doc.text(fmtMoney(r.fovial), startX + 582, currentY, { width: 40, height: 10, align: 'right' });
+            doc.text(fmtMoney(r.cotrans), startX + 624, currentY, { width: 40, height: 10, align: 'right' });
+            doc.text(fmtMoney(r.total), startX + 666, currentY, { width: 58, height: 10, align: 'right' });
+            currentY += 11;
+        });
+
+        // Fila de totales por línea
+        currentY += 3;
+        doc.fontSize(7.5).font('Helvetica-Bold');
+        doc.text(`TOTALES (${details.length} LÍNEAS)`, startX + 260, currentY, { width: 178, height: 10, align: 'right' });
+        doc.text(lineTotals.cantidad.toFixed(5), startX + 440, currentY, { width: 46, height: 10, align: 'right' });
+        doc.text(fmtMoney(lineTotals.iva), startX + 538, currentY, { width: 42, height: 10, align: 'right' });
+        doc.text(fmtMoney(lineTotals.fovial), startX + 582, currentY, { width: 40, height: 10, align: 'right' });
+        doc.text(fmtMoney(lineTotals.cotrans), startX + 624, currentY, { width: 40, height: 10, align: 'right' });
+        doc.text(fmtMoney(lineTotals.total), startX + 666, currentY, { width: 58, height: 10, align: 'right' });
+        currentY += 14;
+        doc.moveTo(startX, currentY - 3).lineTo(startX + 724, currentY - 3).stroke();
+
+        // Totales de cabeceras (autoritativos)
+        currentY += 4;
+        doc.fontSize(8).font('Helvetica-Bold');
+        doc.text(
+            `RESUMEN DE CABECERAS: ${parseInt(totals.num_documentos || 0, 10)} DOCUMENTOS | IVA: ${fmtMoney(totals.iva)} | FOVIAL: ${fmtMoney(totals.fovial)} | COTRANS: ${fmtMoney(totals.cotrans)} | TOTAL: ${fmtMoney(totals.total)}`,
+            startX, currentY, { width: 724 }
+        );
+
+        doc.end();
+    } catch (error) {
+        console.error('Error in exportSalesDetailPDF:', error);
+        res.status(500).json({ message: 'Error al generar el detalle de facturación', error: error.message });
+    }
+};
+
 const exportRTEE = async (req, res) => {
     const { id } = req.params;
 
@@ -2899,6 +3190,7 @@ module.exports = {
     getSalesReportPDF,
     getSalesByPOS,
     exportSalesByPOSPDF,
+    exportSalesDetailPDF,
     exportRTEE,
     getPublicRTEE,
     getPublicDTEInfo,

@@ -64,6 +64,7 @@ import ProviderBalancesReport from './pages/ProviderBalancesReport';
 import FuelPrices from './pages/FuelPrices';
 import SalesByCategoryReport from './pages/SalesByCategoryReport';
 import SalesByPOSReport from './pages/SalesByPOSReport';
+import SalesDetailReport from './pages/SalesDetailReport';
 import ArqueosReport from './pages/ArqueosReport';
 import SalesReport from './pages/SalesReport';
 import PendingDocumentsDetailedReport from './pages/PendingDocumentsDetailedReport';
@@ -237,6 +238,7 @@ function App() {
                         <Route path="/ventas/reportes/cliente" element={<SalesByCustomerReport />} />
                         <Route path="/ventas/reportes/categoria" element={<SalesByCategoryReport />} />
                         <Route path="/ventas/reportes/pos" element={<SalesByPOSReport />} />
+                        <Route path="/ventas/reportes/detalle-facturacion" element={<SalesDetailReport />} />
                         <Route path="/ventas/reportes/arqueos" element={<ArqueosReport />} />
                         <Route path="/ventas/combos" element={<Combos />} />
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />

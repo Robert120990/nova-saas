@@ -316,6 +316,7 @@ router.get('/sales/reports/daily/pdf', salesController.exportDailySalesPDF);
 router.get('/sales/reports/by-customer/pdf', salesController.exportSalesByCustomerPDF);
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
+router.get('/sales/reports/detalle/pdf', salesController.exportSalesDetailPDF);
 router.post('/sales', salesController.createSale);
 router.get('/sales/rtee/:id', salesController.exportRTEE);
 router.post('/sales/resend-email/:id', salesController.resendDTEEmail);
