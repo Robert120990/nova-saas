@@ -2668,6 +2668,9 @@ exports.generarComplementaria = async (req, res) => {
             const fovial = Math.round(cantidad * tasaFovial * 100) / 100;
             const cotrans = Math.round(cantidad * tasaCotran * 100) / 100;
             const ventaGravada = Math.round((montoBruto - fovial - cotrans) * 100) / 100;
+            const ivaComplementaria = Math.round((ventaGravada * 13) / 113 * 100) / 100;
+            const gravadoNeto = Math.round((ventaGravada - ivaComplementaria) * 100) / 100;
+            const montoTotal = Math.round((ventaGravada + fovial + cotrans) * 100) / 100;
 
             const item = {
                 product_id: r.product_id,
@@ -2706,14 +2709,14 @@ exports.generarComplementaria = async (req, res) => {
                     fovial,
                     cotrans,
                     taxes: [],
-                    total_gravado: ventaGravada,
-                    total_iva: 0,
-                    total_pagar: ventaGravada,
+                    total_gravado: gravadoNeto,
+                    total_iva: ivaComplementaria,
+                    total_pagar: montoTotal,
                     shift_id: posShift[0].id,
                     seller_id: posShift[0].seller_id || null,
                 },
                 items: [item],
-                payments: [{ codigo: '01', monto: ventaGravada, referencia: '', plazo: '', periodo: '' }],
+                payments: [{ codigo: '01', monto: montoTotal, referencia: '', plazo: '', periodo: '' }],
                 linkedDocuments: [],
                 emisor_adicional: {
                     descActividad: company.actividad_economica || '',
@@ -2734,16 +2737,16 @@ exports.generarComplementaria = async (req, res) => {
                 fecha_emision: new Date(),
                 hora_emision: new Date().toTimeString().split(' ')[0],
                 estado: 'emitido',
-                total_gravado: ventaGravada,
+                total_gravado: gravadoNeto,
                 total_exento: 0,
                 total_nosujetas: 0,
                 fovial,
                 cotrans,
-                total_iva: 0,
+                total_iva: ivaComplementaria,
                 descuento_general: 0,
                 iva_percibido: 0,
                 iva_retenido: 0,
-                total_pagar: ventaGravada,
+                total_pagar: montoTotal,
                 payment_condition: 1,
                 cliente_nombre: 'CONSUMIDOR FINAL',
                 observaciones: `Complementaria turno ${fecha_turno} #${turnoNum} - ${r.descripcion_producto}`,
@@ -2767,7 +2770,7 @@ exports.generarComplementaria = async (req, res) => {
             await pool.query('INSERT INTO sales_payments SET ?', [{
                 sale_id: saleId,
                 metodo_pago: '01',
-                monto: ventaGravada,
+                monto: montoTotal,
                 referencia: ''
             }]);
 
@@ -2787,7 +2790,7 @@ exports.generarComplementaria = async (req, res) => {
                         success: true,
                         codigo_generacion: dteResult.data.codigo_generacion,
                         numero_control: dteResult.data.numero_control,
-                        total: ventaGravada,
+                        total: montoTotal,
                         sale_id: saleId
                     });
                 } else if (dteResult.codigo_generacion) {

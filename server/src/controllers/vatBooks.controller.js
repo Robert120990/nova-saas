@@ -30,6 +30,32 @@ const safeFormatDate = (date) => {
 };
 
 /**
+ * JOIN deduplicado con dtes: una venta puede tener varios DTEs (reintentos/retransmisiones),
+ * se toma solo el DTE más reciente por venta para no duplicar montos en los libros.
+ */
+const DTE_JOIN_SQL = `
+    LEFT JOIN (
+        SELECT dd.venta_id, dd.numero_control, dd.status, dd.sello_recepcion
+        FROM dtes dd
+        INNER JOIN (
+            SELECT venta_id, MAX(id) AS max_id
+            FROM dtes
+            WHERE venta_id IS NOT NULL
+            GROUP BY venta_id
+        ) dm ON dm.max_id = dd.id
+    ) d ON sh.id = d.venta_id
+`;
+
+/**
+ * Excluye del libro una venta solo cuando tiene DTEs y TODOS están invalidados
+ * (equivale a la semántica anterior del filtro por fila del JOIN).
+ */
+const DTE_NOT_INVALIDADO_SQL = `(
+    NOT EXISTS (SELECT 1 FROM dtes di WHERE di.venta_id = sh.id)
+    OR EXISTS (SELECT 1 FROM dtes dv WHERE dv.venta_id = sh.id AND dv.status != 'INVALIDADO')
+)`;
+
+/**
  * Summary Box with extreme layout safety
  */
 const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
@@ -243,7 +269,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'", "(d.status IS NULL OR d.status != 'INVALIDADO')"];
+        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'", DTE_NOT_INVALIDADO_SQL];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -251,7 +277,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             SELECT sh.*, c.nombre AS customer_nombre, c.nrc AS customer_nrc, c.nit AS customer_nit, COALESCE(d.numero_control, sh.numero_control) AS numero_control
             FROM sales_headers sh
             LEFT JOIN customers c ON sh.customer_id = c.id
-            LEFT JOIN dtes d ON sh.id = d.venta_id
+            ${DTE_JOIN_SQL}
             WHERE ${whereClauses.join(' AND ')}
             ORDER BY sh.fecha_emision ASC, COALESCE(d.numero_control, sh.numero_control) ASC
         `;
@@ -375,7 +401,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'", "(d.status IS NULL OR d.status != 'INVALIDADO')"];
+        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'", DTE_NOT_INVALIDADO_SQL];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -386,7 +412,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                        SUM(sh.total_gravado) as t_grav, SUM(sh.total_exento) as t_exe, SUM(sh.total_iva) as t_iva,
                        SUM(sh.fovial) as t_fov, SUM(sh.cotrans) as t_cot, SUM(sh.total_pagar) as t_pagar
                 FROM sales_headers sh
-                LEFT JOIN dtes d ON sh.id = d.venta_id
+                ${DTE_JOIN_SQL}
                 WHERE ${whereClauses.join(' AND ')}
                 GROUP BY DATE(sh.fecha_emision)
                 ORDER BY fecha ASC
@@ -400,7 +426,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                        sh.total_gravado, sh.total_exento, sh.total_iva,
                        sh.fovial, sh.cotrans, sh.total_pagar
                 FROM sales_headers sh
-                LEFT JOIN dtes d ON sh.id = d.venta_id
+                ${DTE_JOIN_SQL}
                 LEFT JOIN customers c ON sh.customer_id = c.id
                 WHERE ${whereClauses.join(' AND ')}
                 ORDER BY sh.fecha_emision ASC, d.numero_control ASC
@@ -502,8 +528,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
 
                 rows.forEach(r => {
                     if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
-                    const gNeto = n(r.t_grav), i = n(r.t_iva);
-                    const g = gNeto + i;
+                    const g = n(r.t_grav), i = n(r.t_iva);
                     const e = n(r.t_exe);
                     const f = n(r.t_fov), c = n(r.t_cot), to = n(r.t_pagar);
 
@@ -544,8 +569,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
 
                 rows.forEach(r => {
                     if (currentY > 540) { doc.addPage(); currentY = drawDetailHeader(30); }
-                    const gNeto = n(r.total_gravado), i = n(r.total_iva);
-                    const g = gNeto + i;
+                    const g = n(r.total_gravado), i = n(r.total_iva);
                     const e = n(r.total_exento);
                     const f = n(r.fovial), c = n(r.cotrans), to = n(r.total_pagar);
 
@@ -583,7 +607,7 @@ const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tip
         'sh.company_id = ?',
         'sh.branch_id = ?',
         "sh.estado != 'ANULADO'",
-        "(d.status IS NULL OR d.status != 'INVALIDADO')"
+        DTE_NOT_INVALIDADO_SQL
     ];
     const params = [companyId, branchId];
 
@@ -631,7 +655,7 @@ const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tip
         SELECT COUNT(*) AS total
         FROM sales_headers sh
         LEFT JOIN customers c ON sh.customer_id = c.id
-        LEFT JOIN dtes d ON sh.id = d.venta_id
+        ${DTE_JOIN_SQL}
         LEFT JOIN cat_002_tipo_dte cat ON sh.tipo_documento = cat.code
         WHERE ${where}
     `;
@@ -640,7 +664,7 @@ const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tip
         SELECT ${selectCols}
         FROM sales_headers sh
         LEFT JOIN customers c ON sh.customer_id = c.id
-        LEFT JOIN dtes d ON sh.id = d.venta_id
+        ${DTE_JOIN_SQL}
         LEFT JOIN cat_002_tipo_dte cat ON sh.tipo_documento = cat.code
         WHERE ${where}
         ORDER BY sh.fecha_emision ASC, COALESCE(d.numero_control, sh.numero_control) ASC
