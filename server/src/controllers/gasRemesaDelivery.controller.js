@@ -363,6 +363,38 @@ exports.deleteDelivery = async (req, res) => {
     }
 };
 
+exports.revertirEntregado = async (req, res) => {
+    try {
+        if (req.user.role !== 'SuperAdmin') {
+            return res.status(403).json({ message: 'Solo el SuperAdmin puede revertir una entrega entregada' });
+        }
+
+        const { id } = req.params;
+
+        const [deliveries] = await pool.query(
+            `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+
+        if (deliveries.length === 0) {
+            return res.status(404).json({ message: 'Entrega no encontrada' });
+        }
+        if (!deliveries[0].entregado) {
+            return res.status(400).json({ message: 'La entrega no está marcada como entregada' });
+        }
+
+        await pool.query(
+            `UPDATE gas_station_remesa_deliveries SET entregado = 0 WHERE id = ?`,
+            [id]
+        );
+
+        res.json({ message: 'Entrega revertida a pendiente' });
+    } catch (error) {
+        console.error('Error revertirEntregado:', error);
+        res.status(500).json({ message: 'Error al revertir entrega' });
+    }
+};
+
 exports.entregarDelivery = async (req, res) => {
     try {
         const { id } = req.params;
@@ -444,6 +476,11 @@ exports.entregarDelivery = async (req, res) => {
                         const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
                         await rrsPool.query(
+                            `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                            [llave]
+                        );
+
+                        await rrsPool.query(
                             `INSERT INTO movimientos_bancarios 
                              (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino) 
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -469,6 +506,11 @@ exports.entregarDelivery = async (req, res) => {
 
                             const llaveExtra = `${rrsIdEmpresa}-${delivery.id}-E${extra.id}`;
                             const conceptoExtra = String(extra.descripcion || 'Otras remesas').trim().toUpperCase().slice(0, 120);
+
+                            await rrsPool.query(
+                                `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                                [llaveExtra]
+                            );
 
                             await rrsPool.query(
                                 `INSERT INTO movimientos_bancarios 

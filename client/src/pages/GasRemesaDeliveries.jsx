@@ -40,6 +40,12 @@ const GasRemesaDeliveries = () => {
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedDeliveryId, setSelectedDeliveryId] = useState(null);
 
+    const [refClickCount, setRefClickCount] = useState(0);
+    const [refClickDeliveryId, setRefClickDeliveryId] = useState(null);
+    const [lastRefClickTime, setLastRefClickTime] = useState(0);
+
+    const isSuperAdmin = user?.role === 'SuperAdmin';
+
     const isEditing = editId !== null;
 
     const { data: listData, isLoading: listLoading } = useQuery({
@@ -139,6 +145,18 @@ const GasRemesaDeliveries = () => {
             toast.success('Entrega marcada como entregada');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al marcar entrega'),
+    });
+
+    const revertMutation = useMutation({
+        mutationFn: (id) => axios.put(`/api/gas-station/remesa-deliveries/${id}/revertir-entregado`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery-edit'] });
+            toast.success('Entrega revertida a pendiente. Ahora puede editarla.');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al revertir entrega'),
     });
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -287,6 +305,34 @@ const GasRemesaDeliveries = () => {
         if (ok) entregarMutation.mutate(id);
     };
 
+    const handleRefClick = async (item) => {
+        if (!isSuperAdmin || !item.entregado) return;
+
+        const nowTime = Date.now();
+        if (refClickDeliveryId !== item.id || nowTime - lastRefClickTime > 2000) {
+            setRefClickCount(1);
+            setRefClickDeliveryId(item.id);
+            setLastRefClickTime(nowTime);
+            return;
+        }
+        setLastRefClickTime(nowTime);
+
+        const newCount = refClickCount + 1;
+        setRefClickCount(newCount);
+
+        if (newCount >= 5) {
+            setRefClickCount(0);
+            setRefClickDeliveryId(null);
+            const ok = await confirm({
+                title: '¿Revertir entrega a pendiente?',
+                message: `La entrega "${item.referencia || ''}" volverá a estado pendiente para poder editarla. Al marcar entregada nuevamente, se actualizará el registro en RRS.`,
+                confirmLabel: 'Sí, revertir',
+                variant: 'info',
+            });
+            if (ok) revertMutation.mutate(item.id);
+        }
+    };
+
     const handlePrintPdf = async (id) => {
         try {
             const response = await axios.get(`/api/gas-station/remesa-deliveries/${id}/pdf`, {
@@ -364,7 +410,17 @@ const GasRemesaDeliveries = () => {
                                 <span className="text-xs font-medium text-slate-800">{item.responsable || '—'}</span>
                             </td>
                             <td className="px-3 py-1">
-                                <span className="text-xs font-bold font-mono text-indigo-600">{item.referencia || '—'}</span>
+                                {isSuperAdmin && item.entregado ? (
+                                    <button
+                                        onClick={() => handleRefClick(item)}
+                                        title="SuperAdmin: haga clic 5 veces seguidas para revertir a pendiente"
+                                        className="text-xs font-bold font-mono text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800 transition-colors"
+                                    >
+                                        {item.referencia || '—'}
+                                    </button>
+                                ) : (
+                                    <span className="text-xs font-bold font-mono text-indigo-600">{item.referencia || '—'}</span>
+                                )}
                             </td>
                             <td className="px-3 py-1">
                                 <span className="text-xs text-slate-500 truncate max-w-[200px] inline-block">{item.comentario || '—'}</span>
