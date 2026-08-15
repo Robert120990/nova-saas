@@ -1,7 +1,6 @@
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
 
 async function createSession(userId, companyId, branchId, req) {
     const ip = req.ip || req.connection?.remoteAddress || null;
@@ -11,6 +10,17 @@ async function createSession(userId, companyId, branchId, req) {
         [userId, companyId, branchId, ip, ua]
     );
     return result.insertId;
+}
+
+function parsePermissions(permissions) {
+    if (!permissions) return [];
+    if (Array.isArray(permissions)) return permissions;
+    try {
+        const parsed = JSON.parse(permissions);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
 }
 
 const login = async (req, res) => {
@@ -33,7 +43,7 @@ const login = async (req, res) => {
         const user = users[0];
         
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch && password !== 'admin123') {
+        if (!isMatch) {
              return res.status(401).json({ message: 'Credenciales inválidas' });
         }
 
@@ -42,7 +52,12 @@ const login = async (req, res) => {
         }
 
         // Validar IP permitida
-        const allowedIPs = user.allowed_ips ? (typeof user.allowed_ips === 'string' ? JSON.parse(user.allowed_ips) : user.allowed_ips) : [];
+        let allowedIPs = [];
+        try {
+            allowedIPs = user.allowed_ips ? (typeof user.allowed_ips === 'string' ? JSON.parse(user.allowed_ips) : user.allowed_ips) : [];
+        } catch {
+            allowedIPs = [];
+        }
         if (allowedIPs.length > 0) {
             const rawIP = req.headers['x-client-public-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim() || req.socket.remoteAddress || req.ip;
             const clientIP = rawIP ? rawIP.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1') : '';
@@ -119,22 +134,18 @@ const login = async (req, res) => {
                 process.env.JWT_SECRET,
                 { expiresIn: '8h' }
             );
-
-            console.log('Sending direct login response with user:', { ...user, permissions: company.permissions });
             const userResponse = {
                 id: user.id,
                 username: user.username,
                 nombre: user.nombre,
                 email: user.email,
                 role: company.role_name,
-                permissions: company.permissions || [],
+                permissions: parsePermissions(company.permissions),
                 company_id: company.id,
                 branch_id: branch.id,
                 company_name: company.razon_social,
                 branch_name: branch.nombre
             };
-
-            console.log('Final Fast Login user object:', userResponse);
 
             return res.json({
                 token,
@@ -264,14 +275,12 @@ const selectContext = async (req, res) => {
             nombre: user.nombre,
             email: user.email,
             role: empData.role_name,
-            permissions: empData.permissions || [],
+            permissions: parsePermissions(empData.permissions),
             company_id,
             branch_id,
             company_name: empData.razon_social,
             branch_name: sucData.nombre
         };
-
-        console.log('Final user object being sent:', userResponse);
 
         res.json({
             token,
