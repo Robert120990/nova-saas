@@ -3,6 +3,112 @@ const { sendCloseoutToRrs } = require('../services/gasCloseoutRrs.service');
 const dteService = require('../services/dte.service');
 const notificationService = require('../services/notification.service');
 
+// === Historial de cambios en cierres reabiertos ===
+
+const CLOSEOUT_SECTIONS = {
+    gastos: { label: 'Gastos', table: 'gas_station_closeout_expenses' },
+    remesas: { label: 'Remesas', table: 'gas_station_closeout_remesas' },
+    cupones: { label: 'Cupones', table: 'gas_station_closeout_cupones' },
+    descuentos: { label: 'Descuentos', table: 'gas_station_closeout_descuentos' },
+    adelantos: { label: 'Adelantos', table: 'gas_station_closeout_adelantos' },
+    tarjetas: { label: 'Tarjetas', table: 'gas_station_closeout_tarjetas' },
+    creditos: { label: 'Créditos', table: 'gas_station_closeout_creditos' },
+    vales: { label: 'Vales', table: 'gas_station_closeout_vales' },
+    anticipos: { label: 'Anticipos despachados', table: 'gas_station_closeout_anticipos_despachados' },
+    lubricantes: { label: 'Lubricantes', table: 'gas_station_closeout_lubricant_readings' },
+    despachadores: { label: 'Despachadores', table: 'gas_station_closeout_despachadores' },
+    nozzles: { label: 'Asignación de mangueras', table: 'gas_station_closeout_despachador_nozzles' }
+};
+
+async function getSectionRows(closeoutId, section) {
+    const cfg = CLOSEOUT_SECTIONS[section];
+    if (!cfg) return [];
+    const [rows] = await pool.query(`SELECT * FROM ${cfg.table} WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]);
+    return rows;
+}
+
+function fieldChanges(oldRow, newRow) {
+    const changes = [];
+    for (const [key, newVal] of Object.entries(newRow)) {
+        if (key === 'id' || key === 'closeout_id') continue;
+        if (!(key in oldRow)) continue;
+        const oldVal = oldRow[key];
+        if (String(oldVal ?? '') !== String(newVal ?? '')) {
+            changes.push({ field: key, old: oldVal, new: newVal });
+        }
+    }
+    return changes;
+}
+
+function buildSectionDiff(before, after) {
+    const added = [];
+    const removed = [];
+    const modified = [];
+
+    if (before.length === after.length) {
+        for (let i = 0; i < after.length; i++) {
+            const changes = fieldChanges(before[i], after[i]);
+            if (changes.length > 0) modified.push({ before: before[i], after: after[i], changes });
+        }
+        return { added, removed, modified };
+    }
+
+    const beforeMap = new Map(before.map(r => [r.id, r]));
+    const afterMap = new Map(after.map(r => [r.id, r]));
+    for (const row of after) if (!beforeMap.has(row.id)) added.push(row);
+    for (const row of before) if (!afterMap.has(row.id)) removed.push(row);
+
+    const min = Math.min(before.length, after.length);
+    for (let i = 0; i < min; i++) {
+        const changes = fieldChanges(before[i], after[i]);
+        if (changes.length > 0) modified.push({ before: before[i], after: after[i], changes });
+    }
+    return { added, removed, modified };
+}
+
+function summarizeDiff(sectionLabel, diff) {
+    const parts = [];
+    if (diff.added.length) parts.push(`${diff.added.length} agregado${diff.added.length > 1 ? 's' : ''}`);
+    if (diff.removed.length) parts.push(`${diff.removed.length} eliminado${diff.removed.length > 1 ? 's' : ''}`);
+    if (diff.modified.length) parts.push(`${diff.modified.length} modificado${diff.modified.length > 1 ? 's' : ''}`);
+    return parts.length ? `${sectionLabel}: ${parts.join(', ')}` : `${sectionLabel}: sin cambios`;
+}
+
+async function logCloseoutChange(req, closeoutId, section, action, description, details) {
+    try {
+        await pool.query(
+            `INSERT INTO gas_station_closeout_changes (company_id, branch_id, closeout_id, user_id, username, section, action, description, details)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                req.company_id,
+                req.user?.branch_id || null,
+                closeoutId,
+                req.user?.id || null,
+                req.user?.username || req.user?.nombre || '',
+                section,
+                action,
+                description || '',
+                details ? JSON.stringify(details) : null
+            ]
+        );
+    } catch (err) {
+        console.error('Error logCloseoutChange:', err);
+    }
+}
+
+async function logSectionChange(req, closeoutId, section, before, after) {
+    const cfg = CLOSEOUT_SECTIONS[section];
+    if (!cfg) return;
+    const diff = buildSectionDiff(before, after);
+    await logCloseoutChange(req, closeoutId, section, 'update', summarizeDiff(cfg.label, diff), { before, after, added: diff.added, removed: diff.removed, modified: diff.modified });
+}
+
+async function logDeleteRow(req, closeoutId, section, row) {
+    const cfg = CLOSEOUT_SECTIONS[section];
+    if (!cfg) return;
+    await logCloseoutChange(req, closeoutId, section, 'delete', `${cfg.label}: 1 eliminado`, { before: [row], after: [] });
+}
+
 exports.initCloseout = async (req, res) => {
     try {
         const { seller_id, seller_name, fecha_turno, numero_turno, despachadores, nozzle_assignments } = req.body;
@@ -365,6 +471,7 @@ exports.getCloseouts = async (req, res) => {
         const [rows] = await pool.query(`
             SELECT
               c.*,
+              (SELECT COUNT(*) FROM gas_station_closeout_changes ch WHERE ch.closeout_id = c.id) as cambios_count,
               COALESCE(rd.total_lecturas, 0) as total_lecturas,
               COALESCE(rd.total_monto, 0) as total_monto,
               COALESCE(rd.total_diferencia, 0) as total_diferencia,
@@ -524,6 +631,34 @@ exports.getCloseout = async (req, res) => {
     } catch (error) {
         console.error('Error getCloseout:', error);
         res.status(500).json({ message: 'Error al obtener cierre de lecturas' });
+    }
+};
+
+exports.getCloseoutChanges = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT id, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [rows] = await pool.query(
+            `SELECT id, user_id, username, section, action, description, details, created_at
+             FROM gas_station_closeout_changes
+             WHERE closeout_id = ? AND company_id = ?
+             ORDER BY created_at DESC, id DESC`,
+            [id, req.company_id]
+        );
+
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getCloseoutChanges:', error);
+        res.status(500).json({ message: 'Error al obtener cambios del cierre' });
     }
 };
 
@@ -825,6 +960,10 @@ exports.closeCloseout = async (req, res) => {
             [id]
         );
 
+        if (closeouts[0].estado === 'reabierto') {
+            await logCloseoutChange(req, id, 'reclose', 'reclose', 'Cierre recerrado', {});
+        }
+
         const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeouts[0].branch_id]);
         const branchName = brRows[0]?.nombre || '';
 
@@ -865,6 +1004,8 @@ exports.reopenCloseout = async (req, res) => {
             `UPDATE gas_station_closeouts SET estado = 'reabierto' WHERE id = ?`,
             [id]
         );
+
+        await logCloseoutChange(req, id, 'reopen', 'reopen', 'Cierre reabierto', {});
 
         const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeouts[0].branch_id]);
         const branchName = brRows[0]?.nombre || '';
@@ -918,6 +1059,18 @@ exports.updateCloseoutFechaTurno = async (req, res) => {
             `UPDATE gas_station_closeouts SET fecha_turno = ?, numero_turno = ?, rrs_enviado_at = NULL WHERE id = ? AND company_id = ?`,
             [fecha_turno, newNumeroTurno, id, req.company_id]
         );
+
+        if (closeouts[0].estado !== 'abierto') {
+            const oldFecha = closeouts[0].fecha_turno ? new Date(closeouts[0].fecha_turno).toLocaleDateString('es-SV') : '';
+            const newFecha = new Date(fecha_turno).toLocaleDateString('es-SV');
+            await logCloseoutChange(req, id, 'fecha_turno', 'update',
+                `Fecha/Turno modificado: ${oldFecha} #${closeouts[0].numero_turno} → ${newFecha} #${newNumeroTurno}`,
+                {
+                    before: { fecha_turno: closeouts[0].fecha_turno, numero_turno: closeouts[0].numero_turno },
+                    after: { fecha_turno, numero_turno: newNumeroTurno }
+                }
+            );
+        }
 
         res.json({ id: parseInt(id), fecha_turno, numero_turno: newNumeroTurno });
     } catch (error) {
@@ -1029,6 +1182,10 @@ exports.saveExpenses = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'gastos');
+
         await pool.query(`DELETE FROM gas_station_closeout_expenses WHERE closeout_id = ?`, [id]);
 
         const invalidExpenses = expenses.filter(e => !e.despachador_id);
@@ -1082,6 +1239,11 @@ exports.saveExpenses = async (req, res) => {
             proveedor: e.proveedor_nombre || e.proveedor
         }));
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'gastos');
+            await logSectionChange(req, id, 'gastos', beforeRows, afterRows);
+        }
+
         res.json(mapped);
     } catch (error) {
         console.error('Error saveExpenses:', error);
@@ -1105,11 +1267,21 @@ exports.deleteExpense = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_expenses WHERE id = ? AND closeout_id = ?`,
+                [expenseId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         const [result] = await pool.query(
             `DELETE FROM gas_station_closeout_expenses WHERE id = ? AND closeout_id = ?`,
             [expenseId, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Gasto no encontrado' });
+        if (deletedRow) await logDeleteRow(req, id, 'gastos', deletedRow);
         res.json({ message: 'Gasto eliminado' });
     } catch (error) {
         console.error('Error deleteExpense:', error);
@@ -1152,6 +1324,10 @@ exports.saveRemesas = async (req, res) => {
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
+
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'remesas');
 
         // REPLACE-ALL STRATEGY
         // Preserve codigos of remesas that are being re-saved (they exist in DB)
@@ -1198,6 +1374,11 @@ exports.saveRemesas = async (req, res) => {
             ORDER BY r.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'remesas');
+            await logSectionChange(req, id, 'remesas', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveRemesas:', error);
@@ -1221,11 +1402,21 @@ exports.deleteRemesa = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_remesas WHERE id = ? AND closeout_id = ?`,
+                [remesaId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         const [result] = await pool.query(
             `DELETE FROM gas_station_closeout_remesas WHERE id = ? AND closeout_id = ?`,
             [remesaId, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Remesa no encontrada' });
+        if (deletedRow) await logDeleteRow(req, id, 'remesas', deletedRow);
         res.json({ message: 'Remesa eliminada' });
     } catch (error) {
         console.error('Error deleteRemesa:', error);
@@ -1268,6 +1459,10 @@ exports.saveCupones = async (req, res) => {
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
+
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'cupones');
 
         // REPLACE-ALL STRATEGY
         await pool.query(`DELETE FROM gas_station_closeout_cupones WHERE closeout_id = ?`, [id]);
@@ -1316,6 +1511,11 @@ exports.saveCupones = async (req, res) => {
             ORDER BY c.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'cupones');
+            await logSectionChange(req, id, 'cupones', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveCupones:', error);
@@ -1339,11 +1539,21 @@ exports.deleteCupon = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_cupones WHERE id = ? AND closeout_id = ?`,
+                [cuponId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         const [result] = await pool.query(
             `DELETE FROM gas_station_closeout_cupones WHERE id = ? AND closeout_id = ?`,
             [cuponId, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Cupón no encontrado' });
+        if (deletedRow) await logDeleteRow(req, id, 'cupones', deletedRow);
         res.json({ message: 'Cupón eliminado' });
     } catch (error) {
         console.error('Error deleteCupon:', error);
@@ -1386,6 +1596,10 @@ exports.saveDescuentos = async (req, res) => {
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
+
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'descuentos');
 
         await pool.query(`DELETE FROM gas_station_closeout_descuentos WHERE closeout_id = ?`, [id]);
 
@@ -1438,6 +1652,11 @@ exports.saveDescuentos = async (req, res) => {
             ORDER BY d.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'descuentos');
+            await logSectionChange(req, id, 'descuentos', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveDescuentos:', error);
@@ -1461,11 +1680,21 @@ exports.deleteDescuento = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_descuentos WHERE id = ? AND closeout_id = ?`,
+                [descuentoId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         const [result] = await pool.query(
             `DELETE FROM gas_station_closeout_descuentos WHERE id = ? AND closeout_id = ?`,
             [descuentoId, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Descuento no encontrado' });
+        if (deletedRow) await logDeleteRow(req, id, 'descuentos', deletedRow);
         res.json({ message: 'Descuento eliminado' });
     } catch (error) {
         console.error('Error deleteDescuento:', error);
@@ -1509,6 +1738,10 @@ exports.saveAdelantos = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'adelantos');
+
         await pool.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
 
         const invalidAdelantos = adelantos.filter(a => !a.despachador_id);
@@ -1537,6 +1770,11 @@ exports.saveAdelantos = async (req, res) => {
             ORDER BY a.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'adelantos');
+            await logSectionChange(req, id, 'adelantos', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveAdelantos:', error);
@@ -1560,11 +1798,21 @@ exports.deleteAdelanto = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_adelantos WHERE id = ? AND closeout_id = ?`,
+                [adelantoId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         const [result] = await pool.query(
             `DELETE FROM gas_station_closeout_adelantos WHERE id = ? AND closeout_id = ?`,
             [adelantoId, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Adelanto no encontrado' });
+        if (deletedRow) await logDeleteRow(req, id, 'adelantos', deletedRow);
         res.json({ message: 'Adelanto eliminado' });
     } catch (error) {
         console.error('Error deleteAdelanto:', error);
@@ -1603,6 +1851,10 @@ exports.saveLubricantReadings = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'lubricantes');
+
         await pool.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
 
         if (readings && readings.length > 0) {
@@ -1629,6 +1881,12 @@ exports.saveLubricantReadings = async (req, res) => {
             `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`,
             [id]
         );
+
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'lubricantes');
+            await logSectionChange(req, id, 'lubricantes', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveLubricantReadings:', error);
@@ -1652,6 +1910,10 @@ exports.updateCloseoutDespachadores = async (req, res) => {
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
+
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'despachadores');
 
         await pool.query(
             `DELETE FROM gas_station_closeout_despachadores WHERE closeout_id = ?`,
@@ -1694,6 +1956,11 @@ exports.updateCloseoutDespachadores = async (req, res) => {
             }
         }
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'despachadores');
+            await logSectionChange(req, id, 'despachadores', beforeRows, afterRows);
+        }
+
         res.json({ despachadores: savedDespachadores });
     } catch (error) {
         console.error('Error updateCloseoutDespachadores:', error);
@@ -1718,6 +1985,10 @@ exports.updateCloseoutDespachadorNozzles = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'nozzles');
+
         await pool.query(
             `DELETE FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`,
             [id]
@@ -1739,6 +2010,12 @@ exports.updateCloseoutDespachadorNozzles = async (req, res) => {
             `SELECT * FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`,
             [id]
         );
+
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'nozzles');
+            await logSectionChange(req, id, 'nozzles', beforeRows, afterRows);
+        }
+
         res.json(rows);
     } catch (error) {
         console.error('Error updateCloseoutDespachadorNozzles:', error);
@@ -1783,6 +2060,10 @@ exports.saveTarjetas = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'tarjetas');
+
         await pool.query(`DELETE FROM gas_station_closeout_tarjetas WHERE closeout_id = ?`, [id]);
 
         const invalidTarjetas = tarjetas.filter(t => !t.despachador_id);
@@ -1815,6 +2096,11 @@ exports.saveTarjetas = async (req, res) => {
             ORDER BY t.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'tarjetas');
+            await logSectionChange(req, id, 'tarjetas', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveTarjetas:', error);
@@ -1838,7 +2124,17 @@ exports.deleteTarjeta = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_tarjetas WHERE id = ? AND closeout_id = ?`,
+                [tarjetaId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         await pool.query(`DELETE FROM gas_station_closeout_tarjetas WHERE id = ? AND closeout_id = ?`, [tarjetaId, id]);
+        if (deletedRow) await logDeleteRow(req, id, 'tarjetas', deletedRow);
         res.json({ message: 'Tarjeta eliminada' });
     } catch (error) {
         console.error('Error deleteTarjeta:', error);
@@ -1882,6 +2178,10 @@ exports.saveCreditos = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'creditos');
+
         await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE closeout_id = ?`, [id]);
 
         const invalidCreditos = creditos.filter(c => !c.despachador_id);
@@ -1919,6 +2219,11 @@ exports.saveCreditos = async (req, res) => {
             ORDER BY c.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'creditos');
+            await logSectionChange(req, id, 'creditos', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveCreditos:', error);
@@ -1942,7 +2247,17 @@ exports.deleteCredito = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_creditos WHERE id = ? AND closeout_id = ?`,
+                [creditoId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE id = ? AND closeout_id = ?`, [creditoId, id]);
+        if (deletedRow) await logDeleteRow(req, id, 'creditos', deletedRow);
         res.json({ message: 'Crédito eliminado' });
     } catch (error) {
         console.error('Error deleteCredito:', error);
@@ -1986,6 +2301,10 @@ exports.saveVales = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'vales');
+
         await pool.query(`DELETE FROM gas_station_closeout_vales WHERE closeout_id = ?`, [id]);
 
         const invalidVales = vales.filter(v => !v.despachador_id);
@@ -2023,6 +2342,11 @@ exports.saveVales = async (req, res) => {
             ORDER BY v.id ASC
         `, [id]);
 
+        if (isReabierto) {
+            const afterRows = await getSectionRows(id, 'vales');
+            await logSectionChange(req, id, 'vales', beforeRows, afterRows);
+        }
+
         res.json(remaining);
     } catch (error) {
         console.error('Error saveVales:', error);
@@ -2046,7 +2370,17 @@ exports.deleteVale = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_vales WHERE id = ? AND closeout_id = ?`,
+                [valeId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         await pool.query(`DELETE FROM gas_station_closeout_vales WHERE id = ? AND closeout_id = ?`, [valeId, id]);
+        if (deletedRow) await logDeleteRow(req, id, 'vales', deletedRow);
         res.json({ message: 'Vale eliminado' });
     } catch (error) {
         console.error('Error deleteVale:', error);
@@ -2135,6 +2469,16 @@ exports.saveAnticiposDesp = async (req, res) => {
         try {
             await connection.beginTransaction();
 
+            const isReabierto = closeouts[0].estado === 'reabierto';
+            let beforeRows = [];
+            if (isReabierto) {
+                const [rows] = await connection.query(
+                    `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ? ORDER BY id ASC`,
+                    [id]
+                );
+                beforeRows = rows;
+            }
+
             const [oldAnticipos] = await connection.query(
                 `SELECT cliente_id, monto FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`,
                 [id]
@@ -2209,6 +2553,12 @@ exports.saveAnticiposDesp = async (req, res) => {
             `, [req.company_id, id]);
 
             await connection.commit();
+
+            if (isReabierto) {
+                const afterRows = await getSectionRows(id, 'anticipos');
+                await logSectionChange(req, id, 'anticipos', beforeRows, afterRows);
+            }
+
             res.json(remaining);
         } catch (err) {
             await connection.rollback();
@@ -2244,6 +2594,15 @@ exports.deleteAnticipoDesp = async (req, res) => {
         );
         if (anticipo.length === 0) return res.status(404).json({ message: 'Anticipo despachado no encontrado' });
 
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE id = ? AND closeout_id = ?`,
+                [anticipoId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
         const connection = await pool.getConnection();
         try {
             await connection.beginTransaction();
@@ -2255,6 +2614,7 @@ exports.deleteAnticipoDesp = async (req, res) => {
             await connection.query(`DELETE FROM gas_station_closeout_anticipos_despachados WHERE id = ? AND closeout_id = ?`, [anticipoId, id]);
 
             await connection.commit();
+            if (deletedRow) await logDeleteRow(req, id, 'anticipos', deletedRow);
             res.json({ message: 'Anticipo despachado eliminado' });
         } catch (err) {
             await connection.rollback();

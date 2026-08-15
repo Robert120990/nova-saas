@@ -4,7 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash, FileEdit } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +24,7 @@ const GasReadingHistory = () => {
     const [fechaTurnoModal, setFechaTurnoModal] = useState(null);
     const [editFecha, setEditFecha] = useState('');
     const [editNumeroTurno, setEditNumeroTurno] = useState('');
+    const [changesModal, setChangesModal] = useState(null);
     const clickTimerRef = useRef(null);
     const clickCountsRef = useRef({});
 
@@ -82,6 +83,12 @@ const GasReadingHistory = () => {
         onError: (error) => toast.error(error.response?.data?.message || 'Error al actualizar fecha y turno')
     });
 
+    const { data: changesData = [], isLoading: changesLoading } = useQuery({
+        queryKey: ['gas-closeout-changes', changesModal?.id],
+        queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${changesModal.id}/changes`)).data,
+        enabled: !!changesModal
+    });
+
     const permissions = user?.permissions || [];
     const isSuperAdmin = user?.role === 'SuperAdmin';
     const canReopenCloseout = isSuperAdmin || permissions.includes('manage_gas_closeout_reopen');
@@ -129,6 +136,104 @@ const GasReadingHistory = () => {
         });
     };
 
+    const SECTION_LABELS = {
+        gastos: 'Gastos', remesas: 'Remesas', cupones: 'Cupones', descuentos: 'Descuentos',
+        adelantos: 'Adelantos', tarjetas: 'Tarjetas', creditos: 'Créditos', vales: 'Vales',
+        anticipos: 'Anticipos despachados', lubricantes: 'Lubricantes', despachadores: 'Despachadores',
+        nozzles: 'Mangueras', fecha_turno: 'Fecha/Turno', reopen: 'Reapertura', reclose: 'Recierre'
+    };
+
+    const ACTION_LABELS = { update: 'Modificación', create: 'Creación', delete: 'Eliminación', reopen: 'Reapertura', reclose: 'Recierre' };
+
+    const FIELD_LABELS = {
+        rubro: 'Rubro', fecha: 'Fecha', documento: 'Documento', tipo: 'Tipo', proveedor: 'Proveedor',
+        valor: 'Valor', monto: 'Monto', descripcion: 'Descripción', codigo: 'Código', cupon: 'Cupón',
+        distribuidora_nombre: 'Distribuidora', distribuidora_id: 'Distribuidora',
+        producto_codigo: 'Cód. Producto', producto_descripcion: 'Producto', cantidad: 'Cantidad',
+        precio: 'Precio', total: 'Total', cliente_nombre: 'Cliente', tipo_documento: 'Tipo Doc.',
+        placa: 'Placa', kilometraje: 'Kilometraje', empleado: 'Empleado', num_tarjeta: 'No. Tarjeta',
+        num_autorizacion: 'No. Autorización', pos_type_id: 'POS', tipo_operacion: 'Tipo Operación',
+        lectura_inicial: 'Lect. Inicial', recarga: 'Recarga', lectura_final: 'Lect. Final',
+        ventas: 'Ventas', nombre: 'Nombre', despachador_id: 'Despachador', nozzle_id: 'Manguera',
+        numero_turno: 'No. Turno', fecha_turno: 'Fecha Turno', estado: 'Estado',
+        producto_id: 'Producto', cliente_id: 'Cliente', provider_id: 'Proveedor'
+    };
+
+    const MONEY_FIELDS = ['valor', 'monto', 'precio', 'total'];
+
+    const formatValue = (field, value) => {
+        if (value === null || value === undefined || value === '') return <span className="text-slate-300">—</span>;
+        if (MONEY_FIELDS.includes(field)) return <Money value={value} />;
+        if (field === 'fecha' || field === 'fecha_turno') {
+            const d = new Date(value);
+            return isNaN(d) ? String(value) : d.toLocaleDateString('es-SV');
+        }
+        return String(value);
+    };
+
+    const renderRowSummary = (row) => {
+        const keys = Object.keys(row).filter(k => !['id', 'closeout_id', 'despachador_codigo', 'despachador_descripcion', 'pos_type_nombre', 'proveedor_nombre', 'saldo_disponible'].includes(k));
+        return keys.map(k => (
+            <span key={k} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-[10px] font-medium text-slate-600">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">{FIELD_LABELS[k] || k}</span>
+                {formatValue(k, row[k])}
+            </span>
+        ));
+    };
+
+    const renderChangeDetail = (ch) => {
+        const details = ch.details;
+        if (ch.section === 'fecha_turno' && details?.before) {
+            return (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-600">
+                    <span className="text-slate-400 line-through decoration-rose-300">
+                        {new Date(details.before.fecha_turno).toLocaleDateString('es-SV')} #{details.before.numero_turno}
+                    </span>
+                    <span className="text-slate-400">→</span>
+                    <span className="font-bold text-emerald-700">
+                        {new Date(details.after.fecha_turno).toLocaleDateString('es-SV')} #{details.after.numero_turno}
+                    </span>
+                </div>
+            );
+        }
+        return (
+            <div className="space-y-1.5">
+                {details?.modified?.length > 0 && (
+                    <div className="space-y-1">
+                        {details.modified.map((m, i) => (
+                            <div key={i} className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-2 py-1.5 space-y-0.5">
+                                {m.changes.map((c, j) => (
+                                    <div key={j} className="flex flex-wrap items-center gap-1 text-[11px]">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">{FIELD_LABELS[c.field] || c.field}</span>
+                                        <span className="text-slate-400 line-through decoration-rose-300">{formatValue(c.field, c.old)}</span>
+                                        <span className="text-slate-400">→</span>
+                                        <span className="font-bold text-indigo-700">{formatValue(c.field, c.new)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {details?.added?.length > 0 && (
+                    <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-1.5 space-y-1">
+                        <span className="text-[9px] font-bold text-emerald-600 uppercase">Agregados</span>
+                        {details.added.map((row, i) => (
+                            <div key={i} className="flex flex-wrap gap-1">{renderRowSummary(row)}</div>
+                        ))}
+                    </div>
+                )}
+                {details?.removed?.length > 0 && (
+                    <div className="rounded-lg border border-rose-100 bg-rose-50/50 px-2 py-1.5 space-y-1">
+                        <span className="text-[9px] font-bold text-rose-600 uppercase">Eliminados</span>
+                        {details.removed.map((row, i) => (
+                            <div key={i} className="flex flex-wrap gap-1">{renderRowSummary(row)}</div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -154,7 +259,7 @@ const GasReadingHistory = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Fecha', 'Turno #', 'Vendedor', 'Estado', 'Galones Vendidos', 'Total Monto', 'Diferencia', 'RRS', 'Acciones']}
+                    headers={['Fecha', 'Turno #', 'Vendedor', 'Estado', 'Galones Vendidos', 'Total Monto', 'Diferencia', 'RRS', 'Cambios', 'Acciones']}
                     data={response.data}
                     isLoading={isLoading}
                     renderRow={(c) => (
@@ -207,6 +312,20 @@ const GasReadingHistory = () => {
                                         <span title={new Date(c.rrs_enviado_at).toLocaleString('es-SV')}>Enviado</span>
                                     ) : 'Pendiente'}
                                 </span>
+                            </td>
+                            <td className="px-3 py-1">
+                                {parseInt(c.cambios_count) > 0 ? (
+                                    <button
+                                        onClick={() => setChangesModal(c)}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                                        title="Ver cambios realizados al reabrir"
+                                    >
+                                        <FileEdit size={10} />
+                                        {c.cambios_count} cambio{parseInt(c.cambios_count) > 1 ? 's' : ''}
+                                    </button>
+                                ) : (
+                                    <span className="text-[10px] text-slate-300">—</span>
+                                )}
                             </td>
                             <td className="px-3 py-1">
                                 <div className="flex items-center gap-1">
@@ -437,6 +556,77 @@ const GasReadingHistory = () => {
                         {updateFechaTurnoMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
                         {updateFechaTurnoMutation.isPending ? 'Guardando...' : 'Guardar'}
                     </button>
+                </div>
+            </Modal>
+
+            {/* Modal de cambios realizados en cierre reabierto */}
+            <Modal
+                isOpen={!!changesModal}
+                onClose={() => setChangesModal(null)}
+                title={`Cambios del Turno #${changesModal?.numero_turno || ''}`}
+                maxWidth="max-w-4xl"
+            >
+                <p className="text-[11px] text-slate-500 mb-3">
+                    {changesModal && (
+                        <>Fecha: <span className="font-bold text-slate-700">{new Date(changesModal.fecha_turno).toLocaleDateString('es-SV')}</span> · Vendedor: <span className="font-bold text-slate-700">{changesModal.seller_name}</span></>
+                    )}
+                </p>
+                <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-slate-100">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th className="px-3 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Fecha/Hora</th>
+                                <th className="px-3 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
+                                <th className="px-3 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Sección</th>
+                                <th className="px-3 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Acción</th>
+                                <th className="px-3 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {changesLoading ? (
+                                <tr>
+                                    <td colSpan={5} className="px-3 py-6 text-center">
+                                        <Loader2 size={20} className="mx-auto text-indigo-500 animate-spin" />
+                                    </td>
+                                </tr>
+                            ) : changesData.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-3 py-6 text-center text-slate-400 italic text-xs">
+                                        No se encontraron cambios registrados
+                                    </td>
+                                </tr>
+                            ) : changesData.map(ch => (
+                                <tr key={ch.id} className="align-top hover:bg-slate-50/60 transition-colors">
+                                    <td className="px-3 py-2 text-[11px] text-slate-500 whitespace-nowrap">
+                                        {new Date(ch.created_at).toLocaleString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </td>
+                                    <td className="px-3 py-2 text-[11px] font-bold text-slate-700 whitespace-nowrap">{ch.username || '—'}</td>
+                                    <td className="px-3 py-2">
+                                        <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-indigo-50 text-indigo-600 whitespace-nowrap">
+                                            {SECTION_LABELS[ch.section] || ch.section}
+                                        </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase whitespace-nowrap ${
+                                            ch.action === 'delete'
+                                            ? 'bg-rose-50 text-rose-600'
+                                            : ch.action === 'reopen' || ch.action === 'reclose'
+                                            ? 'bg-amber-50 text-amber-600'
+                                            : 'bg-emerald-50 text-emerald-600'
+                                        }`}>
+                                            {ACTION_LABELS[ch.action] || ch.action}
+                                        </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <div className="space-y-1.5">
+                                            <p className="text-[11px] font-bold text-slate-700">{ch.description}</p>
+                                            {ch.details ? renderChangeDetail(ch) : null}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </Modal>
 

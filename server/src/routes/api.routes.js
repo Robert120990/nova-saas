@@ -552,6 +552,7 @@ router.get('/gas-station/closeouts/last-turno', gasCloseoutController.getLastTur
 router.get('/gas-station/closeouts/print-day', gasCloseoutController.getAccumulatedDayPrintData);
 router.get('/gas-station/closeouts', gasCloseoutController.getCloseouts);
 router.get('/gas-station/closeouts/:id', gasCloseoutController.getCloseout);
+router.get('/gas-station/closeouts/:id/changes', gasCloseoutController.getCloseoutChanges);
 router.patch('/gas-station/closeouts/:closeoutId/readings/batch', gasCloseoutController.batchUpdateReadings);
 router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutController.updateReading);
 router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', gasCloseoutController.updateTankReading);

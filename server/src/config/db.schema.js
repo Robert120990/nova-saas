@@ -508,6 +508,13 @@ REGLAS DE MULTI-TENENCIA:
 - producto_codigo, producto_descripcion, despachador_id
 - cantidad, precio, monto DECIMAL, placa, kilometraje
 
+### gas_station_closeout_changes (Historial de cambios en cierres reabiertos)
+- id, company_id, branch_id, closeout_id, user_id, username
+- section VARCHAR(50) (gastos, remesas, cupones, descuentos, adelantos, tarjetas, creditos, vales, anticipos, lubricantes, despachadores, nozzles, fecha_turno, reopen, reclose)
+- action VARCHAR(50) ('update','create','delete','reopen','reclose')
+- description VARCHAR(500), details JSON (before/after/added/removed/modified)
+- created_at TIMESTAMP, FK closeout_id → gas_station_closeouts ON DELETE CASCADE
+
 ---
 
 ## MÓDULO CONTABILIDAD

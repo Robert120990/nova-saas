@@ -14,7 +14,7 @@ async function runMigration() {
     });
 
     try {
-        const migrationPath = path.join(__dirname, 'migration_v130_gas_delivery_remesas_extra.sql');
+        const migrationPath = path.join(__dirname, 'migration_v137_gas_closeout_changes.sql');
         const sql = fs.readFileSync(migrationPath, 'utf8');
         console.log('Running migration...');
         await pool.query(sql);
