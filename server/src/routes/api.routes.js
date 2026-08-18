@@ -710,6 +710,12 @@ router.delete('/pozo/despachos/:id', pozoController.deleteDespacho);
     router.post('/pozo/cortes', pozoController.saveCorte);
     router.get('/pozo/cortes/:id', pozoController.getCorte);
     router.delete('/pozo/cortes/:id', pozoController.deleteCorte);
+    router.post('/pozo/cortes/:id/close', pozoController.closeCorte);
+    router.post('/pozo/cortes/:id/reopen', checkPermission('close_pozo_cortes'), pozoController.reopenCorte);
+    router.put('/pozo/cortes/:id/odometro-final', pozoController.updateCorteOdometroFinal);
+
+    router.get('/pozo/entregas-efectivo', pozoController.getEntregasEfectivo);
+    router.get('/pozo/entregas-efectivo/pendiente', pozoController.getPendienteEntregas);
 
     router.get('/pozo/entregas-efectivo', pozoController.getEntregasEfectivo);
     router.post('/pozo/entregas-efectivo', pozoController.createEntregaEfectivo);

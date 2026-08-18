@@ -370,7 +370,13 @@ exports.consultarCorte = async (req, res) => {
             total_despachos: odometroRows[0]?.total_despachos ?? despachos.length,
             total_servicios: totalServicios,
             monto_total: montoTotal,
-            corte: corte ? { id: corte.id, fecha: corte.fecha, encargado: corte.encargado } : null,
+            corte: corte ? {
+                id: corte.id,
+                fecha: corte.fecha,
+                encargado: corte.encargado,
+                estado: corte.estado,
+                odometro_final_manual: corte.odometro_final_manual
+            } : null,
             gastos,
         });
     } catch (error) {
@@ -382,8 +388,17 @@ exports.consultarCorte = async (req, res) => {
 exports.saveCorte = async (req, res) => {
     const conn = await pool.getConnection();
     try {
-        const { fecha, encargado, gastos } = req.body;
+        const { fecha, encargado, gastos, odometro_final_manual } = req.body;
         if (!fecha) return res.status(400).json({ message: 'La fecha es obligatoria' });
+
+        let odometroValor = null;
+        const rawOdo = odometro_final_manual;
+        if (rawOdo !== null && rawOdo !== undefined && String(rawOdo).trim() !== '') {
+            odometroValor = parseFloat(rawOdo);
+            if (isNaN(odometroValor) || odometroValor < 0) {
+                return res.status(400).json({ message: 'El valor del odómetro debe ser mayor o igual a cero' });
+            }
+        }
 
         const items = (gastos || [])
             .map(g => ({ descripcion: String(g.descripcion || '').trim(), monto: parseDecimal(g.monto) }))
@@ -392,22 +407,26 @@ exports.saveCorte = async (req, res) => {
         await conn.beginTransaction();
 
         const [cortes] = await conn.query(
-            `SELECT id FROM pozo_cortes WHERE company_id = ? AND branch_id = ? AND fecha = ?`,
+            `SELECT id, estado FROM pozo_cortes WHERE company_id = ? AND branch_id = ? AND fecha = ?`,
             [req.company_id, req.user.branch_id, fecha]
         );
 
         let corteId;
         if (cortes.length > 0) {
+            if (cortes[0].estado === 'cerrado') {
+                await conn.rollback();
+                return res.status(400).json({ message: 'El corte está cerrado y no puede editarse' });
+            }
             corteId = cortes[0].id;
             await conn.query(
-                `UPDATE pozo_cortes SET encargado = ? WHERE id = ?`,
-                [String(encargado || '').trim(), corteId]
+                `UPDATE pozo_cortes SET encargado = ?, odometro_final_manual = ? WHERE id = ?`,
+                [String(encargado || '').trim(), odometroValor, corteId]
             );
             await conn.query(`DELETE FROM pozo_corte_gastos WHERE corte_id = ?`, [corteId]);
         } else {
             const [result] = await conn.query(
-                `INSERT INTO pozo_cortes (company_id, branch_id, fecha, encargado) VALUES (?, ?, ?, ?)`,
-                [req.company_id, req.user.branch_id, fecha, String(encargado || '').trim()]
+                `INSERT INTO pozo_cortes (company_id, branch_id, fecha, encargado, odometro_final_manual) VALUES (?, ?, ?, ?, ?)`,
+                [req.company_id, req.user.branch_id, fecha, String(encargado || '').trim(), odometroValor]
             );
             corteId = result.insertId;
         }
@@ -433,15 +452,133 @@ exports.saveCorte = async (req, res) => {
 exports.deleteCorte = async (req, res) => {
     try {
         const { id } = req.params;
-        const [result] = await pool.query(
+        const [cortes] = await pool.query(
+            `SELECT estado FROM pozo_cortes WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
+        );
+        if (cortes.length === 0) return res.status(404).json({ message: 'Corte no encontrado' });
+        if (cortes[0].estado === 'cerrado') return res.status(400).json({ message: 'No se puede eliminar un corte cerrado' });
+
+        await pool.query(
             `DELETE FROM pozo_cortes WHERE id = ? AND company_id = ? AND branch_id = ?`,
             [id, req.company_id, req.user.branch_id]
         );
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Corte no encontrado' });
         res.json({ message: 'Corte eliminado' });
     } catch (error) {
         console.error('Error deleteCorte:', error);
         res.status(500).json({ message: 'Error al eliminar corte' });
+    }
+};
+
+// === CIERRE / REAPERTURA DE CORTES ===
+
+exports.closeCorte = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [cortes] = await pool.query(
+            `SELECT estado FROM pozo_cortes WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
+        );
+        if (cortes.length === 0) return res.status(404).json({ message: 'Corte no encontrado' });
+        if (cortes[0].estado === 'cerrado') return res.status(400).json({ message: 'El corte ya está cerrado' });
+
+        await pool.query(
+            `UPDATE pozo_cortes SET estado = 'cerrado' WHERE id = ?`,
+            [id]
+        );
+        res.json({ message: 'Corte cerrado' });
+    } catch (error) {
+        console.error('Error closeCorte:', error);
+        res.status(500).json({ message: 'Error al cerrar el corte' });
+    }
+};
+
+exports.reopenCorte = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [cortes] = await pool.query(
+            `SELECT estado FROM pozo_cortes WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
+        );
+        if (cortes.length === 0) return res.status(404).json({ message: 'Corte no encontrado' });
+        if (cortes[0].estado !== 'cerrado') return res.status(400).json({ message: 'El corte no está cerrado' });
+
+        await pool.query(
+            `UPDATE pozo_cortes SET estado = 'abierto' WHERE id = ?`,
+            [id]
+        );
+        res.json({ message: 'Corte reabierto' });
+    } catch (error) {
+        console.error('Error reopenCorte:', error);
+        res.status(500).json({ message: 'Error al reabrir el corte' });
+    }
+};
+
+// === PENDIENTE DE ENTREGA DE EFECTIVO (basado en cortes) ===
+
+exports.getPendienteEntregas = async (req, res) => {
+    try {
+        const [estimadoRows] = await pool.query(
+            `SELECT
+                COALESCE(SUM(
+                    COALESCE((SELECT SUM(ds.subtotal)
+                              FROM pozo_despachos d
+                              LEFT JOIN pozo_despacho_servicios ds ON ds.despacho_id = d.id
+                              WHERE d.company_id = c.company_id AND d.branch_id = c.branch_id AND d.fecha = c.fecha), 0)
+                    - COALESCE((SELECT SUM(g.monto)
+                                FROM pozo_corte_gastos g WHERE g.corte_id = c.id), 0)
+                ), 0) as total_estimado
+             FROM pozo_cortes c
+             WHERE c.company_id = ? AND c.branch_id = ? AND c.fecha <= CURDATE()`,
+            [req.company_id, req.user.branch_id]
+        );
+        const [entregadoRows] = await pool.query(
+            `SELECT COALESCE(SUM(monto), 0) as total_entregado
+             FROM pozo_entregas_efectivo
+             WHERE company_id = ? AND branch_id = ?`,
+            [req.company_id, req.user.branch_id]
+        );
+        const total_estimado = parseFloat(estimadoRows[0].total_estimado) || 0;
+        const total_entregado = parseFloat(entregadoRows[0].total_entregado) || 0;
+        res.json({
+            total_estimado,
+            total_entregado,
+            pendiente: total_estimado - total_entregado
+        });
+    } catch (error) {
+        console.error('Error getPendienteEntregas:', error);
+        res.status(500).json({ message: 'Error al obtener el pendiente de entrega' });
+    }
+};
+
+exports.updateCorteOdometroFinal = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { odometro_final_manual } = req.body;
+        const [cortes] = await pool.query(
+            `SELECT estado FROM pozo_cortes WHERE id = ? AND company_id = ? AND branch_id = ?`,
+            [id, req.company_id, req.user.branch_id]
+        );
+        if (cortes.length === 0) return res.status(404).json({ message: 'Corte no encontrado' });
+        if (cortes[0].estado === 'cerrado') return res.status(400).json({ message: 'El corte está cerrado y no puede editarse' });
+
+        let valor = null;
+        const raw = odometro_final_manual;
+        if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+            valor = parseFloat(raw);
+            if (isNaN(valor) || valor < 0) {
+                return res.status(400).json({ message: 'El valor del odómetro debe ser mayor o igual a cero' });
+            }
+        }
+
+        await pool.query(
+            `UPDATE pozo_cortes SET odometro_final_manual = ? WHERE id = ?`,
+            [valor, id]
+        );
+        res.json({ message: 'Odómetro final actualizado' });
+    } catch (error) {
+        console.error('Error updateCorteOdometroFinal:', error);
+        res.status(500).json({ message: 'Error al actualizar el odómetro final' });
     }
 };
 

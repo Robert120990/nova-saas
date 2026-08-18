@@ -4,7 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { Plus, Edit, Trash2, Wallet, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, Wallet, Search, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +45,12 @@ const PozoEntregasEfectivo = () => {
     const total = data?.total || 0;
     const totalPages = data?.totalPages || 0;
 
+    const { data: pendienteData, isLoading: pendienteLoading } = useQuery({
+        queryKey: ['pozo-entregas-pendiente'],
+        queryFn: async () => (await axios.get('/api/pozo/entregas-efectivo/pendiente')).data,
+        enabled: isModalOpen,
+    });
+
     const mutation = useMutation({
         mutationFn: (payload) => {
             if (selectedItem) return axios.put(`/api/pozo/entregas-efectivo/${selectedItem.id}`, payload);
@@ -52,6 +58,7 @@ const PozoEntregasEfectivo = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['pozo-entregas-efectivo'] });
+            queryClient.invalidateQueries({ queryKey: ['pozo-entregas-pendiente'] });
             closeModal();
             toast.success(selectedItem ? 'Entrega actualizada' : 'Entrega registrada');
         },
@@ -196,6 +203,24 @@ const PozoEntregasEfectivo = () => {
                 title={selectedItem ? 'Editar Entrega de Efectivo' : 'Nueva Entrega de Efectivo'}
             >
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-[11px] font-bold text-amber-700">
+                                <AlertCircle size={14} className="shrink-0" />
+                                Pendiente por entregar (según cortes)
+                                {pendienteLoading && <Loader2 size={12} className="animate-spin" />}
+                            </div>
+                            <span className="text-base font-black font-mono text-amber-700">
+                                <Money value={Math.max(0, pendienteData?.pendiente ?? 0)} />
+                            </span>
+                        </div>
+                        {pendienteData && (
+                            <p className="mt-1 text-[10px] text-amber-600/80 font-medium">
+                                Estimado de cortes: <span className="font-mono font-bold"><Money value={pendienteData.total_estimado} /></span>
+                                {' '}· Entregado: <span className="font-mono font-bold"><Money value={pendienteData.total_entregado} /></span>
+                            </p>
+                        )}
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Persona que Entrega <span className="text-red-400">*</span></label>
