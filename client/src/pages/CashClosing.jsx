@@ -16,7 +16,8 @@ import {
     Trash2,
     Users,
     Pencil,
-    RefreshCw
+    RefreshCw,
+    CloudUpload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -30,6 +31,7 @@ const CashClosing = () => {
     const { user } = useAuth();
     const confirm = useConfirm();
     const canEditShift = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('manage_shifts_edit');
+    const canSendSalesRrs = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('send_sales_rrs');
     
     // UI State
     const [openingBalance, setOpeningBalance] = useState('');
@@ -63,6 +65,19 @@ const CashClosing = () => {
     const [editingShift, setEditingShift] = useState(null);
     const [editForm, setEditForm] = useState({ seller_id: '', pos_id: '', opening_balance: '', shift_number: '' });
 
+    // Ventas Tienda por fecha (Envío a RRS)
+    const [isTiendaVentasModalOpen, setIsTiendaVentasModalOpen] = useState(false);
+    const [tiendaStartDate, setTiendaStartDate] = useState('');
+    const [tiendaEndDate, setTiendaEndDate] = useState('');
+    const [sentTiendaDates, setSentTiendaDates] = useState(new Set());
+    const [sendingTiendaFecha, setSendingTiendaFecha] = useState(null);
+
+    const formatFechaEs = (fecha) => {
+        if (!fecha) return '';
+        const [y, m, d] = String(fecha).substring(0, 10).split('-');
+        return `${d}/${m}/${y}`;
+    };
+
     const updateShiftMutation = useMutation({
         mutationFn: async ({ id, data }) => (await axios.put(`/api/shifts/${id}`, data)).data,
         onSuccess: () => {
@@ -89,12 +104,34 @@ const CashClosing = () => {
         }
     });
 
+    const sendTiendaVentasMutation = useMutation({
+        mutationFn: async ({ fecha, monto }) => (await axios.post('/api/sales/tienda/ventas/rrs', { fecha: String(fecha).substring(0, 10), monto })).data,
+        onMutate: (variables) => setSendingTiendaFecha(variables.fecha),
+        onSuccess: (_, variables) => {
+            toast.success(`Ventas del ${formatFechaEs(variables.fecha)} enviadas a RRS`);
+            setSentTiendaDates(prev => new Set(prev).add(variables.fecha));
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al enviar ventas a RRS');
+        },
+        onSettled: () => setSendingTiendaFecha(null)
+    });
+
     // Queries
     const { data: currentShiftStatus, isLoading: isLoadingStatus } = useQuery({
         queryKey: ['shifts', 'current'],
         queryFn: async () => (await axios.get('/api/shifts/current', {
                 params: { branch_id: user.branch_id }
             })).data,
+    });
+
+    // Ventas Tienda por fecha (Envío a RRS)
+    const { data: tiendaVentasData, isLoading: isLoadingTiendaVentas, isFetching: isFetchingTiendaVentas } = useQuery({
+        queryKey: ['sales', 'tienda-ventas', tiendaStartDate, tiendaEndDate],
+        queryFn: async () => (await axios.get('/api/sales/tienda/ventas', {
+                params: { start_date: tiendaStartDate, end_date: tiendaEndDate }
+            })).data,
+        enabled: !!tiendaStartDate && !!tiendaEndDate,
     });
 
     // Summary query for the current active shift
@@ -306,13 +343,24 @@ const CashClosing = () => {
                     </h1>
                     <p className="text-slate-500 font-medium mt-1">Gestión de turnos, arqueos y trazabilidad financiera.</p>
                 </div>
-                <button 
-                    onClick={() => setIsOpeningModalOpen(true)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-3"
-                >
-                    <Calculator size={18} />
-                    Nueva Apertura
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <button 
+                        onClick={() => setIsOpeningModalOpen(true)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-3 justify-center"
+                    >
+                        <Calculator size={18} />
+                        Nueva Apertura
+                    </button>
+                    {canSendSalesRrs && (
+                        <button 
+                            onClick={() => setIsTiendaVentasModalOpen(true)}
+                            className="bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-600 px-6 py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-sm transition-all active:scale-95 flex items-center gap-3 justify-center"
+                        >
+                            <CloudUpload size={18} />
+                            Ventas Tienda
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Active Shifts */}
@@ -1384,6 +1432,85 @@ const CashClosing = () => {
                         </div>
                     </div>
                 )}
+            </Modal>
+
+            {/* Modal: Ventas Tienda por fecha (Envío a RRS) */}
+            <Modal
+                isOpen={isTiendaVentasModalOpen}
+                onClose={() => setIsTiendaVentasModalOpen(false)}
+                title="Ventas Tienda por Fecha"
+                maxWidth="max-w-3xl"
+            >
+                <div className="space-y-5 pt-4">
+                    <div className="flex flex-col md:flex-row gap-3">
+                        <div className="flex-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fecha Inicio</label>
+                            <input type="date" value={tiendaStartDate}
+                                onChange={(e) => setTiendaStartDate(e.target.value)}
+                                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fecha Fin</label>
+                            <input type="date" value={tiendaEndDate}
+                                onChange={(e) => setTiendaEndDate(e.target.value)}
+                                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-2xl p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Resultado por fecha</span>
+                            {isFetchingTiendaVentas && <RefreshCw size={14} className="animate-spin text-slate-400" />}
+                        </div>
+                        {!tiendaStartDate || !tiendaEndDate ? (
+                            <p className="text-sm text-slate-400 font-medium text-center py-6">Seleccione un rango de fechas para consultar las ventas.</p>
+                        ) : isLoadingTiendaVentas ? (
+                            <p className="text-sm text-slate-500 font-bold text-center py-6">Consultando ventas...</p>
+                        ) : tiendaVentasData?.data?.length === 0 ? (
+                            <p className="text-sm text-slate-400 font-medium text-center py-6">No hay ventas emitidas en el rango seleccionado.</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[420px]">
+                                    <thead>
+                                        <tr className="border-b border-slate-200">
+                                            <th className="text-left text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2">Fecha</th>
+                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2">Monto Total</th>
+                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2">Enviar a RRS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(tiendaVentasData?.data || []).map((row) => {
+                                            const sent = sentTiendaDates.has(row.fecha);
+                                            const sending = sendingTiendaFecha === row.fecha;
+                                            return (
+                                                <tr key={row.fecha} className="border-b border-slate-100 last:border-0">
+                                                    <td className="py-3 text-sm font-bold text-slate-700">{formatFechaEs(row.fecha)}</td>
+                                                    <td className="py-3 text-right text-sm font-black text-slate-900"><Money value={row.monto} /></td>
+                                                    <td className="py-3 text-right">
+                                                        {sent ? (
+                                                            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl">
+                                                                <CheckCircle2 size={14} /> Enviado
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => sendTiendaVentasMutation.mutate({ fecha: row.fecha, monto: row.monto })}
+                                                                disabled={sending}
+                                                                className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-40"
+                                                            >
+                                                                {sending ? 'Enviando...' : 'Enviar a RRS'}
+                                                                <CloudUpload size={14} />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </Modal>
         </div>
     );

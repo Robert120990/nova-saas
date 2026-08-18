@@ -26,6 +26,7 @@ const inventoryScanController = require('../controllers/inventoryScan.controller
 const purchaseController = require('../controllers/purchase.controller');
 const salesController = require('../controllers/sales.controller');
 const salesConfigController = require('../controllers/salesConfig.controller');
+const tiendaVentasController = require('../controllers/tiendaVentas.controller');
 const periodController = require('../controllers/period.controller');
 const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
@@ -335,6 +336,10 @@ router.get('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.getDeli
 router.put('/sales/remesa-deliveries/:id/entregar', salesRemesaDeliveryController.entregarDelivery);
 router.get('/sales/remesa-deliveries/:id/pdf', salesRemesaDeliveryController.getDeliveryPdf);
 router.delete('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.deleteDelivery);
+
+// Sales - Ventas Tienda por fecha (Envío a RRS) — antes de /sales/:id
+router.get('/sales/tienda/ventas', checkPermission('send_sales_rrs'), tiendaVentasController.getVentasByDate);
+router.post('/sales/tienda/ventas/rrs', checkPermission('send_sales_rrs'), tiendaVentasController.sendVentasToRrs);
 
 router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), salesController.changeSalesShift);
 
