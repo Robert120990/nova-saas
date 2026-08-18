@@ -984,6 +984,193 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
     }
 };
 
+/**
+ * Estado de cuenta de anticipos (bitácora de movimientos) de un cliente.
+ * Cargos: anticipos recibidos (gas_station_advances).
+ * Abonos: consumos de anticipos en cierres de gasolinera (gas_station_closeout_anticipos_despachados).
+ */
+const getAnticiposStatement = async (req, res) => {
+    const { customer_id, branch_id, search, page = 1, limit = 15 } = req.query;
+    const company_id = req.company_id;
+
+    if (!customer_id || !branch_id) {
+        return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
+    }
+
+    const offset = (page - 1) * limit;
+    const searchTerm = search ? `%${search}%` : null;
+
+    try {
+        // Cargos: anticipos recibidos
+        const [advances] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(a.fecha, '%Y-%m-%d') as fecha,
+                'ANTICIPO' as tipo,
+                COALESCE(a.numero, 'S/N') as numero,
+                COALESCE(NULLIF(TRIM(a.notas), ''), 'ANTICIPO RECIBIDO') as concepto,
+                a.monto as cargo,
+                0 as abono
+            FROM gas_station_advances a
+            WHERE a.company_id = ? AND a.cliente_id = ? AND (a.branch_id = ? OR a.branch_id IS NULL)
+            ${searchTerm ? 'AND (a.numero LIKE ? OR a.notas LIKE ?)' : ''}
+        `, [
+            company_id, customer_id, branch_id,
+            ...(searchTerm ? [searchTerm, searchTerm] : [])
+        ]);
+
+        // Abonos: consumos de anticipos en cierres de gasolinera
+        const [consumptions] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
+                'CONSUMO' as tipo,
+                COALESCE(ad.documento, 'S/N') as numero,
+                COALESCE(CONCAT('CONSUMO ANTICIPO - ', ad.producto_descripcion), 'CONSUMO ANTICIPO') as concepto,
+                0 as cargo,
+                ad.monto as abono
+            FROM gas_station_closeout_anticipos_despachados ad
+            JOIN gas_station_closeouts c ON ad.closeout_id = c.id
+            WHERE ad.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
+            ${searchTerm ? 'AND (ad.documento LIKE ? OR ad.producto_descripcion LIKE ?)' : ''}
+        `, [
+            customer_id, company_id, branch_id,
+            ...(searchTerm ? [searchTerm, searchTerm] : [])
+        ]);
+
+        const movementsAll = [...advances, ...consumptions].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+        let currentBalance = 0;
+        let totalAnticipado = 0;
+        let totalConsumido = 0;
+        const historyAll = movementsAll.map(m => {
+            const cargo = parseFloat(m.cargo) || 0;
+            const abono = parseFloat(m.abono) || 0;
+            currentBalance += (cargo - abono);
+            totalAnticipado += cargo;
+            totalConsumido += abono;
+            return { ...m, cargo, abono, balance: currentBalance };
+        });
+
+        const totalItems = historyAll.length;
+        const historyPaginated = historyAll.slice(offset, offset + parseInt(limit));
+
+        res.json({
+            movements: historyPaginated,
+            total_anticipado: totalAnticipado,
+            total_consumido: totalConsumido,
+            saldo_disponible: currentBalance,
+            pagination: {
+                total: totalItems,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(totalItems / limit)
+            }
+        });
+    } catch (error) {
+        console.error('Error in getAnticiposStatement:', error);
+        res.status(500).json({ message: 'Error al obtener estado de cuenta de anticipos' });
+    }
+};
+
+/**
+ * Genera y descarga el PDF del estado de cuenta de anticipos.
+ */
+const exportAnticiposStatementPDF = async (req, res) => {
+    const { customer_id, branch_id } = req.query;
+    const company_id = req.company_id;
+
+    if (!customer_id || !branch_id) {
+        return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
+    }
+
+    try {
+        const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [company_id]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customer_id]);
+
+        if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+
+        const [advances] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(a.fecha, '%Y-%m-%d') as fecha,
+                'ANTICIPO' as tipo,
+                COALESCE(a.numero, 'S/N') as numero,
+                COALESCE(NULLIF(TRIM(a.notas), ''), 'ANTICIPO RECIBIDO') as concepto,
+                a.monto as cargo,
+                0 as abono
+            FROM gas_station_advances a
+            WHERE a.company_id = ? AND a.cliente_id = ? AND (a.branch_id = ? OR a.branch_id IS NULL)
+        `, [company_id, customer_id, branch_id]);
+
+        const [consumptions] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
+                'CONSUMO' as tipo,
+                COALESCE(ad.documento, 'S/N') as numero,
+                COALESCE(CONCAT('CONSUMO ANTICIPO - ', ad.producto_descripcion), 'CONSUMO ANTICIPO') as concepto,
+                0 as cargo,
+                ad.monto as abono
+            FROM gas_station_closeout_anticipos_despachados ad
+            JOIN gas_station_closeouts c ON ad.closeout_id = c.id
+            WHERE ad.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
+        `, [customer_id, company_id, branch_id]);
+
+        const movementsAll = [...advances, ...consumptions].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        let currentBalance = 0;
+        const history = movementsAll.map(m => {
+            const cargo = parseFloat(m.cargo) || 0;
+            const abono = parseFloat(m.abono) || 0;
+            currentBalance += (cargo - abono);
+            return { ...m, cargo, abono, balance: currentBalance };
+        });
+
+        const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
+        const branchName = branchRows[0]?.nombre || 'Sucursal';
+        const customerName = customerRows[0]?.nombre || 'Cliente';
+
+        const pdfData = {
+            company_name: companyName,
+            branch_name: branchName,
+            customer_name: customerName,
+            customer_email: customerRows[0]?.correo || '',
+            title: 'ESTADO DE CUENTA DE ANTICIPOS',
+            balance_label: 'SALDO DISPONIBLE EN ANTICIPOS:',
+            total_balance: currentBalance,
+            movements: history
+        };
+
+        const pdfBuffer = await generateStatementPDF(pdfData);
+
+        const cleanCustomerName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Estado_Cuenta_Anticipos_${cleanCustomerName}.pdf"`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error in exportAnticiposStatementPDF:', error);
+        res.status(500).json({ message: 'Error al generar PDF de anticipos' });
+    }
+};
+
+/**
+ * Envía el estado de cuenta de anticipos por correo electrónico.
+ */
+const sendAnticiposStatementEmail = async (req, res) => {
+    const { customer_id, branch_id } = req.body;
+    const company_id = req.company_id;
+
+    if (!customer_id || !branch_id) {
+        return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
+    }
+
+    try {
+        await mailer.sendAnticiposStatementEmail(customer_id, branch_id, company_id);
+        res.json({ message: 'Estado de cuenta de anticipos enviado exitosamente' });
+    } catch (error) {
+        console.error('Error in sendAnticiposStatementEmail:', error);
+        res.status(500).json({ message: error.message || 'Error al enviar el correo' });
+    }
+};
+
 module.exports = {
     getCustomerStatement,
     getPendingDocuments,
@@ -1000,5 +1187,8 @@ module.exports = {
     exportAgingPDF,
     sendAgingEmail,
     getCustomerBalancesReport,
-    exportPendingDocumentsDetailedPDF
+    exportPendingDocumentsDetailedPDF,
+    getAnticiposStatement,
+    exportAnticiposStatementPDF,
+    sendAnticiposStatementEmail
 };

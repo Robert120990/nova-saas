@@ -4,6 +4,27 @@ const fs = require('fs');
 const QRCode = require('qrcode');
 
 /**
+ * Formatea una fecha a DD/MM/YYYY sin desfase de zona horaria.
+ * Acepta objetos Date o strings tipo 'YYYY-MM-DD' / ISO.
+ */
+const fmtDateDDMMYYYY = (val) => {
+    if (!val) return '—';
+    let y, m, d;
+    if (val instanceof Date && !isNaN(val)) {
+        y = val.getFullYear();
+        m = val.getMonth() + 1;
+        d = val.getDate();
+    } else {
+        const parts = String(val).substring(0, 10).split('-');
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10);
+        d = parseInt(parts[2], 10);
+    }
+    if (!y || !m || !d) return '—';
+    return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+};
+
+/**
  * Generates a PDF buffer for an inventory transfer
  */
 const generateTransferPDF = (data) => {
@@ -75,25 +96,25 @@ const generateStatementPDF = (data, isProvider = false) => {
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', (err) => reject(err));
 
-            doc.fontSize(18).text(data.company_name, { align: 'left' });
-            doc.fontSize(10).text(data.branch_name, { align: 'left' });
-            doc.fontSize(10).text(`Fecha: ${new Date().toLocaleDateString()}`, { align: 'right' });
+            doc.fontSize(18).text(data.company_name || 'EMPRESA', { align: 'left' });
+            doc.fontSize(10).text(data.branch_name || 'SUCURSAL', { align: 'left' });
+            doc.fontSize(10).text(`Fecha: ${new Date().toLocaleDateString('es-SV')}`, { align: 'right' });
             doc.moveDown();
 
-            const title = isProvider ? 'ESTADO DE CUENTA DE PROVEEDOR' : 'ESTADO DE CUENTA DE CLIENTE';
+            const title = data.title || (isProvider ? 'ESTADO DE CUENTA DE PROVEEDOR' : 'ESTADO DE CUENTA DE CLIENTE');
             doc.fontSize(16).text(title, { align: 'center', underline: true });
             doc.moveDown();
 
             doc.fontSize(12).font('Helvetica-Bold').text(isProvider ? 'INFORMACIÓN DEL PROVEEDOR' : 'INFORMACIÓN DEL CLIENTE');
             doc.fontSize(10).font('Helvetica');
-            doc.text(`Nombre: ${isProvider ? data.provider_name : data.customer_name}`);
+            doc.text(`Nombre: ${isProvider ? (data.provider_name || 'N/A') : (data.customer_name || 'N/A')}`);
             doc.text(`Correo: ${isProvider ? (data.provider_email || 'N/A') : (data.customer_email || 'N/A')}`);
             doc.moveDown();
 
             const summaryY = doc.y;
             doc.rect(50, summaryY, 500, 40).fill('#f3f4f6').stroke('#e5e7eb');
-            doc.fill('#4f46e5').fontSize(12).font('Helvetica-Bold').text('SALDO TOTAL PENDIENTE:', 70, summaryY + 12);
-            doc.fontSize(14).text(`$${parseFloat(data.total_balance).toFixed(2)}`, 350, summaryY + 12, { align: 'right', width: 150 });
+            doc.fill('#4f46e5').fontSize(12).font('Helvetica-Bold').text(data.balance_label || 'SALDO TOTAL PENDIENTE:', 70, summaryY + 12);
+            doc.fontSize(14).text(`$${parseFloat(data.total_balance || 0).toFixed(2)}`, 350, summaryY + 12, { align: 'right', width: 150 });
             doc.fill('black');
             doc.moveDown(3);
 
@@ -110,7 +131,7 @@ const generateStatementPDF = (data, isProvider = false) => {
             doc.moveDown(0.5);
 
             doc.font('Helvetica');
-            data.movements.forEach(m => {
+            (data.movements || []).forEach(m => {
                 const y = doc.y;
                 if (y > 700) doc.addPage();
                 
@@ -118,13 +139,16 @@ const generateStatementPDF = (data, isProvider = false) => {
                 const abono = parseFloat(m.abono || 0);
                 const balance = parseFloat(m.balance || 0);
 
+                // Todas las celdas de la fila en la MISMA línea base (evita filas diagonales)
+                const rowY = doc.y;
                 doc.fontSize(9);
-                doc.text(new Date(m.fecha).toLocaleDateString(), 50, doc.y, { width: 70 });
-                doc.text(`${m.tipo} ${m.numero || ''}`, 125, doc.y, { width: 120 });
-                doc.text(m.concepto, 250, doc.y, { width: 90 });
-                doc.text(cargo > 0 ? `$${cargo.toFixed(2)}` : '-', 340, doc.y, { align: 'right', width: 60 });
-                doc.text(abono > 0 ? `$${abono.toFixed(2)}` : '-', 410, doc.y, { align: 'right', width: 60 });
-                doc.text(`$${balance.toFixed(2)}`, 490, doc.y, { align: 'right', width: 60 });
+                doc.text(fmtDateDDMMYYYY(m.fecha), 50, rowY, { width: 70 });
+                const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
+                doc.text(docText, 125, rowY, { width: 120 });
+                doc.text(String(m.concepto || '—'), 250, rowY, { width: 90 });
+                doc.text(cargo > 0 ? `$${cargo.toFixed(2)}` : '-', 340, rowY, { align: 'right', width: 60 });
+                doc.text(abono > 0 ? `$${abono.toFixed(2)}` : '-', 410, rowY, { align: 'right', width: 60 });
+                doc.text(`$${balance.toFixed(2)}`, 490, rowY, { align: 'right', width: 60 });
                 doc.moveDown(1.5);
             });
 
@@ -185,17 +209,19 @@ const generateAgingPDF = (data, isProvider = false) => {
                 const y = doc.y;
                 if (y > 500) doc.addPage();
 
+                // Todas las celdas de la fila en la MISMA línea base
+                const rowY = doc.y;
                 doc.fontSize(8);
-                doc.text(new Date(docRow.fecha).toLocaleDateString(), startX, doc.y, { width: colWidths.fecha });
-                doc.text(docRow.documento, startX + colWidths.fecha, doc.y, { width: colWidths.doc });
-                doc.text(docRow.tipo, startX + colWidths.fecha + colWidths.doc, doc.y, { width: colWidths.tipo });
+                doc.text(fmtDateDDMMYYYY(docRow.fecha), startX, rowY, { width: colWidths.fecha });
+                doc.text(docRow.documento, startX + colWidths.fecha, rowY, { width: colWidths.doc });
+                doc.text(docRow.tipo, startX + colWidths.fecha + colWidths.doc, rowY, { width: colWidths.tipo });
                 
-                doc.text(docRow.d0_30 > 0 ? `$${parseFloat(docRow.d0_30).toFixed(2)}` : '-', startX + 220, doc.y, { align: 'right', width: colWidths.b1 });
-                doc.text(docRow.d31_60 > 0 ? `$${parseFloat(docRow.d31_60).toFixed(2)}` : '-', startX + 290, doc.y, { align: 'right', width: colWidths.b2 });
-                doc.text(docRow.d61_90 > 0 ? `$${parseFloat(docRow.d61_90).toFixed(2)}` : '-', startX + 360, doc.y, { align: 'right', width: colWidths.b3 });
-                doc.text(docRow.d91_180 > 0 ? `$${parseFloat(docRow.d91_180).toFixed(2)}` : '-', startX + 430, doc.y, { align: 'right', width: colWidths.b4 });
-                doc.text(docRow.d181_365 > 0 ? `$${parseFloat(docRow.d181_365).toFixed(2)}` : '-', startX + 500, doc.y, { align: 'right', width: colWidths.b5 });
-                doc.text(docRow.d365_plus > 0 ? `$${parseFloat(docRow.d365_plus).toFixed(2)}` : '-', startX + 570, doc.y, { align: 'right', width: colWidths.b6 });
+                doc.text(docRow.d0_30 > 0 ? `$${parseFloat(docRow.d0_30).toFixed(2)}` : '-', startX + 220, rowY, { align: 'right', width: colWidths.b1 });
+                doc.text(docRow.d31_60 > 0 ? `$${parseFloat(docRow.d31_60).toFixed(2)}` : '-', startX + 290, rowY, { align: 'right', width: colWidths.b2 });
+                doc.text(docRow.d61_90 > 0 ? `$${parseFloat(docRow.d61_90).toFixed(2)}` : '-', startX + 360, rowY, { align: 'right', width: colWidths.b3 });
+                doc.text(docRow.d91_180 > 0 ? `$${parseFloat(docRow.d91_180).toFixed(2)}` : '-', startX + 430, rowY, { align: 'right', width: colWidths.b4 });
+                doc.text(docRow.d181_365 > 0 ? `$${parseFloat(docRow.d181_365).toFixed(2)}` : '-', startX + 500, rowY, { align: 'right', width: colWidths.b5 });
+                doc.text(docRow.d365_plus > 0 ? `$${parseFloat(docRow.d365_plus).toFixed(2)}` : '-', startX + 570, rowY, { align: 'right', width: colWidths.b6 });
                 doc.moveDown(1.5);
             });
 

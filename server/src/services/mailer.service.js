@@ -141,6 +141,98 @@ const sendCustomerStatementEmail = async (customerId, branchId, companyId) => {
 };
 
 /**
+ * Sends a customer statement email with a PDF attachment
+ */
+const sendAnticiposStatementEmail = async (customerId, branchId, companyId) => {
+    try {
+        const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
+        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customerId]);
+
+        if (!customerRows.length || !customerRows[0].correo) {
+            throw new Error('El cliente no tiene un correo electrónico registrado.');
+        }
+
+        const customer = customerRows[0];
+        const smtp = await getSMTPSettings(branchId, companyId);
+
+        const [advances] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(a.fecha, '%Y-%m-%d') as fecha,
+                'ANTICIPO' as tipo,
+                COALESCE(a.numero, 'S/N') as numero,
+                COALESCE(NULLIF(TRIM(a.notas), ''), 'ANTICIPO RECIBIDO') as concepto,
+                a.monto as cargo,
+                0 as abono
+            FROM gas_station_advances a
+            WHERE a.company_id = ? AND a.cliente_id = ? AND (a.branch_id = ? OR a.branch_id IS NULL)
+        `, [companyId, customerId, branchId]);
+
+        const [consumptions] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
+                'CONSUMO' as tipo,
+                COALESCE(ad.documento, 'S/N') as numero,
+                COALESCE(CONCAT('CONSUMO ANTICIPO - ', ad.producto_descripcion), 'CONSUMO ANTICIPO') as concepto,
+                0 as cargo,
+                ad.monto as abono
+            FROM gas_station_closeout_anticipos_despachados ad
+            JOIN gas_station_closeouts c ON ad.closeout_id = c.id
+            WHERE ad.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
+        `, [customerId, companyId, branchId]);
+
+        const movementsAll = [...advances, ...consumptions].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        let currentBalance = 0;
+        const history = movementsAll.map(m => {
+            const cargo = parseFloat(m.cargo || 0);
+            const abono = parseFloat(m.abono || 0);
+            currentBalance += (cargo - abono);
+            return { ...m, cargo, abono, balance: currentBalance };
+        });
+
+        const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
+        const branchName = branchRows[0]?.nombre || 'Sucursal';
+        const customerName = customer.nombre || 'Cliente';
+
+        const pdfBuffer = await generateStatementPDF({
+            company_name: companyName,
+            branch_name: branchName,
+            customer_name: customerName,
+            customer_email: customer.correo || '',
+            title: 'ESTADO DE CUENTA DE ANTICIPOS',
+            balance_label: 'SALDO DISPONIBLE EN ANTICIPOS:',
+            total_balance: currentBalance,
+            movements: history
+        });
+
+        const transporter = createTransporter(smtp);
+        await transporter.sendMail({
+            from: `"${smtp.from_name}" <${smtp.from_email}>`,
+            to: customer.correo,
+            subject: `Estado de Cuenta de Anticipos - ${companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'CXC'}`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
+                    <h2 style="color: #4f46e5; text-align: center;">Estado de Cuenta de Anticipos</h2>
+                    <p>Hola <b>${customer.nombre}</b>,</p>
+                    <p>Adjunto encontrará el estado de cuenta de sus anticipos actualizado a la fecha: <b>${new Date().toLocaleDateString('es-SV')}</b>.</p>
+                    <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+                        <span style="font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em;">Saldo Disponible en Anticipos</span>
+                        <div style="font-size: 32px; font-weight: 800; color: #1e293b;">$${parseFloat(currentBalance).toFixed(2)}</div>
+                    </div>
+                    <p style="font-size: 13px; color: #666;">Adjunto encontrará el archivo PDF con el desglose de sus movimientos de anticipos.</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #94a3b8; text-align: center;">Este es un mensaje automático de <b>${branchRows[0].nombre}</b>.</p>
+                </div>
+            `,
+            attachments: [{ filename: `Estado_Cuenta_Anticipos_${customer.nombre.replace(/ /g, '_')}.pdf`, content: pdfBuffer }]
+        });
+    } catch (error) {
+        console.error(`[Mailer] ERROR in sendAnticiposStatementEmail:`, error);
+        throw error;
+    }
+};
+
+/**
  * Sends a provider statement email with a PDF attachment
  */
 const sendProviderStatementEmail = async (providerId, branchId, companyId) => {
@@ -344,6 +436,7 @@ const sendMail = async ({ branchId, to, subject, text, html, attachments }) => {
 
 module.exports = { 
     sendCustomerStatementEmail,
+    sendAnticiposStatementEmail,
     sendProviderStatementEmail,
     sendPaymentReceiptEmail,
     sendProviderPaymentReceiptEmail,

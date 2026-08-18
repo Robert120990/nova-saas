@@ -11,7 +11,8 @@ import {
     Building2,
     DollarSign,
     FilterX,
-    Clock
+    Clock,
+    Wallet
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -19,7 +20,19 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Money from '../components/ui/Money';
 
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '—';
+const fmtFecha = (d) => {
+    if (!d) return '—';
+    let parts;
+    if (typeof d === 'string') {
+        parts = d.substring(0, 10).split('-');
+    } else if (d instanceof Date && !isNaN(d)) {
+        parts = [String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')];
+    } else {
+        return '—';
+    }
+    if (!parts[0] || !parts[1] || !parts[2]) return '—';
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
 
 const CustomerStatement = () => {
     const [selectedBranchId, setSelectedBranchId] = useState('');
@@ -27,7 +40,7 @@ const CustomerStatement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [limit] = useState(10);
-    const [activeTab, setActiveTab] = useState('movimientos'); // 'movimientos' | 'antiguedad'
+    const [activeTab, setActiveTab] = useState('movimientos'); // 'movimientos' | 'antiguedad' | 'anticipos'
 
     // Queries
     const { data: branches = [] } = useQuery({
@@ -35,9 +48,10 @@ const CustomerStatement = () => {
         queryFn: async () => (await axios.get('/api/branches')).data
     });
 
+    // Igual al selector de clientes de ventas (busca TODOS, sin filtro es_credito)
     const loadCustomersOptions = async (search, page) => {
         const { data } = await axios.get('/api/customers', {
-            params: { search: search || undefined, page, limit: 50, es_credito: 1 }
+            params: { search: search || undefined, page, limit: 50 }
         });
         return data;
     };
@@ -68,12 +82,27 @@ const CustomerStatement = () => {
         enabled: !!selectedCustomerId && !!selectedBranchId && activeTab === 'antiguedad'
     });
 
+    // Pestaña 3: Anticipos (Estado de Cuenta de Anticipos)
+    const { data: anticiposData, isLoading: isLoadingAnticipos } = useQuery({
+        queryKey: ['customer-anticipos', selectedCustomerId, selectedBranchId, searchTerm, page],
+        queryFn: async () => {
+            if (!selectedCustomerId || !selectedBranchId) return null;
+            const res = await axios.get('/api/cxc/anticipos/statement', { 
+                params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, search: searchTerm, page, limit } 
+            });
+            return res.data;
+        },
+        enabled: !!selectedCustomerId && !!selectedBranchId && activeTab === 'anticipos'
+    });
+
     const handleSendEmail = async () => {
         if (!selectedCustomerId || !selectedBranchId) return;
         
         const endpoint = activeTab === 'movimientos' 
             ? '/api/cxc/statement/send-email' 
-            : '/api/cxc/aging-report/send-email';
+            : activeTab === 'antiguedad'
+                ? '/api/cxc/aging-report/send-email'
+                : '/api/cxc/anticipos/statement/send-email';
 
         const promise = axios.post(endpoint, {
             customer_id: selectedCustomerId,
@@ -93,7 +122,7 @@ const CustomerStatement = () => {
             try {
                 const { utils, writeFile } = await import('xlsx');
                 const exportData = statementData.movements.map(m => ({
-                    'Fecha': fmtDate(m.fecha),
+                    'Fecha': fmtFecha(m.fecha),
                     'Tipo': m.tipo,
                     'Número/Referencia': m.numero,
                     'Concepto': m.concepto,
@@ -107,12 +136,12 @@ const CustomerStatement = () => {
                 writeFile(wb, `Estado_Cuenta_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
                 toast.success('Excel generado');
             } catch (error) { toast.error('Error al generar Excel'); }
-        } else {
+        } else if (activeTab === 'antiguedad') {
             if (!agingData?.documents?.length) return toast.error('No hay datos para exportar');
             try {
                 const { utils, writeFile } = await import('xlsx');
                 const exportData = agingData.documents.map(d => ({
-                    'Fecha': fmtDate(d.fecha),
+                    'Fecha': fmtFecha(d.fecha),
                     'Documento': d.documento,
                     'Tipo': d.tipo,
                     '0-30': d.d0_30,
@@ -128,6 +157,25 @@ const CustomerStatement = () => {
                 writeFile(wb, `Antiguedad_Saldos_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
                 toast.success('Excel generado');
             } catch (error) { toast.error('Error al generar Excel'); }
+        } else {
+            if (!anticiposData?.movements?.length) return toast.error('No hay datos para exportar');
+            try {
+                const { utils, writeFile } = await import('xlsx');
+                const exportData = anticiposData.movements.map(m => ({
+                    'Fecha': fmtFecha(m.fecha),
+                    'Tipo': m.tipo,
+                    'Número/Referencia': m.numero,
+                    'Concepto': m.concepto,
+                    'Cargo (+)': parseFloat(m.cargo),
+                    'Abono (-)': parseFloat(m.abono),
+                    'Saldo': parseFloat(m.balance)
+                }));
+                const ws = utils.json_to_sheet(exportData);
+                const wb = utils.book_new();
+                utils.book_append_sheet(wb, ws, "Estado de Cuenta de Anticipos");
+                writeFile(wb, `Estado_Cuenta_Anticipos_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
+                toast.success('Excel generado');
+            } catch (error) { toast.error('Error al generar Excel'); }
         }
     };
 
@@ -136,9 +184,11 @@ const CustomerStatement = () => {
         
         const endpoint = activeTab === 'movimientos' 
             ? '/api/cxc/statement/pdf' 
-            : '/api/cxc/aging-report/pdf';
+            : activeTab === 'antiguedad'
+                ? '/api/cxc/aging-report/pdf'
+                : '/api/cxc/anticipos/statement/pdf';
         
-        const fileName = activeTab === 'movimientos' ? 'Estado_Cuenta' : 'Antiguedad_Saldos';
+        const fileName = activeTab === 'movimientos' ? 'Estado_Cuenta' : activeTab === 'antiguedad' ? 'Antiguedad_Saldos' : 'Estado_Cuenta_Anticipos';
 
         const toastId = toast.loading('Generando PDF...');
         try {
@@ -147,22 +197,45 @@ const CustomerStatement = () => {
                 responseType: 'blob'
             });
             
-            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             link.setAttribute('download', `${fileName}_${selectedCustomerId}.pdf`);
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success('PDF descargado', { id: toastId });
+            setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+            toast.success('PDF generado y descargado correctamente', { id: toastId });
         } catch (error) {
-            toast.error('Error al generar PDF', { id: toastId });
+            let msg = 'Error al generar PDF';
+            const status = error.response?.status;
+            if (error.response?.data) {
+                try {
+                    let text = '';
+                    if (typeof error.response.data === 'string') {
+                        text = error.response.data;
+                    } else if (error.response.data instanceof Blob) {
+                        text = await error.response.data.text();
+                    } else if (error.response.data instanceof ArrayBuffer) {
+                        text = new TextDecoder().decode(error.response.data);
+                    }
+                    const parsed = JSON.parse(text);
+                    if (parsed?.message) msg = parsed.message;
+                } catch (e) { /* no es JSON */ }
+            } else if (!error.response) {
+                msg = 'Error de red: no se pudo conectar con el servidor';
+            }
+            console.error('PDF export error:', { status, msg, detail: error.message });
+            toast.error(status ? `${msg} (HTTP ${status})` : msg, { id: toastId });
         }
     };
 
     const totalBalance = activeTab === 'movimientos' 
         ? statementData?.total_balance 
-        : agingData?.total_balance;
+        : activeTab === 'antiguedad'
+            ? agingData?.total_balance
+            : anticiposData?.saldo_disponible;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -219,14 +292,16 @@ const CustomerStatement = () => {
                         <User size={12} /> Seleccionar Cliente
                     </label>
                     <SearchableSelect 
-                        placeholder="BUSCAR CLIENTE POR NOMBRE O DOC..."
                         loadOptions={loadCustomersOptions}
                         value={selectedCustomerId}
                         onChange={(e) => setSelectedCustomerId(e.target.value)}
+                        placeholder="BUSCAR CLIENTE POR NOMBRE, NIT O DOC..."
                         valueKey="id"
                         labelKey="nombre"
-                        codeKey="numero_documento"
-                        codeLabel="DOC"
+                        displayKey="nombre"
+                        codeKey="nit"
+                        codeLabel="NIT/DOC"
+                        dropdownWidth={440}
                     />
                 </div>
             </div>
@@ -235,7 +310,8 @@ const CustomerStatement = () => {
             <div className="flex flex-wrap bg-slate-100 p-1.5 rounded-2xl w-fit max-w-full self-center mx-auto shadow-inner">
                 {[
                     { id: 'movimientos', label: 'Estado de Cuenta', icon: FileText },
-                    { id: 'antiguedad', label: 'Antigüedad de Saldos', icon: Clock }
+                    { id: 'antiguedad', label: 'Antigüedad de Saldos', icon: Clock },
+                    { id: 'anticipos', label: 'Anticipos', icon: Wallet }
                 ].map((t) => (
                     <button
                         key={t.id}
@@ -252,14 +328,14 @@ const CustomerStatement = () => {
 
             {/* Summary Balance */}
             {selectedCustomerId && selectedBranchId && totalBalance !== undefined && (
-                <div className="bg-indigo-600 rounded-[1.5rem] p-5 text-white flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg shadow-indigo-100 italic animate-in zoom-in-95 duration-300">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
-                            <DollarSign size={24} />
+                <div className="bg-indigo-600 rounded-2xl px-4 py-2.5 text-white flex items-center justify-between gap-3 shadow-md shadow-indigo-100 animate-in zoom-in-95 duration-300">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
+                            <DollarSign size={15} />
                         </div>
-                        <div>
-                            <h3 className="text-[9px] font-black uppercase tracking-widest text-indigo-100">Saldo Total Pendiente</h3>
-                            <p className="text-2xl font-black leading-tight"><Money value={totalBalance} /></p>
+                        <div className="min-w-0">
+                            <h3 className="text-[8px] font-black uppercase tracking-widest text-indigo-100 whitespace-nowrap">{activeTab === 'anticipos' ? 'Saldo Disponible en Anticipos' : 'Saldo Total Pendiente'}</h3>
+                            <p className="text-lg font-black leading-tight"><Money value={totalBalance} /></p>
                         </div>
                     </div>
                 </div>
@@ -302,7 +378,7 @@ const CustomerStatement = () => {
                                 data={statementData.movements}
                                 renderRow={(m, i) => (
                                     <tr key={i} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 italic">
-                                        <td className="px-8 py-4 text-xs font-bold text-slate-500 uppercase tracking-tighter">{fmtDate(m.fecha)}</td>
+                                        <td className="px-8 py-4 text-xs font-bold text-slate-500 uppercase tracking-tighter">{fmtFecha(m.fecha)}</td>
                                         <td className="px-8 py-4">
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-black text-slate-900 uppercase leading-none mb-1">{m.tipo}</span>
@@ -332,7 +408,7 @@ const CustomerStatement = () => {
                         </div>
                     </div>
                 ) : <NoDataFound />
-            ) : (
+            ) : activeTab === 'antiguedad' ? (
                 // Pestaña Antigüedad
                 isLoadingAging ? (
                     <div className="py-32 flex flex-col items-center justify-center space-y-4">
@@ -359,7 +435,7 @@ const CustomerStatement = () => {
                                 <tbody className="divide-y divide-slate-50 italic">
                                     {agingData.documents.map((d, i) => (
                                         <tr key={i} className="hover:bg-slate-50/30 transition-colors">
-                                            <td className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase">{fmtDate(d.fecha)}</td>
+                                            <td className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase">{fmtFecha(d.fecha)}</td>
                                             <td className="px-6 py-3 text-[10px] font-black text-indigo-500 font-mono tracking-tighter">{d.documento}</td>
                                             <td className="px-6 py-3 text-[10px] font-black text-slate-900 uppercase">{d.tipo}</td>
                                             <td className="px-4 py-3 text-[10px] font-bold text-right">{d.d0_30 > 0 ? <Money value={d.d0_30} /> : '—'}</td>
@@ -383,6 +459,77 @@ const CustomerStatement = () => {
                                     </tr>
                                 </tfoot>
                             </table>
+                        </div>
+                    </div>
+                ) : <NoDataFound />
+            ) : (
+                // Pestaña Anticipos
+                isLoadingAnticipos ? (
+                    <div className="py-32 flex flex-col items-center justify-center space-y-4">
+                        <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generando Estado de Cuenta de Anticipos...</p>
+                    </div>
+                ) : anticiposData ? (
+                    <div className="space-y-6">
+                        <div className="flex bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                            <div className="relative w-full md:w-96">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <input 
+                                    type="text"
+                                    placeholder="FILTRAR POR NÚMERO O DOC..."
+                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-bold uppercase outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-mono"
+                                    value={searchTerm}
+                                    onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+                                />
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                            <Table 
+                                headers={['Fecha', 'Documento / Referencia', 'Concepto', 'Cargo (+)', 'Abono (-)', 'Saldo']}
+                                data={anticiposData.movements}
+                                renderRow={(m, i) => (
+                                    <tr key={i} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 italic">
+                                        <td className="px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-tighter whitespace-nowrap">{fmtFecha(m.fecha)}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">
+                                            <span className="text-[11px] font-black text-slate-900 uppercase leading-none">{m.tipo}</span>{' '}
+                                            <span className="text-[10px] font-bold text-indigo-500 font-mono tracking-tighter">{m.numero || 'S/N'}</span>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                            <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-widest uppercase whitespace-nowrap ${
+                                                m.concepto.startsWith('ANTICIPO') ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'
+                                            }`}>{m.concepto}</span>
+                                        </td>
+                                        <td className="px-3 py-2 text-[11px] font-black text-rose-500 whitespace-nowrap">{m.cargo > 0 ? <span>+ <Money value={m.cargo} /></span> : ''}</td>
+                                        <td className="px-3 py-2 text-[11px] font-black text-emerald-500 whitespace-nowrap">{m.abono > 0 ? <span>- <Money value={m.abono} /></span> : ''}</td>
+                                        <td className="px-3 py-2 text-[11px] font-black text-slate-900 bg-slate-50/30 whitespace-nowrap"><Money value={m.balance} /></td>
+                                    </tr>
+                                )}
+                            />
+                            {anticiposData.pagination && (
+                                <div className="px-8 border-t border-slate-50">
+                                    <Pagination 
+                                        currentPage={page} totalPages={anticiposData.pagination.pages}
+                                        totalItems={anticiposData.pagination.total} onPageChange={setPage}
+                                        itemsOnPage={anticiposData.movements.length} isLoading={isLoadingAnticipos}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Totales de anticipos */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="bg-indigo-50/60 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                <span className="text-[9px] font-black uppercase text-indigo-400 tracking-widest">Total Anticipado</span>
+                                <span className="text-sm font-black text-indigo-700"><Money value={anticiposData.total_anticipado} /></span>
+                            </div>
+                            <div className="bg-amber-50/60 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                <span className="text-[9px] font-black uppercase text-amber-500 tracking-widest">Total Consumido</span>
+                                <span className="text-sm font-black text-amber-700"><Money value={anticiposData.total_consumido} /></span>
+                            </div>
+                            <div className="bg-emerald-50/60 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                <span className="text-[9px] font-black uppercase text-emerald-500 tracking-widest">Saldo Disponible</span>
+                                <span className="text-sm font-black text-emerald-700"><Money value={anticiposData.saldo_disponible} /></span>
+                            </div>
                         </div>
                     </div>
                 ) : <NoDataFound />

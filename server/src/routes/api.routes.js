@@ -413,6 +413,9 @@ router.delete('/cxc/payments/:id', cxcController.deletePayment);
 router.post('/cxc/payments/:id/send-email', cxcController.sendReceiptEmail);
 router.get('/cxc/payments/:id/pdf', cxcController.exportPaymentPDF);
 router.get('/cxc/balances-report', cxcController.getCustomerBalancesReport);
+router.get('/cxc/anticipos/statement', cxcController.getAnticiposStatement);
+router.get('/cxc/anticipos/statement/pdf', cxcController.exportAnticiposStatementPDF);
+router.post('/cxc/anticipos/statement/send-email', cxcController.sendAnticiposStatementEmail);
 
  
 // Accounts Payable (CXP)

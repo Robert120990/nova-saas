@@ -103,6 +103,15 @@ const http = require('http');
 const { initWebSocket } = require('./services/websocket.service');
 const { startWorker } = require('./services/notificationWorker');
 
+// Evitar que un error no capturado (unhandledRejection) tumbe el servidor
+// a mitad de una respuesta: se registra la causa y el proceso sigue vivo.
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled Rejection (no tumba el server):', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception (no tumba el server):', err);
+});
+
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
