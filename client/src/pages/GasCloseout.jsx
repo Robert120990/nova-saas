@@ -543,6 +543,25 @@ const GasCloseout = () => {
         tarjetas.reduce((s, t) => s + (parseFloat(t.monto) || 0), 0),
     [tarjetas]);
 
+    const tarjetasResumenPorTipo = useMemo(() => {
+        const map = {};
+        for (const t of tarjetas) {
+            const key = t.pos_type_id ? String(t.pos_type_id) : 'sin_tipo';
+            if (!map[key]) {
+                const tipo = posTypesList.find(p => String(p.id) === key);
+                map[key] = {
+                    key,
+                    nombre: tipo ? tipo.nombre : 'Sin tipo de POS',
+                    cantidad: 0,
+                    total: 0
+                };
+            }
+            map[key].cantidad += 1;
+            map[key].total += parseFloat(t.monto) || 0;
+        }
+        return Object.values(map).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    }, [tarjetas, posTypesList]);
+
     const creditosTotal = useMemo(() =>
         creditos.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0),
     [creditos]);
@@ -705,6 +724,7 @@ const GasCloseout = () => {
             provider_id: '',
             proveedor: '',
             valor: 0,
+            comentario: '',
             despachador_id: defaultDesp
         }]);
     };
@@ -2349,13 +2369,14 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Proveedor</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Valor</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Comentario</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {gastos.length === 0 && (
                                             <tr>
-                                                <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
+                                                <td colSpan={9} className="px-3 py-8 text-center text-xs text-slate-400">
                                                     No hay gastos registrados. Agregue un gasto para comenzar.
                                                 </td>
                                             </tr>
@@ -2473,6 +2494,16 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         placeholder="0.00"
                                                         className="w-20 text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-1" data-label="Comentario">
+                                                    <input
+                                                        type="text"
+                                                        value={g.comentario || ''}
+                                                        onChange={(e) => handleGastoChange(g.id, 'comentario', e.target.value)}
+                                                        disabled={estado === 'cerrado'}
+                                                        placeholder="Comentario"
+                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </td>
                                                 <td className="px-1.5 py-1 text-center" data-label="">
@@ -3310,6 +3341,35 @@ const GasCloseout = () => {
                                         </tfoot>
                                     )}
                                 </table>
+                                {tarjetasResumenPorTipo.length > 0 && (
+                                    <div className="mt-3 border border-indigo-100 bg-indigo-50/40 rounded-xl overflow-hidden">
+                                        <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-600">
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-white flex items-center gap-1.5">
+                                                <BarChart3 size={12} />
+                                                Resumen por Tipo de POS
+                                            </span>
+                                        </div>
+                                        <div className="divide-y divide-indigo-100/70">
+                                            {tarjetasResumenPorTipo.map(g => (
+                                                <div key={g.key} className="flex items-center justify-between px-3 py-1.5">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="text-[11px] font-bold text-slate-700 truncate">{g.nombre}</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap">
+                                                            {g.cantidad} {g.cantidad === 1 ? 'tarjeta' : 'tarjetas'}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[11px] font-mono font-bold text-red-600 whitespace-nowrap">
+                                                        <Money value={g.total} />
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div className="flex items-center justify-between px-3 py-1.5 bg-white/70">
+                                                <span className="text-[11px] font-black text-slate-700">Total General</span>
+                                                <span className="text-xs font-mono font-black text-red-600"><Money value={tarjetasTotal} /></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

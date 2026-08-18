@@ -1216,11 +1216,12 @@ exports.saveExpenses = async (req, res) => {
                     providerId,
                     proveedor,
                     parseFloat(e.valor) || 0,
-                    e.despachador_id ? parseInt(e.despachador_id) : null
+                    e.despachador_id ? parseInt(e.despachador_id) : null,
+                    e.comentario || ''
                 ];
             });
             await pool.query(
-                `INSERT INTO gas_station_closeout_expenses (closeout_id, rubro, fecha, documento, tipo, provider_id, proveedor, valor, despachador_id) VALUES ?`,
+                `INSERT INTO gas_station_closeout_expenses (closeout_id, rubro, fecha, documento, tipo, provider_id, proveedor, valor, despachador_id, comentario) VALUES ?`,
                 [values]
             );
         }

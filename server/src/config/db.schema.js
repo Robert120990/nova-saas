@@ -457,7 +457,7 @@ REGLAS DE MULTI-TENENCIA:
 
 ### gas_station_closeout_expenses (Gastos del turno)
 - id, closeout_id, rubro, fecha, documento, tipo, proveedor
-- provider_id, valor, despachador_id
+- provider_id, valor, despachador_id, comentario VARCHAR(255)
 
 ### gas_station_closeout_remesas (Remesas/Depósitos)
 - id, closeout_id, documento, descripcion

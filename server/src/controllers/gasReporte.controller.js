@@ -636,7 +636,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno, 
                            e.rubro as rubro_nombre,
-                           e.documento, COALESCE(d.descripcion, '—') as despachador, e.valor
+                           e.documento, COALESCE(d.descripcion, '—') as despachador, e.valor, e.comentario
                     FROM gas_station_closeout_expenses e
                     JOIN gas_station_closeouts g ON e.closeout_id = g.id
                     LEFT JOIN gas_station_despachadores d ON e.despachador_id = d.id
@@ -647,9 +647,10 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 columns = [
                     { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
                     { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Rubro', w: 160, accessor: 'rubro_nombre' },
-                    { label: 'Documento', w: 180, accessor: 'documento' },
-                    { label: 'Despachador', w: 160, accessor: 'despachador' },
+                    { label: 'Rubro', w: 140, accessor: 'rubro_nombre' },
+                    { label: 'Documento', w: 140, accessor: 'documento' },
+                    { label: 'Despachador', w: 140, accessor: 'despachador' },
+                    { label: 'Comentario', w: 100, accessor: 'comentario' },
                     { label: 'Valor', w: 90, accessor: 'valor', format: 'money', align: 'right' }
                 ];
                 break;
