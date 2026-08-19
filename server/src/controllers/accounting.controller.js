@@ -31,17 +31,17 @@ const deleteAccountType = async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
-// === Entry Types ===
+// === Entry Types (globales, compartidos por todas las empresas) ===
 const getEntryTypes = async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM entry_types WHERE company_id = ? ORDER BY code', [req.company_id]);
+        const [rows] = await pool.query('SELECT * FROM entry_types ORDER BY code');
         res.json(rows);
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
 const createEntryType = async (req, res) => {
     try {
-        const data = { ...req.body, company_id: req.company_id };
+        const data = req.body;
         const [r] = await pool.query('INSERT INTO entry_types SET ?', [data]);
         res.status(201).json({ id: r.insertId, ...data });
     } catch (e) { res.status(500).json({ message: e.message }); }
@@ -49,14 +49,14 @@ const createEntryType = async (req, res) => {
 
 const updateEntryType = async (req, res) => {
     try {
-        await pool.query('UPDATE entry_types SET ? WHERE id = ? AND company_id = ?', [req.body, req.params.id, req.company_id]);
+        await pool.query('UPDATE entry_types SET ? WHERE id = ?', [req.body, req.params.id]);
         res.json({ message: 'Actualizado' });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
 const deleteEntryType = async (req, res) => {
     try {
-        await pool.query('DELETE FROM entry_types WHERE id = ? AND company_id = ?', [req.params.id, req.company_id]);
+        await pool.query('DELETE FROM entry_types WHERE id = ?', [req.params.id]);
         res.json({ message: 'Eliminado' });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
@@ -389,6 +389,9 @@ const performClosing = async (req, res) => {
             throw new Error(`El cierre no cuadra: Débito $${totalD.toFixed(2)}, Crédito $${totalC.toFixed(2)}`);
         }
 
+        const [[cierreType]] = await conn.query("SELECT id FROM entry_types WHERE code = 'CIERRE' LIMIT 1");
+        if (!cierreType) throw new Error('No existe el tipo de partida CIERRE');
+
         // Generar número: mismo formato AAMM-NNN
         const entryDate2 = new Date(date);
         const yy2 = String(entryDate2.getFullYear()).slice(-2);
@@ -396,13 +399,13 @@ const performClosing = async (req, res) => {
         const [[{ num: num2 }]] = await conn.query(
             `SELECT COUNT(*) + 1 as num FROM accounting_entries 
              WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
-            [companyId, 5, entryDate2.getFullYear(), entryDate2.getMonth() + 1]
+            [companyId, cierreType.id, entryDate2.getFullYear(), entryDate2.getMonth() + 1]
         );
         const closingNumber = `${yy2}${mm2}${String(num2).padStart(3, '0')}`;
 
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: companyId,
-            entry_type_id: 5,
+            entry_type_id: cierreType.id,
             number: closingNumber,
             date,
             description: description || 'Cierre del Ejercicio Contable',
@@ -476,19 +479,22 @@ const performOpening = async (req, res) => {
         const totalC = lines.reduce((s, l) => s + l.credit, 0);
         if (Math.abs(totalD - totalC) > 0.01) throw new Error(`La apertura no cuadra: D $${totalD.toFixed(2)}, C $${totalC.toFixed(2)}`);
 
+        const [[aperturaType]] = await conn.query("SELECT id FROM entry_types WHERE code = 'APERTURA' LIMIT 1");
+        if (!aperturaType) throw new Error('No existe el tipo de partida APERTURA');
+
         const entryDate3 = new Date(date);
         const yy3 = String(entryDate3.getFullYear()).slice(-2);
         const mm3 = String(entryDate3.getMonth() + 1).padStart(2, '0');
         const [[{ num: num3 }]] = await conn.query(
             `SELECT COUNT(*) + 1 as num FROM accounting_entries 
              WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
-            [companyId, 4, entryDate3.getFullYear(), entryDate3.getMonth() + 1]
+            [companyId, aperturaType.id, entryDate3.getFullYear(), entryDate3.getMonth() + 1]
         );
         const openingNumber = `${yy3}${mm3}${String(num3).padStart(3, '0')}`;
 
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: companyId,
-            entry_type_id: 4,
+            entry_type_id: aperturaType.id,
             number: openingNumber,
             date,
             description: description || 'Apertura del Ejercicio Contable',
@@ -530,13 +536,20 @@ const getSettings = async (req, res) => {
 
 const saveSettings = async (req, res) => {
     try {
-        const { settings } = req.body;
+        const { settings, remove } = req.body;
         for (const [key, value] of Object.entries(settings || {})) {
             if (value !== null && value !== undefined && value !== '') {
                 await pool.query(
                     'INSERT INTO accounting_settings (company_id, setting_key, setting_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = ?',
                     [req.company_id, key, String(value), String(value)]
                 );
+            }
+        }
+        if (Array.isArray(remove) && remove.length > 0) {
+            for (const key of remove) {
+                if (typeof key === 'string' && key.trim() !== '') {
+                    await pool.query('DELETE FROM accounting_settings WHERE company_id = ? AND setting_key = ?', [req.company_id, key]);
+                }
             }
         }
         res.json({ message: 'Configuración guardada' });

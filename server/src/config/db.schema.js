@@ -522,8 +522,8 @@ REGLAS DE MULTI-TENENCIA:
 ### account_types (Tipos de cuenta contable)
 - id, company_id, code, name, nature ENUM('debit','credit'), created_at
 
-### entry_types (Tipos de partida contable)
-- id, company_id, code, name, created_at
+### entry_types (Tipos de partida contable - GLOBALES, compartidos por todas las empresas)
+- id, code UNIQUE, name, created_at
 
 ### chart_of_accounts (Catálogo de cuentas contables)
 - id, company_id, account_type_id, parent_id INT NULL
