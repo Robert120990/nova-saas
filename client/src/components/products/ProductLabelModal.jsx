@@ -16,7 +16,9 @@ import {
     X,
     Sparkles,
     FileText,
-    Store
+    Store,
+    LayoutTemplate,
+    Calendar
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
@@ -36,6 +38,17 @@ const PRESET_SIZES = [
 ];
 
 /**
+ * Format current date to DD/MM/YYYY
+ */
+const getTodayFormatted = () => {
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
+/**
  * Dedicated subcomponent to ensure barcode SVG renders reliably on every mount and prop change
  */
 const BarcodeRenderer = ({
@@ -44,6 +57,10 @@ const BarcodeRenderer = ({
     width = 1.6,
     height = 28,
     displayValue = true,
+    fontSize = 10,
+    font = 'monospace',
+    fontOptions = '',
+    textMargin = 1,
     className = ''
 }) => {
     const svgRef = useRef(null);
@@ -61,9 +78,10 @@ const BarcodeRenderer = ({
                 width: width,
                 height: height,
                 displayValue: displayValue,
-                fontSize: 10,
-                font: 'monospace',
-                textMargin: 1,
+                fontSize: fontSize,
+                font: font,
+                fontOptions: fontOptions,
+                textMargin: textMargin,
                 margin: 0,
                 valid: () => {}
             });
@@ -79,7 +97,7 @@ const BarcodeRenderer = ({
                 console.error('JsBarcode render failed:', err);
             }
         }
-    }, [value, format, width, height, displayValue]);
+    }, [value, format, width, height, displayValue, fontSize, font, fontOptions, textMargin]);
 
     if (!value) return null;
 
@@ -99,6 +117,9 @@ const ProductLabelModal = ({
     // Active tab in mobile view: 'settings' or 'preview'
     const [mobileTab, setMobileTab] = useState('settings');
 
+    // Template selection: 'professional' (default corporate layout) or 'simple' (gondola/supermarket layout)
+    const [templateFormat, setTemplateFormat] = useState('professional');
+
     // Selected product & branch price
     const [currentProduct, setCurrentProduct] = useState(product || null);
     const [selectedBranchId, setSelectedBranchId] = useState('');
@@ -110,7 +131,7 @@ const ProductLabelModal = ({
     const [heightMm, setHeightMm] = useState(30);
     const [orientation, setOrientation] = useState('horizontal'); // 'horizontal' | 'vertical'
 
-    // Fields to print
+    // Fields to print - Professional & Shared
     const [showCompany, setShowCompany] = useState(true);
     const [companyName, setCompanyName] = useState(user?.company_name || 'MI EMPRESA');
 
@@ -122,7 +143,7 @@ const ProductLabelModal = ({
     const [internalCodePrefix, setInternalCodePrefix] = useState('COD: ');
 
     const [showBarcode, setShowBarcode] = useState(true);
-    const [barcodeType, setBarcodeType] = useState('CODE128'); // 'CODE128' | 'EAN13' | 'EAN8' | 'UPC' | 'QR' | 'NONE'
+    const [barcodeType, setBarcodeType] = useState('CODE128'); // Default to CODE128 for clear continuous centered barcode numbers
     const [barcodeValue, setBarcodeValue] = useState('');
     const [showBarcodeText, setShowBarcodeText] = useState(true);
 
@@ -138,6 +159,10 @@ const ProductLabelModal = ({
 
     const [showBorder, setShowBorder] = useState(false);
     const [textAlignment, setTextAlignment] = useState('center'); // 'center' | 'left'
+
+    // Simple template specific fields (Date DD/MM/YYYY)
+    const [showDate, setShowDate] = useState(true);
+    const [labelDate, setLabelDate] = useState(getTodayFormatted());
 
     // Copies
     const [copies, setCopies] = useState(1);
@@ -171,19 +196,30 @@ const ProductLabelModal = ({
             // Barcode value defaults to codigo_barra or internal code
             const code = activeProd.codigo_barra || activeProd.codigo || '';
             setBarcodeValue(code);
-
-            // Auto detect suitable barcode type
-            if (/^\d{13}$/.test(code)) {
-                setBarcodeType('EAN13');
-            } else if (/^\d{8}$/.test(code)) {
-                setBarcodeType('EAN8');
-            } else if (/^\d{12}$/.test(code)) {
-                setBarcodeType('UPC');
-            } else {
-                setBarcodeType('CODE128');
-            }
         }
     }, [isOpen, product, products]);
+
+    // Auto-detect barcode type: Simple always uses CODE128 (flat gondola look),
+    // Professional restores the classic EAN/UPC rendering with long/short bars
+    useEffect(() => {
+        if (!isOpen || !currentProduct) return;
+
+        if (templateFormat === 'simple') {
+            setBarcodeType('CODE128');
+            return;
+        }
+
+        const code = currentProduct.codigo_barra || currentProduct.codigo || '';
+        if (/^\d{13}$/.test(code)) {
+            setBarcodeType('EAN13');
+        } else if (/^\d{8}$/.test(code)) {
+            setBarcodeType('EAN8');
+        } else if (/^\d{12}$/.test(code)) {
+            setBarcodeType('UPC');
+        } else {
+            setBarcodeType('CODE128');
+        }
+    }, [isOpen, templateFormat, currentProduct]);
 
     useEffect(() => {
         if (user?.company_name && !companyName) {
@@ -286,6 +322,7 @@ const ProductLabelModal = ({
                         background: #fff;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
+                        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
                     }
                     .label-page {
                         width: ${effectiveWidth}mm;
@@ -308,7 +345,6 @@ const ProductLabelModal = ({
                     }
                     svg {
                         max-width: 100%;
-                        height: auto;
                     }
                 </style>
                 <script src="https://cdn.tailwindcss.com"></script>
@@ -320,9 +356,13 @@ const ProductLabelModal = ({
         `);
         doc.close();
 
-        // Trigger print after iframe renders
+        // Trigger print after iframe renders (wait for load + Tailwind CDN processing)
         iframe.contentWindow.focus();
-        setTimeout(() => {
+
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
             try {
                 iframe.contentWindow.print();
             } catch (err) {
@@ -335,7 +375,13 @@ const ProductLabelModal = ({
                     }
                 }, 1000);
             }
-        }, 400);
+        };
+
+        const printTimer = setTimeout(triggerPrint, 1500);
+        iframe.addEventListener('load', () => {
+            clearTimeout(printTimer);
+            setTimeout(triggerPrint, 300);
+        });
     };
 
     // Download PDF with exact millimeter page sizes matching live preview
@@ -364,12 +410,12 @@ const ProductLabelModal = ({
                     const img = new Image();
                     await new Promise((resolve) => {
                         img.onload = () => {
-                            const naturalW = img.naturalWidth || img.width || 300;
+                            const naturalW = img.naturalWidth || img.width || 320;
                             const naturalH = img.naturalHeight || img.height || 100;
                             imgAspect = naturalH > 0 ? (naturalW / naturalH) : 2.5;
 
                             const canvas = document.createElement('canvas');
-                            const scale = 4; // High DPI for crystal clear barcode in PDF
+                            const scale = 5; // Ultra High DPI for crystal clear barcode in PDF
                             canvas.width = naturalW * scale;
                             canvas.height = naturalH * scale;
                             const ctx = canvas.getContext('2d');
@@ -395,116 +441,183 @@ const ProductLabelModal = ({
                 }
 
                 const centerX = effectiveWidth / 2;
-                const marginX = Math.max(1.5, effectiveWidth * 0.04);
+                const marginX = Math.max(1.5, effectiveWidth * 0.035);
 
-                // Optional outer border
+                // Outer border
                 if (showBorder) {
-                    doc.setLineWidth(0.2);
+                    doc.setLineWidth(templateFormat === 'simple' ? 0.35 : 0.2);
                     doc.rect(0.5, 0.5, effectiveWidth - 1, effectiveHeight - 1);
                 }
 
-                // 1. Top Section: Header, Product Name, and Category/SKU
-                let topY = 2.8;
+                // ==========================================
+                // FORMAT: SIMPLE (Góndola / Supermercado)
+                // ==========================================
+                if (templateFormat === 'simple') {
+                    let currentY = 2.8;
 
-                // Company Name
-                if (showCompany && companyName) {
-                    doc.setFont('helvetica', 'bold');
-                    const compFontSize = effectiveWidth < 45 ? 6 : 7.5;
-                    doc.setFontSize(compFontSize);
-                    const compText = companyName.toUpperCase();
-                    if (textAlignment === 'center') {
-                        doc.text(compText, centerX, topY, { align: 'center' });
-                    } else {
-                        doc.text(compText, marginX, topY);
+                    // 1. Product Name at Top (Left-aligned, prominent)
+                    if (showProductName && currentProduct.nombre) {
+                        doc.setFont('helvetica', productNameBold ? 'bold' : 'normal');
+                        const pFontSize = productNameSize === 'lg' ? 8.5 : productNameSize === 'base' ? 7.5 : productNameSize === 'sm' ? 6.5 : 5.5;
+                        doc.setFontSize(pFontSize);
+                        const maxTextW = effectiveWidth - (marginX * 2);
+                        const splitName = doc.splitTextToSize(currentProduct.nombre.toUpperCase(), maxTextW);
+                        const lines = splitName.slice(0, 2);
+                        doc.text(lines, marginX, currentY);
+                        currentY += (lines.length * (pFontSize * 0.38) + 0.5);
                     }
-                    topY += (effectiveWidth < 45 ? 2.4 : 3.0);
-                }
 
-                // Product Name
-                if (showProductName && currentProduct.nombre) {
-                    doc.setFont('helvetica', productNameBold ? 'bold' : 'normal');
-                    const pFontSize = productNameSize === 'lg' ? 9 : productNameSize === 'base' ? 8 : productNameSize === 'sm' ? 7 : 6;
-                    doc.setFontSize(pFontSize);
-                    const maxTextW = effectiveWidth - (marginX * 2);
-                    const splitName = doc.splitTextToSize(currentProduct.nombre, maxTextW);
-                    const lines = splitName.slice(0, 2);
-                    if (textAlignment === 'center') {
-                        doc.text(lines, centerX, topY, { align: 'center' });
-                    } else {
-                        doc.text(lines, marginX, topY);
+                    // 2. Large Bold Price on the Right
+                    if (showPrice) {
+                        doc.setFont('helvetica', 'bold');
+                        const pSize = priceSize === 'xlarge' ? 14 : priceSize === 'large' ? 12 : 10;
+                        doc.setFontSize(pSize);
+                        const pText = `${pricePrefix}${formattedPrice}`;
+                        const priceY = currentY + (pSize * 0.32);
+                        doc.text(pText, effectiveWidth - marginX, priceY, { align: 'right' });
+                        currentY = priceY + 0.8;
                     }
-                    topY += (lines.length * (pFontSize * 0.38) + 0.4);
-                }
 
-                // Internal Code, Category, and Unit Sub-badges
-                const subInfos = [];
-                if (showInternalCode && currentProduct.codigo) subInfos.push(`${internalCodePrefix}${currentProduct.codigo}`);
-                if (showCategory && currentProduct.category_name) subInfos.push(currentProduct.category_name);
-                if (showUnit && currentProduct.unidad_medida) subInfos.push(currentProduct.unidad_medida);
-
-                if (subInfos.length > 0) {
-                    doc.setFont('helvetica', 'normal');
-                    doc.setFontSize(5.5);
-                    const subText = subInfos.join(' • ');
-                    if (textAlignment === 'center') {
-                        doc.text(subText, centerX, topY, { align: 'center' });
-                    } else {
-                        doc.text(subText, marginX, topY);
+                    // 3. Date at Bottom-Right (DD/MM/YYYY)
+                    const bottomDateY = effectiveHeight - 1.4;
+                    if (showDate && labelDate) {
+                        doc.setFont('helvetica', 'bold');
+                        const dateFontSize = effectiveWidth < 45 ? 5 : 5.8;
+                        doc.setFontSize(dateFontSize);
+                        doc.text(labelDate, effectiveWidth - marginX, bottomDateY, { align: 'right' });
                     }
-                    topY += 2.4;
-                }
 
-                // 2. Bottom Section: Anchored Footer Note & Price
-                let bottomY = effectiveHeight - 1.5;
+                    // 4. Barcode in Lower-Middle Section
+                    if (barcodeDataUrl && showBarcode && barcodeType !== 'NONE') {
+                        const barcodeBottomLimit = (showDate && labelDate) ? (bottomDateY - 2.2) : (effectiveHeight - 1.2);
+                        const availableH = Math.max(4.5, barcodeBottomLimit - currentY);
+                        const availableW = Math.max(10, effectiveWidth - (marginX * 2));
 
-                // Custom Note / Footer Legend
-                if (showCustomNote && customNoteText) {
-                    doc.setFont('helvetica', 'normal');
-                    doc.setFontSize(5);
-                    if (textAlignment === 'center') {
-                        doc.text(customNoteText, centerX, bottomY, { align: 'center' });
-                    } else {
-                        doc.text(customNoteText, marginX, bottomY);
-                    }
-                    bottomY -= 2.2;
-                }
-
-                // Price (Anchored at the bottom above footer)
-                if (showPrice) {
-                    doc.setFont('helvetica', 'bold');
-                    const pSize = priceSize === 'xlarge' ? 12 : priceSize === 'large' ? 10 : 8;
-                    doc.setFontSize(pSize);
-                    const pText = `${pricePrefix}${formattedPrice}`;
-                    if (textAlignment === 'center') {
-                        doc.text(pText, centerX, bottomY, { align: 'center' });
-                    } else {
-                        doc.text(pText, marginX, bottomY);
-                    }
-                    bottomY -= (pSize * 0.36 + 1.2);
-                }
-
-                // 3. Middle Section: Barcode or QR Code (Fills middle without distortion or overlap)
-                if (barcodeDataUrl && showBarcode && barcodeType !== 'NONE') {
-                    const availableH = Math.max(4, bottomY - topY - 1.0);
-                    const availableW = Math.max(10, effectiveWidth - (marginX * 2));
-
-                    if (barcodeType === 'QR') {
-                        const qrSize = Math.min(availableH, availableW, effectiveHeight * 0.45);
-                        const qrX = (effectiveWidth - qrSize) / 2;
-                        const qrY = topY + 0.5 + (availableH - qrSize) / 2;
-                        doc.addImage(barcodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-                    } else {
-                        // 1D Barcode with preserved aspect ratio
-                        const aspect = imgAspect > 0 ? imgAspect : 2.5;
-                        let bcH = availableH;
-                        let bcW = bcH * aspect;
-                        if (bcW > availableW) {
-                            bcW = availableW;
-                            bcH = bcW / aspect;
+                        if (barcodeType === 'QR') {
+                            const qrSize = Math.min(availableH, availableW, effectiveHeight * 0.45);
+                            const qrX = (effectiveWidth - qrSize) / 2;
+                            const qrY = currentY + (availableH - qrSize) / 2;
+                            doc.addImage(barcodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                        } else {
+                            const aspect = imgAspect > 0 ? imgAspect : 2.5;
+                            let bcH = availableH;
+                            let bcW = bcH * aspect;
+                            if (bcW > availableW) {
+                                bcW = availableW;
+                                bcH = bcW / aspect;
+                            }
+                            const bcX = (effectiveWidth - bcW) / 2;
+                            const bcY = currentY + (availableH - bcH) / 2;
+                            doc.addImage(barcodeDataUrl, 'PNG', bcX, bcY, bcW, bcH);
                         }
-                        const bcX = (effectiveWidth - bcW) / 2;
-                        const bcY = topY + 0.5 + (availableH - bcH) / 2;
-                        doc.addImage(barcodeDataUrl, 'PNG', bcX, bcY, bcW, bcH);
+                    }
+                } else {
+                    // ==========================================
+                    // FORMAT: PROFESIONAL (Corporativo Completo)
+                    // ==========================================
+
+                    // 1. Top Section: Header, Product Name, and Category/SKU
+                    let topY = 2.8;
+
+                    // Company Name
+                    if (showCompany && companyName) {
+                        doc.setFont('helvetica', 'bold');
+                        const compFontSize = effectiveWidth < 45 ? 6 : 7.5;
+                        doc.setFontSize(compFontSize);
+                        const compText = companyName.toUpperCase();
+                        if (textAlignment === 'center') {
+                            doc.text(compText, centerX, topY, { align: 'center' });
+                        } else {
+                            doc.text(compText, marginX, topY);
+                        }
+                        topY += (effectiveWidth < 45 ? 2.4 : 3.0);
+                    }
+
+                    // Product Name
+                    if (showProductName && currentProduct.nombre) {
+                        doc.setFont('helvetica', productNameBold ? 'bold' : 'normal');
+                        const pFontSize = productNameSize === 'lg' ? 9 : productNameSize === 'base' ? 8 : productNameSize === 'sm' ? 7 : 6;
+                        doc.setFontSize(pFontSize);
+                        const maxTextW = effectiveWidth - (marginX * 2);
+                        const splitName = doc.splitTextToSize(currentProduct.nombre, maxTextW);
+                        const lines = splitName.slice(0, 2);
+                        if (textAlignment === 'center') {
+                            doc.text(lines, centerX, topY, { align: 'center' });
+                        } else {
+                            doc.text(lines, marginX, topY);
+                        }
+                        topY += (lines.length * (pFontSize * 0.38) + 0.4);
+                    }
+
+                    // Internal Code, Category, and Unit Sub-badges
+                    const subInfos = [];
+                    if (showInternalCode && currentProduct.codigo) subInfos.push(`${internalCodePrefix}${currentProduct.codigo}`);
+                    if (showCategory && currentProduct.category_name) subInfos.push(currentProduct.category_name);
+                    if (showUnit && currentProduct.unidad_medida) subInfos.push(currentProduct.unidad_medida);
+
+                    if (subInfos.length > 0) {
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(5.5);
+                        const subText = subInfos.join(' • ');
+                        if (textAlignment === 'center') {
+                            doc.text(subText, centerX, topY, { align: 'center' });
+                        } else {
+                            doc.text(subText, marginX, topY);
+                        }
+                        topY += 2.4;
+                    }
+
+                    // 2. Bottom Section: Anchored Footer Note & Price
+                    let bottomY = effectiveHeight - 1.5;
+
+                    // Custom Note / Footer Legend
+                    if (showCustomNote && customNoteText) {
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(5);
+                        if (textAlignment === 'center') {
+                            doc.text(customNoteText, centerX, bottomY, { align: 'center' });
+                        } else {
+                            doc.text(customNoteText, marginX, bottomY);
+                        }
+                        bottomY -= 2.2;
+                    }
+
+                    // Price (Anchored at the bottom above footer)
+                    if (showPrice) {
+                        doc.setFont('helvetica', 'bold');
+                        const pSize = priceSize === 'xlarge' ? 12 : priceSize === 'large' ? 10 : 8;
+                        doc.setFontSize(pSize);
+                        const pText = `${pricePrefix}${formattedPrice}`;
+                        if (textAlignment === 'center') {
+                            doc.text(pText, centerX, bottomY, { align: 'center' });
+                        } else {
+                            doc.text(pText, marginX, bottomY);
+                        }
+                        bottomY -= (pSize * 0.36 + 1.2);
+                    }
+
+                    // 3. Middle Section: Barcode or QR Code
+                    if (barcodeDataUrl && showBarcode && barcodeType !== 'NONE') {
+                        const availableH = Math.max(4, bottomY - topY - 1.0);
+                        const availableW = Math.max(10, effectiveWidth - (marginX * 2));
+
+                        if (barcodeType === 'QR') {
+                            const qrSize = Math.min(availableH, availableW, effectiveHeight * 0.45);
+                            const qrX = (effectiveWidth - qrSize) / 2;
+                            const qrY = topY + 0.5 + (availableH - qrSize) / 2;
+                            doc.addImage(barcodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                        } else {
+                            const aspect = imgAspect > 0 ? imgAspect : 2.5;
+                            let bcH = availableH;
+                            let bcW = bcH * aspect;
+                            if (bcW > availableW) {
+                                bcW = availableW;
+                                bcH = bcW / aspect;
+                            }
+                            const bcX = (effectiveWidth - bcW) / 2;
+                            const bcY = topY + 0.5 + (availableH - bcH) / 2;
+                            doc.addImage(barcodeDataUrl, 'PNG', bcX, bcY, bcW, bcH);
+                        }
                     }
                 }
             };
@@ -517,8 +630,8 @@ const ProductLabelModal = ({
             const cleanFileName = (currentProduct.nombre || 'etiqueta')
                 .replace(/[^a-zA-Z0-9]/g, '_')
                 .toLowerCase();
-            doc.save(`etiqueta_${cleanFileName}_${effectiveWidth}x${effectiveHeight}mm.pdf`);
-            toast.success(`PDF generado con ${numCopies} etiqueta(s)`);
+            doc.save(`etiqueta_${templateFormat}_${cleanFileName}_${effectiveWidth}x${effectiveHeight}mm.pdf`);
+            toast.success(`PDF generado (${templateFormat === 'simple' ? 'Simple Góndola' : 'Profesional'}) con ${numCopies} etiqueta(s)`);
         } catch (err) {
             console.error('Error al generar PDF de etiqueta:', err);
             toast.error('Error al generar archivo PDF');
@@ -530,34 +643,26 @@ const ProductLabelModal = ({
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-[95vh] max-h-[920px] flex flex-col overflow-hidden border border-slate-100">
                 
                 {/* Modal Header */}
-                <div className="px-5 py-3.5 sm:px-6 sm:py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500/20 border border-indigo-400/30 rounded-xl text-indigo-300">
-                            <Tag size={20} />
+                <div className="px-4 sm:px-5 py-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-600 shrink-0">
+                            <Tag size={16} />
                         </div>
-                        <div>
-                            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-2">
-                                Impresión de Etiquetas de Producto
-                                <span className="text-[10px] bg-indigo-500/30 text-indigo-200 font-semibold px-2 py-0.5 rounded-full border border-indigo-400/20">
-                                    Térmica / PDF
-                                </span>
-                            </h3>
-                            <p className="text-[11px] text-slate-400 hidden sm:block">
-                                Diseñe y personalice etiquetas adhesivas para góndola, código de barras y precios
-                            </p>
-                        </div>
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight truncate">
+                            Impresión de Etiquetas
+                        </h3>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         {/* Mobile Tab Switcher */}
-                        <div className="flex lg:hidden bg-slate-800/80 p-0.5 rounded-xl border border-slate-700">
+                        <div className="flex lg:hidden bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                             <button
                                 type="button"
                                 onClick={() => setMobileTab('settings')}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
                                     mobileTab === 'settings'
                                         ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'text-slate-400 hover:text-white'
+                                        : 'text-slate-500 hover:text-slate-700'
                                 }`}
                             >
                                 <Sliders size={12} />
@@ -566,10 +671,10 @@ const ProductLabelModal = ({
                             <button
                                 type="button"
                                 onClick={() => setMobileTab('preview')}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
                                     mobileTab === 'preview'
                                         ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'text-slate-400 hover:text-white'
+                                        : 'text-slate-500 hover:text-slate-700'
                                 }`}
                             >
                                 <Eye size={12} />
@@ -579,9 +684,9 @@ const ProductLabelModal = ({
 
                         <button
                             onClick={onClose}
-                            className="p-1.5 sm:p-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-xl transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                         >
-                            <X size={20} />
+                            <X size={18} />
                         </button>
                     </div>
                 </div>
@@ -590,14 +695,88 @@ const ProductLabelModal = ({
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden bg-slate-50/50 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
                     
                     {/* LEFT COLUMN: Controls & Settings (7 cols) */}
-                    <div className={`lg:col-span-7 overflow-y-auto p-4 sm:p-6 space-y-6 ${mobileTab !== 'settings' ? 'hidden lg:block' : 'block'}`}>
+                    <div className={`lg:col-span-7 overflow-y-auto p-4 sm:p-6 space-y-5 ${mobileTab !== 'settings' ? 'hidden lg:block' : 'block'}`}>
                         
-                        {/* 1. Product Selection & Branch Price */}
+                        {/* 1. Template Format Selector (Profesional vs Simple) */}
+                        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                    <LayoutTemplate size={14} className="text-indigo-600" />
+                                    1. Formato de Etiqueta
+                                </h4>
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-tight">
+                                    {templateFormat === 'professional' ? 'Profesional' : 'Simple (Góndola)'}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {/* Professional Template Card */}
+                                <button
+                                    type="button"
+                                    onClick={() => setTemplateFormat('professional')}
+                                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between relative ${
+                                        templateFormat === 'professional'
+                                            ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20 shadow-sm'
+                                            : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`p-1.5 rounded-xl ${
+                                                templateFormat === 'professional' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                                            }`}>
+                                                <Sparkles size={14} />
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-900">Profesional</span>
+                                        </div>
+                                        {templateFormat === 'professional' && (
+                                            <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 ring-2 ring-indigo-200" />
+                                        )}
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-500 leading-tight">
+                                        Diseño corporativo completo con empresa, SKU, código de barras/QR, categoría y precio.
+                                    </p>
+                                </button>
+
+                                {/* Simple Template Card (Matching shelf image) */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTemplateFormat('simple');
+                                        setShowBorder(true);
+                                    }}
+                                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between relative ${
+                                        templateFormat === 'simple'
+                                            ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20 shadow-sm'
+                                            : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`p-1.5 rounded-xl ${
+                                                templateFormat === 'simple' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                                            }`}>
+                                                <Tag size={14} />
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-900">Simple (Góndola)</span>
+                                        </div>
+                                        {templateFormat === 'simple' && (
+                                            <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 ring-2 ring-indigo-200" />
+                                        )}
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-500 leading-tight">
+                                        Estilo supermercado/estantería: Nombre de producto, precio gigante, código de barras y fecha (DD/MM/YYYY).
+                                    </p>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 2. Product Selection & Branch Price */}
                         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                                    <Sparkles size={14} className="text-indigo-600" />
-                                    1. Producto y Precio
+                                    <Store size={14} className="text-indigo-600" />
+                                    2. Producto y Precio
                                 </h4>
                                 {currentProduct && (
                                     <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
@@ -679,12 +858,12 @@ const ProductLabelModal = ({
                             </div>
                         </div>
 
-                        {/* 2. Size & Orientation Selector */}
+                        {/* 3. Size & Orientation Selector */}
                         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                     <Layers size={14} className="text-indigo-600" />
-                                    2. Tamaño de Etiqueta
+                                    3. Tamaño de Etiqueta
                                 </h4>
                                 <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
                                     {effectiveWidth} × {effectiveHeight} mm
@@ -774,42 +953,46 @@ const ProductLabelModal = ({
                             </div>
                         </div>
 
-                        {/* 3. Product Options / Fields to Print */}
+                        {/* 4. Options & Fields to Print */}
                         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                     <Sliders size={14} className="text-indigo-600" />
-                                    3. Opciones y Campos a Imprimir
+                                    4. Opciones de Personalización
                                 </h4>
-                                <span className="text-[10px] text-slate-400 font-medium">Personalización</span>
+                                <span className="text-[10px] text-slate-400 font-medium">
+                                    Modo {templateFormat === 'simple' ? 'Simple' : 'Profesional'}
+                                </span>
                             </div>
 
                             <div className="space-y-3 divide-y divide-slate-100">
                                 
-                                {/* Company Name Option */}
-                                <div className="pt-2 flex flex-col gap-2">
-                                    <label className="flex items-center gap-2.5 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={showCompany}
-                                            onChange={(e) => setShowCompany(e.target.checked)}
-                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                                        />
-                                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                            <Building2 size={13} className="text-slate-400" />
-                                            Nombre de Empresa / Encabezado
-                                        </span>
-                                    </label>
-                                    {showCompany && (
-                                        <input
-                                            type="text"
-                                            value={companyName}
-                                            onChange={(e) => setCompanyName(e.target.value)}
-                                            placeholder="Nombre de su negocio"
-                                            className="ml-6 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                        />
-                                    )}
-                                </div>
+                                {/* Company Name Option (Only for Professional) */}
+                                {templateFormat === 'professional' && (
+                                    <div className="pt-2 flex flex-col gap-2">
+                                        <label className="flex items-center gap-2.5 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={showCompany}
+                                                onChange={(e) => setShowCompany(e.target.checked)}
+                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                            />
+                                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                                <Building2 size={13} className="text-slate-400" />
+                                                Nombre de Empresa / Encabezado
+                                            </span>
+                                        </label>
+                                        {showCompany && (
+                                            <input
+                                                type="text"
+                                                value={companyName}
+                                                onChange={(e) => setCompanyName(e.target.value)}
+                                                placeholder="Nombre de su negocio"
+                                                className="ml-6 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            />
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Product Name Option */}
                                 <div className="pt-3 flex flex-col gap-2">
@@ -852,31 +1035,33 @@ const ProductLabelModal = ({
                                     </div>
                                 </div>
 
-                                {/* Internal Code Option */}
-                                <div className="pt-3 flex flex-col gap-2">
-                                    <div className="flex items-center justify-between">
-                                        <label className="flex items-center gap-2.5 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={showInternalCode}
-                                                onChange={(e) => setShowInternalCode(e.target.checked)}
-                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                                            />
-                                            <span className="text-xs font-bold text-slate-800">
-                                                Código Interno (SKU)
-                                            </span>
-                                        </label>
-                                        {showInternalCode && (
-                                            <input
-                                                type="text"
-                                                value={internalCodePrefix}
-                                                onChange={(e) => setInternalCodePrefix(e.target.value)}
-                                                placeholder="Prefijo (ej: COD: )"
-                                                className="w-28 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[11px] font-medium"
-                                            />
-                                        )}
+                                {/* Internal Code Option (Only in Professional) */}
+                                {templateFormat === 'professional' && (
+                                    <div className="pt-3 flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="flex items-center gap-2.5 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={showInternalCode}
+                                                    onChange={(e) => setShowInternalCode(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                                />
+                                                <span className="text-xs font-bold text-slate-800">
+                                                    Código Interno (SKU)
+                                                </span>
+                                            </label>
+                                            {showInternalCode && (
+                                                <input
+                                                    type="text"
+                                                    value={internalCodePrefix}
+                                                    onChange={(e) => setInternalCodePrefix(e.target.value)}
+                                                    placeholder="Prefijo (ej: COD: )"
+                                                    className="w-28 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[11px] font-medium"
+                                                />
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* Barcode / QR Option */}
                                 <div className="pt-3 flex flex-col gap-2.5">
@@ -902,7 +1087,7 @@ const ProductLabelModal = ({
                                                     onChange={(e) => setBarcodeType(e.target.value)}
                                                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800"
                                                 >
-                                                    <option value="CODE128">Código de Barras (Code 128 - Universal)</option>
+                                                    <option value="CODE128">Code 128 (Universal - Recomendado)</option>
                                                     <option value="EAN13">EAN-13 (13 dígitos)</option>
                                                     <option value="EAN8">EAN-8 (8 dígitos)</option>
                                                     <option value="UPC">UPC-A (12 dígitos)</option>
@@ -931,7 +1116,7 @@ const ProductLabelModal = ({
                                                         className="w-3.5 h-3.5 rounded text-indigo-600"
                                                     />
                                                     <label htmlFor="showBcText" className="text-[11px] font-medium text-slate-600 cursor-pointer">
-                                                        Mostrar texto numérico debajo de las barras
+                                                        Mostrar texto numérico {templateFormat === 'simple' ? 'entre las barras' : 'debajo de las barras'}
                                                     </label>
                                                 </div>
                                             )}
@@ -982,55 +1167,102 @@ const ProductLabelModal = ({
                                     </div>
                                 </div>
 
-                                {/* Category & Unit Option */}
-                                <div className="pt-3 flex flex-wrap gap-4">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={showCategory}
-                                            onChange={(e) => setShowCategory(e.target.checked)}
-                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                                        />
-                                        <span className="text-xs font-medium text-slate-700">Mostrar Categoría</span>
-                                    </label>
+                                {/* Simple Template Specific: Date Field (DD/MM/YYYY) */}
+                                {templateFormat === 'simple' && (
+                                    <div className="pt-3 flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="flex items-center gap-2.5 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={showDate}
+                                                    onChange={(e) => setShowDate(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                                />
+                                                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                                    <Calendar size={13} className="text-slate-400" />
+                                                    Fecha al Pie Derecho (DD/MM/YYYY)
+                                                </span>
+                                            </label>
 
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={showUnit}
-                                            onChange={(e) => setShowUnit(e.target.checked)}
-                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                                        />
-                                        <span className="text-xs font-medium text-slate-700">Mostrar Unidad</span>
-                                    </label>
-                                </div>
+                                            {showDate && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLabelDate(getTodayFormatted())}
+                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md transition-colors"
+                                                >
+                                                    Fecha de Hoy
+                                                </button>
+                                            )}
+                                        </div>
 
-                                {/* Custom Note / Footer Text */}
-                                <div className="pt-3 flex flex-col gap-2">
-                                    <div className="flex items-center justify-between">
-                                        <label className="flex items-center gap-2.5 cursor-pointer">
+                                        {showDate && (
+                                            <div className="ml-6 flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={labelDate}
+                                                    onChange={(e) => setLabelDate(e.target.value)}
+                                                    placeholder="DD/MM/YYYY (ej: 18/08/2026)"
+                                                    className="w-44 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                />
+                                                <span className="text-[10px] text-slate-400 font-medium">Formato: DD/MM/YYYY</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Category & Unit Option (Only in Professional) */}
+                                {templateFormat === 'professional' && (
+                                    <div className="pt-3 flex flex-wrap gap-4">
+                                        <label className="flex items-center gap-2 cursor-pointer">
                                             <input
                                                 type="checkbox"
-                                                checked={showCustomNote}
-                                                onChange={(e) => setShowCustomNote(e.target.checked)}
+                                                checked={showCategory}
+                                                onChange={(e) => setShowCategory(e.target.checked)}
                                                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
                                             />
-                                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                                <FileText size={13} className="text-slate-400" />
-                                                Leyenda / Texto Adicional
-                                            </span>
+                                            <span className="text-xs font-medium text-slate-700">Mostrar Categoría</span>
+                                        </label>
+
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={showUnit}
+                                                onChange={(e) => setShowUnit(e.target.checked)}
+                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                            />
+                                            <span className="text-xs font-medium text-slate-700">Mostrar Unidad</span>
                                         </label>
                                     </div>
-                                    {showCustomNote && (
-                                        <input
-                                            type="text"
-                                            value={customNoteText}
-                                            onChange={(e) => setCustomNoteText(e.target.value)}
-                                            placeholder="Ej: IVA Incluido / Hecho en El Salvador"
-                                            className="ml-6 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
-                                        />
-                                    )}
-                                </div>
+                                )}
+
+                                {/* Custom Note / Footer Text (Only in Professional) */}
+                                {templateFormat === 'professional' && (
+                                    <div className="pt-3 flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="flex items-center gap-2.5 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={showCustomNote}
+                                                    onChange={(e) => setShowCustomNote(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                                />
+                                                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                                    <FileText size={13} className="text-slate-400" />
+                                                    Leyenda / Texto Adicional
+                                                </span>
+                                            </label>
+                                        </div>
+                                        {showCustomNote && (
+                                            <input
+                                                type="text"
+                                                value={customNoteText}
+                                                onChange={(e) => setCustomNoteText(e.target.value)}
+                                                placeholder="Ej: IVA Incluido / Hecho en El Salvador"
+                                                className="ml-6 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
+                                            />
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Alignment & Border */}
                                 <div className="pt-3 flex items-center justify-between">
@@ -1044,26 +1276,28 @@ const ProductLabelModal = ({
                                         <span className="text-xs font-medium text-slate-700">Borde exterior de corte</span>
                                     </label>
 
-                                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                                        <button
-                                            type="button"
-                                            onClick={() => setTextAlignment('center')}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                textAlignment === 'center' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'
-                                            }`}
-                                        >
-                                            Centrado
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setTextAlignment('left')}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                textAlignment === 'left' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'
-                                            }`}
-                                        >
-                                            Izquierda
-                                        </button>
-                                    </div>
+                                    {templateFormat === 'professional' && (
+                                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                                            <button
+                                                type="button"
+                                                onClick={() => setTextAlignment('center')}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                    textAlignment === 'center' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'
+                                                }`}
+                                            >
+                                                Centrado
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setTextAlignment('left')}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                    textAlignment === 'left' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'
+                                                }`}
+                                            >
+                                                Izquierda
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
 
                             </div>
@@ -1077,10 +1311,15 @@ const ProductLabelModal = ({
                         {/* Preview Top Bar */}
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                                    <Eye size={15} className="text-indigo-600" />
-                                    Vista Previa en Vivo
-                                </h4>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Eye size={15} className="text-indigo-600" />
+                                        Vista Previa
+                                    </h4>
+                                    <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                                        {templateFormat === 'simple' ? 'Simple' : 'Profesional'}
+                                    </span>
+                                </div>
 
                                 {/* Zoom Controls */}
                                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-sm">
@@ -1117,99 +1356,178 @@ const ProductLabelModal = ({
                             {/* Canvas / Paper Simulation Box */}
                             <div className="flex items-center justify-center p-4 sm:p-6 bg-slate-900/5 rounded-3xl border-2 border-dashed border-slate-300 min-h-[300px] overflow-hidden">
                                 
-                                {/* Label Container (Proportional mm scaled) */}
-                                <div
-                                    ref={previewLabelRef}
-                                    style={{
-                                        width: `${effectiveWidth * 3.7795}px`,
-                                        minHeight: `${effectiveHeight * 3.7795}px`,
-                                        transform: `scale(${zoomLevel / 100})`,
-                                        transformOrigin: 'center center',
-                                    }}
-                                    className={`bg-white text-slate-900 p-2.5 shadow-xl transition-transform flex flex-col justify-between overflow-hidden select-none ${
-                                        showBorder ? 'border border-slate-900' : 'border border-slate-200'
-                                    } ${textAlignment === 'center' ? 'text-center items-center' : 'text-left items-start'}`}
-                                >
-                                    
-                                    {/* 1. Header: Company Name */}
-                                    {showCompany && companyName && (
-                                        <div className="w-full text-[10px] font-black uppercase tracking-tight text-slate-800 leading-tight truncate">
-                                            {companyName}
-                                        </div>
-                                    )}
-
-                                    {/* 2. Product Name */}
-                                    {showProductName && currentProduct && (
-                                        <div className={`w-full text-slate-950 leading-tight my-0.5 line-clamp-2 ${
-                                            productNameBold ? 'font-black' : 'font-semibold'
-                                        } ${
-                                            productNameSize === 'lg' ? 'text-xs' : productNameSize === 'base' ? 'text-[11px]' : productNameSize === 'sm' ? 'text-[10px]' : 'text-[9px]'
-                                        }`}>
-                                            {currentProduct.nombre}
-                                        </div>
-                                    )}
-
-                                    {/* 3. Internal Code, Category, Unit badges */}
-                                    <div className={`w-full flex flex-wrap gap-1 text-[8px] font-mono text-slate-600 ${
-                                        textAlignment === 'center' ? 'justify-center' : 'justify-start'
-                                    }`}>
-                                        {showInternalCode && currentProduct?.codigo && (
-                                            <span className="font-bold">{internalCodePrefix}{currentProduct.codigo}</span>
+                                {/* TEMPLATE 1: SIMPLE GÓNDOLA (Identical to image) */}
+                                {templateFormat === 'simple' ? (
+                                    <div
+                                        ref={previewLabelRef}
+                                        style={{
+                                            width: `${effectiveWidth * 3.7795}px`,
+                                            minHeight: `${effectiveHeight * 3.7795}px`,
+                                            transform: `scale(${zoomLevel / 100})`,
+                                            transformOrigin: 'center center',
+                                        }}
+                                        className={`bg-white text-slate-950 p-2 shadow-xl transition-transform flex flex-col justify-between overflow-hidden select-none ${
+                                            showBorder ? 'border border-slate-950' : 'border border-slate-200'
+                                        }`}
+                                    >
+                                        {/* 1. Product Name (Left-aligned, bold/black top title) */}
+                                        {showProductName && currentProduct && (
+                                            <div className={`w-full text-slate-950 leading-tight text-left line-clamp-2 uppercase tracking-tight ${
+                                                productNameBold ? 'font-black' : 'font-bold'
+                                            } ${
+                                                productNameSize === 'lg' ? 'text-xs' : productNameSize === 'base' ? 'text-[11px]' : productNameSize === 'sm' ? 'text-[10px]' : 'text-[9px]'
+                                            }`}>
+                                                {currentProduct.nombre}
+                                            </div>
                                         )}
-                                        {showCategory && currentProduct?.category_name && (
-                                            <span>• {currentProduct.category_name}</span>
+
+                                        {/* 2. Prominent Right-Aligned Price */}
+                                        {showPrice && (
+                                            <div className="w-full flex justify-end items-center my-0.5">
+                                                <span className={`font-black text-slate-950 tracking-tight leading-none ${
+                                                    priceSize === 'xlarge'
+                                                        ? 'text-xl sm:text-2xl'
+                                                        : priceSize === 'large'
+                                                        ? 'text-lg sm:text-xl'
+                                                        : 'text-base sm:text-lg'
+                                                }`}>
+                                                    {pricePrefix}{formattedPrice}
+                                                </span>
+                                            </div>
                                         )}
-                                        {showUnit && currentProduct?.unidad_medida && (
-                                            <span>• {currentProduct.unidad_medida}</span>
+
+                                        {/* 3. Barcode with human-readable code */}
+                                        {showBarcode && barcodeType !== 'NONE' && (
+                                            <div className="w-full flex flex-col items-center justify-center my-0.5 shrink-0 overflow-hidden">
+                                                {barcodeType === 'QR' ? (
+                                                    <div className="p-0.5 bg-white">
+                                                        <QRCodeSVG
+                                                            value={barcodeValue || currentProduct?.codigo || '0000'}
+                                                            size={Math.max(42, Math.min(84, effectiveHeight * 1.8))}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center w-full max-w-full overflow-hidden px-0.5">
+                                                        <BarcodeRenderer
+                                                            value={barcodeValue || currentProduct?.codigo || ''}
+                                                            format={barcodeType}
+                                                            width={effectiveWidth < 45 ? 1.2 : 1.4}
+                                                            height={Math.max(14, Math.min(22, effectiveHeight * 0.24))}
+                                                            displayValue={showBarcodeText}
+                                                            fontSize={11}
+                                                            font="Arial, Helvetica, sans-serif"
+                                                            fontOptions="bold"
+                                                            textMargin={2}
+                                                            className="w-full flex justify-center"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* 4. Footer: Date (DD/MM/YYYY) in bottom-right corner */}
+                                        {showDate && labelDate && (
+                                            <div className="w-full flex justify-end items-center mt-auto pt-0.5">
+                                                <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-900 tracking-tight leading-none">
+                                                    {labelDate}
+                                                </span>
+                                            </div>
                                         )}
                                     </div>
+                                ) : (
+                                    /* TEMPLATE 2: PROFESIONAL (Corporate Full) */
+                                    <div
+                                        ref={previewLabelRef}
+                                        style={{
+                                            width: `${effectiveWidth * 3.7795}px`,
+                                            minHeight: `${effectiveHeight * 3.7795}px`,
+                                            transform: `scale(${zoomLevel / 100})`,
+                                            transformOrigin: 'center center',
+                                        }}
+                                        className={`bg-white text-slate-900 p-2.5 shadow-xl transition-transform flex flex-col justify-between overflow-hidden select-none ${
+                                            showBorder ? 'border border-slate-900' : 'border border-slate-200'
+                                        } ${textAlignment === 'center' ? 'text-center items-center' : 'text-left items-start'}`}
+                                    >
+                                        {/* 1. Header: Company Name */}
+                                        {showCompany && companyName && (
+                                            <div className="w-full text-[10px] font-black uppercase tracking-tight text-slate-800 leading-tight truncate">
+                                                {companyName}
+                                            </div>
+                                        )}
 
-                                    {/* 4. Barcode / QR Section */}
-                                    {showBarcode && barcodeType !== 'NONE' && (
-                                        <div className="w-full flex flex-col items-center justify-center my-1 shrink-0 overflow-hidden">
-                                            {barcodeType === 'QR' ? (
-                                                <div className="p-0.5 bg-white">
-                                                    <QRCodeSVG
-                                                        value={barcodeValue || currentProduct?.codigo || '0000'}
-                                                        size={Math.max(48, Math.min(90, effectiveHeight * 2))}
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center w-full max-w-full overflow-hidden">
-                                                    <BarcodeRenderer
-                                                        value={barcodeValue || currentProduct?.codigo || ''}
-                                                        format={barcodeType}
-                                                        width={effectiveWidth < 40 ? 1.2 : 1.6}
-                                                        height={Math.max(16, Math.min(36, effectiveHeight * 0.32))}
-                                                        displayValue={showBarcodeText}
-                                                    />
-                                                </div>
+                                        {/* 2. Product Name */}
+                                        {showProductName && currentProduct && (
+                                            <div className={`w-full text-slate-950 leading-tight my-0.5 line-clamp-2 ${
+                                                productNameBold ? 'font-black' : 'font-semibold'
+                                            } ${
+                                                productNameSize === 'lg' ? 'text-xs' : productNameSize === 'base' ? 'text-[11px]' : productNameSize === 'sm' ? 'text-[10px]' : 'text-[9px]'
+                                            }`}>
+                                                {currentProduct.nombre}
+                                            </div>
+                                        )}
+
+                                        {/* 3. Internal Code, Category, Unit badges */}
+                                        <div className={`w-full flex flex-wrap gap-1 text-[8px] font-mono text-slate-600 ${
+                                            textAlignment === 'center' ? 'justify-center' : 'justify-start'
+                                        }`}>
+                                            {showInternalCode && currentProduct?.codigo && (
+                                                <span className="font-bold">{internalCodePrefix}{currentProduct.codigo}</span>
+                                            )}
+                                            {showCategory && currentProduct?.category_name && (
+                                                <span>• {currentProduct.category_name}</span>
+                                            )}
+                                            {showUnit && currentProduct?.unidad_medida && (
+                                                <span>• {currentProduct.unidad_medida}</span>
                                             )}
                                         </div>
-                                    )}
 
-                                    {/* 5. Price Section */}
-                                    {showPrice && (
-                                        <div className={`w-full font-black text-slate-950 tracking-tight leading-tight ${
-                                            priceSize === 'xlarge'
-                                                ? 'text-base font-black text-indigo-950'
-                                                : priceSize === 'large'
-                                                ? 'text-sm font-black'
-                                                : 'text-xs font-bold'
-                                        }`}>
-                                            <span>{pricePrefix}</span>
-                                            <span>{formattedPrice}</span>
-                                        </div>
-                                    )}
+                                        {/* 4. Barcode / QR Section */}
+                                        {showBarcode && barcodeType !== 'NONE' && (
+                                            <div className="w-full flex flex-col items-center justify-center my-1 shrink-0 overflow-hidden">
+                                                {barcodeType === 'QR' ? (
+                                                    <div className="p-0.5 bg-white">
+                                                        <QRCodeSVG
+                                                            value={barcodeValue || currentProduct?.codigo || '0000'}
+                                                            size={Math.max(48, Math.min(90, effectiveHeight * 2))}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center w-full max-w-full overflow-hidden">
+                                                        <BarcodeRenderer
+                                                            value={barcodeValue || currentProduct?.codigo || ''}
+                                                            format={barcodeType}
+                                                            width={effectiveWidth < 40 ? 1.2 : 1.6}
+                                                            height={Math.max(16, Math.min(36, effectiveHeight * 0.32))}
+                                                            displayValue={showBarcodeText}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
-                                    {/* 6. Custom Note / Footer */}
-                                    {showCustomNote && customNoteText && (
-                                        <div className="w-full text-[7.5px] font-semibold text-slate-500 uppercase tracking-tighter truncate mt-0.5">
-                                            {customNoteText}
-                                        </div>
-                                    )}
+                                        {/* 5. Price Section */}
+                                        {showPrice && (
+                                            <div className={`w-full font-black text-slate-950 tracking-tight leading-tight ${
+                                                priceSize === 'xlarge'
+                                                    ? 'text-base font-black text-indigo-950'
+                                                    : priceSize === 'large'
+                                                    ? 'text-sm font-black'
+                                                    : 'text-xs font-bold'
+                                            }`}>
+                                                <span>{pricePrefix}</span>
+                                                <span>{formattedPrice}</span>
+                                            </div>
+                                        )}
 
-                                </div>
+                                        {/* 6. Custom Note / Footer */}
+                                        {showCustomNote && customNoteText && (
+                                            <div className="w-full text-[7.5px] font-semibold text-slate-500 uppercase tracking-tighter truncate mt-0.5">
+                                                {customNoteText}
+                                            </div>
+                                        )}
+
+                                    </div>
+                                )}
                             </div>
                         </div>
 
