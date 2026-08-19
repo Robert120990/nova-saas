@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { sendCloseoutToRrs } = require('../services/gasCloseoutRrs.service');
 const dteService = require('../services/dte.service');
 const notificationService = require('../services/notification.service');
+const { dteValidoExistsSql } = require('../services/dteQueryFilters');
 
 // === Historial de cambios en cierres reabiertos ===
 
@@ -2882,7 +2883,7 @@ exports.getVentasComparacion = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
-                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
+                  AND ${dteValidoExistsSql('sh')}
                   AND sh.shift_id = ?
                 GROUP BY si.product_id
             ) v ON p.id = v.product_id
@@ -2982,7 +2983,7 @@ exports.generarComplementaria = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
-                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
+                  AND ${dteValidoExistsSql('sh')}
                   AND sh.shift_id = ?
                 GROUP BY si.product_id
             ) v ON p.id = v.product_id

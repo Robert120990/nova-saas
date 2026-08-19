@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const pdfService = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
+const { dteValidoExistsSql } = require('../services/dteQueryFilters');
 
 exports.getReporteVentas = async (req, res) => {
     try {
@@ -48,7 +49,7 @@ exports.getReporteVentas = async (req, res) => {
                 JOIN sales_headers sh ON si.sale_id = sh.id
                 WHERE sh.company_id = ? AND DATE(sh.created_at) = ? AND sh.branch_id = ?
                   AND sh.estado != 'anulado'
-                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
+                  AND ${dteValidoExistsSql('sh')}
                   AND (? = 0 OR sh.shift_id IN (
                       SELECT id FROM pos_shifts
                       WHERE company_id = ? AND branch_id = ? AND shift_date = ? AND shift_number = ?
@@ -428,7 +429,7 @@ exports.getGalonajeVendidoPDF = async (req, res) => {
                 AND DATE(sh.created_at) BETWEEN ? AND ?
                 AND sh.estado != 'anulado'
                 AND sh.estado != 'ANULADO'
-                AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
+                AND ${dteValidoExistsSql('sh')}
                 AND p.tipo_combustible > 0
                 ${branchFilterSale}
             GROUP BY DATE(sh.created_at), p.tipo_combustible

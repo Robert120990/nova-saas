@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const mailer = require('../services/mailer.service');
+const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
 const { 
     generateStatementPDF, 
     generateCustomerBalancesPDF,
@@ -27,12 +28,11 @@ const getCustomerStatement = async (req, res) => {
         const [totalRows] = await pool.query(`
             SELECT COUNT(*) as total FROM (
                 SELECT h.id FROM sales_headers h
-                LEFT JOIN dtes d ON h.id = d.venta_id
                 WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
                 AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
                 AND h.estado != 'ANULADO'
-                AND (d.status IS NULL OR d.status != 'INVALIDADO')
-                ${searchTerm ? 'AND (d.codigo_generacion LIKE ? OR h.id LIKE ?)' : ''}
+                AND ${dteValidoExistsSql('h')}
+                ${searchTerm ? 'AND (h.codigo_generacion LIKE ? OR h.id LIKE ?)' : ''}
                 UNION ALL
                 SELECT p.id FROM customer_payments p
                 WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
@@ -52,19 +52,18 @@ const getCustomerStatement = async (req, res) => {
                 h.id as doc_id,
                 h.fecha_emision as fecha,
                 h.tipo_documento as tipo,
-                COALESCE(d.numero_control, h.id) as numero,
+                COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
                 h.total_pagar as cargo,
                 0 as abono,
                 'VENTA' as concepto,
                 COALESCE(c.nombre, h.cliente_nombre, CONCAT('CLIENTE #', c.id)) as cliente_nombre
             FROM sales_headers h
             JOIN customers c ON h.customer_id = c.id
-            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
-            ${searchTerm ? 'AND (d.numero_control LIKE ? OR h.id LIKE ?)' : ''}
+            AND ${dteValidoExistsSql('h')}
+            ${searchTerm ? 'AND (h.numero_control LIKE ? OR h.id LIKE ?)' : ''}
         `, [company_id, branch_id, customer_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
 
         const [payments] = await pool.query(`
@@ -126,19 +125,18 @@ const getPendingDocuments = async (req, res) => {
                 h.id as sale_id,
                 h.fecha_emision as fecha,
                 COALESCE(cat.description, h.tipo_documento) as tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
                 h.total_pagar as total_original,
                 COALESCE(SUM(p.monto), 0) as total_abonado,
                 (h.total_pagar - COALESCE(SUM(p.monto), 0)) as saldo_pendiente
             FROM sales_headers h
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
-            LEFT JOIN dtes d ON h.id = d.venta_id
             LEFT JOIN customer_payments p ON p.sale_id = h.id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
-            GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, d.numero_control, h.total_pagar
+            AND ${dteValidoExistsSql('h')}
+            GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, h.total_pagar
             HAVING saldo_pendiente > 0.001
             ORDER BY h.fecha_emision ASC, h.id ASC
         `, [company_id, branch_id, customer_id]);
@@ -526,13 +524,12 @@ const exportStatementPDF = async (req, res) => {
         if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
 
         const [sales] = await pool.query(`
-            SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(d.numero_control, h.id) as numero,
+            SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
                    h.total_pagar as cargo, 0 as abono, 'VENTA' as concepto
             FROM sales_headers h
-            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND ${dteValidoExistsSql('h')}
         `, [company_id, branch_id, customer_id]);
 
         const [payments] = await pool.query(`
@@ -587,20 +584,19 @@ const getAgingReport = async (req, res) => {
                 h.id as sale_id,
                 h.fecha_emision as fecha,
                 COALESCE(cat.description, h.tipo_documento) as tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
                 h.total_pagar as total_original,
                 COALESCE(SUM(p.monto), 0) as total_abonado,
                 (h.total_pagar - COALESCE(SUM(p.monto), 0)) as saldo_pendiente,
                 DATEDIFF(NOW(), h.fecha_emision) as dias_antiguedad
             FROM sales_headers h
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
-            LEFT JOIN dtes d ON h.id = d.venta_id
             LEFT JOIN customer_payments p ON p.sale_id = h.id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
-            GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, d.numero_control, h.total_pagar
+            AND ${dteValidoExistsSql('h')}
+            GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, h.total_pagar
             HAVING saldo_pendiente > 0.001
             ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
@@ -649,15 +645,14 @@ const exportAgingPDF = async (req, res) => {
             SELECT 
                 h.id as sale_id, h.fecha_emision as fecha,
                 COALESCE(cat.description, h.tipo_documento) as tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
                 (h.total_pagar - COALESCE((SELECT SUM(monto) FROM customer_payments WHERE sale_id = h.id), 0)) as saldo_pendiente,
                 DATEDIFF(NOW(), h.fecha_emision) as dias_antiguedad
             FROM sales_headers h
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
-            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND ${dteValidoExistsSql('h')}
             HAVING saldo_pendiente > 0.001 ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
@@ -717,15 +712,14 @@ const sendAgingEmail = async (req, res) => {
             SELECT 
                 h.id as sale_id, h.fecha_emision as fecha,
                 COALESCE(cat.description, h.tipo_documento) as tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
                 (h.total_pagar - COALESCE((SELECT SUM(monto) FROM customer_payments WHERE sale_id = h.id), 0)) as saldo_pendiente,
                 DATEDIFF(NOW(), h.fecha_emision) as dias_antiguedad
             FROM sales_headers h
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
-            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND ${dteValidoExistsSql('h')}
             HAVING saldo_pendiente > 0.001 ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
@@ -803,6 +797,7 @@ const getCustomerBalancesReport = async (req, res) => {
                         AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
                         AND h.estado != 'ANULADO'
                         AND h.fecha_emision <= ?
+                        AND ${dteValidoExistsSql('h')}
                     ), 0) - 
                     COALESCE((
                         SELECT SUM(p.monto)
@@ -890,7 +885,7 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
                     WHEN '11' THEN 'Factura de Exportación'
                     ELSE h.tipo_documento 
                 END AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
-                CAST(COALESCE(d.numero_control, CONCAT('VTA-', h.id)) AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
+                CAST(COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
                 h.total_pagar as monto,
                 (h.total_pagar - COALESCE((
                     SELECT SUM(monto) FROM customer_payments 
@@ -900,11 +895,10 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
                 CAST(c.nombre AS CHAR) COLLATE utf8mb4_unicode_ci as customer_name
             FROM sales_headers h
             JOIN customers c ON h.customer_id = c.id
-            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND h.branch_id = ?
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND ${dteValidoExistsSql('h')}
             AND h.fecha_emision <= ?
         `;
         const params = [cutoffDate, cutoffDate, company_id, branch_id, cutoffDate];

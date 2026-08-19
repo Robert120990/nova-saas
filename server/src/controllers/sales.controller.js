@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
+const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
 
 const dteTypeNames = {
     '01': 'Factura',
@@ -1657,7 +1658,7 @@ const exportSalesDetailPDF = async (req, res) => {
                 h.fecha_emision,
                 h.tipo_documento,
                 cat.description AS tipo_dte,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) AS numero_control,
+                COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) AS numero_control,
                 COALESCE(c.nombre, h.cliente_nombre, 'CONSUMIDOR FINAL') AS cliente,
                 COALESCE(si.codigo, p.codigo, '') AS codigo_producto,
                 COALESCE(si.descripcion, p.descripcion, '') AS descripcion,
@@ -1670,10 +1671,9 @@ const exportSalesDetailPDF = async (req, res) => {
             JOIN sales_items si ON h.id = si.sale_id
             LEFT JOIN products p ON si.product_id = p.id
             LEFT JOIN customers c ON h.customer_id = c.id
-            LEFT JOIN dtes d ON h.id = d.venta_id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND ${dteValidoExistsSql('h')}
             AND h.fecha_emision BETWEEN ? AND ?
         `;
         const params = [companyId, start_date, end_date];
@@ -1696,9 +1696,8 @@ const exportSalesDetailPDF = async (req, res) => {
                 SUM(h.cotrans) AS cotrans,
                 SUM(h.total_pagar) AS total
             FROM sales_headers h
-            LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE h.company_id = ? AND LOWER(h.estado) = 'emitido'
-            AND (d.status IS NULL OR d.status != 'INVALIDADO')
+            AND ${dteValidoExistsSql('h')}
             AND h.fecha_emision BETWEEN ? AND ?
         `;
         const totalsParams = [companyId, start_date, end_date];

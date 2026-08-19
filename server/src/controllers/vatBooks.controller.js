@@ -47,12 +47,14 @@ const DTE_JOIN_SQL = `
 `;
 
 /**
- * Excluye del libro una venta solo cuando tiene DTEs y TODOS están invalidados
- * (equivale a la semántica anterior del filtro por fila del JOIN).
+ * Incluye en el libro/anexo solo ventas cuyo DTE más reciente (último intento
+ * por MAX(id) del JOIN deduplicado) tiene status válido. Excluye ventas sin DTE
+ * (sin código de generación), rechazadas (REJECTED/ERROR) e invalidadas.
+ * Requiere el alias `d` del DTE_JOIN_SQL.
  */
-const DTE_NOT_INVALIDADO_SQL = `(
-    NOT EXISTS (SELECT 1 FROM dtes di WHERE di.venta_id = sh.id)
-    OR EXISTS (SELECT 1 FROM dtes dv WHERE dv.venta_id = sh.id AND dv.status != 'INVALIDADO')
+const DTE_VALIDO_SQL = `(
+    d.venta_id IS NOT NULL
+    AND d.status NOT IN ('REJECTED', 'ERROR', 'INVALIDADO')
 )`;
 
 /**
@@ -269,7 +271,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'", DTE_NOT_INVALIDADO_SQL];
+        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'", DTE_VALIDO_SQL];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -401,7 +403,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'", DTE_NOT_INVALIDADO_SQL];
+        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'", DTE_VALIDO_SQL];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -607,7 +609,7 @@ const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tip
         'sh.company_id = ?',
         'sh.branch_id = ?',
         "sh.estado != 'ANULADO'",
-        DTE_NOT_INVALIDADO_SQL
+        DTE_VALIDO_SQL
     ];
     const params = [companyId, branchId];
 
