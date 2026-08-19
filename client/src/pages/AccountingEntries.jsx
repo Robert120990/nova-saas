@@ -153,14 +153,14 @@ const AccountingEntries = () => {
             <Table headers={['Número', 'Fecha', 'Tipo', 'Descripción', 'Débito', 'Crédito', 'Estado']} data={filteredEntries} isLoading={isLoading}
                 renderRow={(e) => (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                        <td className="px-6 py-3 font-mono font-bold text-xs">{e.number}</td>
-                        <td className="px-6 py-3 text-xs">{e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '—'}</td>
-                        <td className="px-6 py-3 text-xs">{e.entry_type_name}</td>
-                        <td className="px-6 py-3 text-xs text-slate-600 max-w-xs truncate">{e.description}</td>
-                        <td className="px-6 py-3 font-bold text-xs text-emerald-600"><Money value={e.total_debit} /></td>
-                        <td className="px-6 py-3 font-bold text-xs text-rose-600"><Money value={e.total_credit} /></td>
-                        <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600' : e.status === 'voided' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}</span></td>
-                        <td className="px-6 py-3">
+                        <td className="px-6 py-1.5 font-mono font-bold text-xs">{e.number}</td>
+                        <td className="px-6 py-1.5 text-xs">{e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '—'}</td>
+                        <td className="px-6 py-1.5 text-xs">{e.entry_type_name}</td>
+                        <td className="px-6 py-1.5 text-xs text-slate-600 max-w-xs truncate">{e.description}</td>
+                        <td className="px-6 py-1.5 font-bold text-xs text-emerald-600"><Money value={e.total_debit} /></td>
+                        <td className="px-6 py-1.5 font-bold text-xs text-rose-600"><Money value={e.total_credit} /></td>
+                        <td className="px-6 py-1.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600' : e.status === 'voided' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}</span></td>
+                        <td className="px-6 py-1.5">
                             <div className="flex gap-2">
                                 <button onClick={async () => { const { data } = await axios.get(`/api/accounting/entries/${e.id}`); setViewEntry(data); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Eye size={14} /></button>
                                 <button onClick={() => handleEdit(e)} className="p-1.5 text-slate-400 hover:text-amber-600"><Edit size={14} /></button>
@@ -193,7 +193,7 @@ const AccountingEntries = () => {
                         )}
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Descripción</label>
-                            <input name="description" placeholder="Concepto de la partida" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                            <input name="description" placeholder="Concepto de la partida" required defaultValue={editingEntry?.description || ''} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                         </div>
                     </div>
 
