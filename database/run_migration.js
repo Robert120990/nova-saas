@@ -14,7 +14,7 @@ async function runMigration() {
     });
 
     try {
-        const migrationPath = path.join(__dirname, 'migration_v140_pozo_cortes_cierre.sql');
+        const migrationPath = path.join(__dirname, 'migration_v141_telegram.sql');
         const sql = fs.readFileSync(migrationPath, 'utf8');
         console.log('Running migration...');
         await pool.query(sql);

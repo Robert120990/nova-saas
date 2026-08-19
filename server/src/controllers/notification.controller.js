@@ -51,7 +51,7 @@ const getRulesByBranch = async (req, res) => {
 };
 
 const saveRule = async (req, res) => {
-    const { id, branch_id, action_code, name, is_active, channel_system, channel_email, channel_whatsapp, title_template, body_template, conditions, recipients } = req.body;
+    const { id, branch_id, action_code, name, is_active, channel_system, channel_email, channel_whatsapp, channel_telegram, title_template, body_template, conditions, recipients } = req.body;
 
     if (!action_code || !name) {
         return res.status(400).json({ message: 'Código de acción y nombre son requeridos' });
@@ -74,19 +74,19 @@ const saveRule = async (req, res) => {
         if (id) {
             await connection.query(
                 `UPDATE notification_rules SET branch_id = ?, action_code = ?, name = ?, is_active = ?,
-                 channel_system = ?, channel_email = ?, channel_whatsapp = ?,
+                 channel_system = ?, channel_email = ?, channel_whatsapp = ?, channel_telegram = ?,
                  title_template = ?, body_template = ?
                  WHERE id = ? AND company_id = ?`,
-                [branch_id, action_code, name, is_active ?? 1, channel_system ?? 1, channel_email ?? 0, channel_whatsapp ?? 0, title_template || null, body_template || null, id, req.company_id]
+                [branch_id, action_code, name, is_active ?? 1, channel_system ?? 1, channel_email ?? 0, channel_whatsapp ?? 0, channel_telegram ?? 0, title_template || null, body_template || null, id, req.company_id]
             );
             ruleId = id;
             await connection.query('DELETE FROM notification_rule_conditions WHERE rule_id = ?', [id]);
             await connection.query('DELETE FROM notification_rule_recipients WHERE rule_id = ?', [id]);
         } else {
             const [result] = await connection.query(
-                `INSERT INTO notification_rules (company_id, branch_id, action_code, name, is_active, channel_system, channel_email, channel_whatsapp, title_template, body_template)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.company_id, branch_id, action_code, name, is_active ?? 1, channel_system ?? 1, channel_email ?? 0, channel_whatsapp ?? 0, title_template || null, body_template || null]
+                `INSERT INTO notification_rules (company_id, branch_id, action_code, name, is_active, channel_system, channel_email, channel_whatsapp, channel_telegram, title_template, body_template)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.company_id, branch_id, action_code, name, is_active ?? 1, channel_system ?? 1, channel_email ?? 0, channel_whatsapp ?? 0, channel_telegram ?? 0, title_template || null, body_template || null]
             );
             ruleId = result.insertId;
         }

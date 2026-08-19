@@ -102,6 +102,8 @@ app.use((err, req, res, next) => {
 const http = require('http');
 const { initWebSocket } = require('./services/websocket.service');
 const { startWorker } = require('./services/notificationWorker');
+const { startBot: startTelegramBot } = require('./services/telegram.service');
+const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 
 // Evitar que un error no capturado (unhandledRejection) tumbe el servidor
 // a mitad de una respuesta: se registra la causa y el proceso sigue vivo.
@@ -123,4 +125,6 @@ startWorker();
 
 server.listen(PORT, () => {
     console.log(`Servidor SaaS corriendo en puerto ${PORT}`);
+    startTelegramBot();
+    startSuspiciousSalesDetector();
 });

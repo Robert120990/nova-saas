@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Bell, Plus, GitBranch, Settings, Trash2, Edit3 } from 'lucide-react';
+import { Bell, Plus, GitBranch, Settings, Trash2, Edit3, MessageCircle, Send, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import RuleEditor from '../components/ui/RuleEditor';
 import { useConfirm } from '../context/ConfirmContext';
@@ -56,6 +56,62 @@ const NotificacionesConfig = () => {
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error al eliminar'),
   });
+
+  const { data: telegramStatus, isLoading: telegramLoading } = useQuery({
+    queryKey: ['telegram-status'],
+    queryFn: async () => (await axios.get('/api/notifications/telegram/status')).data,
+  });
+
+  const toggleAlertasMutation = useMutation({
+    mutationFn: ({ id, receive_alerts }) => axios.put(`/api/notifications/telegram/bindings/${id}`, { receive_alerts }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['telegram-status']);
+      toast.success('Preferencia de alertas actualizada');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar'),
+  });
+
+  const testTelegramMutation = useMutation({
+    mutationFn: () => axios.post('/api/notifications/telegram/test', {}),
+    onSuccess: () => toast.success('Mensaje de prueba enviado. Revisa tu Telegram.'),
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al enviar prueba'),
+  });
+
+  const { data: suspiciousSettings } = useQuery({
+    queryKey: ['sale-suspicious-settings', selectedBranchId],
+    queryFn: async () => (await axios.get('/api/notifications/sale-suspicious-settings', { params: { branch_id: selectedBranchId } })).data,
+    enabled: !!selectedBranchId,
+  });
+
+  const [suspiciousForm, setSuspiciousForm] = useState(null);
+
+  React.useEffect(() => {
+    if (suspiciousSettings) {
+      setSuspiciousForm({
+        enabled: !!suspiciousSettings.enabled,
+        monto_maximo: suspiciousSettings.monto_maximo,
+        descuento_maximo_porcentaje: suspiciousSettings.descuento_maximo_porcentaje,
+        montos_redondos: !!suspiciousSettings.montos_redondos,
+        horas_inicio: String(suspiciousSettings.horas_inicio || '00:00:00').slice(0, 5),
+        horas_fin: String(suspiciousSettings.horas_fin || '23:59:59').slice(0, 5),
+        anulaciones_maximas: suspiciousSettings.anulaciones_maximas,
+        ventana_anulaciones_min: suspiciousSettings.ventana_anulaciones_min,
+      });
+    }
+  }, [suspiciousSettings]);
+
+  const saveSuspiciousMutation = useMutation({
+    mutationFn: (payload) => axios.put('/api/notifications/sale-suspicious-settings', { ...payload, branch_id: selectedBranchId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['sale-suspicious-settings', selectedBranchId]);
+      toast.success('Configuración de ventas sospechosas guardada');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar'),
+  });
+
+  const updateSuspiciousField = (field, value) => {
+    setSuspiciousForm(prev => ({ ...prev, [field]: value }));
+  };
 
   const actionsByCategory = actions.reduce((acc, a) => {
     const cat = a.category || 'otras';
@@ -142,6 +198,185 @@ const NotificacionesConfig = () => {
         </div>
 
         <div className="md:col-span-3 space-y-4">
+          {/* Telegram */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-sky-50 rounded-xl"><MessageCircle size={18} className="text-sky-600" /></div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Telegram</h4>
+                  <p className="text-[10px] text-slate-400 font-medium">Alertas y asistente Novas AI por chat</p>
+                </div>
+              </div>
+              {telegramStatus?.configured ? (
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                  Bot: @{telegramStatus.botInfo?.username || 'conectado'}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                  TELEGRAM_BOT_TOKEN no configurado
+                </span>
+              )}
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-[11px] text-slate-500 bg-slate-50 rounded-xl p-3 leading-relaxed">
+                💡 Para recibir alertas y preguntarle al asistente: abre tu bot en Telegram y escribe <b>/start</b>, luego elige empresa y sucursal. Los chats vinculados aparecen aquí.
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                      <th className="px-2 py-1.5">Chat</th>
+                      <th className="px-2 py-1.5">Sucursal</th>
+                      <th className="px-2 py-1.5 text-right">Recibe alertas</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-[11px]">
+                    {telegramLoading && (
+                      <tr><td colSpan={3} className="px-2 py-3 text-center text-[10px] text-slate-400">Cargando...</td></tr>
+                    )}
+                    {!telegramLoading && telegramStatus?.bindings?.length === 0 && (
+                      <tr><td colSpan={3} className="px-2 py-3 text-center text-[10px] text-slate-400">Sin chats vinculados todavía. Escribe /start al bot desde Telegram.</td></tr>
+                    )}
+                    {telegramStatus?.bindings?.map(b => (
+                      <tr key={b.id}>
+                        <td className="px-2 py-1.5">
+                          <span className="font-bold text-slate-700">{b.nombre || 'Usuario'}</span>
+                          {b.username && <span className="text-slate-400"> @{b.username}</span>}
+                          <span className="block text-[9px] text-slate-400 font-mono">chat {b.chat_id}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-slate-600">{b.branch_nombre}</td>
+                        <td className="px-2 py-1.5 text-right">
+                          <button
+                            onClick={() => toggleAlertasMutation.mutate({ id: b.id, receive_alerts: !b.receive_alerts })}
+                            className={`relative w-9 h-5 rounded-full transition-colors ${b.receive_alerts ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                            title={b.receive_alerts ? 'Desactivar alertas' : 'Activar alertas'}
+                          >
+                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${b.receive_alerts ? 'left-[18px]' : 'left-0.5'}`} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => testTelegramMutation.mutate()}
+                  disabled={!telegramStatus?.configured || testTelegramMutation.isPending}
+                  className="flex items-center gap-1.5 text-[11px] font-bold text-sky-600 hover:bg-sky-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  <Send size={13} />
+                  {testTelegramMutation.isPending ? 'Enviando...' : 'Probar conexión'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Ventas Sospechosas */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-50 rounded-xl"><ShieldAlert size={18} className="text-red-500" /></div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Ventas Sospechosas</h4>
+                  <p className="text-[10px] text-slate-400 font-medium">Detección automática cada 5 minutos — sucursal seleccionada</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              {!suspiciousForm ? (
+                <div className="py-4 text-center text-[11px] text-slate-400">Cargando configuración...</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={suspiciousForm.enabled}
+                      onChange={(e) => updateSuspiciousField('enabled', e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                    />
+                    Detección activa
+                  </label>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Monto máximo</label>
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={suspiciousForm.monto_maximo}
+                      onChange={(e) => updateSuspiciousField('monto_maximo', e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-red-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">% descuento máximo</label>
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={suspiciousForm.descuento_maximo_porcentaje}
+                      onChange={(e) => updateSuspiciousField('descuento_maximo_porcentaje', e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-red-500/20"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={suspiciousForm.montos_redondos}
+                      onChange={(e) => updateSuspiciousField('montos_redondos', e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                    />
+                    Montos múltiplos de $100
+                  </label>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Fuera de horario desde</label>
+                    <input
+                      type="time"
+                      value={suspiciousForm.horas_inicio}
+                      onChange={(e) => updateSuspiciousField('horas_inicio', e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-red-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Hasta</label>
+                    <input
+                      type="time"
+                      value={suspiciousForm.horas_fin}
+                      onChange={(e) => updateSuspiciousField('horas_fin', e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-red-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Anulaciones máximas</label>
+                    <input
+                      type="number" min="0"
+                      value={suspiciousForm.anulaciones_maximas}
+                      onChange={(e) => updateSuspiciousField('anulaciones_maximas', e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-red-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Ventana (minutos)</label>
+                    <input
+                      type="number" min="1"
+                      value={suspiciousForm.ventana_anulaciones_min}
+                      onChange={(e) => updateSuspiciousField('ventana_anulaciones_min', e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium outline-none focus:ring-2 focus:ring-red-500/20"
+                    />
+                  </div>
+                  <div className="flex items-end justify-end sm:col-span-2 lg:col-span-2">
+                    <button
+                      onClick={() => saveSuspiciousMutation.mutate(suspiciousForm)}
+                      disabled={saveSuspiciousMutation.isPending}
+                      className="flex items-center gap-1.5 text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Settings size={13} />
+                      {saveSuspiciousMutation.isPending ? 'Guardando...' : 'Guardar configuración'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {rulesLoading ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-20 text-center">
               <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
@@ -198,6 +433,7 @@ const NotificacionesConfig = () => {
                                   {rule.channel_system && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Sistema</span>}
                                   {rule.channel_email && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Email</span>}
                                   {rule.channel_whatsapp && <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">WhatsApp</span>}
+                                  {rule.channel_telegram && <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">Telegram</span>}
                                 </div>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${rule.is_active ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
                                   {rule.is_active ? 'Activa' : 'Inactiva'}

@@ -24,6 +24,7 @@ const RuleEditor = ({ rule, branchId, actions, onSave, onCancel }) => {
     channel_system: true,
     channel_email: false,
     channel_whatsapp: false,
+    channel_telegram: false,
     title_template: '',
     body_template: '',
     conditions: [],
@@ -61,6 +62,7 @@ const RuleEditor = ({ rule, branchId, actions, onSave, onCancel }) => {
         channel_system: rule.channel_system !== undefined ? rule.channel_system : true,
         channel_email: rule.channel_email !== undefined ? rule.channel_email : false,
         channel_whatsapp: rule.channel_whatsapp !== undefined ? rule.channel_whatsapp : false,
+        channel_telegram: rule.channel_telegram !== undefined ? rule.channel_telegram : false,
         title_template: rule.title_template || '',
         body_template: rule.body_template || '',
         conditions: rule.conditions || [],
@@ -235,6 +237,7 @@ const RuleEditor = ({ rule, branchId, actions, onSave, onCancel }) => {
                   { key: 'channel_system', label: 'Sistema (in-app)', color: 'indigo' },
                   { key: 'channel_email', label: 'Correo electrónico', color: 'blue' },
                   { key: 'channel_whatsapp', label: 'WhatsApp', color: 'green' },
+                  { key: 'channel_telegram', label: 'Telegram', color: 'sky' },
                 ].map(ch => (
                   <label key={ch.key} className="flex items-center gap-2 cursor-pointer">
                     <input

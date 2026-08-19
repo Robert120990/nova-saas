@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { render } = require('./template.service');
 const { evaluateAll } = require('./condition.service');
 const whatsappService = require('./whatsapp.service');
+const telegramService = require('./telegram.service');
 const mailerService = require('./mailer.service');
 const { sendToUser } = require('./websocket.service');
 
@@ -104,6 +105,19 @@ async function processJob(job) {
                 if (!phone.startsWith('503')) phone = '503' + phone;
                 whatsappService.sendMessage(phone, `${title}\n\n${message}`, job.branch_id)
                     .catch(err => console.error(`[NotificationWorker] Error WhatsApp a ${phone}:`, err.message));
+            }
+        }
+
+        // Canal Telegram: se envía una vez por regla a los chats vinculados a la sucursal
+        if (rule.channel_telegram) {
+            const [chats] = await pool.query(
+                `SELECT chat_id FROM telegram_chat_bindings
+                 WHERE company_id = ? AND branch_id = ? AND receive_alerts = 1`,
+                [job.company_id, job.branch_id]
+            );
+            for (const chat of chats) {
+                telegramService.sendMessage(chat.chat_id, `🔔 *${title}*\n\n${message}`)
+                    .catch(err => console.error(`[NotificationWorker] Error Telegram a chat ${chat.chat_id}:`, err.message));
             }
         }
     }
