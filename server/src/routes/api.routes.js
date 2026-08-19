@@ -503,6 +503,7 @@ router.post('/accounting/closing', accountingController.performClosing);
 router.post('/accounting/opening', accountingController.performOpening);
 router.get('/accounting/settings', accountingController.getSettings);
 router.post('/accounting/settings', accountingController.saveSettings);
+router.post('/accounting/import/validate', accountingController.validateAccounts);
 router.post('/accounting/import', accountingController.importAccounts);
 
 // Accounting Reports

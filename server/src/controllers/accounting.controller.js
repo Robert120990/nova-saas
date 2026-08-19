@@ -543,6 +543,62 @@ const saveSettings = async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
+const validateAccounts = async (req, res) => {
+    try {
+        const { accounts } = req.body;
+        if (!Array.isArray(accounts) || accounts.length === 0) {
+            return res.status(400).json({ message: 'No se recibieron cuentas para importar' });
+        }
+
+        const [existing] = await pool.query('SELECT id, code FROM chart_of_accounts WHERE company_id = ?', [req.company_id]);
+        const codeToId = {};
+        existing.forEach(a => { codeToId[a.code] = a.id; });
+
+        const [types] = await pool.query('SELECT id FROM account_types WHERE company_id = ?', [req.company_id]);
+        const validTypeIds = new Set(types.map(t => t.id));
+
+        const seenCodes = new Set();
+        const rows = [];
+        let newCount = 0, updateCount = 0, errorCount = 0;
+
+        accounts.forEach((row, index) => {
+            const code = String(row.code || '').trim();
+            const name = String(row.name || '').trim();
+            const typeId = parseInt(row.account_type_id);
+            const parentCode = String(row.parent_code || '').trim();
+            const allows = row.allows_entries === '1' || row.allows_entries === 1 || row.allows_entries === true ? 1 : 0;
+
+            const errorMessages = [];
+            if (!code) errorMessages.push('El código es obligatorio');
+            else if (code.length > 20) errorMessages.push('El código no puede superar 20 caracteres');
+            if (!name) errorMessages.push('El nombre es obligatorio');
+            if (!typeId || !validTypeIds.has(typeId)) errorMessages.push('Tipo de cuenta inválido');
+            if (code && seenCodes.has(code)) errorMessages.push('Código duplicado en el archivo');
+            if (parentCode && !codeToId[parentCode] && !seenCodes.has(parentCode)) errorMessages.push(`La cuenta padre "${parentCode}" no existe`);
+
+            if (code) seenCodes.add(code);
+
+            const status = errorMessages.length > 0 ? 'error' : (codeToId[code] ? 'update' : 'new');
+            if (status === 'error') errorCount++;
+            else if (status === 'update') updateCount++;
+            else newCount++;
+
+            rows.push({
+                index,
+                code,
+                name,
+                account_type_id: typeId || null,
+                parent_code: parentCode,
+                allows_entries: allows,
+                status,
+                error: status === 'error' ? errorMessages.join('; ') : null
+            });
+        });
+
+        res.json({ rows, totals: { total: accounts.length, new: newCount, updates: updateCount, errors: errorCount } });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
 const importAccounts = async (req, res) => {
     try {
         const { accounts } = req.body;
@@ -550,7 +606,7 @@ const importAccounts = async (req, res) => {
             return res.status(400).json({ message: 'No se recibieron cuentas para importar' });
         }
 
-        let imported = 0, errors = 0;
+        let imported = 0, updated = 0, errors = 0;
         const codeToId = {};
 
         const [existing] = await pool.query('SELECT id, code FROM chart_of_accounts WHERE company_id = ?', [req.company_id]);
@@ -568,17 +624,25 @@ const importAccounts = async (req, res) => {
 
                 const parentId = parentCode ? codeToId[parentCode] : null;
 
-                await pool.query(
-                    `INSERT INTO chart_of_accounts (company_id, account_type_id, parent_id, code, name, allows_entries, active) 
-                     VALUES (?, ?, ?, ?, ?, ?, 1) 
-                     ON DUPLICATE KEY UPDATE name = VALUES(name), account_type_id = VALUES(account_type_id), parent_id = VALUES(parent_id), allows_entries = VALUES(allows_entries)`,
-                    [req.company_id, typeId, parentId || null, code, name, allows]
-                );
-                imported++;
+                if (codeToId[code]) {
+                    await pool.query(
+                        `UPDATE chart_of_accounts SET account_type_id = ?, parent_id = ?, name = ?, allows_entries = ? WHERE id = ? AND company_id = ?`,
+                        [typeId, parentId || null, name, allows, codeToId[code], req.company_id]
+                    );
+                    updated++;
+                } else {
+                    const [r] = await pool.query(
+                        `INSERT INTO chart_of_accounts (company_id, account_type_id, parent_id, code, name, allows_entries, active) 
+                         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+                        [req.company_id, typeId, parentId || null, code, name, allows]
+                    );
+                    codeToId[code] = r.insertId;
+                    imported++;
+                }
             } catch (e) { errors++; }
         }
 
-        res.json({ message: `Importadas: ${imported}, Errores: ${errors}`, imported, errors });
+        res.json({ message: `Importadas: ${imported}, Actualizadas: ${updated}, Errores: ${errors}`, imported, updated, errors });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
@@ -588,5 +652,5 @@ module.exports = {
     getAccounts, createAccount, updateAccount, deleteAccount,
     getEntries, getEntry, createEntry, updateEntry, voidEntry,
     getTrialBalance, performClosing, performOpening,
-    getSettings, saveSettings, importAccounts
+    getSettings, saveSettings, validateAccounts, importAccounts
 };

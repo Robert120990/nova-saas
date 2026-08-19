@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Edit, Trash2, BookOpen, Search, Upload, HelpCircle, X } from 'lucide-react';
+import { Plus, Edit, Trash2, BookOpen, Search, Upload, HelpCircle, X, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
@@ -17,7 +17,10 @@ const ChartOfAccounts = () => {
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(15);
-    const [, setIsImporting] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [isConfirmingImport, setIsConfirmingImport] = useState(false);
+    const [importReview, setImportReview] = useState(null);
+    const [pendingImport, setPendingImport] = useState(null);
     const [showHelp, setShowHelp] = useState(false);
 
     const { data: accounts = [], isLoading } = useQuery({
@@ -70,51 +73,82 @@ const ChartOfAccounts = () => {
         else createMutation.mutate(data);
     };
 
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setIsImporting(true);
+        try {
+            const text = await file.text();
+            const lines = text.split('\n').filter(l => l.trim());
+            // Esperado: code,name,account_type_id,parent_code,allows_entries
+            const accounts = lines.slice(1).map(line => {
+                const vals = line.split(',');
+                return {
+                    code: vals[0]?.trim(),
+                    name: vals[1]?.trim(),
+                    account_type_id: vals[2]?.trim(),
+                    parent_code: vals[3]?.trim(),
+                    allows_entries: vals[4]?.trim()
+                };
+            });
+            const { data } = await axios.post('/api/accounting/import/validate', { accounts });
+            setPendingImport(accounts);
+            setImportReview(data);
+        } catch (err) {
+            toast.error('Error al revisar el archivo: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setIsImporting(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleConfirmImport = async () => {
+        if (!pendingImport || !importReview) return;
+        setIsConfirmingImport(true);
+        try {
+            const { data } = await axios.post('/api/accounting/import', { accounts: pendingImport });
+            queryClient.invalidateQueries(['accounts']);
+            toast.success(data.message);
+            setImportReview(null);
+            setPendingImport(null);
+        } catch (err) {
+            toast.error('Error al importar: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setIsConfirmingImport(false);
+        }
+    };
+
+    const closeReview = () => {
+        if (isConfirmingImport) return;
+        setImportReview(null);
+        setPendingImport(null);
+    };
+
+    const typeName = (id) => accountTypes.find(t => t.id == id)?.name || '—';
+    const statusLabel = {
+        new: { text: 'Nueva', cls: 'bg-emerald-50 text-emerald-600' },
+        update: { text: 'Se actualizará', cls: 'bg-amber-50 text-amber-600' },
+        error: { text: 'Con error', cls: 'bg-rose-50 text-rose-600' },
+    };
+
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 animate-in fade-in pb-20">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><BookOpen size={28} className="text-indigo-600" />Catálogo de Cuentas</h1>
                     <p className="text-slate-500 font-medium">Gestión del plan contable</p>
                 </div>
-                <div className="flex gap-3">
-                    <div className="relative">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative flex-1 min-w-[180px] md:flex-none">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold w-56 outline-none" />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none md:w-56" />
                     </div>
-                    <button                     onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
+                    <button onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2">
                         <Plus size={16} /> Nueva Cuenta
                     </button>
-                    <label className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2 cursor-pointer transition-colors">
-                        <Upload size={16} /> Importar CSV
-                        <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
-                            const file = e.target.files[0];
-                            if (!file) return;
-                            setIsImporting(true);
-                            try {
-                                const text = await file.text();
-                                const lines = text.split('\n').filter(l => l.trim());
-                                // Esperado: code,name,account_type_id,parent_code,allows_entries
-                                const accounts = lines.slice(1).map(line => {
-                                    const vals = line.split(',');
-                                    return {
-                                        code: vals[0]?.trim(),
-                                        name: vals[1]?.trim(),
-                                        account_type_id: vals[2]?.trim(),
-                                        parent_code: vals[3]?.trim(),
-                                        allows_entries: vals[4]?.trim()
-                                    };
-                                });
-                                const { data } = await axios.post('/api/accounting/import', { accounts });
-                                queryClient.invalidateQueries(['accounts']);
-                                toast.success(data.message);
-                            } catch (err) {
-                                toast.error('Error al importar: ' + (err.response?.data?.message || err.message));
-                            } finally {
-                                setIsImporting(false);
-                                e.target.value = '';
-                            }
-                        }} />
+                    <label className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors">
+                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Importar CSV
+                        <input type="file" accept=".csv" className="hidden" disabled={isImporting} onChange={handleFileChange} />
                     </label>
                     <button onClick={() => setShowHelp(!showHelp)} className="p-3 rounded-2xl transition-colors" title="Ayuda">
                         <HelpCircle size={18} className="text-slate-400 hover:text-indigo-500" />
@@ -127,26 +161,30 @@ const ChartOfAccounts = () => {
                     <button onClick={() => setShowHelp(false)} className="absolute top-3 right-3 text-blue-400 hover:text-blue-600"><X size={14} /></button>
                     <h3 className="font-black text-blue-700 text-sm">Formato del archivo CSV para importar</h3>
                     <p className="text-blue-600">El archivo debe ser <b>CSV</b> (valores separados por coma) con las siguientes columnas en orden:</p>
-                    <table className="w-full text-left border-collapse mt-2">
-                        <thead><tr className="bg-blue-100/50"><th className="p-2 border border-blue-200 font-bold">Columna</th><th className="p-2 border border-blue-200 font-bold">Descripción</th><th className="p-2 border border-blue-200 font-bold">Ejemplo</th></tr></thead>
-                        <tbody>
-                            <tr><td className="p-2 border border-blue-200 font-mono">code</td><td className="p-2 border border-blue-200">Código de la cuenta</td><td className="p-2 border border-blue-200 font-mono">110101</td></tr>
-                            <tr><td className="p-2 border border-blue-200 font-mono">name</td><td className="p-2 border border-blue-200">Nombre de la cuenta</td><td className="p-2 border border-blue-200">CAJA GENERAL</td></tr>
-                            <tr><td className="p-2 border border-blue-200 font-mono">account_type_id</td><td className="p-2 border border-blue-200">ID del tipo: 1=Activo, 2=Pasivo, 3=Patrimonio, 4=Ingreso, 5=Costo, 6=Gasto</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
-                            <tr><td className="p-2 border border-blue-200 font-mono">parent_code</td><td className="p-2 border border-blue-200">Código de la cuenta padre (vacío si es raíz)</td><td className="p-2 border border-blue-200 font-mono">1101</td></tr>
-                            <tr><td className="p-2 border border-blue-200 font-mono">allows_entries</td><td className="p-2 border border-blue-200">1 = permite asientos, 0 = solo agrupación</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
-                        </tbody>
-                    </table>
-                    <div className="bg-blue-100 rounded-xl p-3 font-mono text-[10px] text-blue-800 mt-3">
-                        <b>Ejemplo de archivo CSV:</b><br/>
-                        code,name,account_type_id,parent_code,allows_entries<br/>
-                        1,ACTIVO,1,,0<br/>
-                        11,ACTIVO CORRIENTE,1,1,0<br/>
-                        1101,EFECTIVO Y EQUIVALENTES,1,11,0<br/>
-                        110101,CAJA GENERAL,1,1101,1<br/>
-                        110102,CAJA CHICA,1,1101,1
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse mt-2 min-w-[520px]">
+                            <thead><tr className="bg-blue-100/50"><th className="p-2 border border-blue-200 font-bold">Columna</th><th className="p-2 border border-blue-200 font-bold">Descripción</th><th className="p-2 border border-blue-200 font-bold">Ejemplo</th></tr></thead>
+                            <tbody>
+                                <tr><td className="p-2 border border-blue-200 font-mono">code</td><td className="p-2 border border-blue-200">Código de la cuenta</td><td className="p-2 border border-blue-200 font-mono">110101</td></tr>
+                                <tr><td className="p-2 border border-blue-200 font-mono">name</td><td className="p-2 border border-blue-200">Nombre de la cuenta</td><td className="p-2 border border-blue-200">CAJA GENERAL</td></tr>
+                                <tr><td className="p-2 border border-blue-200 font-mono">account_type_id</td><td className="p-2 border border-blue-200">ID del tipo: 1=Activo, 2=Pasivo, 3=Patrimonio, 4=Ingreso, 5=Costo, 6=Gasto</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
+                                <tr><td className="p-2 border border-blue-200 font-mono">parent_code</td><td className="p-2 border border-blue-200">Código de la cuenta padre (vacío si es raíz)</td><td className="p-2 border border-blue-200 font-mono">1101</td></tr>
+                                <tr><td className="p-2 border border-blue-200 font-mono">allows_entries</td><td className="p-2 border border-blue-200">1 = permite asientos, 0 = solo agrupación</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <p className="text-blue-500 text-[10px]">Las cuentas padre deben existir o estar antes en el archivo. Si una cuenta ya existe, se actualiza.</p>
+                    <div className="overflow-x-auto">
+                        <div className="bg-blue-100 rounded-xl p-3 font-mono text-[10px] text-blue-800 mt-3 min-w-[460px]">
+                            <b>Ejemplo de archivo CSV:</b><br/>
+                            code,name,account_type_id,parent_code,allows_entries<br/>
+                            1,ACTIVO,1,,0<br/>
+                            11,ACTIVO CORRIENTE,1,1,0<br/>
+                            1101,EFECTIVO Y EQUIVALENTES,1,11,0<br/>
+                            110101,CAJA GENERAL,1,1101,1<br/>
+                            110102,CAJA CHICA,1,1101,1
+                        </div>
+                    </div>
+                    <p className="text-blue-500 text-[10px]">Las cuentas padre deben existir o estar antes en el archivo. Si una cuenta ya existe, se actualiza. Antes de guardar se muestra una revisión de todas las cuentas; si alguna tiene error no se importa nada.</p>
                 </div>
             )}
 
@@ -179,7 +217,7 @@ const ChartOfAccounts = () => {
                             {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Código</label>
                             <input name="code" defaultValue={editingAccount?.code} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono" />
@@ -196,7 +234,7 @@ const ChartOfAccounts = () => {
                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Nombre</label>
                         <input name="name" defaultValue={editingAccount?.name} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" />
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                         <label className="flex items-center gap-2"><input type="checkbox" name="allows_entries" value="1" defaultChecked={editingAccount ? editingAccount.allows_entries : true} className="w-4 h-4 text-indigo-600" /> <span className="text-xs font-bold">Permite asientos</span></label>
                         <label className="flex items-center gap-2"><input type="checkbox" name="active" value="1" defaultChecked={editingAccount ? editingAccount.active : true} className="w-4 h-4 text-indigo-600" /> <span className="text-xs font-bold">Activo</span></label>
                     </div>
@@ -205,6 +243,90 @@ const ChartOfAccounts = () => {
                         <button type="submit" className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black uppercase text-xs">Guardar</button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal isOpen={importReview !== null} onClose={closeReview} title="Revisión de importación" maxWidth="max-w-3xl">
+                {importReview && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div className="bg-slate-50 rounded-xl p-3 text-center">
+                                <p className="text-2xl font-black text-slate-900">{importReview.totals.total}</p>
+                                <p className="text-[10px] font-black uppercase text-slate-400">Total</p>
+                            </div>
+                            <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                                <p className="text-2xl font-black text-emerald-600">{importReview.totals.new}</p>
+                                <p className="text-[10px] font-black uppercase text-emerald-500">Nuevas</p>
+                            </div>
+                            <div className="bg-amber-50 rounded-xl p-3 text-center">
+                                <p className="text-2xl font-black text-amber-600">{importReview.totals.updates}</p>
+                                <p className="text-[10px] font-black uppercase text-amber-500">Se actualizarán</p>
+                            </div>
+                            <div className={`rounded-xl p-3 text-center ${importReview.totals.errors > 0 ? 'bg-rose-50' : 'bg-slate-50'}`}>
+                                <p className={`text-2xl font-black ${importReview.totals.errors > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{importReview.totals.errors}</p>
+                                <p className={`text-[10px] font-black uppercase ${importReview.totals.errors > 0 ? 'text-rose-500' : 'text-slate-400'}`}>Con error</p>
+                            </div>
+                        </div>
+
+                        {importReview.totals.errors > 0 ? (
+                            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
+                                <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-xs font-black text-rose-700 uppercase">No se importará nada</p>
+                                    <p className="text-xs text-rose-600 font-medium mt-0.5">Hay {importReview.totals.errors} cuenta(s) con errores. Corrige el archivo CSV y vuelve a importar para poder guardar.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                                <CheckCircle2 size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-xs font-black text-emerald-700 uppercase">Todo listo para importar</p>
+                                    <p className="text-xs text-emerald-600 font-medium mt-0.5">{importReview.totals.new} cuenta(s) nueva(s) y {importReview.totals.updates} a actualizar.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                            <table className="w-full text-left border-collapse min-w-[560px]">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">#</th>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Código</th>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nombre</th>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Padre</th>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                                        <th className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Motivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {importReview.rows.map((r) => {
+                                        const st = statusLabel[r.status] || statusLabel.error;
+                                        return (
+                                            <tr key={r.index} className={r.status === 'error' ? 'bg-rose-50/40' : ''}>
+                                                <td className="px-4 py-2.5 text-xs text-slate-400">{r.index + 1}</td>
+                                                <td className="px-4 py-2.5 font-mono font-bold text-xs">{r.code || '—'}</td>
+                                                <td className="px-4 py-2.5 font-bold text-xs max-w-[160px] truncate">{r.name || '—'}</td>
+                                                <td className="px-4 py-2.5 text-xs text-slate-500">{typeName(r.account_type_id)}</td>
+                                                <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{r.parent_code || '—'}</td>
+                                                <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${st.cls}`}>{st.text}</span></td>
+                                                <td className="px-4 py-2.5 text-xs text-rose-600 font-medium">{r.error || '—'}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                            <button type="button" onClick={closeReview} disabled={isConfirmingImport} className="flex-1 py-3 text-xs font-black uppercase text-slate-400 border border-slate-200 rounded-xl disabled:opacity-50">Cerrar</button>
+                            {importReview.totals.errors === 0 && (
+                                <button type="button" onClick={handleConfirmImport} disabled={isConfirmingImport} className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-3 rounded-xl font-black uppercase text-xs flex items-center justify-center gap-2">
+                                    {isConfirmingImport ? <><Loader2 size={14} className="animate-spin" /> Guardando...</> : <>Confirmar importación</>}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
             </Modal>
         </div>
     );
