@@ -3,16 +3,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Search, Printer } from 'lucide-react';
 import Money from '../components/ui/Money';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
+import ProductLabelModal from '../components/products/ProductLabelModal';
 
 const Products = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+    const [labelProduct, setLabelProduct] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedBranches, setSelectedBranches] = useState([]);
     const [branchPrices, setBranchPrices] = useState({});
@@ -208,13 +211,22 @@ const Products = () => {
                     <h2 className="text-xl font-bold tracking-tight">Catálogo de Productos</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Gestión de inventario y sección fiscal</p>
                 </div>
-                <button 
-                    onClick={() => { setSelectedProduct(null); setActiveTab('general'); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
-                >
-                    <Plus size={20}/>
-                    <span>Nuevo Producto</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <button 
+                        onClick={() => { setLabelProduct(null); setIsLabelModalOpen(true); }}
+                        className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3.5 py-1.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95"
+                    >
+                        <Printer size={18} className="text-slate-500" />
+                        <span>Imprimir Etiquetas</span>
+                    </button>
+                    <button 
+                        onClick={() => { setSelectedProduct(null); setActiveTab('general'); setIsModalOpen(true); }}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    >
+                        <Plus size={20}/>
+                        <span>Nuevo Producto</span>
+                    </button>
+                </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
@@ -277,9 +289,16 @@ const Products = () => {
                                     <span className="text-[10px] text-slate-400 italic">Sin asignar</span>
                                 )}
                             </td>
-                            <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleEdit(p)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                <button onClick={() => handleDeleteProduct(p.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                            <td className="px-3 py-1 flex gap-1 items-center">
+                                <button 
+                                    onClick={() => { setLabelProduct(p); setIsLabelModalOpen(true); }} 
+                                    title="Imprimir Etiqueta" 
+                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                >
+                                    <Printer size={15}/>
+                                </button>
+                                <button onClick={() => handleEdit(p)} title="Editar" className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteProduct(p.id)} title="Eliminar" className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}
@@ -319,6 +338,13 @@ const Products = () => {
                                 </div>
 
                                 <div className="flex items-center gap-2 shrink-0">
+                                    <button 
+                                        onClick={() => { setLabelProduct(p); setIsLabelModalOpen(true); }} 
+                                        className="p-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold flex items-center gap-1"
+                                        title="Imprimir Etiqueta"
+                                    >
+                                        <Printer size={14}/>
+                                    </button>
                                     <button 
                                         onClick={() => handleEdit(p)} 
                                         className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100"
@@ -653,6 +679,15 @@ const Products = () => {
                     </div>
                 </form>
             </Modal>
+
+            <ProductLabelModal
+                isOpen={isLabelModalOpen}
+                onClose={() => setIsLabelModalOpen(false)}
+                product={labelProduct}
+                products={products}
+                branches={branches}
+                onSelectProduct={(p) => setLabelProduct(p)}
+            />
         </div>
     );
 };
