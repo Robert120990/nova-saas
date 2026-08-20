@@ -1610,7 +1610,7 @@ const generateRTEE = (data) => {
                 
                 doc.text(formattedQty, startX + 5, currentY);
                 doc.text(item.descripcion, startX + 45, currentY, { width: 300 });
-                doc.text(`$${parseFloat(item.precioUnitario).toFixed(2)}`, startX + 350, currentY, { align: 'right', width: 60 });
+                doc.text(`$${parseFloat(item.precioUnitario).toFixed(4)}`, startX + 350, currentY, { align: 'right', width: 60 });
                 doc.text(`$${parseFloat(item.montoDescuento || 0).toFixed(2)}`, startX + 420, currentY, { align: 'right', width: 60 });
                 doc.text(`$${parseFloat(item.totalItem).toFixed(2)}`, startX + 500, currentY, { align: 'right', width: 70 });
                 currentY += Math.max(itemHeight, 15);

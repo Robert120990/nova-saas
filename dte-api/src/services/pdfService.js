@@ -45,7 +45,7 @@ async function generateDTEPDF(dteData, stream) {
     cuerpoDocumento.forEach(item => {
         doc.text(item.cantidad.toString(), 50, y);
         doc.text(item.descripcion, 100, y, { width: 240 });
-        doc.text(item.precioUnitario.toFixed(2), 350, y, { width: 50, align: 'right' });
+        doc.text((item.precioUni ?? item.precioUnitario).toFixed(4), 350, y, { width: 50, align: 'right' });
         doc.text(item.ivaItem.toFixed(2), 410, y, { width: 50, align: 'right' });
         doc.text((item.ventaGravada || item.ventaExenta || item.ventaNoSuj).toFixed(2), 480, y, { width: 50, align: 'right' });
         y += 20;
