@@ -93,7 +93,7 @@ function calculateTotals(items, taxes = [], tipoDte = '01') {
     
     let totalOtrosImp = 0;
     taxes.forEach(t => {
-        totalOtrosImp += parseFloat(t.valor) || 0;
+        totalOtrosImp += round(parseFloat(t.valor) || 0);
     });
     const rOtrosImp = round(totalOtrosImp);
 

@@ -946,8 +946,8 @@ const SalesTerminal = () => {
                 venta_exenta: 0,
                 tributos: []
             })) : cart.map((item, idx) => {
-                const itemFovial = item.tipo_combustible > 0 ? (item.cantidad * parseFloat(taxSettings?.fovial_rate || 0.20)) : 0;
-                const itemCotrans = item.tipo_combustible > 0 ? (item.cantidad * parseFloat(taxSettings?.cotrans_rate || 0.10)) : 0;
+                const itemFovial = item.tipo_combustible > 0 ? Math.round(item.cantidad * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
+                const itemCotrans = item.tipo_combustible > 0 ? Math.round(item.cantidad * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
                 const subtotal = (item.precio * item.cantidad) - item.descuento;
                 
                 return {
@@ -1007,8 +1007,8 @@ const SalesTerminal = () => {
             else {
                 // FOVIAL/COTRANS only for non-Remission notes
                 if (item.tipo_combustible > 0 && tipoDte !== '04') {
-                    const itemFovial = qty * parseFloat(taxSettings?.fovial_rate || 0.20);
-                    const itemCotrans = qty * parseFloat(taxSettings?.cotrans_rate || 0.10);
+                    const itemFovial = Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100;
+                    const itemCotrans = Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100;
                     fovial += itemFovial;
                     cotrans += itemCotrans;
                     gravadoBruto += (subtotal - itemFovial - itemCotrans);
