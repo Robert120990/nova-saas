@@ -3049,7 +3049,8 @@ const sendPublicDTEEmail = async (req, res) => {
                 tipoDteNombre: tipoNombre,
                 codigoGeneracion: dteJson.identificacion?.codigoGeneracion,
                 numeroControl: venta.numero_control,
-                selloRecepcion: venta.sello_recepcion
+                selloRecepcion: venta.sello_recepcion,
+                ambiente: dteJson.identificacion?.ambiente
             },
             venta: {
                 fecha_emision: dteJson.identificacion?.fecEmi,

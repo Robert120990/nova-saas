@@ -556,7 +556,8 @@ module.exports = {
                     tipoDteNombre: tipoNombre,
                     codigoGeneracion: dteJson.identificacion.codigoGeneracion,
                     numeroControl: dteJson.identificacion.numeroControl,
-                    selloRecepcion: venta.sello_recepcion
+                    selloRecepcion: venta.sello_recepcion,
+                    ambiente: dteJson.identificacion.ambiente
                 },
                 venta: {
                     fecha_emision: dteJson.identificacion.fecEmi,
