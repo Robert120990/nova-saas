@@ -37,6 +37,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
     // Initialize groups as collapsed
     const [expandedGroups, setExpandedGroups] = useState({});
+    const [expandedItems, setExpandedItems] = useState({});
 
     const toggleGroup = (groupId) => {
         if (effectiveCollapsed) return; // Don't expand groups when collapsed
@@ -95,6 +96,53 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         const paddingLeft = effectiveCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
 
         if (hasChildren) {
+            // En móvil: acordeón inline (el flyout no cabe en el drawer y se corta)
+            if (isMobileOpen) {
+                const isExpanded = !!expandedItems[item.id];
+                return (
+                    <div key={item.id} className="relative">
+                        <button
+                            onClick={() => setExpandedItems(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                            className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 text-slate-400 hover:bg-white/5 hover:text-white group`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <item.icon size={18} className="group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100 shrink-0" />
+                                <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>
+                            </div>
+                            {isExpanded
+                                ? <ChevronDown size={14} className="opacity-40 group-hover:opacity-100 transition-all" />
+                                : <ChevronRight size={14} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />}
+                        </button>
+
+                        {isExpanded && (
+                            <div className="mt-1 space-y-1 pb-1">
+                                {visibleChildren.filter(child => child.path).map(child => (
+                                    <NavLink
+                                        key={child.path}
+                                        to={child.path}
+                                        end
+                                        onClick={() => {
+                                            setExpandedItems({});
+                                            if (onCloseMobile) onCloseMobile();
+                                        }}
+                                        className={({ isActive }) =>
+                                            `flex items-center gap-3 pl-12 pr-4 py-1.5 rounded-xl transition-all duration-200 ${
+                                                isActive
+                                                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-600/20'
+                                                : 'text-slate-400 hover:bg-white/5 hover:text-slate-100 border border-transparent'
+                                            }`
+                                        }
+                                    >
+                                        {child.icon && <child.icon size={14} className="opacity-70 shrink-0" />}
+                                        <span className="text-[12px] font-medium tracking-tight truncate">{child.label}</span>
+                                    </NavLink>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
             return (
                 <div key={item.id} className="relative">
                     <button
