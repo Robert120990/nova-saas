@@ -28,13 +28,14 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
 
     // Extraer FOVIAL (D1) y COTRANS (C8) por ítem desde los tributos del payload.
     // El precio de combustible los incluye, por lo que deben quitarse ANTES de extraer el IVA.
+    // Se redondean a 2 decimales igual que el POS para que el neto/total cuadre con lo ingresado.
     const tributos = Array.isArray(item.tributos) ? item.tributos : [];
     const extractFuelTax = (taxCode) => tributos.reduce((sum, t) => {
         if (t && typeof t === 'object' && t.codigo === taxCode) return sum + (parseFloat(t.valor) || 0);
         return sum;
     }, 0);
-    const fovial = extractFuelTax('D1');
-    const cotrans = extractFuelTax('C8');
+    const fovial = round(extractFuelTax('D1'));
+    const cotrans = round(extractFuelTax('C8'));
 
     let netPrice, netDiscount, ventaGravada, iva;
 
