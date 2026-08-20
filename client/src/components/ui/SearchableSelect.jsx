@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, ChevronDown, Check, X, Loader2 } from 'lucide-react';
+import { matchScore } from '../../utils/fuzzySearch';
 
 /**
  * Super Defensive SearchableSelect
@@ -87,20 +88,26 @@ const SearchableSelect = ({
 
     const filteredOptions = loadOptions
         ? effectiveOptions
-        : safeOptions.filter(opt => {
-            if (!opt) return false;
-            const s = (search || '').toLowerCase();
+        : safeOptions.map(opt => {
+            if (!opt) return null;
+            const s = (search || '').trim();
+            if (!s) return { opt, score: 0 };
+            let text;
             if (Array.isArray(searchKeys) && searchKeys.length > 0) {
-                return searchKeys.some(k =>
-                    String(opt[k] ?? '').toLowerCase().includes(s)
-                );
+                text = searchKeys.map(k => String(opt[k] ?? '')).join(' ');
+            } else {
+                const v = String(opt[valueKey] || '');
+                const l = String(opt[labelKey] || '');
+                const c = codeKey ? String(opt[codeKey] || '') : '';
+                text = `${v} ${l} ${c}`;
             }
-            const v = String(opt[valueKey] || '').toLowerCase();
-            const l = String(opt[labelKey] || '').toLowerCase();
-            const c = codeKey ? String(opt[codeKey] || '').toLowerCase() : '';
-            
-            return v.includes(s) || l.includes(s) || c.includes(s);
-        }).slice(0, 100);
+            const score = matchScore(text, s);
+            return score === null ? null : { opt, score };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 100)
+        .map(x => x.opt);
 
     const computePanelPos = useCallback(() => {
         const rect = triggerRef.current?.getBoundingClientRect();

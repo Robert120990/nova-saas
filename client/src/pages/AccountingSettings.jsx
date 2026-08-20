@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Settings, Save, Plus, Trash2, SlidersHorizontal, BookOpen, Search } from 'lucide-react';
+import { Settings, Save, Plus, Trash2, SlidersHorizontal, BookOpen, Search, Database } from 'lucide-react';
 import { toast } from 'sonner';
+import OfficeConnectionTab from '../components/accounting/OfficeConnectionTab';
+import { matchesQuery, matchScore } from '../utils/fuzzySearch';
 
-const RESERVED_KEYS = ['resultado_ejercicio_id', 'contador_nombre', 'contador_dui', 'auditor_nombre', 'auditor_dui'];
+const RESERVED_KEYS = ['resultado_ejercicio_id', 'contador_nombre', 'contador_dui', 'auditor_nombre', 'auditor_dui', 'oficina_db_host', 'oficina_db_port', 'oficina_db_user', 'oficina_db_password', 'oficina_db_name'];
 
 const normalizeKey = (val) => val.toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 50);
 
@@ -24,9 +26,11 @@ const AccountSelect = ({ value, onChange, accounts, placeholder = 'Seleccionar c
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const filtered = accounts.filter(a =>
-        !query || `${a.code} ${a.name} ${a.type_name || ''}`.toLowerCase().includes(query.toLowerCase())
-    );
+    const filtered = accounts
+        .filter(a => !query || matchesQuery(`${a.code} ${a.name} ${a.type_name || ''}`, query))
+        .map(a => ({ a, score: query ? matchScore(`${a.code} ${a.name} ${a.type_name || ''}`, query) : 0 }))
+        .sort((x, y) => x.score - y.score)
+        .map(x => x.a);
     const selected = accounts.find(a => a.id == value);
 
     return (
@@ -154,6 +158,7 @@ const AccountingSettings = () => {
     const tabs = [
         { id: 'general', label: 'General', icon: SlidersHorizontal },
         { id: 'cuentas', label: 'Cuentas por Defecto', icon: BookOpen },
+        { id: 'oficina', label: 'Conexión Oficina', icon: Database },
     ];
 
     return (
@@ -299,6 +304,8 @@ const AccountingSettings = () => {
                             </button>
                         </div>
                     )}
+
+                    {activeTab === 'oficina' && <OfficeConnectionTab />}
                 </>
             )}
         </div>

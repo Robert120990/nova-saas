@@ -42,6 +42,20 @@ import AccountingEntries from './pages/AccountingEntries';
 import YearClosing from './pages/YearClosing';
 import YearOpening from './pages/YearOpening';
 import AccountingSettings from './pages/AccountingSettings';
+import LibroDiario from './pages/AccountingReports/LibroDiario';
+import LibroDiarioMayor from './pages/AccountingReports/LibroDiarioMayor';
+import LibroMayor from './pages/AccountingReports/LibroMayor';
+import BalanceComprobacion from './pages/AccountingReports/BalanceComprobacion';
+import EstadoResultados from './pages/AccountingReports/EstadoResultados';
+import BalanceGeneral from './pages/AccountingReports/BalanceGeneral';
+import AnexoBalance from './pages/AccountingReports/AnexoBalance';
+import BalanceComparativo from './pages/AccountingReports/BalanceComparativo';
+import CambiosPatrimonio from './pages/AccountingReports/CambiosPatrimonio';
+import FlujoEfectivo from './pages/AccountingReports/FlujoEfectivo';
+import AuxiliarOperaciones from './pages/AccountingReports/AuxiliarOperaciones';
+import ListadoPartidas from './pages/AccountingReports/ListadoPartidas';
+import CedulaAuditoria from './pages/AccountingReports/CedulaAuditoria';
+import Retenciones from './pages/AccountingReports/Retenciones';
 import DailySalesReport from './pages/DailySalesReport';
 import SalesByCustomerReport from './pages/SalesByCustomerReport';
 import Contingency from './pages/Contingency';
@@ -321,6 +335,20 @@ function App() {
                         <Route path="/contabilidad/cierre" element={<YearClosing />} />
                         <Route path="/contabilidad/apertura" element={<YearOpening />} />
                         <Route path="/contabilidad/ajustes" element={<AccountingSettings />} />
+                        <Route path="/contabilidad/reportes/libro-diario" element={<LibroDiario />} />
+                        <Route path="/contabilidad/reportes/libro-diario-mayor" element={<LibroDiarioMayor />} />
+                        <Route path="/contabilidad/reportes/libro-mayor" element={<LibroMayor />} />
+                        <Route path="/contabilidad/reportes/balance-comprobacion" element={<BalanceComprobacion />} />
+                        <Route path="/contabilidad/reportes/estado-resultados" element={<EstadoResultados />} />
+                        <Route path="/contabilidad/reportes/balance-general" element={<BalanceGeneral />} />
+                        <Route path="/contabilidad/reportes/anexo-balance" element={<AnexoBalance />} />
+                        <Route path="/contabilidad/reportes/balance-comparativo" element={<BalanceComparativo />} />
+                        <Route path="/contabilidad/reportes/cambios-patrimonio" element={<CambiosPatrimonio />} />
+                        <Route path="/contabilidad/reportes/flujo-efectivo" element={<FlujoEfectivo />} />
+                        <Route path="/contabilidad/reportes/auxiliar-operaciones" element={<AuxiliarOperaciones />} />
+                        <Route path="/contabilidad/reportes/listado-partidas" element={<ListadoPartidas />} />
+                        <Route path="/contabilidad/reportes/cedula-auditoria" element={<CedulaAuditoria />} />
+                        <Route path="/contabilidad/reportes/retenciones" element={<Retenciones />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

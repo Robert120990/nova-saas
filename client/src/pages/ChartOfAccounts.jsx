@@ -7,6 +7,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
+import { matchesQuery, matchScore } from '../utils/fuzzySearch';
 
 const ChartOfAccounts = () => {
     const queryClient = useQueryClient();
@@ -30,8 +31,11 @@ const ChartOfAccounts = () => {
 
     const filteredAccounts = useMemo(() => {
         if (!search) return accounts;
-        const q = search.toLowerCase();
-        return accounts.filter(a => a.code?.toLowerCase().includes(q) || a.name?.toLowerCase().includes(q));
+        return accounts
+            .filter(a => matchesQuery(`${a.code} ${a.name}`, search))
+            .map(a => ({ a, score: matchScore(`${a.code} ${a.name}`, search) }))
+            .sort((x, y) => x.score - y.score)
+            .map(x => x.a);
     }, [accounts, search]);
 
     const totalPages = Math.ceil(filteredAccounts.length / limit);
@@ -133,27 +137,9 @@ const ChartOfAccounts = () => {
 
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 animate-in fade-in pb-20">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><BookOpen size={28} className="text-indigo-600" />Catálogo de Cuentas</h1>
-                    <p className="text-slate-500 font-medium">Gestión del plan contable</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative flex-1 min-w-[180px] md:flex-none">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none md:w-56" />
-                    </div>
-                    <button onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2">
-                        <Plus size={16} /> Nueva Cuenta
-                    </button>
-                    <label className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors">
-                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Importar CSV
-                        <input type="file" accept=".csv" className="hidden" disabled={isImporting} onChange={handleFileChange} />
-                    </label>
-                    <button onClick={() => setShowHelp(!showHelp)} className="p-3 rounded-2xl transition-colors" title="Ayuda">
-                        <HelpCircle size={18} className="text-slate-400 hover:text-indigo-500" />
-                    </button>
-                </div>
+            <div>
+                <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><BookOpen size={28} className="text-indigo-600" />Catálogo de Cuentas</h1>
+                <p className="text-slate-500 font-medium">Gestión del plan contable</p>
             </div>
 
             {showHelp && (
@@ -187,6 +173,25 @@ const ChartOfAccounts = () => {
                     <p className="text-blue-500 text-[10px]">Las cuentas padre deben existir o estar antes en el archivo. Si una cuenta ya existe, se actualiza. Antes de guardar se muestra una revisión de todas las cuentas; si alguna tiene error no se importa nada.</p>
                 </div>
             )}
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="relative w-full md:w-64">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none" />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={() => { setEditingAccount(null); setSelectedFormType(''); setIsAccountModalOpen(true); }} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2">
+                        <Plus size={16} /> Nueva Cuenta
+                    </button>
+                    <label className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors">
+                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Importar CSV
+                        <input type="file" accept=".csv" className="hidden" disabled={isImporting} onChange={handleFileChange} />
+                    </label>
+                    <button onClick={() => setShowHelp(!showHelp)} className="p-3 rounded-2xl transition-colors" title="Ayuda">
+                        <HelpCircle size={18} className="text-slate-400 hover:text-indigo-500" />
+                    </button>
+                </div>
+            </div>
 
             <Table headers={['Código', 'Nombre', 'Tipo', 'Padre', 'Detalle', 'Estado']} data={paginatedAccounts} isLoading={isLoading}
                 renderRow={(a) => (

@@ -37,6 +37,7 @@ const customerBranchController = require('../controllers/customerBranch.controll
 const discountRulesController = require('../controllers/discountRules.controller');
 const accountingController = require('../controllers/accounting.controller');
 const accountingReportsController = require('../controllers/accounting.reports.controller');
+const officeConnectionController = require('../controllers/officeConnection.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
 const taxRoutes = require('./tax.routes');
@@ -505,6 +506,11 @@ router.get('/accounting/settings', accountingController.getSettings);
 router.post('/accounting/settings', accountingController.saveSettings);
 router.post('/accounting/import/validate', accountingController.validateAccounts);
 router.post('/accounting/import', accountingController.importAccounts);
+
+// Office DB Connection
+router.get('/accounting/office/connection', officeConnectionController.getConnection);
+router.post('/accounting/office/connection', officeConnectionController.saveConnection);
+router.post('/accounting/office/test', officeConnectionController.test);
 
 // Accounting Reports
 router.get('/accounting/reports/libro-diario', accountingReportsController.getLibroDiario);
