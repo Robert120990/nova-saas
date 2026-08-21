@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X, RefreshCw,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle
+    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -43,6 +43,7 @@ const GasCloseout = () => {
     const { user } = useAuth();
     const confirm = useConfirm();
     const editId = searchParams.get('editId');
+    const isSuperAdmin = user?.role === 'SuperAdmin';
 
     const toDateStr = (v) => {
         if (!v) return '';
@@ -93,6 +94,7 @@ const GasCloseout = () => {
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
     const [tankReadings, setTankReadings] = useState([]);
     const [showTankReadingsModal, setShowTankReadingsModal] = useState(false);
+    const [superAdminTankEdit, setSuperAdminTankEdit] = useState(false);
     const [showRemesasModal, setShowRemesasModal] = useState(false);
     const [remesas, setRemesas] = useState([]);
     const [showCuponesModal, setShowCuponesModal] = useState(false);
@@ -128,6 +130,8 @@ const GasCloseout = () => {
     const inputRefs = useRef({});
     const fileInputRef = useRef(null);
     const tankInputRefs = useRef({});
+    const badgeTapCountRef = useRef(0);
+    const badgeTapTimerRef = useRef(null);
     const lubricantInputRefs = useRef({});
     const lastDespachadorRef = useRef(null);
 
@@ -154,6 +158,34 @@ const GasCloseout = () => {
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
     }, []);
+
+    const handleEstadoBadgeClick = async () => {
+        if (!isSuperAdmin || estado !== 'reabierto') return;
+        clearTimeout(badgeTapTimerRef.current);
+        badgeTapTimerRef.current = setTimeout(() => { badgeTapCountRef.current = 0; }, 3000);
+        const nextCount = badgeTapCountRef.current + 1;
+        badgeTapCountRef.current = nextCount;
+        if (nextCount < 5) return;
+        badgeTapCountRef.current = 0;
+        clearTimeout(badgeTapTimerRef.current);
+        if (superAdminTankEdit) {
+            setSuperAdminTankEdit(false);
+            setEditAnterior(false);
+            toast.info('Edición de tanques desactivada');
+            return;
+        }
+        const ok = await confirm({
+            title: '¿Habilitar edición de tanques?',
+            message: 'Modo SuperAdmin: podrá editar las lecturas de tanque de este turno reabierto. Si existen turnos posteriores, sus lecturas anteriores y diferencias se recalcularán automáticamente.',
+            confirmLabel: 'Habilitar edición',
+            cancelLabel: 'Cancelar',
+            variant: 'warning',
+        });
+        if (ok) {
+            setSuperAdminTankEdit(true);
+            toast.success('Edición de lecturas de tanque habilitada');
+        }
+    };
 
     const { data: editData, isLoading: editLoading } = useQuery({
         queryKey: ['gas-closeout-edit', editId],
@@ -423,6 +455,8 @@ const GasCloseout = () => {
         mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/close`),
         onSuccess: (res) => {
             setEstado('cerrado');
+            setSuperAdminTankEdit(false);
+            setEditAnterior(false);
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success(res.data?.message || 'Cierre cerrado exitosamente');
@@ -1296,7 +1330,7 @@ const GasCloseout = () => {
     };
 
     const handleTankReadingChange = (tankId, field, value) => {
-        if (estado === 'cerrado' || estado === 'reabierto') return;
+        if (estado === 'cerrado' || (estado === 'reabierto' && !superAdminTankEdit)) return;
         setTankReadings(prev => prev.map(r =>
             r.tank_id === tankId ? { ...r, [field]: parseFloat(value) || 0 } : r
         ));
@@ -1697,7 +1731,7 @@ const GasCloseout = () => {
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            <span onClick={handleEstadoBadgeClick} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                                 estado === 'cerrado'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : estado === 'reabierto'
@@ -1717,6 +1751,15 @@ const GasCloseout = () => {
                             {(estado === 'abierto' || estado === 'reabierto') && (
                                 <button
                                     onClick={async () => {
+                                        if (tankReadings.length > 0) {
+                                            const todasSinDiferencia = tankReadings.every(r =>
+                                                Math.abs((parseFloat(r.lectura_anterior) || 0) + (parseFloat(r.recarga) || 0) - (parseFloat(r.lectura_actual) || 0)) < 0.00001
+                                            );
+                                            if (todasSinDiferencia) {
+                                                toast.error('Las lecturas de tanque no han sido ingresadas (todas con diferencia cero). Ingrese las lecturas reales antes de cerrar el turno.');
+                                                return;
+                                            }
+                                        }
                                         const ok = await confirm({
                                             title: estado === 'reabierto' ? '¿Recerrar Turno?' : '¿Cerrar Turno?',
                                             message: estado === 'reabierto'
@@ -1736,6 +1779,22 @@ const GasCloseout = () => {
                             )}
                         </div>
                     </div>
+
+                    {superAdminTankEdit && estado === 'reabierto' && (
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                            <span className="flex items-center gap-2 text-[11px] font-bold text-amber-700 min-w-0">
+                                <ShieldCheck size={14} className="shrink-0" />
+                                Edición de tanques habilitada (SuperAdmin). Los turnos posteriores se recalcularán al guardar.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => { setSuperAdminTankEdit(false); setEditAnterior(false); }}
+                                className="text-[10px] font-bold uppercase text-amber-700 hover:bg-amber-100 px-2 py-1 rounded-lg border border-amber-300 shrink-0 transition-colors"
+                            >
+                                Desactivar
+                            </button>
+                        </div>
+                    )}
 
                     <div className="flex flex-col lg:flex-row gap-4">
                         <div className="flex-1 flex flex-col gap-4 min-w-0">
@@ -2077,7 +2136,7 @@ const GasCloseout = () => {
                                         const isAnticipos = btn.key === 'anticipos';
                                         const isTanques = btn.key === 'tanques';
                                         const isDiferencias = btn.key === 'diferencias';
-                                        const isBlockedReabierto = (isLectura || isTanques) && estado === 'reabierto';
+                                        const isBlockedReabierto = estado === 'reabierto' && (isLectura || (isTanques && !superAdminTankEdit));
                                         const canClick = !isBlockedReabierto && (isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTanques || isDiferencias || (btn.enabled && estado === 'abierto'));
                                         return (
                                             <button
@@ -3527,11 +3586,25 @@ const GasCloseout = () => {
                         <div className="fixed inset-0 bg-black/40" onClick={() => { setShowTankReadingsModal(false); setEditAnterior(false); }} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[50vh] max-h-[90vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
                                     <FlaskConical size={16} className="text-indigo-600" />
                                     Lecturas por Tanque
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                    {estado === 'reabierto' && superAdminTankEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditAnterior(prev => !prev)}
+                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                                                editAnterior
+                                                ? 'text-amber-700 bg-amber-100 border-amber-300'
+                                                : 'text-slate-500 bg-slate-50 border-slate-200'
+                                            }`}
+                                        >
+                                            <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
+                                            {editAnterior ? 'Lect. anterior editable' : 'Editar lect. anterior'}
+                                        </button>
                                     )}
                                 </h3>
                                 <button onClick={() => { setShowTankReadingsModal(false); setEditAnterior(false); }}
@@ -3557,6 +3630,7 @@ const GasCloseout = () => {
                                     <tbody className="divide-y divide-slate-50">
                                         {tankReadings.map((r, idx) => {
                                             const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
+                                            const tankLocked = estado === 'cerrado' || (estado === 'reabierto' && !superAdminTankEdit);
                                             return (
                                                 <tr key={r.tank_id} className="hover:bg-slate-50 transition-colors text-[11px]">
                                                     <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap" data-label="Tanque">{r.codigo_tanque}</td>
@@ -3575,8 +3649,8 @@ const GasCloseout = () => {
                                                                 onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
                                                                 onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_anterior')}
                                                                 onFocus={(e) => e.target.select()}
-                                                                disabled={estado === 'cerrado'}
-                                                                className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
+                                                                disabled={tankLocked}
+                                                                className={`${tankLocked ? inputDisabledCls : inputCls} ml-auto`}
                                                             />
                                                         ) : (
                                                             <span className="font-mono text-slate-500 whitespace-nowrap">{(r.lectura_anterior || 0).toFixed(5)}</span>
@@ -3592,8 +3666,8 @@ const GasCloseout = () => {
                                                             onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
                                                             onKeyDown={(e) => handleTankKeyDown(e, idx, 'recarga')}
                                                             onFocus={(e) => e.target.select()}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
+                                                            disabled={tankLocked}
+                                                            className={`${tankLocked ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-right" data-label="Lect. Actual">
@@ -3606,8 +3680,8 @@ const GasCloseout = () => {
                                                             onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
                                                             onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_actual')}
                                                             onFocus={(e) => e.target.select()}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
+                                                            disabled={tankLocked}
+                                                            className={`${tankLocked ? inputDisabledCls : inputCls} ml-auto`}
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(5)}</td>

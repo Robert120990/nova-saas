@@ -140,10 +140,11 @@ const GasReadingHistory = () => {
         gastos: 'Gastos', remesas: 'Remesas', cupones: 'Cupones', descuentos: 'Descuentos',
         adelantos: 'Adelantos', tarjetas: 'Tarjetas', creditos: 'Créditos', vales: 'Vales',
         anticipos: 'Anticipos despachados', lubricantes: 'Lubricantes', despachadores: 'Despachadores',
-        nozzles: 'Mangueras', fecha_turno: 'Fecha/Turno', reopen: 'Reapertura', reclose: 'Recierre'
+        nozzles: 'Mangueras', fecha_turno: 'Fecha/Turno', reopen: 'Reapertura', reclose: 'Recierre',
+        tanques: 'Lecturas de Tanque'
     };
 
-    const ACTION_LABELS = { update: 'Modificación', create: 'Creación', delete: 'Eliminación', reopen: 'Reapertura', reclose: 'Recierre' };
+    const ACTION_LABELS = { update: 'Modificación', create: 'Creación', delete: 'Eliminación', reopen: 'Reapertura', reclose: 'Recierre', edit: 'Corrección' };
 
     const FIELD_LABELS = {
         rubro: 'Rubro', fecha: 'Fecha', documento: 'Documento', tipo: 'Tipo', proveedor: 'Proveedor',
@@ -156,7 +157,8 @@ const GasReadingHistory = () => {
         lectura_inicial: 'Lect. Inicial', recarga: 'Recarga', lectura_final: 'Lect. Final',
         ventas: 'Ventas', nombre: 'Nombre', despachador_id: 'Despachador', nozzle_id: 'Manguera',
         numero_turno: 'No. Turno', fecha_turno: 'Fecha Turno', estado: 'Estado',
-        producto_id: 'Producto', cliente_id: 'Cliente', provider_id: 'Proveedor'
+        producto_id: 'Producto', cliente_id: 'Cliente', provider_id: 'Proveedor',
+        lectura_actual: 'Lect. Actual', lectura_anterior: 'Lect. Anterior', diferencia: 'Diferencia', codigo_tanque: 'Tanque'
     };
 
     const MONEY_FIELDS = ['valor', 'monto', 'precio', 'total'];
@@ -481,7 +483,7 @@ const GasReadingHistory = () => {
                         ¿Reabrir Turno #{reopenConfirm?.numero_turno}?
                     </p>
                     <p className="text-xs text-slate-400">
-                        El cierre se marcará como reabierto. Podrá editar los datos del turno, pero no podrá modificar las lecturas ni los tanques.
+                        El cierre se marcará como reabierto. Podrá editar los datos del turno; las lecturas de tanque solo podrán modificarse con acceso SuperAdmin (los turnos posteriores se recalcularán automáticamente).
                     </p>
                 </div>
                 <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
