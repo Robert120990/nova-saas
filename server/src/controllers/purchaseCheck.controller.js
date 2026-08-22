@@ -189,6 +189,36 @@ const deleteCheck = async (req, res) => {
     }
 };
 
+const resolveRrsNumCheque = async (check, companyId) => {
+    const [configs] = await pool.query(
+        'SELECT rrs_id_empresa FROM branch_chq_config WHERE company_id = ? AND branch_id = ?',
+        [companyId, check.branch_id]
+    );
+
+    if (configs.length === 0) return null;
+
+    const rrsIdEmpresa = configs[0].rrs_id_empresa;
+    const rrs = getRrsPool();
+    const [rows] = await rrs.query(
+        `SELECT num_cheque FROM solicitud_chq_contado
+         WHERE llave IN (?, ?) AND num_cheque != ' ' AND num_cheque IS NOT NULL
+         ORDER BY id DESC LIMIT 1`,
+        [`${rrsIdEmpresa}-${check.id}`, String(check.id)]
+    );
+
+    if (rows.length === 0) return null;
+
+    const numCheque = String(rows[0].num_cheque || '').trim();
+    if (!numCheque) return null;
+
+    await pool.query(
+        'UPDATE purchase_checks SET rrs_num_cheque = ? WHERE id = ? AND company_id = ?',
+        [numCheque, check.id, companyId]
+    );
+
+    return numCheque;
+};
+
 const deliverCheck = async (req, res) => {
     try {
         const { id } = req.params;
@@ -208,8 +238,22 @@ const deliverCheck = async (req, res) => {
             return res.status(404).json({ message: 'Cheque no encontrado' });
         }
 
-        if (existing[0].status !== 'PENDIENTE') {
-            return res.status(400).json({ message: 'El cheque ya fue ' + existing[0].status.toLowerCase() });
+        const check = existing[0];
+
+        if (check.status === 'ENTREGADO') {
+            return res.status(400).json({ message: 'El cheque ya fue entregado' });
+        }
+
+        if (check.status !== 'SOLICITADO') {
+            return res.status(400).json({ message: 'Solo se pueden entregar cheques en estado SOLICITADO' });
+        }
+
+        let numCheque = check.rrs_num_cheque;
+        if (!numCheque || !String(numCheque).trim()) {
+            numCheque = await resolveRrsNumCheque(check, companyId);
+            if (!numCheque) {
+                return res.status(400).json({ message: 'El cheque aún no ha sido generado por RRS' });
+            }
         }
 
         await pool.query(`

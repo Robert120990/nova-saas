@@ -365,7 +365,9 @@ const PurchaseChecks = () => {
                     headers={['Fecha', 'Proveedor', 'Monto', 'Destino', 'Estado', 'N. Cheque', 'F. Entrega', 'Documento', 'Acciones']}
                     data={checks}
                     isLoading={listLoading}
-                    renderRow={(c) => (
+                    renderRow={(c) => {
+                        const hasNumCheque = Boolean(rrsNumChequeMap[c.id] || c.rrs_num_cheque);
+                        return (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
                             <td className="px-5 py-3 text-[9px] font-bold text-slate-400">
                                 {formatDate(c.fecha)}
@@ -429,8 +431,9 @@ const PurchaseChecks = () => {
                                         <>
                                             <button
                                                 onClick={() => openDeliverModal(c.id)}
-                                                className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                                                title="Entregar"
+                                                disabled={!hasNumCheque}
+                                                className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                                title={hasNumCheque ? 'Entregar' : 'Esperando generación de cheque en RRS'}
                                             >
                                                 <Handshake size={14} />
                                             </button>
@@ -447,7 +450,8 @@ const PurchaseChecks = () => {
                                 </div>
                             </td>
                         </tr>
-                    )}
+                        );
+                    }}
                 />
                 {totalPages > 1 && (
                     <div className="px-2">
