@@ -1452,7 +1452,7 @@ const SalesTerminal = () => {
                                     error.response.data?.message?.toLowerCase().includes('vendedor');
                 if (isSellerError) return;
 
-                toast.error('Sesión no válida o expirada. Redirigiendo...');
+                toast.error('Sesión no válida o expirada. Redirigiendo...', { id: 'session-expired' });
                 setTimeout(() => navigate('/login'), 2000);
             }
         }

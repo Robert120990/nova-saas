@@ -17,6 +17,7 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const heartbeatRef = useRef(null);
+    const isLoggingOutRef = useRef(false);
     const queryClient = useQueryClient();
     const navigate = useNavigate();
 
@@ -42,6 +43,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('user');
         localStorage.removeItem('token');
         delete axios.defaults.headers.common['Authorization'];
+        queryClient.clear();
         navigate('/login');
     };
 
@@ -54,10 +56,12 @@ export const AuthProvider = ({ children }) => {
                     const isExcludedRequest =
                         error.config.url.includes('/api/auth/login') ||
                         error.config.url.includes('/api/sellers/login-pos') ||
-                        error.config.url.includes('/api/auth/heartbeat');
+                        error.config.url.includes('/api/auth/heartbeat') ||
+                        error.config.url.includes('/api/auth/logout');
 
-                    if (!isExcludedRequest && user) {
-                        toast.error('Sesión expirada. Por favor, inicie sesión de nuevo.');
+                    if (!isExcludedRequest && user && !isLoggingOutRef.current) {
+                        isLoggingOutRef.current = true;
+                        toast.error('Sesión expirada. Por favor, inicie sesión de nuevo.', { id: 'session-expired' });
                         logout();
                     }
                 }
@@ -115,6 +119,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('token', data.token);
             axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+            isLoggingOutRef.current = false;
             navigate('/dashboard');
         } catch (error) {
             throw error;
@@ -131,6 +136,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('token', data.token);
             axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+            isLoggingOutRef.current = false;
             queryClient.invalidateQueries();
             navigate('/dashboard');
         } catch (error) {
