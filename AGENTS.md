@@ -96,24 +96,24 @@ MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `ru
 
 ## Key Integration Patterns
 
-### Catalog/List Pages (per CATALOG_RULES.md)
+### Catalog/List Pages (per .opencode/skills/catalogo/CATALOG_RULES.md)
 - Backend: `GET` methods accept `search`, `page`, `limit` params; return `{ data, total, page, totalPages }`
 - Frontend: Use `<Table />` with loading state, `<Pagination />`, search with 500ms debounce
 - TanStack Query: `queryKey: ['resource', search, page]`
 
-### DTE Integration (per DTE_API_RULES.md)
+### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`
 - Full emit flow: `POST /dte/emit` (single endpoint handles generate + sign + transmit)
 
-### Header-Detail Layout Pages (per UI_DESIGN_RULES.md)
+### Header-Detail Layout Pages (per .opencode/skills/nuevo-modulo/UI_DESIGN_RULES.md)
 - Horizontal header grid for metadata (branch, type, number, date, client)
 - Detail table below with max space
 - Right sidebar for totals and action buttons
 - F3 global shortcut opens product search modal
 - Product validation: must be `status === 'activo'` and branch in product's `branches` array
 
-### Responsividad Móvil (per RESPONSIVE_RULES.md) — OBLIGATORIO
+### Responsividad Móvil (per .opencode/skills/responsive-check/RESPONSIVE_RULES.md) — OBLIGATORIO
 Toda modificación de pantallas existentes y toda nueva opción/pantalla en `client/` DEBE ser totalmente responsive en dispositivos móviles (320px-767px). Reglas clave:
 - Mobile-first: bases `grid-cols-1`/`grid-cols-2` con breakpoints `sm:`/`md:`/`lg:`; nunca grids fijos sin base móvil.
 - Cabeceras/tabs/barras de búsqueda con `flex-col md:flex-row` o `flex-wrap`.

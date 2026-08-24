@@ -4,8 +4,8 @@ Esta guía define cómo interactuar con la API de DTE desde el sistema principal
 
 ## 1. Configuración de Red
 La API de DTE corre de forma independiente.
-- **Puerto por defecto**: `4005`
-- **Base URL**: `http://localhost:4005/api`
+- **Puerto por defecto**: `5000` (configurado en `dte-api/.env` y `ecosystem.config.js`; el fallback del código es 4005 pero no se usa)
+- **Base URL**: `http://localhost:5000/api`
 
 ## 2. Encabezados (Headers) Requeridos
 Todas las peticiones (excepto `/health`) deben incluir:

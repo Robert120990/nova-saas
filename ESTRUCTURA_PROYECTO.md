@@ -5,8 +5,8 @@
 > Última generación: 2026-08-24
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
-> cada archivo. Para reglas de negocio y convenciones ver AGENTS.md,
-> CLAUDE.md y los `*_RULES.md` de la raíz.
+> cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
+> y las skills de `.opencode/skills/` (incluyen los `*_RULES.md`).
 
 ## 1. Visión general
 
@@ -31,14 +31,9 @@ Sistema multi-empresa (multi-tenant) SaaS para El Salvador con facturación elec
 |---|---|
 | `AGENTS.md` | Guía para agentes de IA/Codex: arquitectura, comandos y convenciones (duplicado de CLAUDE.md). |
 | `CLAUDE.md` | Guía para Claude Code: arquitectura, comandos y convenciones (idéntica a AGENTS.md). |
-| `README.md` | README mínimo (título únicamente). La documentación real vive en AGENTS.md y los *_RULES.md. |
+| `README.md` | README mínimo (título únicamente). La documentación real vive en AGENTS.md y las skills de .opencode/skills/. |
 | `ESTRUCTURA_PROYECTO.md` | Este documento: mapa exhaustivo de la estructura física del repo generado por script. |
-| `CATALOG_RULES.md` | Convenciones obligatorias para páginas de catálogos/listados (backend paginado + tabla frontend). |
 | `CLIENT_REESTRUCTURACION_PLAN.md` | Plan histórico de reestructuración del cliente (referencia, ya ejecutado). |
-| `DTE_API_RULES.md` | Reglas del ciclo DTE: generate → sign → transmit, contingencia e invalidación. |
-| `REPORT_DESIGN_RULES.md` | Convenciones de diseño para páginas de reportes. |
-| `RESPONSIVE_RULES.md` | Reglas OBLIGATORIAS de responsividad móvil (320px-767px) para todo el cliente. |
-| `UI_DESIGN_RULES.md` | Convenciones visuales: layout cabecera-detalle, paleta indigo/slate, atajos, tipografía. |
 
 ### Configuración y despliegue
 
@@ -61,6 +56,48 @@ Sistema multi-empresa (multi-tenant) SaaS para El Salvador con facturación elec
 | `deploy/` | Scripts de despliegue (setup.ps1). |
 | `scripts/` | Scripts utilitarios standalone: importar catálogo contable y preparar turnos/cajas. |
 | `cumplientoDTE/` | Material oficial de cumplimiento DTE: manuales PDF de Hacienda, catálogos XLSX y JSON schemas oficiales (svfe-json-schemas). Referencia, no código ejecutable. |
+
+### Skills de proyecto (`.opencode/skills/`)
+
+Cada carpeta = una skill cargable por agentes de IA; incluye su SKILL.md accionable y, cuando aplica, la normativa `*_RULES.md` co-ubicada.
+
+#### `.opencode/skills/`
+
+**`.opencode/skills/catalogo/`**
+
+| Archivo | Descripción |
+|---|---|
+| `CATALOG_RULES.md` | Convenciones obligatorias para páginas de catálogos/listados (backend paginado + tabla frontend). |
+| `SKILL.md` | Skill: crear/modificar catálogos y listados CRUD con búsqueda y paginación. |
+
+**`.opencode/skills/dte/`**
+
+| Archivo | Descripción |
+|---|---|
+| `DTE_API_RULES.md` | Reglas del ciclo DTE: generate → sign → transmit, contingencia e invalidación. |
+| `SKILL.md` | Skill: flujo DTE completo (emitir, firmar, transmitir, contingencia, invalidación, ERET). |
+
+**`.opencode/skills/nuevo-modulo/`**
+
+| Archivo | Descripción |
+|---|---|
+| `SKILL.md` | Skill: checklist integral para agregar un módulo nuevo punta a punta. |
+| `UI_DESIGN_RULES.md` | Convenciones visuales: layout cabecera-detalle, paleta indigo/slate, atajos, tipografía. |
+
+**`.opencode/skills/reporte/`**
+
+| Archivo | Descripción |
+|---|---|
+| `REPORT_DESIGN_RULES.md` | Convenciones de diseño para páginas de reportes. |
+| `SKILL.md` | Skill: páginas de reportes con ReportLayout, PDF y exportación Excel. |
+
+**`.opencode/skills/responsive-check/`**
+
+| Archivo | Descripción |
+|---|---|
+| `RESPONSIVE_RULES.md` | Reglas OBLIGATORIAS de responsividad móvil (320px-767px) para todo el cliente. |
+| `SKILL.md` | Skill: verificar responsividad móvil 320px/375px con Playwright MCP + checklist. |
+
 
 ## 3. `server/` — Backend principal
 
@@ -595,10 +632,10 @@ Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_mig
 
 ## 7. Convenciones esenciales (resumen)
 
-1. **Catálogos/listados**: GET con `search/page/limit` → `{ data, total, page, totalPages }`; frontend `Table`+`Pagination`+debounce 500ms (ver CATALOG_RULES.md).
+1. **Catálogos/listados**: GET con `search/page/limit` → `{ data, total, page, totalPages }`; frontend `Table`+`Pagination`+debounce 500ms (skill `catalogo`).
 2. **Montos**: SIEMPRE `<Money>` / `<MoneyInput>` de `components/ui/Money.jsx` (permiso `view_amounts`). Nunca `toFixed(2)` directo.
-3. **Responsive móvil obligatorio** 320px-767px (ver RESPONSIVE_RULES.md).
-4. **Layout cabecera-detalle** en documentos: grid horizontal arriba, tabla abajo, totales a la derecha, F3 abre buscador de productos (ver UI_DESIGN_RULES.md).
+3. **Responsive móvil obligatorio** 320px-767px (skill `responsive-check`).
+4. **Layout cabecera-detalle** en documentos: grid horizontal arriba, tabla abajo, totales a la derecha, F3 abre buscador de productos (skills `nuevo-modulo` / UI_DESIGN_RULES).
 5. **Validación de producto en ventas**: `status === 'activo'` y sucursal incluida en `product.branches`.
 6. **Textos de UI en español**, paleta Indigo/Slate, bordes `rounded-xl`/`rounded-2xl`.
 7. **DTE**: el main server nunca firma ni transmite; delega en `dte-api` vía `POST /dte/emit` (JWT + x-company-id).

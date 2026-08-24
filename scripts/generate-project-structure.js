@@ -28,7 +28,7 @@ const NOTES = {
   // ---------- Raíz ----------
   'AGENTS.md': 'Guía para agentes de IA/Codex: arquitectura, comandos y convenciones (duplicado de CLAUDE.md).',
   'CLAUDE.md': 'Guía para Claude Code: arquitectura, comandos y convenciones (idéntica a AGENTS.md).',
-  'README.md': 'README mínimo (título únicamente). La documentación real vive en AGENTS.md y los *_RULES.md.',
+  'README.md': 'README mínimo (título únicamente). La documentación real vive en AGENTS.md y las skills de .opencode/skills/.',
   'ESTRUCTURA_PROYECTO.md': 'Este documento: mapa exhaustivo de la estructura física del repo generado por script.',
   'CATALOG_RULES.md': 'Convenciones obligatorias para páginas de catálogos/listados (backend paginado + tabla frontend).',
   'DTE_API_RULES.md': 'Reglas del ciclo DTE: generate → sign → transmit, contingencia e invalidación.',
@@ -36,6 +36,13 @@ const NOTES = {
   'RESPONSIVE_RULES.md': 'Reglas OBLIGATORIAS de responsividad móvil (320px-767px) para todo el cliente.',
   'UI_DESIGN_RULES.md': 'Convenciones visuales: layout cabecera-detalle, paleta indigo/slate, atajos, tipografía.',
   'CLIENT_REESTRUCTURACION_PLAN.md': 'Plan histórico de reestructuración del cliente (referencia, ya ejecutado).',
+
+  // ---------- Skills de proyecto (.opencode/skills/) ----------
+  '.opencode/skills/catalogo/SKILL.md': 'Skill: crear/modificar catálogos y listados CRUD con búsqueda y paginación.',
+  '.opencode/skills/responsive-check/SKILL.md': 'Skill: verificar responsividad móvil 320px/375px con Playwright MCP + checklist.',
+  '.opencode/skills/dte/SKILL.md': 'Skill: flujo DTE completo (emitir, firmar, transmitir, contingencia, invalidación, ERET).',
+  '.opencode/skills/reporte/SKILL.md': 'Skill: páginas de reportes con ReportLayout, PDF y exportación Excel.',
+  '.opencode/skills/nuevo-modulo/SKILL.md': 'Skill: checklist integral para agregar un módulo nuevo punta a punta.',
   'Caddyfile': 'Configuración de Caddy (reverse proxy) para producción.',
   'Caddyfile.dev': 'Configuración de Caddy para desarrollo local.',
   'Caddyfile.docker': 'Configuración de Caddy para despliegue con Docker.',
@@ -589,8 +596,8 @@ function buildDocument() {
 > Última generación: ${today}
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
-> cada archivo. Para reglas de negocio y convenciones ver AGENTS.md,
-> CLAUDE.md y los \`*_RULES.md\` de la raíz.
+> cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
+> y las skills de \`.opencode/skills/\` (incluyen los \`*_RULES.md\`).
 `);
 
   /* --- 1. Visión general --- */
@@ -613,13 +620,12 @@ Sistema multi-empresa (multi-tenant) SaaS para El Salvador con facturación elec
   /* --- 2. Raíz --- */
   const rootFiles = [
     'AGENTS.md', 'CLAUDE.md', 'README.md', 'ESTRUCTURA_PROYECTO.md',
-    'CATALOG_RULES.md', 'CLIENT_REESTRUCTURACION_PLAN.md', 'DTE_API_RULES.md',
-    'REPORT_DESIGN_RULES.md', 'RESPONSIVE_RULES.md', 'UI_DESIGN_RULES.md',
+    'CLIENT_REESTRUCTURACION_PLAN.md',
   ].filter((f) => fs.existsSync(path.join(ROOT_DIR, f)));
 
   const rootConfigs = [
     'Caddyfile', 'Caddyfile.dev', 'Caddyfile.docker', 'caddy-pm2-wrapper.js',
-    'docker-compose.yml', 'ecosystem.config.js', 'vercel.json',
+    'docker-compose.yml', 'ecosystem.config.js',
     'webhook-server.js', '.gitignore',
   ].filter((f) => fs.existsSync(path.join(ROOT_DIR, f)));
 
@@ -629,7 +635,13 @@ Sistema multi-empresa (multi-tenant) SaaS para El Salvador con facturación elec
   let sec = ['## 2. Raíz del repositorio', '', '### Documentación', '', mdTable(rootFiles.map((f) => ({ file: f, desc: describe(f) }))), '', '### Configuración y despliegue', '', mdTable(rootConfigs.map((f) => ({ file: f, desc: describe(f) })))];
   if (rootDirs.length) {
     sec.push('', '### Directorios auxiliares', '');
-    sec.push(mdTable(rootDirs.map((d) => ({ file: `${d}/`, desc: describeDir(d) }))));  }
+    sec.push(mdTable(rootDirs.map((d) => ({ file: `${d}/`, desc: describeDir(d) }))));
+  }
+  if (existsDir('.opencode/skills')) {
+    sec.push('', '### Skills de proyecto (`.opencode/skills/`)', '',
+      'Cada carpeta = una skill cargable por agentes de IA; incluye su SKILL.md accionable y, cuando aplica, la normativa `*_RULES.md` co-ubicada.', '');
+    sec.push(renderGroup({ title: '`.opencode/skills/`', base: '.opencode/skills', recursive: true }));
+  }
   parts.push(sec.join('\n') + '\n');
 
   /* --- 3. server/ --- */
@@ -708,10 +720,10 @@ Sistema multi-empresa (multi-tenant) SaaS para El Salvador con facturación elec
   /* --- 7. Convenciones clave --- */
   parts.push(`## 7. Convenciones esenciales (resumen)
 
-1. **Catálogos/listados**: GET con \`search/page/limit\` → \`{ data, total, page, totalPages }\`; frontend \`Table\`+\`Pagination\`+debounce 500ms (ver CATALOG_RULES.md).
+1. **Catálogos/listados**: GET con \`search/page/limit\` → \`{ data, total, page, totalPages }\`; frontend \`Table\`+\`Pagination\`+debounce 500ms (skill \`catalogo\`).
 2. **Montos**: SIEMPRE \`<Money>\` / \`<MoneyInput>\` de \`components/ui/Money.jsx\` (permiso \`view_amounts\`). Nunca \`toFixed(2)\` directo.
-3. **Responsive móvil obligatorio** 320px-767px (ver RESPONSIVE_RULES.md).
-4. **Layout cabecera-detalle** en documentos: grid horizontal arriba, tabla abajo, totales a la derecha, F3 abre buscador de productos (ver UI_DESIGN_RULES.md).
+3. **Responsive móvil obligatorio** 320px-767px (skill \`responsive-check\`).
+4. **Layout cabecera-detalle** en documentos: grid horizontal arriba, tabla abajo, totales a la derecha, F3 abre buscador de productos (skills \`nuevo-modulo\` / UI_DESIGN_RULES).
 5. **Validación de producto en ventas**: \`status === 'activo'\` y sucursal incluida en \`product.branches\`.
 6. **Textos de UI en español**, paleta Indigo/Slate, bordes \`rounded-xl\`/\`rounded-2xl\`.
 7. **DTE**: el main server nunca firma ni transmite; delega en \`dte-api\` vía \`POST /dte/emit\` (JWT + x-company-id).

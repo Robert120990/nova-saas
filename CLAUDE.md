@@ -96,17 +96,17 @@ MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `ru
 
 ## Key Integration Patterns
 
-### Catalog/List Pages (per CATALOG_RULES.md)
+### Catalog/List Pages (per .opencode/skills/catalogo/CATALOG_RULES.md)
 - Backend: `GET` methods accept `search`, `page`, `limit` params; return `{ data, total, page, totalPages }`
 - Frontend: Use `<Table />` with loading state, `<Pagination />`, search with 500ms debounce
 - TanStack Query: `queryKey: ['resource', search, page]`
 
-### DTE Integration (per DTE_API_RULES.md)
+### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`
 - Full emit flow: `POST /dte/emit` (single endpoint handles generate + sign + transmit)
 
-### Header-Detail Layout Pages (per UI_DESIGN_RULES.md)
+### Header-Detail Layout Pages (per .opencode/skills/nuevo-modulo/UI_DESIGN_RULES.md)
 - Horizontal header grid for metadata (branch, type, number, date, client)
 - Detail table below with max space
 - Right sidebar for totals and action buttons
