@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Mapa de la estructura física del repo:** ver [ESTRUCTURA_PROYECTO.md](./ESTRUCTURA_PROYECTO.md)
+> (generado con `node scripts/generate-project-structure.js`). Este archivo describe
+> arquitectura y convenciones; aquel documenta cada carpeta/archivo existente.
+
 ## Project Overview
 
 This is a multi-tenant SaaS system for Salvadoran businesses with DTE (Documentos Tributarios Electrónicos / Electronic Tax Document) integration. It consists of three main components:
@@ -78,16 +82,17 @@ Separate microservice for DTE lifecycle. Connects to same database as main serve
 DTE workflow: `generate` -> `sign` -> `transmit`
 
 Key directories:
-- `src/controllers/` - DTE operations
-- `src/services/` - Signature, transmission, validation
-- `src/schemas/` - JSON schemas for DTE validation
-- `src/queue/` - Transmission queue worker
+- `src/controllers/` - DTE operations (emit, signature, invalidation, retorno/ERET, retransmission, contingency)
+- `src/services/` - Generator (`dteGenerator.js`), PDF, audit; subdirs: `dte/` (control numbers), `signature/` (internal node-forge / external signer), `retorno/`
+- `src/transmission/` - Hacienda API communication (token + recepcionDTE)
+- `src/queue/` - Transmission queue worker with retries
 - `src/jobs/` - Contingency resend job
-- `src/signature/` - Digital signature handling
-- `src/transmission/` - Hacienda API communication
+- `src/contingency/`, `src/invalidation/` - Event-specific logic
+- `src/validators/` - ajv validation against official MH schemas
+- Official JSON schemas live in `cumplientoDTE/svfe-json-schemas/` (NOT inside dte-api; the `schemas/`, `repositories/` dirs do not exist)
 
 ### Database (`database/`)
-MySQL migrations. Key tables: `companies`, `branches`, `products`, `customers`, `users`, `sales`, `purchases`, `payments`, `movements`, `kardex`, `dte_documents`.
+MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `run_migration_v<N>.js` runner per version (~600+ files). For current schema use `server/src/config/db.schema.js`. Key tables: `companies`, `branches`, `products`, `customers`, `users`, `sales`, `purchases`, `payments`, `movements`, `kardex`, `dte_documents`.
 
 ## Key Integration Patterns
 
