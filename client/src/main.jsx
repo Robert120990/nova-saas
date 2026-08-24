@@ -6,35 +6,48 @@ import { registerSW } from 'virtual:pwa-register'
 import axios from 'axios'
 import { toast } from 'sonner'
 
-registerSW({ immediate: true })
+let swRegistration = null;
+let isUpdating = false;
 
-setInterval(() => {
-    if ('serviceWorker' in navigator)
-        navigator.serviceWorker.getRegistration().then(reg => reg?.update())
-}, 60 * 60 * 1000)
+registerSW({
+    immediate: true,
+    onRegisteredSW(_swUrl, registration) {
+        swRegistration = registration || null;
+    }
+});
 
-const isPWA = () =>
-    window.matchMedia('(display-mode: standalone)').matches ||
-    navigator.standalone === true;
+const checkForUpdates = () => {
+    try {
+        swRegistration?.update().catch(() => {});
+    } catch (e) {}
+};
 
 const checkVersion = async () => {
-    if (!isPWA() || document.visibilityState !== 'visible') return;
+    if (isUpdating || document.visibilityState !== 'visible') return;
     try {
         const { data } = await axios.get('/health');
         const version = data.version || '';
         const last = localStorage.getItem('app_version');
+        localStorage.setItem('app_version', version);
         if (last && last !== version) {
-            localStorage.setItem('app_version', version);
-            toast.info('Nueva versión disponible. Recargando aplicación...');
-            setTimeout(() => window.location.reload(), 5000);
-        } else {
-            localStorage.setItem('app_version', version);
+            isUpdating = true;
+            toast.info('Nueva versión disponible. Actualizando la aplicación...', { duration: 4000 });
+            checkForUpdates();
+            setTimeout(() => window.location.reload(), 4000);
         }
     } catch (e) {}
 };
 
 checkVersion();
 setInterval(checkVersion, 5 * 60 * 1000);
+setInterval(checkForUpdates, 10 * 60 * 1000);
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        checkForUpdates();
+        checkVersion();
+    }
+});
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
