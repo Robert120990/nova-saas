@@ -68,12 +68,16 @@ app.post('/api/restart', express.json(), async (req, res) => {
 app.use('/api', apiRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
-    let version = 'unknown';
+const SERVER_VERSION = (() => {
     try {
-        version = require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
-    } catch (e) {}
-    res.json({ status: 'OK', version, environment: process.env.NODE_ENV, timestamp: new Date() });
+        return require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+    } catch (e) {
+        return 'unknown';
+    }
+})();
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', version: SERVER_VERSION, environment: process.env.NODE_ENV, timestamp: new Date() });
 });
 
 // Serve client built files in production

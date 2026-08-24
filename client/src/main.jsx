@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 
 let swRegistration = null;
 let isUpdating = false;
+let mismatchCount = 0;
 
 registerSW({
     immediate: true,
@@ -27,14 +28,21 @@ const checkVersion = async () => {
     try {
         const { data } = await axios.get('/health');
         const version = data.version || '';
+        if (!version || version === 'unknown') return;
         const last = localStorage.getItem('app_version');
-        localStorage.setItem('app_version', version);
         if (last && last !== version) {
-            isUpdating = true;
-            toast.info('Nueva versión disponible. Actualizando la aplicación...', { duration: 4000 });
-            checkForUpdates();
-            setTimeout(() => window.location.reload(), 4000);
+            mismatchCount++;
+            if (mismatchCount >= 2) {
+                isUpdating = true;
+                localStorage.setItem('app_version', version);
+                toast.info('Nueva versión disponible. Actualizando la aplicación...', { duration: 4000 });
+                checkForUpdates();
+                setTimeout(() => window.location.reload(), 4000);
+            }
+            return;
         }
+        mismatchCount = 0;
+        if (last !== version) localStorage.setItem('app_version', version);
     } catch (e) {}
 };
 
