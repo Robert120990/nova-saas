@@ -147,6 +147,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `dteQueryFilters.js` | Filtros SQL reutilizables para consultas de documentos DTE. |
 | `excel.service.js` | Generación de archivos Excel (exceljs) para exportaciones. |
 | `gasCloseoutRrs.service.js` | Lee datos del sistema RRS externo de la gasolinera para los cierres de turno. |
+| `loginRateLimit.service.js` | Login Rate Limit.service. |
 | `mailer.service.js` | Envío de correos con nodemailer usando SMTP por empresa. |
 | `notification.service.js` | Creación y distribución de notificaciones internas (WebSocket + BD). |
 | `notificationWorker.js` | Worker que evalúa eventos y dispara notificaciones programadas. |
@@ -623,8 +624,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v143**
-- Total de archivos: **253** (134 .sql · 23 .js migración · 94 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v144**
+- Total de archivos: **255** (135 .sql · 23 .js migración · 95 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

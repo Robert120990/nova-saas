@@ -48,3 +48,5 @@ scratch/
 check_payments.js
 test_watermark.pdf
 spa.traineddata
+
+# Playwright MCP session artifacts.playwright-mcp/

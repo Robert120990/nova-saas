@@ -2,30 +2,47 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { verifyToken } = require('../middlewares/auth');
+const loginRateLimit = require('../services/loginRateLimit.service');
 
-const loginAttempts = new Map();
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_MAX_ATTEMPTS = 10;
+/**
+ * Rate-limit de login persistente (BD):
+ * - Cuenta SOLO intentos fallidos (el hook 'finish' clasifica por statusCode).
+ * - Clave por (ip + username); además techo por IP contra fuerza bruta.
+ * - Si la BD falla, deja pasar (fail-open) para no tirar el login a todos.
+ */
+const loginRateLimiter = (req, res, next) => {
+    const ip = loginRateLimit.getClientIp(req);
+    const username = String((req.body && req.body.username) || '').trim().toLowerCase();
+    req.loginRate = { ip, username };
 
-function loginRateLimiter(req, res, next) {
-    const ip = req.headers['x-client-public-ip']
-        || (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim()
-        || req.socket.remoteAddress
-        || req.ip;
-    const now = Date.now();
-    const record = loginAttempts.get(ip);
-    if (!record || now - record.resetAt > LOGIN_WINDOW_MS) {
-        loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-        return next();
-    }
-    if (record.count >= LOGIN_MAX_ATTEMPTS) {
-        return res.status(429).json({ message: 'Demasiados intentos. Intente de nuevo en 15 minutos.' });
-    }
-    record.count += 1;
-    next();
-}
+    res.on('finish', () => {
+        if (res.statusCode === 429) return;
+        if (res.statusCode < 400) {
+            loginRateLimit.recordSuccess(ip, username).catch(() => {});
+        } else {
+            loginRateLimit.recordFailure(ip, username).catch(() => {});
+        }
+    });
+
+    loginRateLimit.checkBlocked(ip, username)
+        .then((status) => {
+            if (status.blocked) {
+                return res.status(429).json({
+                    message: `Demasiados intentos fallidos. Intente de nuevo en ${status.minutes} minuto(s).`
+                });
+            }
+            next();
+        })
+        .catch(() => next());
+};
+
+const superAdminOnly = (req, res, next) => {
+    if (req.user && req.user.role === 'SuperAdmin') return next();
+    return res.status(403).json({ message: 'Solo SuperAdmin puede desbloquear accesos' });
+};
 
 router.post('/login', loginRateLimiter, authController.login);
+router.post('/rate-limit/unlock', verifyToken, superAdminOnly, authController.unlockRateLimit);
 router.post('/select-context', verifyToken, authController.selectContext);
 router.get('/me/access', verifyToken, authController.getAccess);
 router.post('/heartbeat', verifyToken, authController.heartbeat);

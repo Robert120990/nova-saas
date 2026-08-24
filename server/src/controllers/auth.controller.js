@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const loginRateLimit = require('../services/loginRateLimit.service');
 
 async function createSession(userId, companyId, branchId, req) {
     const ip = req.ip || req.connection?.remoteAddress || null;
@@ -398,4 +399,25 @@ const logout = async (req, res) => {
     }
 };
 
-module.exports = { login, selectContext, getAccess, heartbeat, logout };
+// Desbloqueo administrativo del rate-limit de login (solo SuperAdmin, validado en la ruta).
+const unlockRateLimit = async (req, res) => {
+    try {
+        const { username, ip } = req.body || {};
+        if (!username && !ip) {
+            return res.status(400).json({ message: 'Indique un usuario y/o una IP a desbloquear' });
+        }
+        const affected = await loginRateLimit.unlock({ username, ip });
+        res.json({
+            success: true,
+            message: affected > 0
+                ? `Desbloqueado: ${affected} registro(s) eliminado(s)`
+                : 'No había bloqueos activos para ese criterio',
+            affected
+        });
+    } catch (error) {
+        console.error('Unlock rate-limit error:', error);
+        res.status(500).json({ message: 'Error al desbloquear' });
+    }
+};
+
+module.exports = { login, selectContext, getAccess, heartbeat, logout, unlockRateLimit };

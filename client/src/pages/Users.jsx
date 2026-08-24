@@ -4,7 +4,7 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { IMaskInput } from 'react-imask';
-import { Plus, Shield, Edit, User, Trash2, Search } from 'lucide-react';
+import { Plus, Shield, Edit, User, Trash2, Search, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -15,6 +15,7 @@ const Users = () => {
     const { user: currentUser } = useAuth();
     const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isUnlockOpen, setIsUnlockOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -93,6 +94,27 @@ const Users = () => {
     });
 
 
+    const unlockMutation = useMutation({
+        mutationFn: (data) => axios.post('/api/auth/rate-limit/unlock', data),
+        onSuccess: (res) => {
+            toast.success(res.data?.message || 'Desbloqueo aplicado');
+            setIsUnlockOpen(false);
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al desbloquear');
+        }
+    });
+
+    const handleUnlock = (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target));
+        if (!data.username && !data.ip) {
+            toast.error('Indique un usuario y/o una IP a desbloquear');
+            return;
+        }
+        unlockMutation.mutate(data);
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -128,13 +150,25 @@ const Users = () => {
                     <h2 className="text-2xl font-bold text-slate-900">Gestión de Usuarios</h2>
                     <p className="text-slate-500 mt-1 font-medium italic">Empresa: {currentUser.company_name}</p>
                 </div>
-                <button 
-                    onClick={() => { setSelectedUser(null); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
-                >
-                    <Plus size={20}/>
-                    <span>Nuevo Integrante</span>
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                    {currentUser?.role_name === 'SuperAdmin' && (
+                        <button
+                            onClick={() => setIsUnlockOpen(true)}
+                            className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:border-amber-400 hover:text-amber-600 text-slate-600 px-4 py-2 rounded-xl font-bold transition-all text-sm active:scale-95"
+                            title="Desbloquear logins bloqueados por intentos fallidos"
+                        >
+                            <Unlock size={16}/>
+                            <span>Desbloquear acceso</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={() => { setSelectedUser(null); setIsModalOpen(true); }}
+                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    >
+                        <Plus size={20}/>
+                        <span>Nuevo Integrante</span>
+                    </button>
+                </div>
             </div>
 
             <div className="flex items-center justify-between gap-4">
@@ -356,6 +390,34 @@ const Users = () => {
                         <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
                         <button type="submit" disabled={mutation.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50">
                             {mutation.isPending ? 'Guardando...' : (selectedUser ? 'Guardar Cambios' : 'Registrar Usuario')}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                isOpen={isUnlockOpen}
+                onClose={() => setIsUnlockOpen(false)}
+                title="Desbloquear acceso (login)"
+                maxWidth="max-w-md"
+            >
+                <form onSubmit={handleUnlock} className="space-y-4">
+                    <p className="text-xs text-slate-500 font-medium">
+                        Elimina los bloqueos por intentos fallidos de inicio de sesión.
+                        Indique el usuario, la IP, o ambos.
+                    </p>
+                    <div>
+                        <label className={labelCls}>Usuario</label>
+                        <input name="username" placeholder="jperez" autoComplete="off" className={fieldCls} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>IP <span className="normal-case text-[10px] font-normal text-slate-400">(deja vacío para desbloquear toda la IP)</span></label>
+                        <input name="ip" placeholder="190.5.20.10" autoComplete="off" className={fieldCls} />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                        <button type="button" onClick={() => setIsUnlockOpen(false)} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
+                        <button type="submit" disabled={unlockMutation.isPending} className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-amber-500/20 active:scale-95 disabled:opacity-50">
+                            {unlockMutation.isPending ? 'Desbloqueando...' : 'Desbloquear'}
                         </button>
                     </div>
                 </form>
