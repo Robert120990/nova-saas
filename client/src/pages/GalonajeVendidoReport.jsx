@@ -34,6 +34,19 @@ const GalonajeVendidoReport = () => {
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
+    const getErrorMessage = async (error) => {
+        if (error.response?.data instanceof Blob) {
+            try {
+                const text = await error.response.data.text();
+                const parsed = JSON.parse(text);
+                return parsed.message || 'Error al generar el reporte';
+            } catch {
+                return 'Error al generar el reporte';
+            }
+        }
+        return error.response?.data?.message || 'Error al generar el reporte';
+    };
+
     const handleGenerateReport = async () => {
         if (!filters.start_date || !filters.end_date) {
             toast.error('Debe seleccionar un rango de fechas');
@@ -50,7 +63,8 @@ const GalonajeVendidoReport = () => {
 
             const response = await axios.get('/api/gas-station/reports/galonaje-vendido/pdf', {
                 params,
-                responseType: 'blob'
+                responseType: 'blob',
+                timeout: 60000
             });
 
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -61,7 +75,7 @@ const GalonajeVendidoReport = () => {
             toast.success('Reporte generado correctamente');
         } catch (error) {
             console.error('Error generating report:', error);
-            toast.error('Error al generar el reporte');
+            toast.error(await getErrorMessage(error));
         } finally {
             setIsGenerating(false);
         }
@@ -87,7 +101,8 @@ const GalonajeVendidoReport = () => {
             };
             const response = await axios.get('/api/gas-station/reports/galonaje-vendido/pdf', {
                 params,
-                responseType: 'blob'
+                responseType: 'blob',
+                timeout: 60000
             });
             const blob = new Blob([response.data], { 
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
@@ -103,7 +118,7 @@ const GalonajeVendidoReport = () => {
             toast.success('Reporte exportado a Excel correctamente');
         } catch (error) {
             console.error('Error exporting to Excel:', error);
-            toast.error('Error al exportar a Excel');
+            toast.error(await getErrorMessage(error));
         }
     };
 
