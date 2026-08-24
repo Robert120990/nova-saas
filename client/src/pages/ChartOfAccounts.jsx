@@ -77,16 +77,42 @@ const ChartOfAccounts = () => {
         else createMutation.mutate(data);
     };
 
+    const parseCSVLine = (line) => {
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) {
+                if (ch === '"') {
+                    if (line[i + 1] === '"') { current += '"'; i++; }
+                    else inQuotes = false;
+                } else current += ch;
+            } else if (ch === '"') {
+                inQuotes = true;
+            } else if (ch === ',') {
+                values.push(current);
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        values.push(current);
+        return values;
+    };
+
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         setIsImporting(true);
         try {
-            const text = await file.text();
-            const lines = text.split('\n').filter(l => l.trim());
+            const text = (await file.text()).replace(/^\uFEFF/, '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
             // Esperado: code,name,account_type_id,parent_code,allows_entries
-            const accounts = lines.slice(1).map(line => {
-                const vals = line.split(',');
+            // Salta la primera línea solo si es encabezado (el código no comienza con número)
+            const start = lines[0] && !/^\d/.test(lines[0].trim()) ? 1 : 0;
+            const accounts = lines.slice(start).map(line => {
+                const vals = parseCSVLine(line);
                 return {
                     code: vals[0]?.trim(),
                     name: vals[1]?.trim(),
@@ -153,7 +179,7 @@ const ChartOfAccounts = () => {
                             <tbody>
                                 <tr><td className="p-2 border border-blue-200 font-mono">code</td><td className="p-2 border border-blue-200">Código de la cuenta</td><td className="p-2 border border-blue-200 font-mono">110101</td></tr>
                                 <tr><td className="p-2 border border-blue-200 font-mono">name</td><td className="p-2 border border-blue-200">Nombre de la cuenta</td><td className="p-2 border border-blue-200">CAJA GENERAL</td></tr>
-                                <tr><td className="p-2 border border-blue-200 font-mono">account_type_id</td><td className="p-2 border border-blue-200">ID del tipo: 1=Activo, 2=Pasivo, 3=Patrimonio, 4=Ingreso, 5=Costo, 6=Gasto</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
+                                <tr><td className="p-2 border border-blue-200 font-mono">account_type_id</td><td className="p-2 border border-blue-200">ID o nombre del tipo: 1=Activo, 2=Pasivo, 3=Patrimonio, 4=Ingreso, 5=Costo, 6=Gasto (también acepta "Activo", "Pasivo", etc.)</td><td className="p-2 border border-blue-200 font-mono">1 o Activo</td></tr>
                                 <tr><td className="p-2 border border-blue-200 font-mono">parent_code</td><td className="p-2 border border-blue-200">Código de la cuenta padre (vacío si es raíz)</td><td className="p-2 border border-blue-200 font-mono">1101</td></tr>
                                 <tr><td className="p-2 border border-blue-200 font-mono">allows_entries</td><td className="p-2 border border-blue-200">1 = permite asientos, 0 = solo agrupación</td><td className="p-2 border border-blue-200 font-mono">1</td></tr>
                             </tbody>

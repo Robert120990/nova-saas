@@ -556,6 +556,16 @@ const saveSettings = async (req, res) => {
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
+const resolveAccountTypeId = (value, types) => {
+    const raw = String(value ?? '').trim().replace(/^"|"$/g, '').trim();
+    if (!raw) return null;
+    const numeric = parseInt(raw, 10);
+    if (!Number.isNaN(numeric) && types.some(t => t.id === numeric)) return numeric;
+    const key = raw.toLowerCase();
+    const found = types.find(t => String(t.code).toLowerCase() === key || String(t.name).toLowerCase() === key);
+    return found ? found.id : null;
+};
+
 const validateAccounts = async (req, res) => {
     try {
         const { accounts } = req.body;
@@ -567,8 +577,7 @@ const validateAccounts = async (req, res) => {
         const codeToId = {};
         existing.forEach(a => { codeToId[a.code] = a.id; });
 
-        const [types] = await pool.query('SELECT id FROM account_types WHERE company_id = ?', [req.company_id]);
-        const validTypeIds = new Set(types.map(t => t.id));
+        const [types] = await pool.query('SELECT id, code, name FROM account_types WHERE company_id = ?', [req.company_id]);
 
         const seenCodes = new Set();
         const rows = [];
@@ -577,7 +586,7 @@ const validateAccounts = async (req, res) => {
         accounts.forEach((row, index) => {
             const code = String(row.code || '').trim();
             const name = String(row.name || '').trim();
-            const typeId = parseInt(row.account_type_id);
+            const typeId = resolveAccountTypeId(row.account_type_id, types);
             const parentCode = String(row.parent_code || '').trim();
             const allows = row.allows_entries === '1' || row.allows_entries === 1 || row.allows_entries === true ? 1 : 0;
 
@@ -585,7 +594,7 @@ const validateAccounts = async (req, res) => {
             if (!code) errorMessages.push('El código es obligatorio');
             else if (code.length > 20) errorMessages.push('El código no puede superar 20 caracteres');
             if (!name) errorMessages.push('El nombre es obligatorio');
-            if (!typeId || !validTypeIds.has(typeId)) errorMessages.push('Tipo de cuenta inválido');
+            if (!typeId) errorMessages.push(`Tipo de cuenta inválido: "${String(row.account_type_id ?? '').trim()}"`);
             if (code && seenCodes.has(code)) errorMessages.push('Código duplicado en el archivo');
             if (parentCode && !codeToId[parentCode] && !seenCodes.has(parentCode)) errorMessages.push(`La cuenta padre "${parentCode}" no existe`);
 
@@ -625,15 +634,17 @@ const importAccounts = async (req, res) => {
         const [existing] = await pool.query('SELECT id, code FROM chart_of_accounts WHERE company_id = ?', [req.company_id]);
         existing.forEach(a => { codeToId[a.code] = a.id; });
 
+        const [types] = await pool.query('SELECT id, code, name FROM account_types WHERE company_id = ?', [req.company_id]);
+
         for (const row of accounts) {
             try {
                 const code = String(row.code || '').trim();
                 const name = String(row.name || '').trim();
-                const typeId = parseInt(row.account_type_id) || 1;
+                const typeId = resolveAccountTypeId(row.account_type_id, types);
                 const parentCode = String(row.parent_code || '').trim();
                 const allows = row.allows_entries === '1' || row.allows_entries === 1 || row.allows_entries === true ? 1 : 0;
 
-                if (!code || !name) { errors++; continue; }
+                if (!code || !name || !typeId) { errors++; continue; }
 
                 const parentId = parentCode ? codeToId[parentCode] : null;
 
