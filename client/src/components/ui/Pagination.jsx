@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Pagination = ({ 
     currentPage, 
+    page,
     totalPages, 
     totalItems, 
     onPageChange, 
@@ -10,6 +11,8 @@ const Pagination = ({
     limit = 15,
     onLimitChange
 }) => {
+    const cur = Number(currentPage ?? page) || 1;
+
     if (totalPages <= 1 && totalItems <= itemsOnPage) return null;
 
     return (
@@ -38,8 +41,8 @@ const Pagination = ({
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
                 <button 
-                    onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1 || isLoading}
+                    onClick={() => onPageChange(Math.max(1, cur - 1))}
+                    disabled={cur === 1 || isLoading}
                     className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-white transition-all shadow-sm flex items-center gap-1 text-xs font-bold"
                 >
                     <ChevronLeft size={18} />
@@ -48,7 +51,7 @@ const Pagination = ({
 
                 {/* Etiqueta compacta en móviles */}
                 <div className="sm:hidden text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg">
-                    {currentPage} / {totalPages}
+                    {cur} / {totalPages}
                 </div>
 
                 {/* Lista numerada completa en escritorio */}
@@ -62,40 +65,40 @@ const Pagination = ({
                         } else {
                             pages.push(1);
                             
-                            if (currentPage > 4) {
+                            if (cur > 4) {
                                 pages.push('...');
                             }
                             
-                            const start = Math.max(2, currentPage - 2);
-                            const end = Math.min(totalPages - 1, currentPage + 2);
+                            const start = Math.max(2, cur - 2);
+                            const end = Math.min(totalPages - 1, cur + 2);
                             
                             for (let i = start; i <= end; i++) {
                                 if (!pages.includes(i)) pages.push(i);
                             }
                             
-                            if (currentPage < totalPages - 3) {
+                            if (cur < totalPages - 3) {
                                 pages.push('...');
                             }
                             
                             if (!pages.includes(totalPages)) pages.push(totalPages);
                         }
                         
-                        return pages.map((page, index) => (
-                            page === '...' ? (
+                        return pages.map((p, index) => (
+                            p === '...' ? (
                                 <span key={`ellipsis-${index}`} className="px-2 text-slate-400 font-bold">
-                                    {page}
+                                    {p}
                                 </span>
                             ) : (
                                 <button
-                                    key={page}
-                                    onClick={() => onPageChange(page)}
+                                    key={p}
+                                    onClick={() => onPageChange(p)}
                                     className={`w-9 h-9 rounded-xl text-xs font-bold transition-all ${
-                                        currentPage === page 
+                                        cur === p 
                                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
                                         : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                     }`}
                                 >
-                                    {page}
+                                    {p}
                                 </button>
                             )
                         ));
@@ -103,8 +106,8 @@ const Pagination = ({
                 </div>
 
                 <button 
-                    onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages || isLoading}
+                    onClick={() => onPageChange(Math.min(totalPages, cur + 1))}
+                    disabled={cur === totalPages || isLoading}
                     className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-white transition-all shadow-sm flex items-center gap-1 text-xs font-bold"
                 >
                     <span className="sm:hidden">Siguiente</span>

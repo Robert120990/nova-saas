@@ -237,7 +237,7 @@ const ChartOfAccounts = () => {
                     </tr>
                 )}
             />
-            {totalPages > 1 && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} limit={limit} onLimitChange={(l) => { setLimit(l); setPage(1); }} />}
+            {totalPages > 1 && <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={filteredAccounts.length} itemsOnPage={paginatedAccounts.length} limit={limit} onLimitChange={(l) => { setLimit(l); setPage(1); }} />}
 
             <Modal isOpen={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); setSelectedFormType(''); }} title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'} maxWidth="max-w-md">
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
