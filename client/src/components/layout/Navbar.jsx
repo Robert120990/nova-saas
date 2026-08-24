@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, HelpCircle, Menu } from 'lucide-react';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -169,13 +169,6 @@ const Navbar = ({ onToggleMobileMenu }) => {
             {/* Right actions */}
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                 <NotificationBell />
-                <button
-                    onClick={() => window.location.href = '/manual'}
-                    className="hidden sm:flex w-9 h-9 sm:w-10 sm:h-10 items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group shrink-0"
-                    title="Manual de Usuario"
-                >
-                    <HelpCircle size={18} />
-                </button>
 
                 <div className="hidden md:block h-8 w-px bg-slate-800/60" />
 

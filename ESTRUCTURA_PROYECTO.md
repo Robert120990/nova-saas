@@ -131,7 +131,6 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `api.routes.js` | Router principal /api: monta TODOS los módulos con auth + tenant. Punto de referencia de endpoints. |
 | `auth.routes.js` | Rutas públicas de autenticación (/api/auth): login, token, recuperación. |
 | `eggIndustrial.routes.js` | Rutas del módulo industrial de huevo (/api/egg-industrial). |
-| `manual.routes.js` | Rutas del manual de usuario (/api/manual). |
 | `notification.routes.js` | Rutas de notificaciones internas (/api/notifications). |
 | `tax.routes.js` | Rutas de impuestos y libros fiscales (/api/tax). |
 | `whatsapp.routes.js` | Rutas de integración WhatsApp incluidos webhooks entrantes. |
@@ -202,7 +201,6 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `inventoryAdjustment.controller.js` | Ajustes de inventario (entradas/salidas justificadas). |
 | `inventoryScan.controller.js` | Toma de inventario físico con escáner/cámara y comparativo vs sistema. |
 | `island.controller.js` | CRUD de islas de despacho de combustible. |
-| `manual.controller.js` | Contenido del manual de usuario integrado (secciones y artículos). |
 | `menuItem.controller.js` | Ítems del menú lateral dinámico y su asociación a roles. |
 | `notification.controller.js` | Notificaciones internas: listado, marcado de leídas y configuración de eventos. |
 | `nozzle.controller.js` | Surtidores (mangueras): precio por galón, tanque y asignación a despachadores. |
@@ -397,7 +395,6 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `Kardex.jsx` | Kardex por producto: entradas, saldas y saldo corrido. |
 | `Login.jsx` | Inicio de sesión con selección de empresa. |
 | `LogViewer.jsx` | Visor de logs técnicos del servidor. |
-| `Manual.jsx` | Manual de usuario integrado navegable. |
 | `MenuItems.jsx` | Editor del menú lateral: ítems, orden, iconos y roles. |
 | `NotificacionesConfig.jsx` | Configuración de qué eventos disparan notificaciones. |
 | `NotificacionesLista.jsx` | Bandeja centralizada de notificaciones. |
@@ -624,8 +621,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v144**
-- Total de archivos: **255** (135 .sql · 23 .js migración · 95 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v145**
+- Total de archivos: **256** (135 .sql · 24 .js migración · 95 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

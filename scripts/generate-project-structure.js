@@ -81,7 +81,6 @@ const NOTES = {
   'server/src/routes/ai.routes.js': 'Rutas del asistente IA (/api/ai): chat y consultas en lenguaje natural.',
   'server/src/routes/tax.routes.js': 'Rutas de impuestos y libros fiscales (/api/tax).',
   'server/src/routes/notification.routes.js': 'Rutas de notificaciones internas (/api/notifications).',
-  'server/src/routes/manual.routes.js': 'Rutas del manual de usuario (/api/manual).',
   'server/src/routes/eggIndustrial.routes.js': 'Rutas del módulo industrial de huevo (/api/egg-industrial).',
   'server/src/routes/whatsapp.routes.js': 'Rutas de integración WhatsApp incluidos webhooks entrantes.',
 
@@ -119,7 +118,6 @@ const NOTES = {
   'inventoryAdjustment.controller.js': 'Ajustes de inventario (entradas/salidas justificadas).',
   'inventoryScan.controller.js': 'Toma de inventario físico con escáner/cámara y comparativo vs sistema.',
   'island.controller.js': 'CRUD de islas de despacho de combustible.',
-  'manual.controller.js': 'Contenido del manual de usuario integrado (secciones y artículos).',
   'menuItem.controller.js': 'Ítems del menú lateral dinámico y su asociación a roles.',
   'notification.controller.js': 'Notificaciones internas: listado, marcado de leídas y configuración de eventos.',
   'nozzle.controller.js': 'Surtidores (mangueras): precio por galón, tanque y asignación a despachadores.',
