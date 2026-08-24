@@ -519,8 +519,8 @@ REGLAS DE MULTI-TENENCIA:
 
 ## MÓDULO CONTABILIDAD
 
-### account_types (Tipos de cuenta contable)
-- id, company_id, code, name, nature ENUM('debit','credit'), created_at
+### account_types (Tipos de cuenta contable - GLOBALES, compartidos por todas las empresas)
+- id, code, name, nature ENUM('debit','credit'), created_at
 
 ### entry_types (Tipos de partida contable - GLOBALES, compartidos por todas las empresas)
 - id, code UNIQUE, name, created_at

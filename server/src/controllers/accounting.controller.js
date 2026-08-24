@@ -1,17 +1,17 @@
 const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
 
-// === Account Types ===
+// === Account Types (GLOBALES, compartidos por todas las empresas) ===
 const getAccountTypes = async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM account_types WHERE company_id = ? ORDER BY code', [req.company_id]);
+        const [rows] = await pool.query('SELECT * FROM account_types ORDER BY code');
         res.json(rows);
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
 const createAccountType = async (req, res) => {
     try {
-        const data = { ...req.body, company_id: req.company_id };
+        const data = req.body;
         const [r] = await pool.query('INSERT INTO account_types SET ?', [data]);
         res.status(201).json({ id: r.insertId, ...data });
     } catch (e) { res.status(500).json({ message: e.message }); }
@@ -19,14 +19,14 @@ const createAccountType = async (req, res) => {
 
 const updateAccountType = async (req, res) => {
     try {
-        await pool.query('UPDATE account_types SET ? WHERE id = ? AND company_id = ?', [req.body, req.params.id, req.company_id]);
+        await pool.query('UPDATE account_types SET ? WHERE id = ?', [req.body, req.params.id]);
         res.json({ message: 'Actualizado' });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
 const deleteAccountType = async (req, res) => {
     try {
-        await pool.query('DELETE FROM account_types WHERE id = ? AND company_id = ?', [req.params.id, req.company_id]);
+        await pool.query('DELETE FROM account_types WHERE id = ?', [req.params.id]);
         res.json({ message: 'Eliminado' });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
@@ -577,7 +577,10 @@ const validateAccounts = async (req, res) => {
         const codeToId = {};
         existing.forEach(a => { codeToId[a.code] = a.id; });
 
-        const [types] = await pool.query('SELECT id, code, name FROM account_types WHERE company_id = ?', [req.company_id]);
+        const [types] = await pool.query('SELECT id, code, name FROM account_types');
+        if (types.length === 0) {
+            return res.status(400).json({ message: 'No hay tipos de cuenta configurados en el sistema. Configúralos antes de importar.' });
+        }
 
         const seenCodes = new Set();
         const rows = [];
@@ -634,7 +637,7 @@ const importAccounts = async (req, res) => {
         const [existing] = await pool.query('SELECT id, code FROM chart_of_accounts WHERE company_id = ?', [req.company_id]);
         existing.forEach(a => { codeToId[a.code] = a.id; });
 
-        const [types] = await pool.query('SELECT id, code, name FROM account_types WHERE company_id = ?', [req.company_id]);
+        const [types] = await pool.query('SELECT id, code, name FROM account_types');
 
         for (const row of accounts) {
             try {
