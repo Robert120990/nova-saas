@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
@@ -36,6 +36,8 @@ const Customers = () => {
     const [branchDept, setBranchDept] = useState('');
     const [branchMun, setBranchMun] = useState('');
     const [branchDistrito, setBranchDistrito] = useState('');
+    const [branchTab, setBranchTab] = useState('form');
+    const [branchSearch, setBranchSearch] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -207,6 +209,19 @@ const Customers = () => {
         enabled: !!branchCustomer?.id
     });
 
+    const filteredBranches = useMemo(() => {
+        const q = branchSearch.trim().toLowerCase();
+        if (!q) return branches;
+        return branches.filter(b => [
+            b.nombre,
+            b.direccion,
+            b.telefono,
+            b.departamento_nombre || b.departamento,
+            b.municipio_nombre || b.municipio,
+            b.distrito_nombre || b.distrito
+        ].some(v => (v || '').toString().toLowerCase().includes(q)));
+    }, [branches, branchSearch]);
+
     const branchMutations = {
         save: useMutation({
             mutationFn: (data) => {
@@ -251,6 +266,8 @@ const Customers = () => {
         setBranchDept('');
         setBranchMun('');
         setBranchDistrito('');
+        setBranchTab('form');
+        setBranchSearch('');
         setIsBranchModalOpen(true);
     };
 
@@ -259,6 +276,7 @@ const Customers = () => {
         setBranchDept(branch.departamento || '');
         setBranchMun(branch.municipio || '');
         setBranchDistrito(branch.distrito || '');
+        setBranchTab('form');
     };
 
     const handleBranchSubmit = (e) => {
@@ -697,86 +715,134 @@ const Customers = () => {
             <Modal 
                 isOpen={isBranchModalOpen} 
                 onClose={() => { setIsBranchModalOpen(false); setEditingBranch(null); }}
-                title={`Sucursales de ${branchCustomer?.nombre || ''}`}
+                title={
+                    <span className="flex items-center gap-2 min-w-0">
+                        <span className="truncate">Sucursales de {branchCustomer?.nombre || ''}</span>
+                        <span className="shrink-0 px-2 py-0.5 text-[10px] font-black uppercase bg-indigo-100 text-indigo-700 rounded-full">{branches.length} sucursal(es)</span>
+                    </span>
+                }
                 maxWidth="max-w-lg"
             >
                 <div className="space-y-4">
-                    <form onSubmit={handleBranchSubmit} className="space-y-3">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase">
-                            {editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
-                        </h4>
-                        <div>
-                            <label className={labelCls}>Nombre</label>
-                            <input name="nombre" defaultValue={editingBranch?.nombre} required placeholder="Nombre de la sucursal" className={fieldCls} />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                                <label className={labelCls}>Departamento</label>
-                                <select name="departamento" className={fieldCls} value={branchDept} onChange={(e) => { setBranchDept(e.target.value); setBranchMun(''); setBranchDistrito(''); }} required>
-                                    <option value="">Seleccionar</option>
-                                    {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={labelCls}>Municipio</label>
-                                <select name="municipio" value={branchMun} onChange={(e) => setBranchMun(e.target.value)} className={fieldCls} required>
-                                    <option value="">Seleccionar</option>
-                                    {branchMunicipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={labelCls}>Distrito</label>
-                                <select name="distrito" value={branchDistrito} onChange={(e) => setBranchDistrito(e.target.value)} className={fieldCls} required>
-                                    <option value="">Seleccionar</option>
-                                    {branchDistritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <label className={labelCls}>Dirección</label>
-                            <input name="direccion" defaultValue={editingBranch?.direccion} placeholder="Dirección exacta" className={fieldCls} />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Teléfono</label>
-                            <input name="telefono" defaultValue={editingBranch?.telefono} placeholder="2200-0000" className={fieldCls} />
-                        </div>
-                        <div className="flex justify-end gap-3 pt-2">
-                            {editingBranch && (
-                                <button type="button" onClick={() => { setEditingBranch(null); setBranchDept(''); setBranchMun(''); }} className="px-3 py-1.5 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-xs">
-                                    Cancelar edición
-                                </button>
-                            )}
-                            <button type="submit" disabled={branchMutations.save.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-bold transition-all text-sm active:scale-95 disabled:opacity-50">
-                                {editingBranch ? 'Actualizar' : 'Agregar'}
-                            </button>
-                        </div>
-                    </form>
+                    <div className="flex bg-slate-50/50 border border-slate-100 p-1 rounded-lg">
+                        <button 
+                            type="button"
+                            onClick={() => setBranchTab('form')}
+                            className={`flex-1 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-md flex items-center justify-center gap-1.5 ${branchTab === 'form' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <Plus size={13}/> Agregar / Editar
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setBranchTab('lista')}
+                            className={`flex-1 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-md flex items-center justify-center gap-1.5 ${branchTab === 'lista' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <Building2 size={13}/> Listado ({branches.length})
+                        </button>
+                    </div>
 
-                    {branches.length > 0 && (
-                        <div className="border-t border-slate-100 pt-4 space-y-2 max-h-48 overflow-y-auto">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase">Sucursales registradas</h4>
-                            {branches.map(b => (
-                                <div key={b.id} className={`flex items-center justify-between p-3 rounded-lg border ${editingBranch?.id === b.id ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-bold text-slate-800">{b.nombre}</div>
-                                        <div className="text-xs text-slate-500">
-                                            Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
-                                            {b.direccion && ` — ${b.direccion}`}
-                                        </div>
-                                        {b.telefono && <div className="text-xs text-slate-400">{b.telefono}</div>}
-                                    </div>
-                                    <div className="flex gap-1 ml-2">
-                                        <button type="button" onClick={() => handleEditBranch(b)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={14}/></button>
-                                        <button type="button" onClick={() => handleDeleteBranch(b.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
-                                    </div>
+                    <div className="grid">
+                        <form onSubmit={handleBranchSubmit} className={`[grid-area:1/1] min-w-0 space-y-3 ${branchTab === 'form' ? '' : 'invisible pointer-events-none'}`}>
+                            <h4 className="text-xs font-bold text-slate-500 uppercase">
+                                {editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
+                            </h4>
+                            <div>
+                                <label className={labelCls}>Nombre</label>
+                                <input name="nombre" defaultValue={editingBranch?.nombre} required placeholder="Nombre de la sucursal" className={fieldCls} />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className={labelCls}>Departamento</label>
+                                    <select name="departamento" className={fieldCls} value={branchDept} onChange={(e) => { setBranchDept(e.target.value); setBranchMun(''); setBranchDistrito(''); }} required>
+                                        <option value="">Seleccionar</option>
+                                        {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                                    </select>
                                 </div>
-                            ))}
-                        </div>
-                    )}
+                                <div>
+                                    <label className={labelCls}>Municipio</label>
+                                    <select name="municipio" value={branchMun} onChange={(e) => setBranchMun(e.target.value)} className={fieldCls} required>
+                                        <option value="">Seleccionar</option>
+                                        {branchMunicipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Distrito</label>
+                                    <select name="distrito" value={branchDistrito} onChange={(e) => setBranchDistrito(e.target.value)} className={fieldCls} required>
+                                        <option value="">Seleccionar</option>
+                                        {branchDistritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className={labelCls}>Dirección</label>
+                                <input name="direccion" defaultValue={editingBranch?.direccion} placeholder="Dirección exacta" className={fieldCls} />
+                            </div>
+                            <div>
+                                <label className={labelCls}>Teléfono</label>
+                                <input name="telefono" defaultValue={editingBranch?.telefono} placeholder="2200-0000" className={fieldCls} />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                                {editingBranch && (
+                                    <button type="button" onClick={() => { setEditingBranch(null); setBranchDept(''); setBranchMun(''); setBranchDistrito(''); }} className="px-3 py-1.5 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-xs">
+                                        Cancelar edición
+                                    </button>
+                                )}
+                                <button type="submit" disabled={branchMutations.save.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-bold transition-all text-sm active:scale-95 disabled:opacity-50">
+                                    {editingBranch ? 'Actualizar' : 'Agregar'}
+                                </button>
+                            </div>
+                        </form>
 
-                    {!branchesLoading && branches.length === 0 && (
-                        <p className="text-center text-slate-400 text-sm py-4">No hay sucursales registradas</p>
-                    )}
+                        <div className={`[grid-area:1/1] min-w-0 space-y-3 ${branchTab === 'lista' ? '' : 'invisible pointer-events-none'}`}>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input 
+                                    type="text" 
+                                    placeholder="Buscar sucursal..." 
+                                    value={branchSearch}
+                                    onChange={(e) => setBranchSearch(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                                />
+                            </div>
+
+                            {!branchesLoading && branches.length > 0 && (
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    {filteredBranches.length} de {branches.length} sucursal(es)
+                                </p>
+                            )}
+
+                            <div className="space-y-2 max-h-72 overflow-y-auto overflow-x-hidden pr-0.5">
+                                {filteredBranches.map(b => (
+                                    <div key={b.id} className="flex items-center justify-between p-3 rounded-lg border bg-slate-50 border-slate-100">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-bold text-slate-800">{b.nombre}</div>
+                                            <div className="text-xs text-slate-500">
+                                                Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}
+                                                {b.direccion && ` — ${b.direccion}`}
+                                            </div>
+                                            {b.telefono && <div className="text-xs text-slate-400">{b.telefono}</div>}
+                                        </div>
+                                        <div className="flex gap-1 ml-2 shrink-0">
+                                            <button type="button" onClick={() => handleEditBranch(b)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={14}/></button>
+                                            <button type="button" onClick={() => handleDeleteBranch(b.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {!branchesLoading && branches.length === 0 && (
+                                    <p className="text-center text-slate-400 text-sm py-6">No hay sucursales registradas</p>
+                                )}
+
+                                {!branchesLoading && branches.length > 0 && filteredBranches.length === 0 && (
+                                    <p className="text-center text-slate-400 text-sm py-6">Sin resultados para "{branchSearch}"</p>
+                                )}
+
+                                {branchesLoading && branches.length === 0 && (
+                                    <p className="text-center text-slate-400 text-sm py-6">Cargando...</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </Modal>
         </div>
