@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-08-24
+> Última generación: 2026-08-25
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -621,8 +621,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v145**
-- Total de archivos: **256** (135 .sql · 24 .js migración · 95 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v148**
+- Total de archivos: **258** (135 .sql · 26 .js migración · 95 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,
