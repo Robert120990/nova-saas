@@ -12,6 +12,7 @@ const clean = (v) => {
     return s === '' || s === '-' ? '' : s;
 };
 const norm = (v) => clean(v).toUpperCase();
+const nitKey = (v) => String(v ?? '').replace(/[\s-]/g, '').toUpperCase();
 const orNull = (v) => clean(v) || null;
 
 function resolveDoc(row) {
@@ -73,10 +74,10 @@ async function runMigration() {
         console.log(`  Categorías creadas: ${catsCreadas} (usadas: ${categoriaPorLinea.size}/${lineasUsadas.length})`);
 
         console.log('\n[2/4] Proveedores...');
-        const providerKey = (p) => [norm(p.nit), norm(p.nrc), norm(p.nombre)].join('|');
+        const providerKey = (p) => [nitKey(p.nit), norm(p.nrc), norm(p.nombre)].join('|');
         const providerKeysExistentes = new Set(
             (await qm('SELECT nit, nrc, nombre FROM providers WHERE company_id = ?', [COMPANY_ID]))
-                .map(p => [norm(p.nit), norm(p.nrc), norm(p.nombre)].join('|'))
+                .map(p => providerKey(p))
         );
         const providerIdPorCodigo = new Map();
         let provCreados = 0, provSaltados = 0;
@@ -99,6 +100,30 @@ async function runMigration() {
         }
         console.log(`  Proveedores creados: ${provCreados}, ya existían: ${provSaltados}`);
 
+        console.log('\n[2b] Deduplicación de proveedores exactos (mismo NIT+NRC+nombre)...');
+        const providersDbAll = await qm('SELECT id, nit, nrc, nombre FROM providers WHERE company_id = ? ORDER BY id', [COMPANY_ID]);
+        const gruposProvDb = new Map();
+        for (const p of providersDbAll) {
+            const k = providerKey(p);
+            if (!gruposProvDb.has(k)) gruposProvDb.set(k, []);
+            gruposProvDb.get(k).push(p);
+        }
+        let provDedup = 0;
+        for (const grupo of gruposProvDb.values()) {
+            if (grupo.length < 2) continue;
+            const canonical = grupo[0];
+            for (const dup of grupo.slice(1)) {
+                await qm('UPDATE products SET provider_id = ? WHERE provider_id = ?', [canonical.id, dup.id]);
+                try {
+                    await qm('DELETE FROM providers WHERE id = ?', [dup.id]);
+                    provDedup++;
+                } catch (e) {
+                    console.log(`  AVISO: proveedor id=${dup.id} (${clean(dup.nombre)}) tiene referencias y no se eliminó: ${e.message}`);
+                }
+            }
+        }
+        console.log(`  Proveedores duplicados eliminados: ${provDedup}`);
+
         const providersDb = await qm('SELECT id, nit, nrc, nombre FROM providers WHERE company_id = ?', [COMPANY_ID]);
         const providerIdPorKey = new Map(providersDb.map(p => [providerKey(p), p.id]));
         for (const p of proveedoresExt) {
@@ -109,14 +134,14 @@ async function runMigration() {
         }
 
         console.log('\n[3/4] Clientes (principal + sucursales)...');
-        const customerKey = (c) => [norm(c.nit), norm(c.nrc), norm(c.nombre)].join('|');
+        const customerKey = (c) => [nitKey(c.nit), norm(c.nrc), norm(c.nombre)].join('|');
         const customerKeysExistentes = new Set(
             (await qm('SELECT nit, nrc, nombre FROM customers WHERE company_id = ?', [COMPANY_ID]))
-                .map(c => [norm(c.nit), norm(c.nrc), norm(c.nombre)].join('|'))
+                .map(c => customerKey(c))
         );
         const gruposNit = new Map();
         for (const c of clientesExt) {
-            const nit = norm(c.nit);
+            const nit = nitKey(c.nit);
             if (!nit) continue;
             if (!gruposNit.has(nit)) gruposNit.set(nit, []);
             gruposNit.get(nit).push(c);
@@ -157,13 +182,13 @@ async function runMigration() {
         };
 
         for (const c of clientesExt) {
-            const nit = norm(c.nit);
+            const nit = nitKey(c.nit);
             if (nit) {
                 if (nitsProcesados.has(nit)) continue;
                 nitsProcesados.add(nit);
                 const grupo = gruposNit.get(nit);
                 const principal = grupo.length > 1 ? (grupo.find(g => norm(g.codigo) === norm(g.nrc) && clean(g.nrc)) || grupo[0]) : grupo[0];
-                let customerId = (await qm('SELECT id FROM customers WHERE company_id = ? AND nit = ? ORDER BY id LIMIT 1', [COMPANY_ID, nit]))[0]?.id;
+                let customerId = (await qm(`SELECT id FROM customers WHERE company_id = ? AND UPPER(REPLACE(REPLACE(nit,'-',''),' ','')) = ? ORDER BY id LIMIT 1`, [COMPANY_ID, nit]))[0]?.id;
                 if (customerId) {
                     cliSaltados++;
                 } else {
@@ -183,6 +208,32 @@ async function runMigration() {
             }
         }
         console.log(`  Clientes creados: ${cliCreados}, ya existían: ${cliSaltados}, sucursales creadas: ${sucCreadas}, sucursales ya existían: ${sucSaltadas}`);
+
+        console.log('\n[3b] Consolidación de clientes con NIT equivalente (diferencias de guiones/espacios)...');
+        const todosClientes = await qm('SELECT id, nit, nrc, nombre FROM customers WHERE company_id = ? ORDER BY id', [COMPANY_ID]);
+        const gruposNitDb = new Map();
+        for (const c of todosClientes) {
+            const k = nitKey(c.nit);
+            if (!k) continue;
+            if (!gruposNitDb.has(k)) gruposNitDb.set(k, []);
+            gruposNitDb.get(k).push(c);
+        }
+        let consolidados = 0;
+        for (const grupo of gruposNitDb.values()) {
+            if (grupo.length < 2) continue;
+            const canonical = grupo[0];
+            for (const dup of grupo.slice(1)) {
+                await qm('UPDATE customer_branches SET customer_id = ? WHERE customer_id = ?', [canonical.id, dup.id]);
+                try {
+                    await qm('DELETE FROM customers WHERE id = ?', [dup.id]);
+                    consolidados++;
+                    console.log(`  Duplicado id=${dup.id} (${clean(dup.nombre)}) consolidado en id=${canonical.id} (${clean(canonical.nombre)}) [NIT ${nitKey(canonical.nit)}]`);
+                } catch (e) {
+                    console.log(`  AVISO: cliente id=${dup.id} (${clean(dup.nombre)}) tiene referencias y no se eliminó: ${e.message}`);
+                }
+            }
+        }
+        console.log(`  Clientes duplicados eliminados: ${consolidados}`);
 
         console.log('\n[4/4] Productos + precios + sucursal...');
         const branchExiste = await qm('SELECT id FROM branches WHERE id = ? AND company_id = ?', [BRANCH_ID, COMPANY_ID]);
