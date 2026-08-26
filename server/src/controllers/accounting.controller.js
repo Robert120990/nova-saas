@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
+const { reserveEntryNumber } = require('./accounting.correlativos.controller');
 
 // === Account Types (GLOBALES, compartidos por todas las empresas) ===
 const getAccountTypes = async (req, res) => {
@@ -155,15 +156,7 @@ const createEntry = async (req, res) => {
         if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error('El débito y crédito no cuadran');
 
         // Generar número correlativo: AAMM-NNN por tipo de partida
-        const entryDate = new Date(date);
-        const yy = String(entryDate.getFullYear()).slice(-2);
-        const mm = String(entryDate.getMonth() + 1).padStart(2, '0');
-        const [[{ num }]] = await conn.query(
-            `SELECT COUNT(*) + 1 as num FROM accounting_entries 
-             WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
-            [req.company_id, entry_type_id, entryDate.getFullYear(), entryDate.getMonth() + 1]
-        );
-        const entryNumber = `${yy}${mm}${String(num).padStart(3, '0')}`;
+        const entryNumber = await reserveEntryNumber(conn, req.company_id, entry_type_id, date);
 
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: req.company_id,
@@ -394,14 +387,7 @@ const performClosing = async (req, res) => {
 
         // Generar número: mismo formato AAMM-NNN
         const entryDate2 = new Date(date);
-        const yy2 = String(entryDate2.getFullYear()).slice(-2);
-        const mm2 = String(entryDate2.getMonth() + 1).padStart(2, '0');
-        const [[{ num: num2 }]] = await conn.query(
-            `SELECT COUNT(*) + 1 as num FROM accounting_entries 
-             WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
-            [companyId, cierreType.id, entryDate2.getFullYear(), entryDate2.getMonth() + 1]
-        );
-        const closingNumber = `${yy2}${mm2}${String(num2).padStart(3, '0')}`;
+        const closingNumber = await reserveEntryNumber(conn, companyId, cierreType.id, date);
 
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: companyId,
@@ -483,14 +469,7 @@ const performOpening = async (req, res) => {
         if (!aperturaType) throw new Error('No existe el tipo de partida APERTURA');
 
         const entryDate3 = new Date(date);
-        const yy3 = String(entryDate3.getFullYear()).slice(-2);
-        const mm3 = String(entryDate3.getMonth() + 1).padStart(2, '0');
-        const [[{ num: num3 }]] = await conn.query(
-            `SELECT COUNT(*) + 1 as num FROM accounting_entries 
-             WHERE company_id = ? AND entry_type_id = ? AND YEAR(date) = ? AND MONTH(date) = ?`,
-            [companyId, aperturaType.id, entryDate3.getFullYear(), entryDate3.getMonth() + 1]
-        );
-        const openingNumber = `${yy3}${mm3}${String(num3).padStart(3, '0')}`;
+        const openingNumber = await reserveEntryNumber(conn, companyId, aperturaType.id, date);
 
         const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
             company_id: companyId,

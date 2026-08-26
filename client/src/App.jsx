@@ -39,6 +39,8 @@ import CustomerDiscounts from './pages/CustomerDiscounts';
 import DiscountRules from './pages/DiscountRules';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import AccountingEntries from './pages/AccountingEntries';
+import AccountingGenerate from './pages/AccountingGenerate';
+import AccountingCorrelativos from './pages/AccountingCorrelativos';
 import YearClosing from './pages/YearClosing';
 import YearOpening from './pages/YearOpening';
 import AccountingSettings from './pages/AccountingSettings';
@@ -333,6 +335,9 @@ function App() {
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />
                         <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
+                        <Route path="/contabilidad/contabilizar" element={<AccountingGenerate kinds={['ventas', 'compras']} />} />
+                        <Route path="/contabilidad/contabilizar/cxc-cxp" element={<AccountingGenerate kinds={['cxc', 'cxp']} />} />
+                        <Route path="/contabilidad/correlativos" element={<AccountingCorrelativos />} />
                         <Route path="/contabilidad/cierre" element={<YearClosing />} />
                         <Route path="/contabilidad/apertura" element={<YearOpening />} />
                         <Route path="/contabilidad/ajustes" element={<AccountingSettings />} />

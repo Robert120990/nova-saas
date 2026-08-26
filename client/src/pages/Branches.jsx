@@ -7,6 +7,19 @@ import { Plus, Edit, Trash2, Phone, Mail, Home } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 
+const SAVE_TIMEOUT_MS = 15000;
+
+const REQUIRED_FIELDS = [
+    ['codigo', 'Código'],
+    ['tipo_establecimiento', 'Tipo de establecimiento'],
+    ['nombre', 'Nombre'],
+    ['ambiente', 'Ambiente'],
+    ['departamento', 'Departamento'],
+    ['municipio', 'Municipio'],
+    ['distrito', 'Distrito'],
+    ['direccion', 'Dirección']
+];
+
 const Branches = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
@@ -41,25 +54,28 @@ const Branches = () => {
     });
 
     const mutation = useMutation({
-        mutationFn: (data) => {
-            if (selectedBranch) return axios.put(`/api/branches/${selectedBranch.id}`, data);
-            return axios.post('/api/branches', data);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['branches']);
+        mutationFn: ({ formData, editId }) =>
+            editId
+                ? axios.put(`/api/branches/${editId}`, formData, { timeout: SAVE_TIMEOUT_MS })
+                : axios.post('/api/branches', formData, { timeout: SAVE_TIMEOUT_MS }),
+        onSuccess: (_result, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['branches'] });
             setIsModalOpen(false);
             setSelectedBranch(null);
-            toast.success(selectedBranch ? 'Sucursal actualizada' : 'Sucursal creada');
+            toast.success(variables.editId ? 'Sucursal actualizada' : 'Sucursal creada');
         },
         onError: (error) => {
-            toast.error(error?.response?.data?.error || error?.response?.data?.message || 'Error al guardar');
+            const msg = error?.code === 'ECONNABORTED'
+                ? 'Tiempo de espera agotado. Verifique su conexión e intente nuevamente.'
+                : error?.response?.data?.message || error?.response?.data?.error || 'Error al guardar';
+            toast.error(msg);
         }
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/branches/${id}`),
         onSuccess: () => {
-            queryClient.invalidateQueries(['branches']);
+            queryClient.invalidateQueries({ queryKey: ['branches'] });
             toast.success('Sucursal eliminada');
         }
     });
@@ -84,10 +100,18 @@ const Branches = () => {
         queryFn: async () => (await axios.get('/api/catalogs/cat_001_ambiente')).data
     });
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = (e) => {
         e.preventDefault();
-        const formData = new FormData(e.target);
-        mutation.mutate(formData);
+        const form = e.target;
+        const formData = new FormData(form);
+        const values = Object.fromEntries(formData.entries());
+        const missing = REQUIRED_FIELDS.filter(([name]) => !String(values[name] ?? '').trim());
+        if (missing.length > 0) {
+            toast.error(`Complete los siguientes campos: ${missing.map(([, label]) => label).join(', ')}`);
+            form.querySelector(`[name="${missing[0][0]}"]`)?.focus();
+            return;
+        }
+        mutation.mutate({ formData, editId: selectedBranch?.id || null });
     };
 
     const handleEdit = (branch) => {
@@ -180,11 +204,11 @@ const Branches = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className={labelCls}>Código</label>
-                            <input name="codigo" defaultValue={selectedBranch?.codigo} required placeholder="001" className={fieldCls} />
+                            <input name="codigo" defaultValue={selectedBranch?.codigo} placeholder="001" className={fieldCls} />
                         </div>
                         <div>
                             <label className={labelCls}>Tipo de Establecimiento</label>
-                            <select name="tipo_establecimiento" defaultValue={selectedBranch?.tipo_establecimiento || '01'} className={fieldCls} required>
+                            <select name="tipo_establecimiento" defaultValue={selectedBranch?.tipo_establecimiento || '01'} className={fieldCls}>
                                 {establishmentTypes
                                     .map(t => (
                                     <option key={t.code} value={t.code}>{t.description}</option>
@@ -194,7 +218,7 @@ const Branches = () => {
                     </div>
                     <div>
                         <label className={labelCls}>Nombre de Sucursal / Establecimiento</label>
-                        <input name="nombre" defaultValue={selectedBranch?.nombre} required placeholder="Ej: Sucursal Escalón" className={fieldCls} />
+                        <input name="nombre" defaultValue={selectedBranch?.nombre} placeholder="Ej: Sucursal Escalón" className={fieldCls} />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -213,7 +237,7 @@ const Branches = () => {
                         </div>
                         <div>
                             <label className={labelCls}>Ambiente de Facturación</label>
-                            <select name="ambiente" value={selectedEnv} onChange={(e) => setSelectedEnv(e.target.value)} className={fieldCls} required>
+                            <select name="ambiente" value={selectedEnv} onChange={(e) => setSelectedEnv(e.target.value)} className={fieldCls}>
                                 <option value="">Seleccionar</option>
                                 {environments?.map(env => <option key={env.code} value={env.code}>{env.description}</option>)}
                             </select>
@@ -227,7 +251,6 @@ const Branches = () => {
                                 className={fieldCls}
                                 value={selectedDept}
                                  onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }}
-                                required
                             >
                                 <option value="">Seleccionar</option>
                                 {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
@@ -235,14 +258,14 @@ const Branches = () => {
                         </div>
                         <div>
                             <label className={labelCls}>Municipio</label>
-                            <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls} required>
+                            <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls}>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className={labelCls}>Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls} required>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls}>
                                 <option value="">Seleccionar</option>
                                 {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
@@ -250,7 +273,7 @@ const Branches = () => {
                     </div>
                     <div>
                         <label className={labelCls}>Dirección</label>
-                        <textarea name="direccion" defaultValue={selectedBranch?.direccion} required placeholder="Calle, pasaje, local..." className={`${fieldCls} h-20 resize-none`} />
+                        <textarea name="direccion" defaultValue={selectedBranch?.direccion} placeholder="Calle, pasaje, local..." className={`${fieldCls} h-20 resize-none`} />
                     </div>
                     <div>
                         <label className={labelCls}>Logo</label>
@@ -286,8 +309,12 @@ const Branches = () => {
                     </div>
                     <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-sm">Cancelar</button>
-                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95">
-                            {selectedBranch ? 'Actualizar' : 'Registrar'}
+                        <button
+                            type="submit"
+                            disabled={mutation.isPending}
+                            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95"
+                        >
+                            {mutation.isPending ? 'Guardando…' : selectedBranch ? 'Actualizar' : 'Registrar'}
                         </button>
                     </div>
                 </form>

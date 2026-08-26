@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-08-25
+> Última generación: 2026-08-26
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -161,6 +161,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 #### `server/src/utils/`
 | Archivo | Descripción |
 |---|---|
+| `asyncHandler.js` | Async Handler. |
 | `crypto.js` | Cifrado/descifrado simétrico de credenciales almacenadas (SMTP, certificados). |
 | `inventoryUtils.js` | Helpers de kardex: inserción de movimientos y actualización de existencias. |
 | `numberToWords.js` | Conversión de montos numéricos a letras (requerido en documentos legales). |
@@ -170,6 +171,8 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 |---|---|
 | `access.controller.js` | Matriz de acceso rol-módulo: qué menús/acciones puede ver cada rol. |
 | `accounting.controller.js` | Núcleo contable: catálogo de cuentas, partidas, centros de costo y ciclo contable. |
+| `accounting.correlativos.controller.js` | Accounting.correlativos.controller. |
+| `accounting.generation.controller.js` | Accounting.generation.controller. |
 | `accounting.reports.controller.js` | Reportes contables: balances, libros diario/mayor, estados financieros, anexos. |
 | `ai.controller.js` | Asistente IA: recibe pregunta en lenguaje natural, arma contexto de esquema y ejecuta consulta segura. |
 | `audit.controller.js` | Consulta de la bitácora de auditoría con filtros. |
@@ -347,7 +350,9 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 
 | Archivo | Descripción |
 |---|---|
+| `AccountingCorrelativos.jsx` | Página de ruta Accounting Correlativos. |
 | `AccountingEntries.jsx` | Partidas contables manuales (libro diario) con débitos/créditos. |
+| `AccountingGenerate.jsx` | Página de ruta Accounting Generate. |
 | `AccountingSettings.jsx` | Configuración contable por empresa: moneda, período activo, parámetros. |
 | `AddPayment.jsx` | Registro de abonos de clientes (CxC) con asignación a documentos. |
 | `AddProviderPayment.jsx` | Registro de pagos a proveedores (CxP). |
@@ -621,8 +626,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v148**
-- Total de archivos: **258** (135 .sql · 26 .js migración · 95 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v151**
+- Total de archivos: **264** (138 .sql · 26 .js migración · 98 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

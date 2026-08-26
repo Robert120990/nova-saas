@@ -36,6 +36,8 @@ const customerDiscountController = require('../controllers/customerDiscount.cont
 const customerBranchController = require('../controllers/customerBranch.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
 const accountingController = require('../controllers/accounting.controller');
+const accountingGenerationController = require('../controllers/accounting.generation.controller');
+const accountingCorrelativosController = require('../controllers/accounting.correlativos.controller');
 const accountingReportsController = require('../controllers/accounting.reports.controller');
 const officeConnectionController = require('../controllers/officeConnection.controller');
 const cxcController = require('../controllers/cxc.controller');
@@ -506,6 +508,18 @@ router.get('/accounting/settings', accountingController.getSettings);
 router.post('/accounting/settings', accountingController.saveSettings);
 router.post('/accounting/import/validate', accountingController.validateAccounts);
 router.post('/accounting/import', accountingController.importAccounts);
+
+// Accounting Generation (partidas automaticas de ventas/compras)
+router.get('/accounting/generation/config', accountingGenerationController.getConfig);
+router.post('/accounting/generation/preview', accountingGenerationController.preview);
+router.post('/accounting/generation/generate', accountingGenerationController.generate);
+router.get('/accounting/generation/entity-accounts', accountingGenerationController.listEntityAccounts);
+router.post('/accounting/generation/entity-accounts', accountingGenerationController.saveEntityAccounts);
+
+// Accounting Correlativos (numeracion de partidas)
+router.get('/accounting/correlativos', accountingCorrelativosController.getCorrelativos);
+router.post('/accounting/correlativos', accountingCorrelativosController.saveCorrelativos);
+router.post('/accounting/correlativos/renumber', accountingCorrelativosController.renumber);
 
 // Office DB Connection
 router.get('/accounting/office/connection', officeConnectionController.getConnection);

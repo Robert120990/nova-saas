@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Settings, Save, Plus, Trash2, SlidersHorizontal, BookOpen, Search, Database } from 'lucide-react';
+import { Settings, Save, Plus, Trash2, SlidersHorizontal, BookOpen, Search, Database, Users2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OfficeConnectionTab from '../components/accounting/OfficeConnectionTab';
 import { matchesQuery, matchScore } from '../utils/fuzzySearch';
@@ -64,6 +64,104 @@ const AccountSelect = ({ value, onChange, accounts, placeholder = 'Seleccionar c
                     ))}
                 </div>
             )}
+        </div>
+    );
+};
+
+const AuxiliaresSection = ({ accounts }) => {
+    const queryClient = useQueryClient();
+    const [entityType, setEntityType] = useState('cliente');
+    const [search, setSearch] = useState('');
+    const [debounced, setDebounced] = useState('');
+    const [edits, setEdits] = useState({});
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebounced(search), 400);
+        return () => clearTimeout(t);
+    }, [search]);
+
+    useEffect(() => { setEdits({}); }, [entityType]);
+
+    const { data: entities = [], isFetching } = useQuery({
+        queryKey: ['entity-accounts', entityType, debounced],
+        queryFn: async () => (await axios.get(`/api/accounting/generation/entity-accounts?type=${entityType}&search=${encodeURIComponent(debounced)}`)).data,
+    });
+
+    const saveMutation = useMutation({
+        mutationFn: (items) => axios.post('/api/accounting/generation/entity-accounts', { type: entityType, items }),
+        onSuccess: () => {
+            toast.success('Asignaciones guardadas');
+            setEdits({});
+            queryClient.invalidateQueries({ queryKey: ['entity-accounts'] });
+        },
+        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+    });
+
+    const pendingItems = Object.entries(edits).map(([id, account_id]) => ({
+        id: Number(id),
+        account_id: account_id ? Number(account_id) : null
+    }));
+    const entryAccounts = accounts.filter(a => a.allows_entries === 1 || a.allows_entries === true);
+
+    return (
+        <div className="border-t pt-5 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 block mb-1 flex items-center gap-1.5"><Users2 size={13} /> Cuentas Auxiliares por Cliente / Proveedor</span>
+                    <p className="text-[11px] text-slate-500">
+                        Asigna una cuenta contable por NRC para detallar el crédito en las partidas automáticas de Contabilizar.
+                        Los sin cuenta asignada usarán la cuenta genérica CxC/CxP.
+                    </p>
+                </div>
+                <select value={entityType} onChange={(e) => setEntityType(e.target.value)} className="w-full md:w-auto px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-400">
+                    <option value="cliente">Clientes</option>
+                    <option value="proveedor">Proveedores</option>
+                </select>
+            </div>
+
+            <div className="relative">
+                <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Buscar por nombre o NRC..."
+                    className={inputCls}
+                />
+                <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {entities.length === 0 && !isFetching && (
+                    <p className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
+                        Sin resultados para esta búsqueda.
+                    </p>
+                )}
+                {entities.map((ent) => (
+                    <div key={ent.id} className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1.3fr] gap-2 items-center bg-slate-50/50 border border-slate-100 rounded-xl p-2.5">
+                        <div className="sm:w-28 shrink-0">
+                            <span className="block text-[9px] font-black uppercase text-slate-400">NRC</span>
+                            <span className="font-mono text-[12px] font-bold text-indigo-600">{ent.nrc || '—'}</span>
+                        </div>
+                        <div className="min-w-0">
+                            <span className="block text-[9px] font-black uppercase text-slate-400">Nombre</span>
+                            <span className="block truncate text-[12px] font-bold text-slate-700">{ent.nombre}</span>
+                        </div>
+                        <AccountSelect
+                            value={edits[ent.id] !== undefined ? edits[ent.id] : String(ent.account_id || '')}
+                            onChange={(v) => setEdits(prev => ({ ...prev, [ent.id]: v }))}
+                            accounts={entryAccounts}
+                            placeholder="Cuenta auxiliar..."
+                        />
+                    </div>
+                ))}
+            </div>
+
+            <button
+                onClick={() => saveMutation.mutate(pendingItems)}
+                disabled={saveMutation.isPending || pendingItems.length === 0}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+                <Save size={18} /> {saveMutation.isPending ? 'Guardando...' : `Guardar Cambios${pendingItems.length ? ` (${pendingItems.length})` : ''}`}
+            </button>
         </div>
     );
 };
@@ -241,9 +339,44 @@ const AccountingSettings = () => {
                             <div>
                                 <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cuentas por Defecto</span>
                                 <p className="text-[11px] text-slate-500">
-                                    Define cuentas del catálogo bajo una clave personalizada (ej: CUENTA_IVA, CUENTA_CLIENTE, CUENTA_PROVEEDOR).
-                                    La clave solo acepta <b>mayúsculas, números y guion bajo</b>.
+                                    Define cuentas del catálogo bajo una clave personalizada. La clave solo acepta <b>mayúsculas, números y guion bajo</b>.
+                                    Usa las claves sugeridas de <b>Contabilizar</b> para agregarlas con un clic.
                                 </p>
+                            </div>
+
+                            <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
+                                <span className="text-[10px] font-black uppercase text-indigo-400 block">Claves Sugeridas — Contabilizar <span className="normal-case font-medium text-slate-400">(clic para agregar)</span></span>
+                                {[
+                                    { grupo: 'Partida de Ventas', keys: ['CUENTA_CAJA', 'CUENTA_BANCOS', 'CUENTA_CLIENTES_CXC', 'CUENTA_VENTAS_GRAVADAS', 'CUENTA_VENTAS_EXENTAS', 'CUENTA_VENTAS_NOSUJETAS', 'CUENTA_IVA_DEBITO', 'CUENTA_IVA_PERCIBIDO', 'CUENTA_FOVIAL_POR_PAGAR', 'CUENTA_COTRANS_POR_PAGAR'] },
+                                    { grupo: 'Partida de Compras', keys: ['CUENTA_COMPRAS_GRAVADAS', 'CUENTA_COMPRAS_EXENTAS', 'CUENTA_IVA_CREDITO', 'CUENTA_PROVEEDORES_CXP', 'CUENTA_IVA_RETENIDO'] },
+                                ].map(g => (
+                                    <div key={g.grupo} className="space-y-1.5">
+                                        <span className="block text-[9px] font-black uppercase text-slate-400">{g.grupo}</span>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {g.keys.map(key => {
+                                                const added = defaultAccounts.some(r => r.key === key);
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (added) { toast.info(`${key} ya está agregada`); return; }
+                                                            setDefaultAccounts(rows => [...rows, { key, account_id: '' }]);
+                                                        }}
+                                                        title={added ? 'Ya agregada' : `Agregar ${key}`}
+                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all ${
+                                                            added
+                                                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600 cursor-default'
+                                                                : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'
+                                                        }`}
+                                                    >
+                                                        {added ? '✓ ' : '+ '}{key}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
                             {defaultAccounts.length === 0 && (
@@ -302,6 +435,8 @@ const AccountingSettings = () => {
                             >
                                 <Save size={18} /> {saveDefaultsMutation.isPending ? 'Guardando...' : 'Guardar Cuentas por Defecto'}
                             </button>
+
+                            <AuxiliaresSection accounts={accounts} />
                         </div>
                     )}
 

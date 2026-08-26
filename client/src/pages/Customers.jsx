@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Search, Building2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Building2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
@@ -458,7 +458,7 @@ const Customers = () => {
                                     {countries.find(t => t.code === c.pais)?.description || 'El Salvador'}
                                 </div>
                             </td>
-                            <td className="px-3 py-1">
+                            <td className="px-3 py-1 min-w-[160px]">
                                 <div className="text-[10px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded inline-block">{c.nit || c.numero_documento}</div>
                                 <div className="text-[9px] text-slate-400 uppercase font-bold">{c.tipo_documento}</div>
                             </td>
@@ -633,7 +633,14 @@ const Customers = () => {
                                 <option value="otro">Otro</option>
                             </select>
                         </div>
-                        
+
+                    </div>
+                    <div className="w-full flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                        <Info size={14} className="text-slate-400 shrink-0 mt-0.5" />
+                        <div className="text-[10px] text-slate-500 leading-relaxed">
+                            <p><span className="font-bold text-slate-600">Percepción</span> = tú eres el agente de percepción (GC cobrándole a uno pequeño).</p>
+                            <p><span className="font-bold text-slate-600">Retención</span> = el cliente es el agente (GC grande reteniéndote a ti).</p>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>

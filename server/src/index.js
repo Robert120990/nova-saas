@@ -32,9 +32,21 @@ app.use(morgan(':method :safe-url :status :response-time ms - :res[content-lengt
 const _log = console.log;
 const _error = console.error;
 const _warn = console.warn;
-console.log = (...args) => { logFile.write(`[${new Date().toISOString()}] [LOG] ${args.join(' ')}\n`); _log.apply(console, args); };
-console.error = (...args) => { logFile.write(`[${new Date().toISOString()}] [ERROR] ${args.join(' ')}\n`); _error.apply(console, args); };
-console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN] ${args.join(' ')}\n`); _warn.apply(console, args); };
+
+const serializeLogArg = (arg) => {
+    if (typeof arg === 'string') return arg;
+    if (arg instanceof Error) return arg.stack || arg.message;
+    try {
+        const json = JSON.stringify(arg);
+        return json !== undefined ? json : String(arg);
+    } catch {
+        try { return String(arg); } catch { return '[unserializable]'; }
+    }
+};
+
+console.log = (...args) => { logFile.write(`[${new Date().toISOString()}] [LOG] ${args.map(serializeLogArg).join(' ')}\n`); _log.apply(console, args); };
+console.error = (...args) => { logFile.write(`[${new Date().toISOString()}] [ERROR] ${args.map(serializeLogArg).join(' ')}\n`); _error.apply(console, args); };
+console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN] ${args.map(serializeLogArg).join(' ')}\n`); _warn.apply(console, args); };
 
 // Middlewares
 app.use(cors());
