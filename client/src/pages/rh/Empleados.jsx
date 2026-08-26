@@ -6,6 +6,7 @@ import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
+import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import { IMaskInput } from 'react-imask';
 import { MoneyInput } from '../../components/ui/Money';
 import {
@@ -53,6 +54,8 @@ const Empleados = () => {
     const [showEmergencyForm, setShowEmergencyForm] = useState(false);
     const [editEmergency, setEditEmergency] = useState(null);
     const [emergencyForm, setEmergencyForm] = useState({ nombre: '', telefono: '', parentesco: '' });
+
+    useDirtyTracker('empleados', isModalOpen && selected);
 
     useEffect(() => {
         const timer = setTimeout(() => { setDebouncedSearch(searchTerm); setPage(1); }, 500);

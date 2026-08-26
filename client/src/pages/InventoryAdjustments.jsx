@@ -29,6 +29,7 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const InventoryAdjustments = () => {
     const { user } = useAuth();
@@ -63,6 +64,8 @@ const InventoryAdjustments = () => {
     const [productSearch, setProductSearch] = useState('');
     const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
     const [modalPage, setModalPage] = useState(1);
+
+    useDirtyTracker('ajustes', selectedItems.length > 0 || numero);
     
     useEffect(() => {
         const handleKeyDown = (e) => {

@@ -189,3 +189,14 @@ body {
     content: none;
   }
 }
+
+@keyframes blink-border {
+  0%, 100% { border-color: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+  50% { border-color: #ef4444; box-shadow: 0 0 16px rgba(239, 68, 68, 0.5); }
+}
+
+.update-toast-blink {
+  animation: blink-border 1.5s ease-in-out infinite !important;
+  border-width: 2px !important;
+  border-style: solid !important;
+}

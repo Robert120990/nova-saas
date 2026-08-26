@@ -7,6 +7,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,8 @@ const AddPayment = () => {
         comentario: '',
         user_id: user?.id
     });
+
+    useDirtyTracker('pagos', docRows.some(r => r.abono) || selectedCustomerId);
 
     const totalAbonado = useMemo(() => {
         return docRows.reduce((acc, r) => acc + (parseFloat(r.abono || 0) || 0), 0);

@@ -9,6 +9,7 @@ import {
     Undo2, Plus, Search, Code, Terminal,
     CheckCircle2, XCircle, Clock, AlertCircle, Info, Loader2, ShoppingCart
 } from 'lucide-react';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const Eret = () => {
     const queryClient = useQueryClient();
@@ -24,6 +25,8 @@ const Eret = () => {
     const [jsonData, setJsonData] = useState(null);
     const [responseData, setResponseData] = useState(null);
     const limit = 10;
+
+    useDirtyTracker('eret', selectedItems.length > 0 || codigoGeneracionOriginal);
 
     const { data: eretData = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['eret', search, page],

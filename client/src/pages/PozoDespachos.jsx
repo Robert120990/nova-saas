@@ -7,6 +7,7 @@ import Table from '../components/ui/Table';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { Truck, Plus, Trash2, Search, Save, X, Loader2, Eye, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
@@ -45,6 +46,8 @@ const PozoDespachos = () => {
     const [selectedDespachoId, setSelectedDespachoId] = useState(null);
 
     const isEditing = editId !== null;
+
+    useDirtyTracker('pozo-despachos', servicios.length > 0 || cliente);
 
     useEffect(() => {
         const t = setTimeout(() => {

@@ -26,6 +26,7 @@ import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 // Helper for date formatting DD/MM/YYYY
 const formatDate = (dateStr) => {
@@ -103,6 +104,8 @@ const Expenses = () => {
     const [historyPage, setHistoryPage] = useState(1);
     const [viewingExpense, setViewingExpense] = useState(null);
     const limit = 10;
+
+    useDirtyTracker('gastos', selectedItems.length > 0 || providerId || numeroDoc);
 
     // Queries
     const { data: currentCompany } = useQuery({

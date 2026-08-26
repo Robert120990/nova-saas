@@ -12,6 +12,7 @@ import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const today = () => new Date().toISOString().split('T')[0];
 const formatDate = (dateStr) => {
@@ -42,6 +43,8 @@ const Quedan = () => {
     const [formFecha, setFormFecha] = useState(today());
     const [formFechaVenc, setFormFechaVenc] = useState('');
     const [formItems, setFormItems] = useState([]);
+
+    useDirtyTracker('quedan', formItems.length > 0 || formProviderId);
 
     const [showDeliverModal, setShowDeliverModal] = useState(false);
     const [deliverId, setDeliverId] = useState(null);

@@ -30,6 +30,7 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 
 import { useAuth } from '../context/AuthContext';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 const Transfers = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -57,6 +58,8 @@ const Transfers = () => {
     const [productSearchModal, setProductSearchModal] = useState('');
     const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
     const [modalPage, setModalPage] = useState(1);
+
+    useDirtyTracker('transferencias', origenBranch && destinoBranch && selectedItems.length > 0);
 
     React.useEffect(() => {
         const timer = setTimeout(() => { setDebouncedModalSearch(productSearchModal); setModalPage(1); }, 500);

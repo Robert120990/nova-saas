@@ -30,6 +30,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const SalesTerminal = () => {
     const navigate = useNavigate();
@@ -140,6 +141,8 @@ const SalesTerminal = () => {
     const descInputRef = useRef(null);
     const barcodeLookupInFlightRef = useRef(false);
     const scanEntryRef = useRef(null);
+
+    useDirtyTracker('terminal', cart.length > 0 || customerId || linkedDocs.length > 0 || entregado);
 
     // Queries
     const { data: currentCompany } = useQuery({

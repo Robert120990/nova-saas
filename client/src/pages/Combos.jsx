@@ -6,6 +6,7 @@ import Modal from '../components/ui/Modal';
 import { Plus, Edit, Trash2, Barcode, Search, Package, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import Pagination from '../components/ui/Pagination';
 import Money from '../components/ui/Money';
 
@@ -24,6 +25,8 @@ const Combos = () => {
     const [comboItems, setComboItems] = useState([]);
     const [productSearch, setProductSearch] = useState('');
     const [foundProducts, setFoundProducts] = useState([]);
+
+    useDirtyTracker('combos', comboItems.length > 0);
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches'],

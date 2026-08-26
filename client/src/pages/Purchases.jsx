@@ -31,6 +31,7 @@ import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -123,6 +124,8 @@ const Purchases = () => {
     const [historyPage, setHistoryPage] = useState(1);
     const [viewingPurchase, setViewingPurchase] = useState(null);
     const limit = 10;
+
+    useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc);
 
     // Date Period Validation
     const dateLimits = useMemo(() => {

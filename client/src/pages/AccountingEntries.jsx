@@ -9,6 +9,7 @@ import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 import Money from '../components/ui/Money';
 import { matchesQuery, matchScore } from '../utils/fuzzySearch';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const AccountingEntries = () => {
     const queryClient = useQueryClient();
@@ -23,6 +24,8 @@ const AccountingEntries = () => {
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountModalSearch, setAccountModalSearch] = useState('');
     const [lines, setLines] = useState([]);
+
+    useDirtyTracker('partidas', lines.length > 0);
 
     const { data: entriesData, isLoading } = useQuery({
         queryKey: ['entries', page],
@@ -86,7 +89,7 @@ const AccountingEntries = () => {
 
     const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
-    const balanced = Math.abs(totalDebit - totalCredit) < 0.01 && (totalDebit > 0 || totalCredit > 0);
+    const balanced = Math.abs(totalDebit - totalCredit) < 0.01 && (Math.abs(totalDebit) > 0 || Math.abs(totalCredit) > 0);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -294,7 +297,7 @@ const AccountingEntries = () => {
                                 const debit = document.getElementById('quick-debit').value;
                                 const credit = document.getElementById('quick-credit').value;
                                 if (!acct) return toast.error('Seleccione una cuenta');
-                                if ((!debit || parseFloat(debit) <= 0) && (!credit || parseFloat(credit) <= 0)) return toast.error('Ingrese débito o crédito');
+                                if ((!debit || isNaN(parseFloat(debit))) && (!credit || isNaN(parseFloat(credit)))) return toast.error('Ingrese débito o crédito');
                                 setLines([...lines, { account_id: acct, description: desc, debit: debit || '', credit: credit || '' }]);
                                 setSelectedAccountId('');
                                 document.getElementById('quick-account').value = '';
@@ -337,8 +340,8 @@ const AccountingEntries = () => {
                                                 <span className="ml-2 text-slate-700">{accounts.find(a => a.id == line.account_id)?.name || '?'}</span>
                                             </td>
                                             <td className="px-3 py-2 text-[10px] text-slate-500">{line.description}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold text-emerald-600 text-right">{parseFloat(line.debit) > 0 ? <Money value={line.debit} /> : ''}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold text-rose-600 text-right">{parseFloat(line.credit) > 0 ? <Money value={line.credit} /> : ''}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold text-emerald-600 text-right">{line.debit ? <Money value={line.debit} /> : ''}</td>
+                                            <td className="px-3 py-2 text-[10px] font-bold text-rose-600 text-right">{line.credit ? <Money value={line.credit} /> : ''}</td>
                                             <td className="px-3 py-2">
                                                 <button type="button" onClick={() => removeLine(idx)} className="p-1 text-rose-300 hover:text-rose-600"><Trash2 size={14} /></button>
                                             </td>

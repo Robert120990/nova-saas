@@ -7,6 +7,7 @@ import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Search, Users, User, X, Loader2 } from 'lucide-react';
+import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
@@ -78,6 +79,8 @@ const Liquidaciones = () => {
     // Calculated amounts
     const [calculo, setCalculo] = useState(null);
     const [calculando, setCalculando] = useState(false);
+
+    useDirtyTracker('liquidaciones', empleadoId && (diasIndemnizacion > 0 || diasVacaciones > 0));
 
     // Auto-calc partial amounts (not editable)
     const sueldo = parseFloat(empleadoData?.sueldo_base || 0);

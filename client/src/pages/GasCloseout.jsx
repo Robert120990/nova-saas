@@ -13,6 +13,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import * as XLSX from 'xlsx';
 
 const parseDecimal = (value) => {
@@ -134,6 +135,8 @@ const GasCloseout = () => {
     const badgeTapTimerRef = useRef(null);
     const lubricantInputRefs = useRef({});
     const lastDespachadorRef = useRef(null);
+
+    useDirtyTracker('cierre', readings.some(r => r.valor) || gastos.length > 0 || remesas.length > 0);
 
     const getDefaultDespachador = () => {
         if (lastDespachadorRef.current) return lastDespachadorRef.current;

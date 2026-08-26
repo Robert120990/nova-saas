@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Calculator, CalendarDays, Wand2, AlertTriangle, CheckCircle2, XCircle, Trash2, Link2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -54,6 +55,8 @@ const AccountingGenerate = ({ kinds = ['ventas', 'compras'] }) => {
             setLines([]);
         }
     }, [kinds, kind]);
+
+    useDirtyTracker('generar', lines.length > 0 && previewData);
 
     const { data: config } = useQuery({
         queryKey: ['accounting-generation-config'],

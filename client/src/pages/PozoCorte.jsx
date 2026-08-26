@@ -6,6 +6,7 @@ import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { Calculator, Search, Plus, Trash2, Save, Loader2, Gauge, FileText, Eye, Edit3, Banknote, Lock, Unlock, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
@@ -34,6 +35,8 @@ const PozoCorte = () => {
     const [odoFinalInput, setOdoFinalInput] = useState('');
 
     const canReopen = user?.role === 'SuperAdmin' || (user?.permissions || []).includes('close_pozo_cortes');
+
+    useDirtyTracker('pozo-corte', gastos.length > 0 || odoFinalInput);
 
     useEffect(() => {
         const t = setTimeout(() => {

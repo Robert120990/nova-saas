@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import Pagination from '../components/ui/Pagination';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 const CashClosing = () => {
     const queryClient = useQueryClient();
@@ -71,6 +72,8 @@ const CashClosing = () => {
     const [tiendaEndDate, setTiendaEndDate] = useState('');
     const [sentTiendaDates, setSentTiendaDates] = useState(new Set());
     const [sendingTiendaFecha, setSendingTiendaFecha] = useState(null);
+
+    useDirtyTracker('arqueo', actualCash || expenses.some(e => e.amount));
 
     const formatFechaEs = (fecha) => {
         if (!fecha) return '';

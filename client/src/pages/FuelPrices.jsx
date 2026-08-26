@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { 
     Fuel, 
     Save, 
@@ -15,7 +16,10 @@ const FuelPrices = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const [editablePrices, setEditablePrices] = useState({});
+    const initialPrices = useRef({});
     const userBranchId = user?.branch_id;
+
+    useDirtyTracker('precios', fuelProducts && JSON.stringify(editablePrices) !== JSON.stringify(initialPrices.current));
 
     const { data: fuelProducts, isLoading, isError, refetch } = useQuery({
         queryKey: ['fuel-products', userBranchId],
@@ -35,6 +39,7 @@ const FuelPrices = () => {
                 prices[p.id] = p.precio_unitario;
             });
             setEditablePrices(prices);
+            initialPrices.current = prices;
         }
     }, [fuelProducts]);
 
