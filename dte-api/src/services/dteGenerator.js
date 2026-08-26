@@ -461,8 +461,25 @@ async function generateDTE(payload) {
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '03') {
-            base.ivaPerci = 0;
-            base.ivaRete = 0;
+            const ret = round(payload.retencion || 0);
+            const perc = round(payload.percepcion || 0);
+            base.ivaPerci = perc;
+            base.ivaRete = ret;
+            if (ret > 0 || perc > 0) {
+                const adjustedTotal = round(totals.totalPagar - ret + perc);
+                base.totalPagar = adjustedTotal;
+                base.montoTotalOperacion = adjustedTotal;
+                base.totalLetras = getAmountInWords(adjustedTotal);
+                if (base.pagos && base.pagos.length === 1) {
+                    base.pagos[0].montoPago = adjustedTotal;
+                } else if (base.pagos && base.pagos.length > 1) {
+                    let pSum = 0;
+                    for (let i = 0; i < base.pagos.length - 1; i++) {
+                        pSum = round(pSum + base.pagos[i].montoPago);
+                    }
+                    base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
+                }
+            }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '05') {

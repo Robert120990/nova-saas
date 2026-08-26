@@ -241,7 +241,7 @@ const Expenses = () => {
         ivaCalculated = Math.round(ivaCalculated * 100) / 100;
 
         let retencion = 0;
-        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Gran Contribuyente';
+        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
         const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
         const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
         
@@ -251,7 +251,7 @@ const Expenses = () => {
 
         let percepcion = 0;
         const proveedAgentePerc = selectedProvider?.es_gran_contribuyente;
-        const nosNoGC = currentCompany?.tipo_contribuyente !== 'Gran Contribuyente';
+        const nosNoGC = currentCompany?.tipo_contribuyente !== 'Grande';
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
 
         if (proveedAgentePerc && nosNoGC && tipoDocId === '03') {

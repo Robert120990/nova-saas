@@ -317,7 +317,7 @@ const Purchases = () => {
         // Advanced Fiscal Logic
         // 1. Retención (Nosotros retenemos al proveedor)
         let retencion = 0;
-        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Gran Contribuyente';
+        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
         const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
         const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
         
@@ -328,7 +328,7 @@ const Purchases = () => {
         // 2. Percepción (Proveedor nos percibe a nosotros)
         let percepcion = 0;
         const proveedAgentePerc = selectedProvider?.es_gran_contribuyente;
-        const nosNoGC = currentCompany?.tipo_contribuyente !== 'Gran Contribuyente';
+        const nosNoGC = currentCompany?.tipo_contribuyente !== 'Grande';
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
 
         if (proveedAgentePerc && nosNoGC && tipoDocId === '03') {

@@ -66,6 +66,8 @@ class DteService {
                 emisor_adicional: payload.emisor_adicional || null,
                 identificacionExtra: payload.identificacionExtra || undefined,
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
+                retencion: parseFloat(payload.header.total_retencion || 0),
+                percepcion: parseFloat(payload.header.total_percepcion || 0),
                 items: payload.header.dte_type === '07' 
                     ? (payload.linkedDocuments || []).map(doc => ({
                         tipoDte: doc.doc_type || '03',

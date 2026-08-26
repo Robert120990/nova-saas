@@ -1030,8 +1030,8 @@ const SalesTerminal = () => {
         // Retención y Percepción
         let retencion = 0;
         let percepcion = 0;
-        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Gran Contribuyente';
-        const clienteGC = selectedCustomerData?.es_gran_contribuyente;
+        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
+        const clienteGC = selectedCustomerData?.condicion_fiscal === 'gran contribuyente';
         
         const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
@@ -1572,10 +1572,18 @@ const SalesTerminal = () => {
                                             </span>
                                         </div>
 
-                                        <div className="flex flex-col col-span-2 border-t border-indigo-100/30 pt-1">
+                                        <div className="flex flex-col col-span-2 sm:col-span-1 border-t border-indigo-100/30 pt-1">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Actividad Económica</span>
                                             <span className="text-[10px] font-bold text-slate-700 truncate" title={selectedCustomerData.actividad_nombre || 'Sin Giro'}>
                                                 {selectedCustomerData.actividad_nombre || 'GIRO NO ASIGNADO'}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex flex-col col-span-2 sm:col-span-1 border-t border-indigo-100/30 pt-1">
+                                            <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Condición Fiscal</span>
+                                            <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || 'contribuyente'}
+                                                style={{ color: selectedCustomerData.condicion_fiscal === 'gran contribuyente' ? '#d97706' : '#334155' }}>
+                                                {(selectedCustomerData.condicion_fiscal || 'contribuyente').toUpperCase()}
                                             </span>
                                         </div>
 
