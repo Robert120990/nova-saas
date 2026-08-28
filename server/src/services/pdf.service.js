@@ -1664,6 +1664,12 @@ const generateRTEE = (data) => {
                 addTotalLine('TOTAL COTRAN ($0.10):', venta.cotrans);
             }
 
+            // Retención y percepción de IVA (solo si aplica)
+            const retencionIVA = parseFloat(venta.total_retencion) || 0;
+            const percepcionIVA = parseFloat(venta.total_percepcion) || 0;
+            if (retencionIVA > 0) addTotalLine('(-) RETENCIÓN IVA (1%):', retencionIVA);
+            if (percepcionIVA > 0) addTotalLine('(+) PERCEPCIÓN IVA (1%):', percepcionIVA);
+
             currentTotalY += 5;
             doc.fontSize(11).font('Helvetica-Bold').text('TOTAL A PAGAR:', totalsX, currentTotalY);
             doc.text(`$${parseFloat(venta.total_pagar).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });

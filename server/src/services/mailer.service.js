@@ -570,7 +570,9 @@ module.exports = {
                     total_letras: dteJson.resumen.totalLetras,
                     fovial: parseFloat(venta.fovial) || 0,
                     cotrans: parseFloat(venta.cotrans) || 0,
-                    tributos: dteJson.resumen.tributos || []
+                    tributos: dteJson.resumen.tributos || [],
+                    total_retencion: dteJson.resumen.ivaRete || 0,
+                    total_percepcion: dteJson.resumen.ivaPerci || 0
                 },
                 items: dteJson.cuerpoDocumento.map(item => ({
                     cantidad: item.cantidad,
@@ -714,7 +716,9 @@ module.exports = {
                     total_letras: dteJson.resumen.totalLetras,
                     fovial: parseFloat(venta.fovial) || 0,
                     cotrans: parseFloat(venta.cotrans) || 0,
-                    tributos: dteJson.resumen.tributos || []
+                    tributos: dteJson.resumen.tributos || [],
+                    total_retencion: dteJson.resumen.ivaRete || 0,
+                    total_percepcion: dteJson.resumen.ivaPerci || 0
                 },
                 items: dteJson.cuerpoDocumento.map(item => ({
                     cantidad: item.cantidad,
