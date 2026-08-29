@@ -2494,13 +2494,13 @@ async function deductAdvanceByFIFO(pool, companyId, clienteId, monto) {
 
 async function restoreAdvanceByFIFO(pool, companyId, clienteId, monto) {
     const [advances] = await pool.query(
-        `SELECT id, monto_disponible FROM gas_station_advances WHERE company_id = ? AND cliente_id = ? ORDER BY fecha DESC, id DESC`,
+        `SELECT id, monto, monto_disponible FROM gas_station_advances WHERE company_id = ? AND cliente_id = ? ORDER BY fecha DESC, id DESC`,
         [companyId, clienteId]
     );
     let remaining = parseFloat(monto);
     for (const adv of advances) {
         if (remaining <= 0) break;
-        const restore = Math.min(remaining, parseFloat(adv.monto_disponible));
+        const restore = Math.min(remaining, parseFloat(adv.monto) - parseFloat(adv.monto_disponible));
         await pool.query(
             `UPDATE gas_station_advances SET monto_disponible = monto_disponible + ? WHERE id = ?`,
             [restore, adv.id]
