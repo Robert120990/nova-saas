@@ -141,6 +141,7 @@ const SalesTerminal = () => {
     const descInputRef = useRef(null);
     const barcodeLookupInFlightRef = useRef(false);
     const scanEntryRef = useRef(null);
+    const quickAddFocusRef = useRef(false);
 
     useDirtyTracker('terminal', cart.length > 0 || customerId || linkedDocs.length > 0 || entregado);
 
@@ -435,6 +436,9 @@ const SalesTerminal = () => {
             if (editingCustomer) {
                 res = await axios.put(`/api/customers/${editingCustomer.id}`, data);
                 toast.success('Cliente actualizado');
+                if (res.data?.data) {
+                    setCustomersCache(prev => ({ ...prev, [editingCustomer.id]: res.data.data }));
+                }
             } else {
                 res = await axios.post('/api/customers', data);
                 toast.success('Cliente registrado');
@@ -507,6 +511,10 @@ const SalesTerminal = () => {
     // Auto-focus barcode input when starting POS
     useEffect(() => {
         if (activeView === 'pos' && !isAuthModalOpen && !isProductModalOpen && !isLinkedDocModalOpen) {
+            if (quickAddFocusRef.current) {
+                quickAddFocusRef.current = false;
+                return;
+            }
             setTimeout(() => barcodeInputRef.current?.focus(), 300);
         }
     }, [activeView, isAuthModalOpen, isProductModalOpen, isLinkedDocModalOpen]);
@@ -1111,15 +1119,12 @@ const SalesTerminal = () => {
             setQuickPrecio(tipoDte === '04' ? '0.00001' : finalPrice.toString());
             setQuickCant('1');
             setQuickDesc(prodData.nombre || prodData.name || '');
+            quickAddFocusRef.current = true;
             setIsProductModalOpen(false);
             setProductSearch('');
 
             setTimeout(() => {
-                if (!discountRule) {
-                    priceInputRef.current?.focus();
-                } else {
-                    qtyInputRef.current?.focus();
-                }
+                qtyInputRef.current?.focus();
             }, 100);
             return;
         }
