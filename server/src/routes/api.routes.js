@@ -74,6 +74,7 @@ const gasConfigController = require('../controllers/gasConfig.controller');
 const gasDespachadorController = require('../controllers/gasDespachador.controller');
 const gasPosTypeController = require('../controllers/gasPosType.controller');
 const gasAdvanceController = require('../controllers/gasAdvance.controller');
+const gasTrupputController = require('../controllers/gasTrupput.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
@@ -420,6 +421,10 @@ router.get('/cxc/anticipos/statement', cxcController.getAnticiposStatement);
 router.get('/cxc/anticipos/statement/pdf', cxcController.exportAnticiposStatementPDF);
 router.post('/cxc/anticipos/statement/send-email', cxcController.sendAnticiposStatementEmail);
 
+router.get('/cxc/trupput/statement', cxcController.getTrupputStatement);
+router.get('/cxc/trupput/statement/pdf', cxcController.exportTrupputStatementPDF);
+router.post('/cxc/trupput/statement/send-email', cxcController.sendTrupputStatementEmail);
+
  
 // Accounts Payable (CXP)
 const cxpController = require('../controllers/cxp.controller');
@@ -677,6 +682,18 @@ router.get('/gas-station/advances/available/:cliente_id', gasAdvanceController.g
 router.get('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.getAnticiposDesp);
 router.post('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.saveAnticiposDesp);
 router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseoutController.deleteAnticipoDesp);
+
+// Gas Station - Trupput (prepago por galonaje)
+router.get('/gas-station/trupput', gasTrupputController.getTrupput);
+router.post('/gas-station/trupput', gasTrupputController.createTrupput);
+router.put('/gas-station/trupput/:id', gasTrupputController.updateTrupput);
+router.delete('/gas-station/trupput/:id', gasTrupputController.deleteTrupput);
+router.get('/gas-station/trupput/available/:cliente_id', gasTrupputController.getAvailableTrupputByClient);
+
+// Gas Station - Closeout Despachos Trupput
+router.get('/gas-station/closeouts/:id/trupput-desp', gasCloseoutController.getTrupputDesp);
+router.post('/gas-station/closeouts/:id/trupput-desp', gasCloseoutController.saveTrupputDesp);
+router.delete('/gas-station/closeouts/:id/trupput-desp/:despachoId', gasCloseoutController.deleteTrupputDesp);
 
 // Print full closeout data
 router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getCloseoutPrintData);

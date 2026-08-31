@@ -148,7 +148,10 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         items: mappedItems,
         receptor: mergedRec,
         pagos: mappedPayments,
+        retencion: parseFloat(sale.iva_retenido) || 0,
+        percepcion: parseFloat(sale.iva_percibido) || 0,
         condicionOperacion: sale.condicion_operacion || 1,
+        dias_credito: customer && customer.dias_credito != null ? parseInt(customer.dias_credito) || 15 : 15,
         emisor_adicional: {
             descActividad: company?.actividad_economica || 'Actividad no definida',
             codPuntoVentaMH: pos.length > 0 ? pos[0].codigo : null

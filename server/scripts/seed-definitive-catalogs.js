@@ -53,8 +53,10 @@ const fullCatalogs = {
     cat_016_condicion_operacion: [['1', 'Contado'], ['2', 'Cr\u00E9dito'], ['3', 'Otro']],
     cat_017_forma_pago: [
         ['01', 'Billetes y monedas'], ['02', 'Tarjeta de d\u00E9bito'], ['03', 'Tarjeta de cr\u00E9dito'],
-        ['10', 'Cheque'], ['20', 'Transferencia / Dep\u00F3sito bancario'], ['30', 'Vales o cupones'],
-        ['99', 'Otros']
+        ['04', 'Cheque'], ['05', 'Transferencia - Dep\u00F3sito bancario'],
+        ['08', 'Dinero electr\u00F3nico'], ['09', 'Monedero electr\u00F3nico'], ['11', 'Bitcoin'],
+        ['12', 'Otras Criptomonedas'], ['13', 'Cuentas por pagar del receptor'], ['14', 'Giro bancario'],
+        ['99', 'Otros (se debe indicar el medio de pago)']
     ],
     cat_020_pais: [['222', 'El Salvador'], ['100', 'Guatemala'], ['101', 'Honduras'], ['102', 'Nicaragua'], ['103', 'Costa Rica'], ['104', 'Panam\u00E1']],
     cat_022_tipo_documento_receptor: [

@@ -165,6 +165,93 @@ const generateStatementPDF = (data, isProvider = false) => {
 const generateProviderStatementPDF = (data) => generateStatementPDF(data, true);
 
 /**
+ * Genera el PDF del estado de cuenta Trupput (prepago por galonaje).
+ * Cargos: recargas de galones (gas_station_trupput).
+ * Abonos: despachos de galones en cierres (gas_station_closeout_trupput_despachos).
+ * Cada movimiento incluye galones y monto.
+ */
+const generateTrupputStatementPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 50 });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            doc.fontSize(18).text(data.company_name || 'EMPRESA', { align: 'left' });
+            doc.fontSize(10).text(data.branch_name || 'SUCURSAL', { align: 'left' });
+            doc.fontSize(10).text(`Fecha: ${new Date().toLocaleDateString('es-SV')}`, { align: 'right' });
+            doc.moveDown();
+
+            doc.fontSize(16).text('ESTADO DE CUENTA TRUPPUT (PREPAGO POR GALONAJE)', { align: 'center', underline: true });
+            doc.moveDown();
+
+            doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN DEL CLIENTE');
+            doc.fontSize(10).font('Helvetica');
+            doc.text(`Nombre: ${data.customer_name || 'N/A'}`);
+            doc.text(`Correo: ${data.customer_email || 'N/A'}`);
+            doc.moveDown();
+
+            const summaryY = doc.y;
+            doc.rect(50, summaryY, 500, 40).fill('#f3f4f6').stroke('#e5e7eb');
+            doc.fill('#4f46e5').fontSize(12).font('Helvetica-Bold').text('SALDO DISPONIBLE EN GALONES:', 70, summaryY + 12);
+            doc.fontSize(14).text(`${parseFloat(data.total_balance_galones || 0).toFixed(4)} gal.`, 350, summaryY + 12, { align: 'right', width: 150 });
+            doc.fill('black');
+            doc.moveDown(3);
+
+            const tableTop = doc.y;
+            doc.fontSize(10).font('Helvetica-Bold');
+            doc.text('Fecha', 50, tableTop);
+            doc.text('Documento', 130, tableTop);
+            doc.text('Concepto', 235, tableTop);
+            doc.text('Galones', 300, tableTop, { align: 'right', width: 50 });
+            doc.text('Gal+', 360, tableTop, { align: 'right', width: 45 });
+            doc.text('Gal-', 415, tableTop, { align: 'right', width: 45 });
+            doc.text('Saldo Gal', 470, tableTop, { align: 'right', width: 60 });
+            doc.moveDown(0.5);
+            doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+            doc.moveDown(0.5);
+
+            doc.font('Helvetica');
+            (data.movements || []).forEach(m => {
+                const rowY = doc.y;
+                if (rowY > 700) doc.addPage();
+
+                const cargoGal = parseFloat(m.galones_cargo || 0);
+                const abonoGal = parseFloat(m.galones_abono || 0);
+                const balanceGal = parseFloat(m.balance_galones || 0);
+                const galones = parseFloat(m.galones || 0);
+
+                doc.fontSize(9);
+                doc.text(fmtDateDDMMYYYY(m.fecha), 50, rowY, { width: 70 });
+                const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
+                doc.text(docText, 125, rowY, { width: 105 });
+                doc.text(String(m.concepto || '—'), 235, rowY, { width: 65 });
+                doc.text(galones > 0 ? `${galones.toFixed(4)}` : '-', 300, rowY, { align: 'right', width: 50 });
+                doc.text(cargoGal > 0 ? `${cargoGal.toFixed(4)}` : '-', 360, rowY, { align: 'right', width: 45 });
+                doc.text(abonoGal > 0 ? `${abonoGal.toFixed(4)}` : '-', 415, rowY, { align: 'right', width: 45 });
+                doc.text(`${balanceGal.toFixed(4)}`, 470, rowY, { align: 'right', width: 60 });
+                doc.moveDown(1.5);
+            });
+
+            doc.moveDown(2);
+            doc.fontSize(10).font('Helvetica-Bold').text('Resumen de montos', { align: 'left' });
+            doc.font('Helvetica');
+            doc.fontSize(9).text(`Total recargado: $${parseFloat(data.total_recargado || 0).toFixed(2)}`);
+            doc.fontSize(9).text(`Total despachado: $${parseFloat(data.total_despachado || 0).toFixed(2)}`);
+
+            doc.moveDown(2);
+            doc.fontSize(8).text('Este documento es un resumen informativo.', { align: 'center', color: 'grey' });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+/**
  * Generates a PDF buffer for a customer/provider aging report
  */
 const generateAgingPDF = (data, isProvider = false) => {
@@ -3767,9 +3854,10 @@ const generateArqueosReportPDF = (data) => {
 
 module.exports = {
     generateTransferPDF, 
-    generateStatementPDF, 
-    generateAgingPDF,
-    generateProviderStatementPDF,
+      generateStatementPDF, 
+      generateAgingPDF,
+      generateProviderStatementPDF,
+      generateTrupputStatementPDF,
     generateProviderAgingPDF,
     generateStockReportPDF,
     generateMovementsReportPDF,

@@ -12,7 +12,8 @@ import {
     DollarSign,
     FilterX,
     Clock,
-    Wallet
+    Wallet,
+    Fuel
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -40,7 +41,7 @@ const CustomerStatement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [limit] = useState(10);
-    const [activeTab, setActiveTab] = useState('movimientos'); // 'movimientos' | 'antiguedad' | 'anticipos'
+    const [activeTab, setActiveTab] = useState('movimientos'); // 'movimientos' | 'antiguedad' | 'anticipos' | 'trupput'
 
     // Queries
     const { data: branches = [] } = useQuery({
@@ -95,6 +96,19 @@ const CustomerStatement = () => {
         enabled: !!selectedCustomerId && !!selectedBranchId && activeTab === 'anticipos'
     });
 
+    // Pestaña 4: Trupput (Prepago por Galonaje)
+    const { data: trupputData, isLoading: isLoadingTrupput } = useQuery({
+        queryKey: ['customer-trupput', selectedCustomerId, selectedBranchId, searchTerm, page],
+        queryFn: async () => {
+            if (!selectedCustomerId || !selectedBranchId) return null;
+            const res = await axios.get('/api/cxc/trupput/statement', { 
+                params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, search: searchTerm, page, limit } 
+            });
+            return res.data;
+        },
+        enabled: !!selectedCustomerId && !!selectedBranchId && activeTab === 'trupput'
+    });
+
     const handleSendEmail = async () => {
         if (!selectedCustomerId || !selectedBranchId) return;
         
@@ -102,7 +116,9 @@ const CustomerStatement = () => {
             ? '/api/cxc/statement/send-email' 
             : activeTab === 'antiguedad'
                 ? '/api/cxc/aging-report/send-email'
-                : '/api/cxc/anticipos/statement/send-email';
+                : activeTab === 'anticipos'
+                    ? '/api/cxc/anticipos/statement/send-email'
+                    : '/api/cxc/trupput/statement/send-email';
 
         const promise = axios.post(endpoint, {
             customer_id: selectedCustomerId,
@@ -157,7 +173,7 @@ const CustomerStatement = () => {
                 writeFile(wb, `Antiguedad_Saldos_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
                 toast.success('Excel generado');
             } catch (error) { toast.error('Error al generar Excel'); }
-        } else {
+        } else if (activeTab === 'anticipos') {
             if (!anticiposData?.movements?.length) return toast.error('No hay datos para exportar');
             try {
                 const { utils, writeFile } = await import('xlsx');
@@ -176,6 +192,28 @@ const CustomerStatement = () => {
                 writeFile(wb, `Estado_Cuenta_Anticipos_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
                 toast.success('Excel generado');
             } catch (error) { toast.error('Error al generar Excel'); }
+        } else {
+            if (!trupputData?.movements?.length) return toast.error('No hay datos para exportar');
+            try {
+                const { utils, writeFile } = await import('xlsx');
+                const exportData = trupputData.movements.map(m => ({
+                    'Fecha': fmtFecha(m.fecha),
+                    'Tipo': m.tipo,
+                    'Número/Referencia': m.numero,
+                    'Concepto': m.concepto,
+                    'Galones': parseFloat(m.galones),
+                    'Galones Cargo (+)': parseFloat(m.galones_cargo),
+                    'Galones Abono (-)': parseFloat(m.galones_abono),
+                    'Saldo Galones': parseFloat(m.balance_galones),
+                    'Monto Cargo (+)': parseFloat(m.cargo),
+                    'Monto Abono (-)': parseFloat(m.abono)
+                }));
+                const ws = utils.json_to_sheet(exportData);
+                const wb = utils.book_new();
+                utils.book_append_sheet(wb, ws, "Estado de Cuenta Trupput");
+                writeFile(wb, `Estado_Cuenta_Trupput_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
+                toast.success('Excel generado');
+            } catch (error) { toast.error('Error al generar Excel'); }
         }
     };
 
@@ -186,9 +224,11 @@ const CustomerStatement = () => {
             ? '/api/cxc/statement/pdf' 
             : activeTab === 'antiguedad'
                 ? '/api/cxc/aging-report/pdf'
-                : '/api/cxc/anticipos/statement/pdf';
+                : activeTab === 'anticipos'
+                    ? '/api/cxc/anticipos/statement/pdf'
+                    : '/api/cxc/trupput/statement/pdf';
         
-        const fileName = activeTab === 'movimientos' ? 'Estado_Cuenta' : activeTab === 'antiguedad' ? 'Antiguedad_Saldos' : 'Estado_Cuenta_Anticipos';
+        const fileName = activeTab === 'movimientos' ? 'Estado_Cuenta' : activeTab === 'antiguedad' ? 'Antiguedad_Saldos' : activeTab === 'anticipos' ? 'Estado_Cuenta_Anticipos' : 'Estado_Cuenta_Trupput';
 
         const toastId = toast.loading('Generando PDF...');
         try {
@@ -235,7 +275,9 @@ const CustomerStatement = () => {
         ? statementData?.total_balance 
         : activeTab === 'antiguedad'
             ? agingData?.total_balance
-            : anticiposData?.saldo_disponible;
+            : activeTab === 'anticipos'
+                ? anticiposData?.saldo_disponible
+                : trupputData?.saldo_galones;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -311,7 +353,8 @@ const CustomerStatement = () => {
                 {[
                     { id: 'movimientos', label: 'Estado de Cuenta', icon: FileText },
                     { id: 'antiguedad', label: 'Antigüedad de Saldos', icon: Clock },
-                    { id: 'anticipos', label: 'Anticipos', icon: Wallet }
+                    { id: 'anticipos', label: 'Anticipos', icon: Wallet },
+                    { id: 'trupput', label: 'Trupput', icon: Fuel }
                 ].map((t) => (
                     <button
                         key={t.id}
@@ -334,8 +377,10 @@ const CustomerStatement = () => {
                             <DollarSign size={15} />
                         </div>
                         <div className="min-w-0">
-                            <h3 className="text-[8px] font-black uppercase tracking-widest text-indigo-100 whitespace-nowrap">{activeTab === 'anticipos' ? 'Saldo Disponible en Anticipos' : 'Saldo Total Pendiente'}</h3>
-                            <p className="text-lg font-black leading-tight"><Money value={totalBalance} /></p>
+                            <h3 className="text-[8px] font-black uppercase tracking-widest text-indigo-100 whitespace-nowrap">
+                                {activeTab === 'anticipos' ? 'Saldo Disponible en Anticipos' : activeTab === 'trupput' ? 'Saldo Disponible en Galones' : 'Saldo Total Pendiente'}
+                            </h3>
+                            <p className="text-lg font-black leading-tight">{activeTab === 'trupput' ? `${(parseFloat(totalBalance) || 0).toFixed(4)} gal.` : <Money value={totalBalance} />}</p>
                         </div>
                     </div>
                 </div>
@@ -462,7 +507,7 @@ const CustomerStatement = () => {
                         </div>
                     </div>
                 ) : <NoDataFound />
-            ) : (
+            ) : (activeTab === 'anticipos' ? (
                 // Pestaña Anticipos
                 isLoadingAnticipos ? (
                     <div className="py-32 flex flex-col items-center justify-center space-y-4">
@@ -533,7 +578,89 @@ const CustomerStatement = () => {
                         </div>
                     </div>
                 ) : <NoDataFound />
-            ))}
+                ) : (
+                    // Pestaña Trupput
+                    isLoadingTrupput ? (
+                        <div className="py-32 flex flex-col items-center justify-center space-y-4">
+                            <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generando Estado de Cuenta Trupput...</p>
+                        </div>
+                    ) : trupputData ? (
+                        <div className="space-y-6">
+                            <div className="flex bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                                <div className="relative w-full md:w-96">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input 
+                                        type="text"
+                                        placeholder="FILTRAR POR NÚMERO O DOC..."
+                                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-bold uppercase outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-mono"
+                                        value={searchTerm}
+                                        onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+                                    />
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-x-auto">
+                                <Table 
+                                    headers={['Fecha', 'Documento / Referencia', 'Concepto', 'Galones', 'Saldo Galones', 'Cargo (+)', 'Abono (-)']}
+                                    data={trupputData.movements}
+                                    renderRow={(m, i) => (
+                                        <tr key={i} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 italic">
+                                            <td className="px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-tighter whitespace-nowrap">{fmtFecha(m.fecha)}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <span className="text-[11px] font-black text-slate-900 uppercase leading-none">{m.tipo}</span>{' '}
+                                                <span className="text-[10px] font-bold text-indigo-500 font-mono tracking-tighter">{m.numero || 'S/N'}</span>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-widest uppercase whitespace-nowrap ${
+                                                    m.concepto.startsWith('RECARGA') ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'
+                                                }`}>{m.concepto}</span>
+                                            </td>
+                                            <td className="px-3 py-2 text-[11px] font-black text-slate-700 whitespace-nowrap">{Number(m.galones).toFixed(4)}</td>
+                                            <td className="px-3 py-2 text-[11px] font-black text-slate-900 bg-slate-50/30 whitespace-nowrap">{Number(m.balance_galones).toFixed(4)}</td>
+                                            <td className="px-3 py-2 text-[11px] font-black text-rose-500 whitespace-nowrap">{m.cargo > 0 ? <span>+ <Money value={m.cargo} /></span> : ''}</td>
+                                            <td className="px-3 py-2 text-[11px] font-black text-emerald-500 whitespace-nowrap">{m.abono > 0 ? <span>- <Money value={m.abono} /></span> : ''}</td>
+                                        </tr>
+                                    )}
+                                />
+                                {trupputData.pagination && (
+                                    <div className="px-8 border-t border-slate-50">
+                                        <Pagination 
+                                            currentPage={page} totalPages={trupputData.pagination.pages}
+                                            totalItems={trupputData.pagination.total} onPageChange={setPage}
+                                            itemsOnPage={trupputData.movements.length} isLoading={isLoadingTrupput}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Totales de Trupput */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="bg-indigo-50/60 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                    <span className="text-[9px] font-black uppercase text-indigo-400 tracking-widest">Total Recargado (gal)</span>
+                                    <span className="text-sm font-black text-indigo-700">{Number(trupputData.total_recargado).toFixed(4)}</span>
+                                </div>
+                                <div className="bg-amber-50/60 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                    <span className="text-[9px] font-black uppercase text-amber-500 tracking-widest">Total Despachado (gal)</span>
+                                    <span className="text-sm font-black text-amber-700">{Number(trupputData.total_despachado).toFixed(4)}</span>
+                                </div>
+                                <div className="bg-emerald-50/60 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                    <span className="text-[9px] font-black uppercase text-emerald-500 tracking-widest">Saldo Galones</span>
+                                    <span className="text-sm font-black text-emerald-700">{Number(trupputData.saldo_galones).toFixed(4)}</span>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-between gap-2">
+                                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Total Recargado ($)</span>
+                                    <span className="text-sm font-black text-slate-700"><Money value={trupputData.total_monto_recargado} /></span>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 flex items-center justify-between gap-2 border border-slate-100">
+                                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Total Despachado ($)</span>
+                                    <span className="text-sm font-black text-slate-700"><Money value={trupputData.total_monto_despachado} /></span>
+                                </div>
+                            </div>
+                        </div>
+                    ) : <NoDataFound />
+                )))}
         </div>
     );
 };

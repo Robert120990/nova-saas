@@ -919,6 +919,7 @@ const SalesTerminal = () => {
                 tipo_documento: tipoDte, 
                 payment_condition: condicionPago,
                 condicion_operacion: condicionPago,
+                dias_credito: selectedCustomerData?.dias_credito || 15,
                 total_iva: totals.iva,
                 total_retencion: totals.retencion,
                 total_percepcion: totals.percepcion,
@@ -1086,6 +1087,43 @@ const SalesTerminal = () => {
         const itemName = itemData.nombre || itemData.name;
         let itemPrice = itemData.precio_unitario || itemData.price || 0;
 
+        // Combustible siempre va a su modal dedicado
+        if (itemData.tipo_combustible > 0 && !isCombo) {
+            setFuelProd(itemData);
+            setFuelAmount(itemData.precio_unitario || itemData.price);
+            setFuelQty('1');
+            setIsFuelModalOpen(true);
+            setIsProductModalOpen(false);
+            setProductSearch('');
+            return;
+        }
+
+        // Si el vendedor puede editar precio, pausar para edición antes de agregar
+        if (sellerSession?.allow_price_edit) {
+            const prodData = isCombo
+                ? { ...itemData, nombre: itemData.name, precio_unitario: itemData.price, isCombo: true }
+                : itemData;
+            const discountRule = getCustomerDiscount(prodData.id);
+            const basePrice = prodData.precio_unitario || prodData.price || 0;
+            const finalPrice = discountRule ? calculateDiscountedPrice(basePrice, discountRule) : basePrice;
+
+            setQuickProd(prodData);
+            setQuickPrecio(tipoDte === '04' ? '0.00001' : finalPrice.toString());
+            setQuickCant('1');
+            setQuickDesc(prodData.nombre || prodData.name || '');
+            setIsProductModalOpen(false);
+            setProductSearch('');
+
+            setTimeout(() => {
+                if (!discountRule) {
+                    priceInputRef.current?.focus();
+                } else {
+                    qtyInputRef.current?.focus();
+                }
+            }, 100);
+            return;
+        }
+
         // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
         if (tipoDte === '04') {
             itemPrice = 0.00001;
@@ -1098,16 +1136,6 @@ const SalesTerminal = () => {
         const existing = cart.find(item => 
             isCombo ? (item.combo_id === itemData.id) : (item.id === itemData.id && !item.isManual && !item.combo_id)
         );
-
-        if (itemData.tipo_combustible > 0 && !isCombo) {
-            setFuelProd(itemData);
-            setFuelAmount(itemData.precio_unitario || itemData.price);
-            setFuelQty('1');
-            setIsFuelModalOpen(true);
-            setIsProductModalOpen(false);
-            setProductSearch('');
-            return;
-        }
 
         if (existing) {
             setCart(cart.map(item => 
@@ -2050,8 +2078,9 @@ const SalesTerminal = () => {
                                                     <option value="01">Billetes y Monedas</option>
                                                     <option value="02">Tarjeta de Débito</option>
                                                     <option value="03">Tarjeta de Crédito</option>
-                                                    <option value="04">Transferencia Bancaria</option>
-                                                    <option value="05">Cheque</option>
+                                                    <option value="04">Cheque</option>
+                                                    <option value="05">Transferencia - Depósito Bancario</option>
+                                                    <option value="99">Otros</option>
                                                 </>
                                             )}
                                         </select>
@@ -2067,7 +2096,7 @@ const SalesTerminal = () => {
                                     </div>
                                 </div>
 
-                                {['02', '03', '10', '20', '30', '99'].includes(currentPayment.metodo_pago) && (
+                                {['02', '03', '04', '05', '08', '09', '11', '12', '13', '14', '99'].includes(currentPayment.metodo_pago) && (
                                     <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                                         <div className="col-span-1">
                                             <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Referencia / Auth</label>
@@ -2079,7 +2108,7 @@ const SalesTerminal = () => {
                                                 className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                                             />
                                         </div>
-                                        {currentPayment.metodo_pago === '10' ? (
+                                        {currentPayment.metodo_pago === '04' ? (
                                             <div>
                                                 <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block ml-1">Nro. de Cheque</label>
                                                 <input 

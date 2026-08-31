@@ -381,13 +381,21 @@ async function generateDTE(payload) {
             plazo: null,
             periodo: null
         }
-    ]).map(p => ({
-        codigo: p.codigo,
-        montoPago: round(p.monto || p.montoPago || totals.totalPagar),
-        referencia: p.referencia || null,
-        plazo: p.plazo || null,
-        periodo: p.periodo || null
-    }));
+    ]).map(p => {
+        // En operaciones a crédito (condición 2), Hacienda exige plazo y periodo válidos.
+        // Se usa el período de días de crédito del cliente con unidad "Días" (Cat-018 = 01).
+        const isCredit = parseInt(payload.condicionOperacion) === 2;
+        const dias = parseInt(payload.dias_credito) || 15;
+        const periodo = p.periodo != null ? p.periodo : (isCredit ? dias : null);
+        const plazo = p.plazo || (isCredit ? '01' : null); // 01 = Días (Cat-018)
+        return {
+            codigo: p.codigo,
+            montoPago: round(p.monto || p.montoPago || totals.totalPagar),
+            referencia: p.referencia || null,
+            plazo: plazo,
+            periodo: periodo
+        };
+    });
     } // Fin del if (tipoDte !== '07')
 
     const buildResumen = (type) => {
@@ -468,7 +476,8 @@ async function generateDTE(payload) {
             if (ret > 0 || perc > 0) {
                 const adjustedTotal = round(totals.totalPagar - ret + perc);
                 base.totalPagar = adjustedTotal;
-                base.montoTotalOperacion = adjustedTotal;
+                // montoTotalOperacion conserva el valor bruto (subTotal + IVA),
+                // porque Hacienda valida: montoTotalOperacion = subTotal + totalIva
                 base.totalLetras = getAmountInWords(adjustedTotal);
                 if (base.pagos && base.pagos.length === 1) {
                     base.pagos[0].montoPago = adjustedTotal;

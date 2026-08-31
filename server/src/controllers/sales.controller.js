@@ -224,9 +224,23 @@ const createSale = async (req, res) => {
         let dteInfo = {};
         let dteResult = null;
         if (company && company.dte_active) {
+            // Días de crédito del cliente (para operaciones a crédito, condición 2)
+            let diasCredito = 15;
+            if (header.customer_id) {
+                const [custDias] = await connection.query(
+                    'SELECT dias_credito FROM customers WHERE id = ? AND company_id = ?',
+                    [header.customer_id, req.company_id]
+                );
+                if (custDias.length > 0 && custDias[0].dias_credito != null) {
+                    diasCredito = parseInt(custDias[0].dias_credito) || 15;
+                }
+            }
+
             const dtePayload = {
                 ...req.body,
                 sale_id: saleId,
+                header: { ...(req.body.header || {}), dias_credito: diasCredito },
+                dias_credito: diasCredito,
                 emisor_adicional: {
                     descActividad: company.actividad_economica,
                     codPuntoVentaMH: codPuntoVentaMH

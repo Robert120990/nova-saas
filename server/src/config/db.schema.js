@@ -373,8 +373,11 @@ REGLAS DE MULTI-TENENCIA:
 ### cat_016_condicion_operacion (Condiciones de Operación)
 - code, description — '1'=Contado, '2'=Crédito
 
-### cat_017_forma_pago (Formas de Pago)
-- code, description — '01'=Efectivo, '02'=Tarjeta Débito/Crédito, '03'=Cheque, '04'=Transferencia, '05'=Otros
+### cat_017_forma_pago (Formas de Pago — Catálogo oficial MH)
+- code, description — '01'=Billetes y monedas, '02'=Tarjeta Débito, '03'=Tarjeta Crédito, '04'=Cheque, '05'=Transferencia/Depósito, '08'=Dinero electrónico, '09'=Monedero electrónico, '11'=Bitcoin, '12'=Otras Criptomonedas, '13'=Cuentas por pagar del receptor, '14'=Giro bancario, '99'=Otros
+
+### cat_018_plazo (Plazos para operaciones a crédito)
+- code, description — '01'=Días, '02'=Meses, '03'=Años
 
 ### cat_019_actividad_economica (Actividades Económicas)
 - code, description — Códigos de actividad económica MH

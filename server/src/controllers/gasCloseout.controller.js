@@ -16,6 +16,7 @@ const CLOSEOUT_SECTIONS = {
     creditos: { label: 'Créditos', table: 'gas_station_closeout_creditos' },
     vales: { label: 'Vales', table: 'gas_station_closeout_vales' },
     anticipos: { label: 'Anticipos despachados', table: 'gas_station_closeout_anticipos_despachados' },
+    trupput: { label: 'Despachos Trupput', table: 'gas_station_closeout_trupput_despachos' },
     lubricantes: { label: 'Lubricantes', table: 'gas_station_closeout_lubricant_readings' },
     despachadores: { label: 'Despachadores', table: 'gas_station_closeout_despachadores' },
     nozzles: { label: 'Asignación de mangueras', table: 'gas_station_closeout_despachador_nozzles' }
@@ -524,7 +525,7 @@ exports.getCloseouts = async (req, res) => {
                  COALESCE(cu.total_cupones, 0) + COALESCE(dc.total_descuentos, 0) +
                  COALESCE(ad.total_adelantos, 0) + COALESCE(tj.total_tarjetas, 0) +
                  COALESCE(cr.total_creditos, 0) + COALESCE(vl.total_vales, 0) +
-                 COALESCE(ad2.total_anticipos_desp, 0)) -
+                 COALESCE(ad2.total_anticipos_desp, 0) + COALESCE(tp.total_trupput_desp, 0)) -
                 (COALESCE(rd.total_monto, 0) + COALESCE(lb.total_lubricantes, 0)),
                 2
               ) as total_diferencia_efectivo
@@ -539,6 +540,7 @@ exports.getCloseouts = async (req, res) => {
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_creditos FROM gas_station_closeout_creditos GROUP BY closeout_id) cr ON cr.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_vales FROM gas_station_closeout_vales GROUP BY closeout_id) vl ON vl.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_anticipos_desp FROM gas_station_closeout_anticipos_despachados GROUP BY closeout_id) ad2 ON ad2.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_trupput_desp FROM gas_station_closeout_trupput_despachos GROUP BY closeout_id) tp ON tp.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(total), 0) as total_lubricantes FROM gas_station_closeout_lubricant_readings GROUP BY closeout_id) lb ON lb.closeout_id = c.id
             ${where}
             ORDER BY c.created_at DESC
@@ -655,6 +657,20 @@ exports.getCloseout = async (req, res) => {
             `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
+        const [trupputDesp] = await pool.query(
+            `SELECT td.*,
+                    COALESCE(gt.total_galones, 0) AS galones_disponibles
+             FROM gas_station_closeout_trupput_despachos td
+             LEFT JOIN (
+                 SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
+                 FROM gas_station_trupput
+                 WHERE company_id = ? AND galones_disponibles > 0
+                 GROUP BY cliente_id
+             ) gt ON gt.cliente_id = td.cliente_id
+             WHERE td.closeout_id = ?
+             ORDER BY td.id ASC`, [req.company_id, id]
+        );
+
         res.json({
             ...closeouts[0],
             readings,
@@ -670,6 +686,7 @@ exports.getCloseout = async (req, res) => {
             creditos,
             vales,
             anticipos_despachadores: anticiposDesp,
+            trupput_despachos: trupputDesp,
             lubricantReadings: lubricantes
         });
     } catch (error) {
@@ -913,11 +930,37 @@ exports.deleteCloseout = async (req, res) => {
                 }
             }
 
+            const [trupputDesp] = await connection.query(
+                `SELECT cliente_id, galones FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ?`,
+                [id]
+            );
+
+            for (const td of trupputDesp) {
+                const cid = td.cliente_id;
+                const galones = parseFloat(td.galones);
+                if (!cid || galones <= 0) continue;
+                const [availableTrupput] = await connection.query(
+                    `SELECT id, galones_disponibles FROM gas_station_trupput WHERE company_id = ? AND cliente_id = ? AND galones_disponibles > 0 ORDER BY fecha ASC, id ASC`,
+                    [req.company_id, cid]
+                );
+                let remaining = galones;
+                for (const t of availableTrupput) {
+                    if (remaining <= 0) break;
+                    const restore = Math.min(remaining, parseFloat(t.galones_disponibles));
+                    await connection.query(
+                        `UPDATE gas_station_trupput SET galones_disponibles = galones_disponibles + ? WHERE id = ?`,
+                        [restore, t.id]
+                    );
+                    remaining -= restore;
+                }
+            }
+
             await connection.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeout_readings WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`, [id]);
+            await connection.query(`DELETE FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeouts WHERE id = ?`, [id]);
 
             await connection.commit();
@@ -1031,8 +1074,12 @@ exports.closeCloseout = async (req, res) => {
                 `SELECT COALESCE(SUM(monto), 0) as anticiposDespTotal FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ?`,
                 [id]
             );
+            const [[{ trupputDespTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as trupputDespTotal FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ?`,
+                [id]
+            );
 
-            const diferencia = (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal) + parseFloat(tarjetasTotal) + parseFloat(creditosTotal) + parseFloat(valesTotal) + parseFloat(anticiposDespTotal)) - (parseFloat(totalMonto) + parseFloat(lubricantTotal));
+            const diferencia = (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal) + parseFloat(tarjetasTotal) + parseFloat(creditosTotal) + parseFloat(valesTotal) + parseFloat(anticiposDespTotal) + parseFloat(trupputDespTotal)) - (parseFloat(totalMonto) + parseFloat(lubricantTotal));
 
             if (Math.abs(diferencia) > variacionPermitida) {
                 return res.status(400).json({
@@ -2509,6 +2556,40 @@ async function restoreAdvanceByFIFO(pool, companyId, clienteId, monto) {
     }
 }
 
+async function deductTrupputByFIFO(pool, companyId, clienteId, galones) {
+    const [trupput] = await pool.query(
+        `SELECT id, galones_disponibles FROM gas_station_trupput WHERE company_id = ? AND cliente_id = ? AND galones_disponibles > 0 ORDER BY fecha ASC, id ASC`,
+        [companyId, clienteId]
+    );
+    let remaining = parseFloat(galones);
+    for (const t of trupput) {
+        if (remaining <= 0) break;
+        const deduct = Math.min(remaining, parseFloat(t.galones_disponibles));
+        await pool.query(
+            `UPDATE gas_station_trupput SET galones_disponibles = galones_disponibles - ? WHERE id = ?`,
+            [deduct, t.id]
+        );
+        remaining -= deduct;
+    }
+}
+
+async function restoreTrupputByFIFO(pool, companyId, clienteId, galones) {
+    const [trupput] = await pool.query(
+        `SELECT id, galones, galones_disponibles FROM gas_station_trupput WHERE company_id = ? AND cliente_id = ? ORDER BY fecha DESC, id DESC`,
+        [companyId, clienteId]
+    );
+    let remaining = parseFloat(galones);
+    for (const t of trupput) {
+        if (remaining <= 0) break;
+        const restore = Math.min(remaining, parseFloat(t.galones) - parseFloat(t.galones_disponibles));
+        await pool.query(
+            `UPDATE gas_station_trupput SET galones_disponibles = galones_disponibles + ? WHERE id = ?`,
+            [restore, t.id]
+        );
+        remaining -= restore;
+    }
+}
+
 // === Closeout Anticipos Despachados ===
 
 exports.getAnticiposDesp = async (req, res) => {
@@ -2715,8 +2796,212 @@ exports.deleteAnticipoDesp = async (req, res) => {
     }
 };
 
-// === Get Last Turno ===
+// === Closeout Despachos Trupput ===
 
+exports.getTrupputDesp = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(`
+            SELECT td.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+                   COALESCE(gt.total_galones, 0) AS galones_disponibles
+            FROM gas_station_closeout_trupput_despachos td
+            LEFT JOIN gas_station_despachadores d ON td.despachador_id = d.id
+            LEFT JOIN (
+                SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
+                FROM gas_station_trupput
+                WHERE company_id = ? AND galones_disponibles > 0
+                GROUP BY cliente_id
+            ) gt ON gt.cliente_id = td.cliente_id
+            WHERE td.closeout_id = ?
+            ORDER BY td.id ASC
+        `, [req.company_id, id]);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getTrupputDesp:', error);
+        res.status(500).json({ message: 'Error al obtener despachos Trupput' });
+    }
+};
+
+exports.saveTrupputDesp = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { despachos } = req.body;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            const isReabierto = closeouts[0].estado === 'reabierto';
+            let beforeRows = [];
+            if (isReabierto) {
+                const [rows] = await connection.query(
+                    `SELECT * FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ? ORDER BY id ASC`,
+                    [id]
+                );
+                beforeRows = rows;
+            }
+
+            const [oldDespachos] = await connection.query(
+                `SELECT cliente_id, galones FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ?`,
+                [id]
+            );
+
+            for (const old of oldDespachos) {
+                if (old.cliente_id && parseFloat(old.galones) > 0) {
+                    await restoreTrupputByFIFO(connection, req.company_id, old.cliente_id, old.galones);
+                }
+            }
+
+            await connection.query(`DELETE FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ?`, [id]);
+
+            const invalidDespachos = (despachos || []).filter(d => !d.despachador_id);
+            if (invalidDespachos.length > 0) {
+                return res.status(400).json({ message: 'Todos los despachos deben tener un despachador asignado' });
+            }
+
+            const sinCliente = (despachos || []).filter(d => parseFloat(d.galones) > 0 && !d.cliente_id);
+            if (sinCliente.length > 0) {
+                return res.status(400).json({ message: 'Debe seleccionar un cliente para el despacho Trupput' });
+            }
+
+            if (despachos && despachos.length > 0) {
+                for (const d of despachos) {
+                    if (d.cliente_id && parseFloat(d.galones) > 0) {
+                        const [available] = await connection.query(
+                            `SELECT COALESCE(SUM(galones_disponibles), 0) as total FROM gas_station_trupput WHERE company_id = ? AND cliente_id = ? AND galones_disponibles > 0`,
+                            [req.company_id, d.cliente_id]
+                        );
+                        if (parseFloat(available[0].total) < parseFloat(d.galones) - 0.0001) {
+                            throw new Error(`El cliente no tiene suficiente saldo de galones. Se requieren ${parseFloat(d.galones).toFixed(4)}, disponibles: ${parseFloat(available[0].total).toFixed(4)}`);
+                        }
+                        await deductTrupputByFIFO(connection, req.company_id, d.cliente_id, d.galones);
+                    }
+
+                    await connection.query(
+                        `INSERT INTO gas_station_closeout_trupput_despachos (closeout_id, cliente_id, cliente_nombre, documento, producto_codigo, producto_descripcion, despachador_id, galones, precio, monto, placa, kilometraje)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            parseInt(id),
+                            d.cliente_id ? parseInt(d.cliente_id) : null,
+                            d.cliente_nombre || '',
+                            d.documento || '',
+                            d.producto_codigo || '',
+                            d.producto_descripcion || '',
+                            d.despachador_id ? parseInt(d.despachador_id) : null,
+                            parseFloat(d.galones) || 0,
+                            parseFloat(d.precio) || 0,
+                            parseFloat(d.monto) || 0,
+                            d.placa || '',
+                            d.kilometraje || ''
+                        ]
+                    );
+                }
+            }
+
+            const [remaining] = await connection.query(`
+                SELECT td.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+                       COALESCE(gt.total_galones, 0) AS galones_disponibles
+                FROM gas_station_closeout_trupput_despachos td
+                LEFT JOIN gas_station_despachadores d ON td.despachador_id = d.id
+                LEFT JOIN (
+                    SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
+                    FROM gas_station_trupput
+                    WHERE company_id = ? AND galones_disponibles > 0
+                    GROUP BY cliente_id
+                ) gt ON gt.cliente_id = td.cliente_id
+                WHERE td.closeout_id = ?
+                ORDER BY td.id ASC
+            `, [req.company_id, id]);
+
+            await connection.commit();
+
+            if (isReabierto) {
+                const afterRows = await getSectionRows(id, 'trupput');
+                await logSectionChange(req, id, 'trupput', beforeRows, afterRows);
+            }
+
+            res.json(remaining);
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Error saveTrupputDesp:', error);
+        res.status(500).json({ message: error.message || 'Error al guardar despachos Trupput' });
+    }
+};
+
+exports.deleteTrupputDesp = async (req, res) => {
+    try {
+        const { id, despachoId } = req.params;
+
+        const [closeouts] = await pool.query(
+            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts[0].estado === 'cerrado') {
+            return res.status(400).json({ message: 'El cierre ya está cerrado' });
+        }
+        if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        const [despacho] = await pool.query(
+            `SELECT cliente_id, galones FROM gas_station_closeout_trupput_despachos WHERE id = ? AND closeout_id = ?`,
+            [despachoId, id]
+        );
+        if (despacho.length === 0) return res.status(404).json({ message: 'Despacho Trupput no encontrado' });
+
+        let deletedRow = null;
+        if (closeouts[0].estado === 'reabierto') {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_trupput_despachos WHERE id = ? AND closeout_id = ?`,
+                [despachoId, id]
+            );
+            deletedRow = rows[0] || null;
+        }
+
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            if (despacho[0].cliente_id && parseFloat(despacho[0].galones) > 0) {
+                await restoreTrupputByFIFO(connection, req.company_id, despacho[0].cliente_id, despacho[0].galones);
+            }
+
+            await connection.query(`DELETE FROM gas_station_closeout_trupput_despachos WHERE id = ? AND closeout_id = ?`, [despachoId, id]);
+
+            await connection.commit();
+            if (deletedRow) await logDeleteRow(req, id, 'trupput', deletedRow);
+            res.json({ message: 'Despacho Trupput eliminado' });
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
+        }
+    } catch (error) {
+        console.error('Error deleteTrupputDesp:', error);
+        res.status(500).json({ message: 'Error al eliminar despacho Trupput' });
+    }
+};
+
+// === Get Last Turno ===
 exports.getLastTurno = async (req, res) => {
     try {
         const [rows] = await pool.query(
@@ -2849,6 +3134,20 @@ exports.getCloseoutPrintData = async (req, res) => {
              ORDER BY ad.id ASC`, [req.company_id, id]
         );
 
+        const [trupputDesp] = await pool.query(
+            `SELECT td.*,
+                    COALESCE(gt.total_galones, 0) AS galones_disponibles
+             FROM gas_station_closeout_trupput_despachos td
+             LEFT JOIN (
+                 SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
+                 FROM gas_station_trupput
+                 WHERE company_id = ? AND galones_disponibles > 0
+                 GROUP BY cliente_id
+             ) gt ON gt.cliente_id = td.cliente_id
+             WHERE td.closeout_id = ?
+             ORDER BY td.id ASC`, [req.company_id, id]
+        );
+
         const [nozzleAssignments] = await pool.query(
             `SELECT * FROM gas_station_closeout_despachador_nozzles WHERE closeout_id = ?`, [id]
         );
@@ -2868,7 +3167,8 @@ exports.getCloseoutPrintData = async (req, res) => {
             tarjetas,
             creditos,
             vales,
-            anticiposDesp
+            anticiposDesp,
+            trupputDesp
         });
     } catch (error) {
         console.error('Error getCloseoutPrintData:', error);
@@ -3468,6 +3768,14 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
             );
         } catch (e) { /* table may not exist */ }
 
+        let trupputDesp = [];
+        try {
+            [trupputDesp] = await pool.query(
+                `SELECT * FROM gas_station_closeout_trupput_despachos WHERE closeout_id IN (${placeholders}) ORDER BY id ASC`,
+                closeoutIds
+            );
+        } catch (e) { /* table may not exist */ }
+
         let nozzleAssignments = [];
         try {
             [nozzleAssignments] = await pool.query(
@@ -3491,7 +3799,8 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
             tarjetas,
             creditos,
             vales,
-            anticiposDesp
+            anticiposDesp,
+            trupputDesp
         });
     } catch (error) {
         console.error('Error getAccumulatedDayPrintData:', error);

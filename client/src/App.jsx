@@ -106,6 +106,7 @@ import GasDespachadores from './pages/GasDespachadores';
 import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
 import GasAdvances from './pages/GasAdvances';
+import GasTrupput from './pages/GasTrupput';
 import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
 import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
 import FuelInventoryReport from './pages/FuelInventoryReport';
@@ -297,6 +298,7 @@ function App() {
                         <Route path="/gas-station/despachador-nozzles" element={<GasDespachadorNozzles />} />
                         <Route path="/gas-station/pos-tipos" element={<GasPosTypes />} />
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
+                        <Route path="/gas-station/trupput" element={<GasTrupput />} />
                         <Route path="/gas-station/entrega-remesas" element={<GasRemesaDeliveries />} />
                         <Route path="/ventas/entrega-remesas" element={<SalesRemesaDeliveries />} />
                         <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />

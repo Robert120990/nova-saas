@@ -66,6 +66,8 @@ class DteService {
                 emisor_adicional: payload.emisor_adicional || null,
                 identificacionExtra: payload.identificacionExtra || undefined,
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
+                dias_credito: payload.dias_credito != null ? parseInt(payload.dias_credito) || 15
+                            : (payload.header.dias_credito != null ? parseInt(payload.header.dias_credito) || 15 : 15),
                 retencion: parseFloat(payload.header.total_retencion || 0),
                 percepcion: parseFloat(payload.header.total_percepcion || 0),
                 items: payload.header.dte_type === '07' 

@@ -415,8 +415,8 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
             SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE 0 END) as cash,
             SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE a.sum_monto END) as total,
             SUM(CASE WHEN a.metodo_pago IN ('02', '03') THEN a.sum_monto ELSE 0 END) as card,
-            SUM(CASE WHEN a.metodo_pago = '20' THEN a.sum_monto ELSE 0 END) as transfer,
-            SUM(CASE WHEN a.metodo_pago NOT IN ('01', '02', '03', '20') THEN a.sum_monto ELSE 0 END) as other
+            SUM(CASE WHEN a.metodo_pago = '05' THEN a.sum_monto ELSE 0 END) as transfer,
+            SUM(CASE WHEN a.metodo_pago NOT IN ('01', '02', '03', '05', '99') THEN a.sum_monto ELSE 0 END) as other
         FROM (
             SELECT 
                 h.id,
@@ -614,8 +614,8 @@ const getShiftsHistory = async (req, res) => {
                     SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE b.sum_monto END) as total,
                     SUM(CASE WHEN b.metodo_pago = '01' THEN GREATEST(0, COALESCE(b.total_pagar, 0) - b.non_cash) ELSE 0 END) as cash_sales,
                     SUM(CASE WHEN b.metodo_pago IN ('02', '03') THEN b.sum_monto ELSE 0 END) as card_sales,
-                    SUM(CASE WHEN b.metodo_pago = '20' THEN b.sum_monto ELSE 0 END) as transfer_sales,
-                    SUM(CASE WHEN b.metodo_pago NOT IN ('01', '02', '03', '20') THEN b.sum_monto ELSE 0 END) as other_sales
+                    SUM(CASE WHEN b.metodo_pago = '05' THEN b.sum_monto ELSE 0 END) as transfer_sales,
+                    SUM(CASE WHEN b.metodo_pago NOT IN ('01', '02', '03', '05', '99') THEN b.sum_monto ELSE 0 END) as other_sales
                 FROM (
                     SELECT 
                         h.shift_id,

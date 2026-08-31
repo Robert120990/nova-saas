@@ -3,9 +3,10 @@ const mailer = require('../services/mailer.service');
 const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
 const { 
     generateStatementPDF, 
+    generateTrupputStatementPDF,
     generateCustomerBalancesPDF,
     generatePaymentReceiptPDF
-} = require('../services/pdf.service');
+  } = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 
@@ -1165,6 +1166,213 @@ const sendAnticiposStatementEmail = async (req, res) => {
     }
 };
 
+/**
+ * Estado de cuenta Trupput (prepago por galonaje) de un cliente.
+ * Cargos: recargas de galones (gas_station_trupput).
+ * Abonos: despachos de galones en cierres de gasolinera (gas_station_closeout_trupput_despachos).
+ */
+const getTrupputStatement = async (req, res) => {
+    const { customer_id, branch_id, search, page = 1, limit = 15 } = req.query;
+    const company_id = req.company_id;
+
+    if (!customer_id || !branch_id) {
+        return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
+    }
+
+    const offset = (page - 1) * limit;
+    const searchTerm = search ? `%${search}%` : null;
+
+    try {
+        // Cargos: recargas Trupput
+        const [recharges] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha,
+                'TRUPPUT' as tipo,
+                COALESCE(t.numero, 'S/N') as numero,
+                COALESCE(NULLIF(TRIM(t.notas), ''), 'RECARGA TRUPPUT') as concepto,
+                t.galones as galones_cargo,
+                0 as galones_abono,
+                t.galones as galones,
+                t.monto as cargo,
+                0 as abono
+            FROM gas_station_trupput t
+            WHERE t.company_id = ? AND t.cliente_id = ? AND (t.branch_id = ? OR t.branch_id IS NULL)
+            ${searchTerm ? 'AND (t.numero LIKE ? OR t.notas LIKE ?)' : ''}
+        `, [
+            company_id, customer_id, branch_id,
+            ...(searchTerm ? [searchTerm, searchTerm] : [])
+        ]);
+
+        // Abonos: despachos de galones en cierres de gasolinera
+        const [dispatches] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
+                'DESPACHO' as tipo,
+                COALESCE(td.documento, 'S/N') as numero,
+                COALESCE(CONCAT('DESPACHO TRUPPUT - ', td.producto_descripcion), 'DESPACHO TRUPPUT') as concepto,
+                0 as galones_cargo,
+                td.galones as galones_abono,
+                td.galones as galones,
+                0 as cargo,
+                td.monto as abono
+            FROM gas_station_closeout_trupput_despachos td
+            JOIN gas_station_closeouts c ON td.closeout_id = c.id
+            WHERE td.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
+            ${searchTerm ? 'AND (td.documento LIKE ? OR td.producto_descripcion LIKE ?)' : ''}
+        `, [
+            customer_id, company_id, branch_id,
+            ...(searchTerm ? [searchTerm, searchTerm] : [])
+        ]);
+
+        const movementsAll = [...recharges, ...dispatches].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+        let currentBalanceGal = 0;
+        let totalRecargadoGal = 0;
+        let totalDespachadoGal = 0;
+        let totalRecargado = 0;
+        let totalDespachado = 0;
+        const historyAll = movementsAll.map(m => {
+            const cargoGal = parseFloat(m.galones_cargo) || 0;
+            const abonoGal = parseFloat(m.galones_abono) || 0;
+            currentBalanceGal += (cargoGal - abonoGal);
+            totalRecargadoGal += cargoGal;
+            totalDespachadoGal += abonoGal;
+            totalRecargado += parseFloat(m.cargo) || 0;
+            totalDespachado += parseFloat(m.abono) || 0;
+            return { ...m, galones_cargo: cargoGal, galones_abono: abonoGal, balance_galones: currentBalanceGal };
+        });
+
+        const totalItems = historyAll.length;
+        const historyPaginated = historyAll.slice(offset, offset + parseInt(limit));
+
+        res.json({
+            movements: historyPaginated,
+            total_recargado_galones: totalRecargadoGal,
+            total_despachado_galones: totalDespachadoGal,
+            saldo_galones: currentBalanceGal,
+            total_recargado: totalRecargado,
+            total_despachado: totalDespachado,
+            pagination: {
+                total: totalItems,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(totalItems / limit)
+            }
+        });
+    } catch (error) {
+        console.error('Error in getTrupputStatement:', error);
+        res.status(500).json({ message: 'Error al obtener estado de cuenta Trupput' });
+    }
+};
+
+/**
+ * Genera y descarga el PDF del estado de cuenta Trupput.
+ */
+const exportTrupputStatementPDF = async (req, res) => {
+    const { customer_id, branch_id } = req.query;
+    const company_id = req.company_id;
+
+    if (!customer_id || !branch_id) {
+        return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
+    }
+
+    try {
+        const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [company_id]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customer_id]);
+
+        if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+
+        const [recharges] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha,
+                'TRUPPUT' as tipo,
+                COALESCE(t.numero, 'S/N') as numero,
+                COALESCE(NULLIF(TRIM(t.notas), ''), 'RECARGA TRUPPUT') as concepto,
+                t.galones as galones_cargo,
+                0 as galones_abono,
+                t.galones as galones,
+                t.monto as cargo,
+                0 as abono
+            FROM gas_station_trupput t
+            WHERE t.company_id = ? AND t.cliente_id = ? AND (t.branch_id = ? OR t.branch_id IS NULL)
+        `, [company_id, customer_id, branch_id]);
+
+        const [dispatches] = await pool.query(`
+            SELECT 
+                DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
+                'DESPACHO' as tipo,
+                COALESCE(td.documento, 'S/N') as numero,
+                COALESCE(CONCAT('DESPACHO TRUPPUT - ', td.producto_descripcion), 'DESPACHO TRUPPUT') as concepto,
+                0 as galones_cargo,
+                td.galones as galones_abono,
+                td.galones as galones,
+                0 as cargo,
+                td.monto as abono
+            FROM gas_station_closeout_trupput_despachos td
+            JOIN gas_station_closeouts c ON td.closeout_id = c.id
+            WHERE td.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
+        `, [customer_id, company_id, branch_id]);
+
+        const movementsAll = [...recharges, ...dispatches].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        let currentBalanceGal = 0;
+        let totalRecargado = 0;
+        let totalDespachado = 0;
+        const history = movementsAll.map(m => {
+            const cargoGal = parseFloat(m.galones_cargo) || 0;
+            const abonoGal = parseFloat(m.galones_abono) || 0;
+            currentBalanceGal += (cargoGal - abonoGal);
+            totalRecargado += parseFloat(m.cargo) || 0;
+            totalDespachado += parseFloat(m.abono) || 0;
+            return { ...m, balance_galones: currentBalanceGal };
+        });
+
+        const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
+        const branchName = branchRows[0]?.nombre || 'Sucursal';
+        const customerName = customerRows[0]?.nombre || 'Cliente';
+
+        const pdfBuffer = await generateTrupputStatementPDF({
+            company_name: companyName,
+            branch_name: branchName,
+            customer_name: customerName,
+            customer_email: customerRows[0]?.correo || '',
+            total_balance_galones: currentBalanceGal,
+            total_recargado: totalRecargado,
+            total_despachado: totalDespachado,
+            movements: history
+        });
+
+        const cleanCustomerName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Estado_Cuenta_Trupput_${cleanCustomerName}.pdf"`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error in exportTrupputStatementPDF:', error);
+        res.status(500).json({ message: 'Error al generar PDF de Trupput' });
+    }
+};
+
+/**
+ * Envía el estado de cuenta Trupput por correo electrónico.
+ */
+const sendTrupputStatementEmail = async (req, res) => {
+    const { customer_id, branch_id } = req.body;
+    const company_id = req.company_id;
+
+    if (!customer_id || !branch_id) {
+        return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
+    }
+
+    try {
+        await mailer.sendTrupputStatementEmail(customer_id, branch_id, company_id);
+        res.json({ message: 'Estado de cuenta Trupput enviado exitosamente' });
+    } catch (error) {
+        console.error('Error in sendTrupputStatementEmail:', error);
+        res.status(500).json({ message: error.message || 'Error al enviar el correo' });
+    }
+};
+
 module.exports = {
     getCustomerStatement,
     getPendingDocuments,
@@ -1184,5 +1392,8 @@ module.exports = {
     exportPendingDocumentsDetailedPDF,
     getAnticiposStatement,
     exportAnticiposStatementPDF,
-    sendAnticiposStatementEmail
+    sendAnticiposStatementEmail,
+    getTrupputStatement,
+    exportTrupputStatementPDF,
+    sendTrupputStatementEmail
 };

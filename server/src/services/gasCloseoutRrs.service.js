@@ -86,13 +86,21 @@ async function fetchCloseoutData(closeoutId, companyId) {
         `SELECT * FROM gas_station_closeout_vales WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]
     );
 
+    const [anticiposDesp] = await pool.query(
+        `SELECT * FROM gas_station_closeout_anticipos_despachados WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]
+    );
+
+    const [trupput] = await pool.query(
+        `SELECT * FROM gas_station_closeout_trupput_despachos WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]
+    );
+
     const [nozzleAssignments] = await pool.query(
         `SELECT dn.* FROM gas_station_despachador_nozzles dn
          JOIN gas_station_closeout_despachadores cd ON cd.despachador_id = dn.despachador_id
          WHERE cd.closeout_id = ?`, [closeoutId]
     );
 
-    return { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, creditos, vales, nozzleAssignments };
+    return { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, creditos, vales, anticiposDesp, trupput, nozzleAssignments };
 }
 
 function getDespachadorCodigo(despachadorId, despachadores) {
@@ -109,7 +117,7 @@ function getNozzleDespachadorCodigo(nozzleId, nozzleAssignments, despachadores) 
 
 async function sendCloseoutToRrs(closeoutId, companyId) {
     const data = await fetchCloseoutData(closeoutId, companyId);
-    const { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, creditos, vales, nozzleAssignments } = data;
+    const { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, creditos, vales, anticiposDesp, trupput, nozzleAssignments } = data;
 
     const [settingsRows] = await pool.query(
         `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'rrs_id_empresa'`,
@@ -139,6 +147,8 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
         await conn.execute('DELETE FROM cierre_turno_remesa WHERE id_cierre_turno = ?', [cierreId]);
         await conn.execute('DELETE FROM cierre_turno_gastos WHERE id_cierre_turno = ?', [cierreId]);
         await conn.execute('DELETE FROM cierre_turno_lecturas WHERE id_cierre_turno = ?', [cierreId]);
+        await conn.execute('DELETE FROM cierre_turno_pagos WHERE id_cierre_turno = ?', [cierreId]);
+        await conn.execute('DELETE FROM cierre_turno_trupput WHERE id_cierre_turno = ?', [cierreId]);
         await conn.execute('DELETE FROM cierre_turno WHERE id = ?', [cierreId]);
         await conn.execute('DELETE FROM detalle_lecturas_tanque WHERE id_lectura = ?', [tankLecturaId]);
         await conn.execute('DELETE FROM lecturas_tanque WHERE id = ?', [tankLecturaId]);
@@ -345,6 +355,46 @@ async function sendCloseoutToRrs(closeoutId, companyId) {
                 getDespachadorCodigo(a.despachador_id, despachadores),
                 String(a.empleado || '').substring(0, 4),
                 parseFloat(a.monto) || 0,
+                idEmpresa
+            ]);
+        }
+
+        // 10b. cierre_turno_pagos (Anticipos Despachados de clientes)
+        for (const ad of anticiposDesp) {
+            await conn.execute(`
+                INSERT INTO cierre_turno_pagos
+                    (id_cierre_turno, id_cajero, fecha, documento, cod_cliente, valor, id_empresa, cod_producto, cantidad, precio, tipo_doc, descuento, total_descuento, id_descuento)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+            `, [
+                cierreId,
+                getDespachadorCodigo(ad.despachador_id, despachadores),
+                fechaTurno,
+                String(ad.documento || '').substring(0, 20),
+                String(ad.cliente_nombre || '').substring(0, 20),
+                parseFloat(ad.monto) || 0,
+                idEmpresa,
+                ad.producto_codigo || '',
+                parseFloat(ad.cantidad) || 0,
+                parseFloat(ad.precio) || 0,
+                (ad.tipo_documento || 'FAC')
+            ]);
+        }
+
+        // 10c. cierre_turno_trupput (Despachos Trupput por galonaje)
+        for (const t of trupput) {
+            await conn.execute(`
+                INSERT INTO cierre_turno_trupput
+                    (id_cierre_turno, id_cajero, fecha, documento, cod_cliente, cod_producto, galones, valor, id_empresa)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                cierreId,
+                getDespachadorCodigo(t.despachador_id, despachadores),
+                fechaTurno,
+                String(t.documento || '').substring(0, 20),
+                String(t.cliente_nombre || '').substring(0, 20),
+                t.producto_codigo || '',
+                parseFloat(t.galones) || 0,
+                parseFloat(t.monto) || 0,
                 idEmpresa
             ]);
         }

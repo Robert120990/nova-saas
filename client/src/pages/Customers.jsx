@@ -27,7 +27,9 @@ const Customers = () => {
     const [condicionFiscal, setCondicionFiscal] = useState('contribuyente');
     const [exentoIva, setExentoIva] = useState(false);
     const [esCredito, setEsCredito] = useState(false);
+    const [diasCredito, setDiasCredito] = useState('15');
     const [esAnticipado, setEsAnticipado] = useState(false);
+    const [esTrupput, setEsTrupput] = useState(false);
 
     // Sucursales
     const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
@@ -316,6 +318,8 @@ const Customers = () => {
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
         data.es_credito = formData.get('es_credito') === 'on';
         data.es_anticipado = formData.get('es_anticipado') === 'on';
+        data.es_trupput = formData.get('es_trupput') === 'on';
+        data.dias_credito = data.es_credito ? parseInt(diasCredito) || 15 : 15;
 
         const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
         const duiRegex = /^\d{8}-\d{1}$/;
@@ -337,7 +341,9 @@ const Customers = () => {
         setCondicionFiscal(customer.condicion_fiscal || 'contribuyente');
         setExentoIva(customer.exento_iva || false);
         setEsCredito(customer.es_credito || false);
+        setDiasCredito(customer.dias_credito != null ? String(customer.dias_credito) : '15');
         setEsAnticipado(customer.es_anticipado || false);
+        setEsTrupput(customer.es_trupput || false);
         setDocType(customer.tipo_documento || 'DUI');
         setNitValue(customer.nit || '');
         setSelectedPais(customer.pais || '9579');
@@ -364,7 +370,9 @@ const Customers = () => {
                         setCondicionFiscal('contribuyente');
                         setExentoIva(false);
                         setEsCredito(false);
+                        setDiasCredito('15');
                         setEsAnticipado(false);
+                        setEsTrupput(false);
                         setDocType('DUI');
                         setNitValue('');
                         setSelectedPais('9579');
@@ -704,9 +712,25 @@ const Customers = () => {
                             <input type="checkbox" name="es_credito" checked={esCredito} onChange={e => setEsCredito(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
                             Cliente Crédito (CxC)
                         </label>
+                        {esCredito && (
+                            <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-indigo-100">
+                                <label className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Días de Crédito</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={diasCredito}
+                                    onChange={(e) => setDiasCredito(e.target.value)}
+                                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-semibold"
+                                />
+                            </div>
+                        )}
                         <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-[11px] font-semibold text-slate-600">
                             <input type="checkbox" name="es_anticipado" checked={esAnticipado} onChange={e => setEsAnticipado(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
                             Cliente Anticipado (Gasolinera)
+                        </label>
+                        <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-[11px] font-semibold text-slate-600">
+                            <input type="checkbox" name="es_trupput" checked={esTrupput} onChange={e => setEsTrupput(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
+                            Cliente Trupput (Gasolinera)
                         </label>
                     </div>
                     <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">

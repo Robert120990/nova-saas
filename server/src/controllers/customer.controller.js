@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, ids_only } = req.query;
+        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, es_trupput, ids_only } = req.query;
         const offset = (page - 1) * limit;
 
         let whereClause = 'WHERE c.company_id = ?';
@@ -42,6 +42,9 @@ const getCustomers = async (req, res) => {
         }
         if (es_anticipado === '1') {
             whereClause += ` AND c.es_anticipado = 1 `;
+        }
+        if (es_trupput === '1') {
+            whereClause += ` AND c.es_trupput = 1 `;
         }
 
         if (ids_only === '1') {
@@ -91,7 +94,7 @@ const validColumns = [
     'codigo_actividad', 'condicion_fiscal', 'pais', 'departamento', 
     'municipio', 'distrito', 'direccion', 'telefono', 'correo', 
     'exento_iva', 'aplica_fovial', 'aplica_cotrans',
-    'es_credito', 'es_anticipado'
+    'es_credito', 'es_anticipado', 'es_trupput', 'dias_credito'
 ];
 
 const createCustomer = async (req, res) => {

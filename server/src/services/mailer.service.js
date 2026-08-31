@@ -4,10 +4,10 @@ const {
     generateAgingPDF,
     generateRTEE,
     generateInvalidationPDF,
-    generateStatementPDF,
-    generateProviderStatementPDF,
-    generateProviderAgingPDF,
-    generatePaymentReceiptPDF
+      generateStatementPDF,
+      generateProviderStatementPDF,
+      generateTrupputStatementPDF,
+      generatePaymentReceiptPDF
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
@@ -232,9 +232,111 @@ const sendAnticiposStatementEmail = async (customerId, branchId, companyId) => {
     }
 };
 
-/**
- * Sends a provider statement email with a PDF attachment
- */
+  /**
+   * Sends a Trupput (prepago por galonaje) statement email with a PDF attachment
+   */
+  const sendTrupputStatementEmail = async (customerId, branchId, companyId) => {
+      try {
+          const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
+          const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
+          const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customerId]);
+
+          if (!customerRows.length || !customerRows[0].correo) {
+              throw new Error('El cliente no tiene un correo electrónico registrado.');
+          }
+
+          const customer = customerRows[0];
+          const smtp = await getSMTPSettings(branchId, companyId);
+
+          const [recharges] = await pool.query(`
+              SELECT 
+                  DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha,
+                  'TRUPPUT' as tipo,
+                  COALESCE(t.numero, 'S/N') as numero,
+                  COALESCE(NULLIF(TRIM(t.notas), ''), 'RECARGA TRUPPUT') as concepto,
+                  t.galones as galones_cargo,
+                  0 as galones_abono,
+                  t.galones as galones,
+                  t.monto as cargo,
+                  0 as abono
+              FROM gas_station_trupput t
+              WHERE t.company_id = ? AND t.cliente_id = ? AND (t.branch_id = ? OR t.branch_id IS NULL)
+          `, [companyId, customerId, branchId]);
+
+          const [dispatches] = await pool.query(`
+              SELECT 
+                  DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
+                  'DESPACHO' as tipo,
+                  COALESCE(td.documento, 'S/N') as numero,
+                  COALESCE(CONCAT('DESPACHO TRUPPUT - ', td.producto_descripcion), 'DESPACHO TRUPPUT') as concepto,
+                  0 as galones_cargo,
+                  td.galones as galones_abono,
+                  td.galones as galones,
+                  0 as cargo,
+                  td.monto as abono
+              FROM gas_station_closeout_trupput_despachos td
+              JOIN gas_station_closeouts c ON td.closeout_id = c.id
+              WHERE td.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
+          `, [customerId, companyId, branchId]);
+
+          const movementsAll = [...recharges, ...dispatches].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+          let currentBalanceGal = 0;
+          let totalRecargado = 0;
+          let totalDespachado = 0;
+          const history = movementsAll.map(m => {
+              const cargoGal = parseFloat(m.galones_cargo || 0);
+              const abonoGal = parseFloat(m.galones_abono || 0);
+              currentBalanceGal += (cargoGal - abonoGal);
+              totalRecargado += parseFloat(m.cargo || 0);
+              totalDespachado += parseFloat(m.abono || 0);
+              return { ...m, balance_galones: currentBalanceGal };
+          });
+
+          const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
+          const branchName = branchRows[0]?.nombre || 'Sucursal';
+          const customerName = customer.nombre || 'Cliente';
+
+          const pdfBuffer = await generateTrupputStatementPDF({
+              company_name: companyName,
+              branch_name: branchName,
+              customer_name: customerName,
+              customer_email: customer.correo || '',
+              total_balance_galones: currentBalanceGal,
+              total_recargado: totalRecargado,
+              total_despachado: totalDespachado,
+              movements: history
+          });
+
+          const transporter = createTransporter(smtp);
+          await transporter.sendMail({
+              from: `"${smtp.from_name}" <${smtp.from_email}>`,
+              to: customer.correo,
+              subject: `Estado de Cuenta Trupput - ${companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'CXC'}`,
+              html: `
+                  <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
+                      <h2 style="color: #4f46e5; text-align: center;">Estado de Cuenta Trupput</h2>
+                      <p>Hola <b>${customer.nombre}</b>,</p>
+                      <p>Adjunto encontrará el estado de cuenta de su prepago por galonaje actualizado a la fecha: <b>${new Date().toLocaleDateString('es-SV')}</b>.</p>
+                      <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+                          <span style="font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em;">Saldo Disponible en Galones</span>
+                          <div style="font-size: 32px; font-weight: 800; color: #1e293b;">${parseFloat(currentBalanceGal).toFixed(4)} gal.</div>
+                      </div>
+                      <p style="font-size: 13px; color: #666;">Adjunto encontrará el archivo PDF con el desglose de sus movimientos de Trupput.</p>
+                      <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                      <p style="font-size: 12px; color: #94a3b8; text-align: center;">Este es un mensaje automático de <b>${branchRows[0].nombre}</b>.</p>
+                  </div>
+              `,
+              attachments: [{ filename: `Estado_Cuenta_Trupput_${customer.nombre.replace(/ /g, '_')}.pdf`, content: pdfBuffer }]
+          });
+      } catch (error) {
+          console.error(`[Mailer] ERROR in sendTrupputStatementEmail:`, error);
+          throw error;
+      }
+  };
+
+  /**
+   * Sends a provider statement email with a PDF attachment
+   */
 const sendProviderStatementEmail = async (providerId, branchId, companyId) => {
     try {
         const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
@@ -437,6 +539,7 @@ const sendMail = async ({ branchId, to, subject, text, html, attachments }) => {
 module.exports = { 
     sendCustomerStatementEmail,
     sendAnticiposStatementEmail,
+    sendTrupputStatementEmail,
     sendProviderStatementEmail,
     sendPaymentReceiptEmail,
     sendProviderPaymentReceiptEmail,
