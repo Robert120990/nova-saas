@@ -236,6 +236,9 @@ const createSale = async (req, res) => {
                 }
             }
 
+            if (!header.branch_id) header.branch_id = req.user.branch_id;
+            if (!header.user_id) header.user_id = req.user.id;
+
             const dtePayload = {
                 ...req.body,
                 sale_id: saleId,
@@ -246,9 +249,6 @@ const createSale = async (req, res) => {
                     codPuntoVentaMH: codPuntoVentaMH
                 }
             };
-
-            if (!header.branch_id) header.branch_id = req.user.branch_id;
-            if (!header.user_id) header.user_id = req.user.id;
 
             dteResult = await dteService.emitDTE(company, dtePayload);
             if (dteResult.success) {
