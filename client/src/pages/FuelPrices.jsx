@@ -19,8 +19,6 @@ const FuelPrices = () => {
     const initialPrices = useRef({});
     const userBranchId = user?.branch_id;
 
-    useDirtyTracker('precios', fuelProducts && JSON.stringify(editablePrices) !== JSON.stringify(initialPrices.current));
-
     const { data: fuelProducts, isLoading, isError, refetch } = useQuery({
         queryKey: ['fuel-products', userBranchId],
         queryFn: async () => {
@@ -30,6 +28,8 @@ const FuelPrices = () => {
         },
         enabled: !!userBranchId
     });
+
+    useDirtyTracker('precios', fuelProducts && JSON.stringify(editablePrices) !== JSON.stringify(initialPrices.current));
 
     // Synchronize query data with local state
     React.useEffect(() => {
