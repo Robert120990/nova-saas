@@ -28,6 +28,20 @@ function getDteTypeName(tipoDte) {
     return dteTypeNames[tipoDte] || 'Documento Tributario';
 }
 
+const FALLBACK_ACTIVIDAD = new Set(['otros', 'otro', 'actividad no definida', 'n/a', '']);
+
+async function resolveActividadOficial(codActividad, descActividad) {
+    const desc = (descActividad || '').trim();
+    if (!FALLBACK_ACTIVIDAD.has(desc.toLowerCase())) return desc;
+    if (!codActividad) return desc;
+    try {
+        const [rows] = await pool.query('SELECT description FROM cat_019_actividad_economica WHERE code = ?', [String(codActividad).trim()]);
+        return rows.length > 0 ? rows[0].description : desc;
+    } catch (e) {
+        return desc;
+    }
+}
+
 /**
  * Procesa una nueva venta junto con sus ítems, pagos y documentos vinculados.
  * Maneja la reducción de inventario y el registro en el Kardex.
@@ -1944,12 +1958,17 @@ const exportRTEE = async (req, res) => {
         }
 
         // 3. Mapear datos para el servicio de PDF
+        const [emisorDescActividad, receptorDescActividad] = await Promise.all([
+            resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
+            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad)
+        ]);
+
         const reportData = {
             emisor: {
                 nombre: company[0].razon_social,
                 nit: company[0].nit,
                 nrc: company[0].nrc,
-                descActividad: dteJson.emisor.descActividad,
+                descActividad: emisorDescActividad,
                 direccion: dteJson.emisor.direccion,
                 telefono: dteJson.emisor.telefono,
                 correo: dteJson.emisor.correo,
@@ -1964,7 +1983,7 @@ const exportRTEE = async (req, res) => {
                 numDocumento: dteJson.receptor.numDocumento,
                 direccion: dteJson.receptor.direccion,
                 codActividad: dteJson.receptor.codActividad || null,
-                descActividad: dteJson.receptor.descActividad || null,
+                descActividad: receptorDescActividad,
                 codPais: dteJson.receptor.codPais || null,
                 nombrePais: dteJson.receptor.nombrePais || null,
             },
@@ -2069,12 +2088,17 @@ const getPublicRTEE = async (req, res) => {
             if (fs.existsSync(absoluteLogoPath)) logoPath = absoluteLogoPath;
         }
 
+        const [emisorDescActividad, receptorDescActividad] = await Promise.all([
+            resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
+            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad)
+        ]);
+
         const reportData = {
             emisor: {
                 nombre: company[0].razon_social,
                 nit: company[0].nit,
                 nrc: company[0].nrc,
-                descActividad: dteJson.emisor.descActividad,
+                descActividad: emisorDescActividad,
                 direccion: dteJson.emisor.direccion,
                 telefono: dteJson.emisor.telefono,
                 correo: dteJson.emisor.correo,
@@ -2089,7 +2113,7 @@ const getPublicRTEE = async (req, res) => {
                 numDocumento: dteJson.receptor.numDocumento,
                 direccion: dteJson.receptor.direccion,
                 codActividad: dteJson.receptor.codActividad || null,
-                descActividad: dteJson.receptor.descActividad || null,
+                descActividad: receptorDescActividad,
                 codPais: dteJson.receptor.codPais || null,
                 nombrePais: dteJson.receptor.nombrePais || null,
             },

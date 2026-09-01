@@ -283,6 +283,22 @@ class DteService {
         if (rows.length === 0) return { nombre: 'RECEPTOR NO ENCONTRADO' };
         
         const c = rows[0];
+
+        // Resolver nombre oficial de actividad económica desde cat_019 cuando
+        // el cliente no tiene actividad_nombre/giro (evita el fallback "Otros")
+        let descActividad = c.actividad_nombre || c.giro || null;
+        if (!descActividad && c.codigo_actividad) {
+            try {
+                const [actRows] = await pool.query(
+                    'SELECT description FROM cat_019_actividad_economica WHERE code = ?',
+                    [String(c.codigo_actividad).trim()]
+                );
+                if (actRows.length > 0) descActividad = actRows[0].description;
+            } catch (e) {
+                console.warn('[DteService] Error resolviendo actividad económica del receptor:', e.message);
+            }
+        }
+
         let departamento = c.departamento || '06';
         let municipio = c.municipio || '14';
         let distrito = c.distrito || '01';
@@ -308,7 +324,7 @@ class DteService {
             correo: c.correo,
             telefono: c.telefono,
             codActividad: c.codigo_actividad,
-            descActividad: c.actividad_nombre || c.giro,
+            descActividad: descActividad,
             tipo_persona: c.tipo_persona || 1,
             pais_code: c.pais_code || c.pais || null,
             pais_name: c.pais_name || null,

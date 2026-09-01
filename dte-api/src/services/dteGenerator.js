@@ -59,6 +59,24 @@ async function resolveCountryCode(rawInput) {
     return { code: '9320', name: 'ESTADOS UNIDOS' };
 }
 
+/**
+ * Resuelve el nombre oficial de actividad económica desde cat_019 por código.
+ * Retorna null si no se encuentra para no alterar el flujo de generación.
+ */
+async function resolveActividadEconomica(codigoActividad) {
+    if (!codigoActividad) return null;
+    try {
+        const [rows] = await pool.query(
+            'SELECT description FROM cat_019_actividad_economica WHERE code = ?',
+            [String(codigoActividad).trim()]
+        );
+        return rows.length > 0 ? rows[0].description : null;
+    } catch (err) {
+        console.warn('[DTE-Generator] Error resolviendo actividad económica del emisor:', err.message);
+        return null;
+    }
+}
+
 // CR (07): totales específicos para comprobante de retención
 function calculateTotalsCR(items) {
     let totalSujeto = 0;
@@ -167,12 +185,20 @@ async function generateDTE(payload) {
         throw new Error(`La sucursal "${branch.nombre || branch.codigo}" tiene un distrito inválido: "${distritoEmisor}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
     }
 
+    // Descripción oficial de actividad económica: si el emisor no envía una
+    // descripción propia, se resuelve desde cat_019 por codigo_actividad
+    let emisorDescActividad = emisorAdic.descActividad || company.actividad_economica || '';
+    if (!emisorDescActividad) {
+        const oficial = await resolveActividadEconomica(company.codigo_actividad);
+        if (oficial) emisorDescActividad = oficial;
+    }
+
     const emisor = {
         nit: cleanNumbers(company.nit),
         nrc: cleanNumbers(company.nrc),
         nombre: sanitizeText(company.razon_social),
         codActividad: company.codigo_actividad || '47300',
-        descActividad: sanitizeText(emisorAdic.descActividad || company.actividad_economica || 'Actividad no definida'),
+        descActividad: sanitizeText(emisorDescActividad || 'Actividad no definida'),
         nombreComercial: sanitizeText(company.nombre_comercial || company.razon_social),
         direccion: {
             departamento: deptCode,
