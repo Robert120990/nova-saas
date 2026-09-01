@@ -62,15 +62,19 @@ async function resolveCountryCode(rawInput) {
 // CR (07): totales específicos para comprobante de retención
 function calculateTotalsCR(items) {
     let totalSujeto = 0;
-    let totalIva = 0;
+    let totalRetenido = 0;
     items.forEach(item => {
         totalSujeto += parseFloat(item.montoSujetoGrav) || 0;
-        totalIva += parseFloat(item.ivaRetenido) || 0;
+        totalRetenido += parseFloat(item.ivaRetenido) || 0;
     });
     return {
         totalSujetoRetencion: round(totalSujeto),
-        totalIVAretenido: round(totalIva),
-        totalIVAretenidoLetras: getAmountInWords(round(totalIva))
+        // El CR no genera IVA propio (los documentos referenciados ya declararon
+        // su IVA); Hacienda valida totalIva = 0 (rechazo "CALCULO INCORRECTO" en
+        // ambiente de prueba si se envía otro valor).
+        totalIva: 0,
+        totalIVAretenido: round(totalRetenido),
+        totalIVAretenidoLetras: getAmountInWords(round(totalRetenido))
     };
 }
 
@@ -180,18 +184,10 @@ async function generateDTE(payload) {
         correo: branch.correo || 'emisor@example.com'
     };
 
-    // Estos campos NO van en Nota de Crédito (05) ni en CR (07)
-    if (tipoDte !== '05' && tipoDte !== '07') {
+    // Estos campos NO van en Nota de Crédito (05)
+    if (tipoDte !== '05') {
         emisor.codEstable = (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0');
         emisor.codPuntoVenta = String(codPuntoVentaMH || '0001').padStart(4, '0');
-    }
-
-    // CR (07): usa campos con nombres diferentes
-    if (tipoDte === '07') {
-        emisor.codigoMH = branch.codigo_mh || null;
-        emisor.codigo = String(branch.codigo || '1').padStart(4, '0');
-        emisor.puntoVentaMH = emisorAdic.codPuntoVentaMH || null;
-        emisor.puntoVenta = '0001';
     }
 
     // FEX: agregar campos requeridos por Hacienda en el emisor
@@ -214,8 +210,8 @@ async function generateDTE(payload) {
         corpoItems = (items || []).map((item, index) => ({
             numItem: index + 1,
             tipoDte: String(item.tipoDte || item.docType || item.doc_type || '03'),
-            tipoDoc: parseInt(item.tipoDoc) || 1,
-            numDocumento: String(item.numDocumento || item.docNumber || item.doc_number || item.numeroDocumento || ''),
+            tipoGeneracion: parseInt(item.tipoGeneracion ?? item.tipoDoc) || 1,
+            numeroDocumento: String(item.numDocumento || item.docNumber || item.doc_number || item.numeroDocumento || ''),
             fechaEmision: item.fechaEmision || item.emissionDate || item.emission_date || item.fecEmi || '',
             montoSujetoGrav: round(parseFloat(item.montoSujetoGrav || item.montoSujeto || item.ventaGravada || 0)),
             codigoRetencionMH: String(item.codigoRetencionMH || item.codigoRetencion || '22'),
@@ -534,7 +530,7 @@ async function generateDTE(payload) {
             // CR: estructura del schema v2
             return {
                 totalSujetoRetencion: totals.totalSujetoRetencion,
-                totalIva: totals.totalIVAretenido,
+                totalIva: totals.totalIva,
                 totalIvaRetenido: totals.totalIVAretenido,
                 totalLetras: totals.totalIVAretenidoLetras,
                 observaciones: 'Ninguna'

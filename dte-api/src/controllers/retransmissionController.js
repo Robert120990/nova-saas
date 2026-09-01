@@ -11,6 +11,7 @@ const { getSchemaVersion } = require('../utils/versionMap');
 const { getMHAmbiente } = require('../config/haciendaConfig');
 const pool = require('../../config/db');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
+const { round } = require('../utils/calculations');
 
 /**
  * Reconstruye el payload que generateDTE() espera a partir de los datos
@@ -108,7 +109,39 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
     }
 
     // 8. Mapear items al formato que espera calculateItem()
-    const mappedItems = items.map((item, idx) => {
+    let mappedItems;
+    if (dteRecord.tipo_dte === '07') {
+        // CR (07): los ítems se construyen desde los documentos vinculados (retenciones)
+        const [linkedDocs] = await pool.query(
+            'SELECT * FROM sales_linked_documents WHERE sale_id = ? ORDER BY id',
+            [ventaId]
+        );
+        mappedItems = linkedDocs.map((doc, idx) => {
+            let montoSujeto = parseFloat(doc.monto_sujeto);
+            let ivaRetenido = parseFloat(doc.iva_retenido);
+            // Fallback para ventas previas a la migración v154: usar sales_items posicionalmente
+            if (!montoSujeto || !ivaRetenido) {
+                const saleItem = items[idx];
+                if (saleItem) {
+                    const monto = parseFloat(saleItem.venta_gravada) || 0;
+                    if (!montoSujeto) montoSujeto = monto;
+                    if (!ivaRetenido) ivaRetenido = round(monto * 0.01);
+                }
+            }
+            return {
+                tipoDte: doc.doc_type || '03',
+                tipoGeneracion: doc.generation_type || 1,
+                numDocumento: doc.doc_number || '',
+                fechaEmision: doc.emission_date instanceof Date
+                    ? `${doc.emission_date.getFullYear()}-${String(doc.emission_date.getMonth() + 1).padStart(2, '0')}-${String(doc.emission_date.getDate()).padStart(2, '0')}`
+                    : String(doc.emission_date || '').substring(0, 10),
+                montoSujetoGrav: montoSujeto || 0,
+                ivaRetenido: ivaRetenido || 0,
+                descripcion: doc.descripcion || items[idx]?.descripcion || `RETENCION AL DOCUMENTO ${doc.doc_number || ''}`
+            };
+        });
+    } else {
+    mappedItems = items.map((item, idx) => {
         const isExento = item.venta_exenta > 0 && item.venta_gravada === 0;
         let tributos = [];
         try {
@@ -130,6 +163,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
             exento: isExento
         };
     });
+    }
 
     // 9. Mapear pagos
     const mappedPayments = payments.map(p => ({

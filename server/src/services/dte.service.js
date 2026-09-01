@@ -73,7 +73,7 @@ class DteService {
                 items: payload.header.dte_type === '07' 
                     ? (payload.linkedDocuments || []).map(doc => ({
                         tipoDte: doc.doc_type || '03',
-                        tipoDoc: doc.generation_type || 1,
+                        tipoGeneracion: doc.generation_type || 1,
                         numDocumento: doc.doc_number || '',
                         fechaEmision: doc.emission_date || '',
                         montoSujetoGrav: doc.montoSujeto || doc.monto_sujeto || 0,

@@ -366,7 +366,7 @@
                         ],
                         "description": "Tipo de generación del documento relacionado"
                     },
-                    "numDocumento": {
+                    "numeroDocumento": {
                         "description": "Número de documento relacionado",
                         "type": [
                             "null",
@@ -414,7 +414,7 @@
                     "numItem",
                     "tipoDte",
                     "tipoGeneracion",
-                    "numDocumento",
+                    "numeroDocumento",
                     "fechaEmision",
                     "montoSujetoGrav",
                     "codigoRetencionMH",

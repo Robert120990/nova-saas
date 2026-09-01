@@ -215,7 +215,10 @@ const createSale = async (req, res) => {
                     doc_type: doc.doc_type || null,
                     doc_number: doc.doc_number || null,
                     emission_date: doc.emission_date || null,
-                    generation_type: doc.generation_type || null
+                    generation_type: doc.generation_type || null,
+                    monto_sujeto: doc.montoSujeto != null ? doc.montoSujeto : (doc.monto_sujeto || null),
+                    iva_retenido: doc.ivaRetenido != null ? doc.ivaRetenido : (doc.iva_retenido || null),
+                    descripcion: doc.descripcion || null
                 }]);
             }
         }
