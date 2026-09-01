@@ -29,6 +29,7 @@ const Branches = () => {
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedEnv, setSelectedEnv] = useState('2');
+    const [omitirDigitoVerificador, setOmitirDigitoVerificador] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
 
     const { data: branches = [] } = useQuery({
@@ -120,6 +121,7 @@ const Branches = () => {
         setSelectedMun(branch.municipio);
         setSelectedDistrito(branch.distrito);
         setSelectedEnv(branch.ambiente || '2');
+        setOmitirDigitoVerificador(!!branch.omitir_digito_verificador);
         setPreviewUrl(null);
         setIsModalOpen(true);
     };
@@ -141,6 +143,7 @@ const Branches = () => {
                         setSelectedMun('');
                         setSelectedDistrito('');
                         setSelectedEnv('2');
+                        setOmitirDigitoVerificador(false);
                         setPreviewUrl(null);
                         setIsModalOpen(true); 
                     }}
@@ -270,6 +273,30 @@ const Branches = () => {
                                 {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Omitir Dígito Verificador</label>
+                        <button
+                            type="button"
+                            onClick={() => setOmitirDigitoVerificador(v => !v)}
+                            className={`w-full flex items-center justify-between px-4 py-3 border rounded-xl transition-all ${
+                                omitirDigitoVerificador
+                                    ? 'bg-indigo-50 border-indigo-200'
+                                    : 'bg-slate-50 border-slate-200'
+                            }`}
+                        >
+                            <span className="text-sm font-semibold text-slate-700 text-left">
+                                Omitir el último dígito del código al leer en POS
+                            </span>
+                            <span className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors shrink-0 ${omitirDigitoVerificador ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                                <span className={`inline-block w-4 h-4 transform rounded-full bg-white transition-transform ${omitirDigitoVerificador ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </span>
+                        </button>
+                        <input
+                            type="hidden"
+                            name="omitir_digito_verificador"
+                            value={omitirDigitoVerificador ? '1' : '0'}
+                        />
                     </div>
                     <div>
                         <label className={labelCls}>Dirección</label>

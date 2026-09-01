@@ -30,6 +30,7 @@ REGLAS DE MULTI-TENENCIA:
 - id, company_id, codigo, nombre, tipo_establecimiento
 - direccion, departamento, municipio, telefono, correo, codigo_mh
 - es_casa_matriz BOOLEAN, distrito VARCHAR(10)
+- omitir_digito_verificador BOOLEAN DEFAULT FALSE (al leer un producto en POS omite el último dígito del código)
 - logo_url, created_at
 - UNIQUE(company_id, codigo), UNIQUE(company_id, codigo_mh)
 

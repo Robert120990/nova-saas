@@ -1323,8 +1323,12 @@ const SalesTerminal = () => {
 
         try {
             // Buscar directo en el servidor (búsqueda exacta por código o código de barras)
+            let code = quickBarcode;
+            if (sellerSession?.omitir_digito_verificador && code.length > 1) {
+                code = code.slice(0, -1);
+            }
             try {
-                const res = await axios.get(`/api/products/lookup/${quickBarcode}`, {
+                const res = await axios.get(`/api/products/lookup/${code}`, {
                     params: { branch_id: sellerSession?.branch_id, pos_id: sellerSession?.pos_id }
                 });
                 const product = res.data;
@@ -1335,7 +1339,7 @@ const SalesTerminal = () => {
                 finishBarcodeLookup(product, false, autoAdd);
             } catch {
                 // Si no es producto, buscar en combos
-                const combo = combos.find(c => c.barcode === quickBarcode);
+                const combo = combos.find(c => c.barcode === code);
                 if (combo) {
                     if (combo.status === 'inactive') {
                         setQuickBarcode('');

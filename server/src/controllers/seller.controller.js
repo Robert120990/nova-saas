@@ -105,7 +105,7 @@ const loginPos = async (req, res) => {
 
     try {
         const [sellers] = await pool.query(`
-            SELECT s.*, p.nombre as pos_name, b.nombre as branch_name
+            SELECT s.*, p.nombre as pos_name, b.nombre as branch_name, b.omitir_digito_verificador as omitir_digito_verificador
             FROM sellers s
             LEFT JOIN points_of_sale p ON s.pos_id = p.id
             LEFT JOIN branches b ON s.branch_id = b.id
@@ -140,7 +140,8 @@ const loginPos = async (req, res) => {
                         pos_name: posName,
                     branch_id: seller.branch_id,
                     branch_name: seller.branch_name,
-                    allow_price_edit: !!seller.allow_price_edit
+                    allow_price_edit: !!seller.allow_price_edit,
+                    omitir_digito_verificador: !!seller.omitir_digito_verificador
                 });
             }
         }
