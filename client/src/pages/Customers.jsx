@@ -286,6 +286,13 @@ const Customers = () => {
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
         data.customer_id = branchCustomer.id;
+
+        const distritoSel = branchDistritos.find(d => d.code === data.distrito);
+        if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
+            toast.error('El municipio seleccionado no corresponde al distrito');
+            return;
+        }
+
         branchMutations.save.mutate(data);
     };
 
@@ -326,6 +333,12 @@ const Customers = () => {
         
         if (data.nit && !nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
             toast.error('Formato de NIT o DUI inválido');
+            return;
+        }
+
+        const distritoSel = distritos.find(d => d.code === data.distrito);
+        if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
+            toast.error('El municipio seleccionado no corresponde al distrito');
             return;
         }
 
@@ -669,17 +682,17 @@ const Customers = () => {
                             </select>
                         </div>
                         <div>
+                            <label className={labelCls}>Distrito</label>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} className={fieldCls} required>
+                                <option value="">Seleccionar</option>
+                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                            </select>
+                        </div>
+                        <div>
                             <label className={labelCls}>Municipio</label>
                             <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls} required>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelCls}>Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls} required>
-                                <option value="">Seleccionar</option>
-                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                     </div>
@@ -790,17 +803,17 @@ const Customers = () => {
                                     </select>
                                 </div>
                                 <div>
+                                    <label className={labelCls}>Distrito</label>
+                                    <select name="distrito" value={branchDistrito} onChange={(e) => { const sel = branchDistritos.find(d => d.code === e.target.value); setBranchDistrito(e.target.value); setBranchMun(sel?.muni_code || ''); }} className={fieldCls} required>
+                                        <option value="">Seleccionar</option>
+                                        {branchDistritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                                    </select>
+                                </div>
+                                <div>
                                     <label className={labelCls}>Municipio</label>
                                     <select name="municipio" value={branchMun} onChange={(e) => setBranchMun(e.target.value)} className={fieldCls} required>
                                         <option value="">Seleccionar</option>
                                         {branchMunicipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Distrito</label>
-                                    <select name="distrito" value={branchDistrito} onChange={(e) => setBranchDistrito(e.target.value)} className={fieldCls} required>
-                                        <option value="">Seleccionar</option>
-                                        {branchDistritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                     </select>
                                 </div>
                             </div>

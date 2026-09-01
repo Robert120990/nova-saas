@@ -431,6 +431,12 @@ const SalesTerminal = () => {
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
         data.codigo_actividad = selectedActivity;
 
+        const distritoSel = distritos.find(d => d.code === data.distrito);
+        if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
+            toast.error('El municipio seleccionado no corresponde al distrito');
+            return;
+        }
+
         try {
             let res;
             if (editingCustomer) {
@@ -634,6 +640,14 @@ const SalesTerminal = () => {
                             tipoDte === '04' ? 'Nota de Remisión' : 'el DTE';
             toast.error(`Faltan datos obligatorios para ${docName}: ${missing.join(', ')}`);
             return false;
+        }
+
+        if (customer.distrito) {
+            const distritoSel = distritos.find(d => d.code === customer.distrito);
+            if (distritoSel && customer.municipio && customer.municipio !== distritoSel.muni_code) {
+                toast.error('El municipio del cliente no corresponde al distrito seleccionado');
+                return false;
+            }
         }
 
         return true;
@@ -2755,17 +2769,17 @@ const SalesTerminal = () => {
                             </select>
                         </div>
                         <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1">Distrito</label>
+                            <select name="distrito" value={selectedDistrito} onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
+                                <option value="">Seleccionar</option>
+                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                            </select>
+                        </div>
+                        <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Municipio</label>
                             <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                <option value="">Seleccionar</option>
-                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                     </div>
