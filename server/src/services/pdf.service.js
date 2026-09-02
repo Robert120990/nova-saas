@@ -1604,7 +1604,7 @@ const generateRTEE = (data) => {
 
             // --- Receptor Section ---
             const receptorY = techY + 15;
-            const receptorBoxHeight = (dte.tipoDte === '03' || dte.tipoDte === '11') ? 65 : 55;
+            const receptorBoxHeight = (dte.tipoDte === '03') ? 77 : (dte.tipoDte === '11') ? 65 : 55;
             doc.rect(startX, receptorY, pageWidth, receptorBoxHeight).stroke();
             doc.fontSize(9).font('Helvetica-Bold').text('DATOS DEL RECEPTOR', startX + 10, receptorY + 5);
             doc.fontSize(9).font('Helvetica');
@@ -1617,6 +1617,7 @@ const generateRTEE = (data) => {
             if (dte.tipoDte === '03') {
                 doc.text(`NRC: ${receptor.nrc || '—'}`, startX + 10, receptorY + 42);
                 doc.text(`Actividad: ${receptor.descActividad || receptor.codActividad || 'N/A'}`, startX + 10, receptorY + 54);
+                doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, receptorY + 66);
             } else if (dte.tipoDte === '11') {
                 doc.text(`País: ${receptor.nombrePais || receptor.codPais || 'N/A'}`, startX + 10, receptorY + 42);
                 doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, receptorY + 54);
