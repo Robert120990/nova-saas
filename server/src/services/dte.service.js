@@ -308,10 +308,10 @@ class DteService {
             const [branches] = await pool.query('SELECT * FROM customer_branches WHERE id = ? AND customer_id = ?', [customerBranchId, customerId]);
             if (branches.length > 0) {
                 const b = branches[0];
-                departamento = b.departamento || departamento;
-                municipio = b.municipio || municipio;
-                distrito = b.distrito || distrito;
-                complemento = b.direccion || complemento;
+                departamento = (b.departamento && String(b.departamento).trim()) || departamento;
+                municipio = (b.municipio && String(b.municipio).trim()) || municipio;
+                distrito = (b.distrito && String(b.distrito).trim()) || distrito;
+                complemento = (b.direccion && String(b.direccion).trim()) || complemento;
             }
         }
 
@@ -364,9 +364,9 @@ class DteService {
         }
 
         const missing = [];
-        if (!(b.departamento || c.departamento)) missing.push('Departamento');
-        if (!(b.municipio || c.municipio)) missing.push('Municipio');
-        if (!(b.distrito || c.distrito)) missing.push('Distrito');
+        if (!((b.departamento && String(b.departamento).trim()) || (c.departamento && String(c.departamento).trim()))) missing.push('Departamento');
+        if (!((b.municipio && String(b.municipio).trim()) || (c.municipio && String(c.municipio).trim()))) missing.push('Municipio');
+        if (!((b.distrito && String(b.distrito).trim()) || (c.distrito && String(c.distrito).trim()))) missing.push('Distrito');
 
         if (missing.length === 0) return null;
         return `El cliente seleccionado no tiene ${missing.join(', ')}. Complételos antes de facturar.`;

@@ -519,11 +519,17 @@ const getSaleById = async (req, res) => {
         const [header] = await pool.query(`
             SELECT h.*, s.nombre as seller_name, b.nombre as branch_name,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name, 
-            c.direccion as customer_address, c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
+            COALESCE(NULLIF(TRIM(cb.direccion), ''), c.direccion) as customer_address,
+            cb.nombre as customer_branch_name,
+            COALESCE(NULLIF(TRIM(cb.departamento), ''), c.departamento) as customer_departamento,
+            COALESCE(NULLIF(TRIM(cb.municipio), ''), c.municipio) as customer_municipio,
+            COALESCE(NULLIF(TRIM(cb.distrito), ''), c.distrito) as customer_distrito,
+            c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             comp.nit as company_nit,
             COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error, COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN customer_branches cb ON h.customer_branch_id = cb.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id
@@ -2988,12 +2994,13 @@ const getPublicDTEInfo = async (req, res) => {
                     b.nombre as branch_name,
                     COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as receptor_nombre,
                     c.nit as receptor_nit, c.nrc as receptor_nrc,
-                    c.direccion as receptor_direccion
+                    COALESCE(NULLIF(TRIM(cb.direccion), ''), c.direccion) as receptor_direccion
              FROM dtes d
              LEFT JOIN sales_headers h ON d.codigo_generacion = h.codigo_generacion
              LEFT JOIN companies comp ON h.company_id = comp.id
              LEFT JOIN branches b ON h.branch_id = b.id
              LEFT JOIN customers c ON h.customer_id = c.id
+             LEFT JOIN customer_branches cb ON h.customer_branch_id = cb.id
              WHERE d.codigo_generacion = ?`,
             [codigo]
         );

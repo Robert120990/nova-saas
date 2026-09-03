@@ -408,12 +408,14 @@ async function generateDTE(payload) {
         // Se usa el período de días de crédito del cliente con unidad "Días" (Cat-018 = 01).
         const isCredit = parseInt(payload.condicionOperacion) === 2;
         const dias = parseInt(payload.dias_credito) || 15;
-        const periodo = p.periodo != null ? p.periodo : (isCredit ? dias : null);
-        const plazo = p.plazo || (isCredit ? '01' : null); // 01 = Días (Cat-018)
+        const rawPeriodo = (p.periodo !== null && p.periodo !== undefined && String(p.periodo).trim() !== '') ? parseInt(p.periodo) : null;
+        const periodo = (rawPeriodo !== null && !isNaN(rawPeriodo)) ? rawPeriodo : (isCredit ? dias : null);
+        const plazo = (p.plazo && String(p.plazo).trim() !== '') ? String(p.plazo).trim() : (isCredit ? '01' : null); // 01 = Días (Cat-018)
+        const referencia = (p.referencia && String(p.referencia).trim() !== '') ? String(p.referencia).trim() : null;
         return {
             codigo: p.codigo,
             montoPago: round(p.monto || p.montoPago || totals.totalPagar),
-            referencia: p.referencia || null,
+            referencia: referencia,
             plazo: plazo,
             periodo: periodo
         };

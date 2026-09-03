@@ -348,17 +348,58 @@ const SalesTerminal = () => {
         return customersCache[parseInt(customerId)] || null;
     }, [customerId, customersCache]);
 
+    const { data: customerBranches = [] } = useQuery({
+        queryKey: ['customer-branches', customerId],
+        queryFn: async () => (await axios.get('/api/customer-branches', { params: { customer_id: customerId } })).data,
+        enabled: !!customerId
+    });
+
+    // Helper: Find selected branch data if any
+    const selectedBranchData = useMemo(() => {
+        if (!customerBranchId || !customerBranches.length) return null;
+        return customerBranches.find(b => String(b.id) === String(customerBranchId)) || null;
+    }, [customerBranchId, customerBranches]);
+
+    // Active customer address info (resolving branch address when selected)
+    const activeAddressInfo = useMemo(() => {
+        if (!selectedCustomerData) return null;
+        if (selectedBranchData) {
+            return {
+                isBranch: true,
+                branchName: selectedBranchData.nombre,
+                departamento: (selectedBranchData.departamento && String(selectedBranchData.departamento).trim()) || selectedCustomerData.departamento,
+                municipio: (selectedBranchData.municipio && String(selectedBranchData.municipio).trim()) || selectedCustomerData.municipio,
+                distrito: (selectedBranchData.distrito && String(selectedBranchData.distrito).trim()) || selectedCustomerData.distrito,
+                departamento_nombre: selectedBranchData.departamento_nombre || selectedCustomerData.departamento_nombre,
+                municipio_nombre: selectedBranchData.municipio_nombre || selectedCustomerData.municipio_nombre,
+                distrito_nombre: selectedBranchData.distrito_nombre || selectedCustomerData.distrito_nombre,
+                direccion: (selectedBranchData.direccion && String(selectedBranchData.direccion).trim()) || selectedCustomerData.direccion || 'Dirección s/n'
+            };
+        }
+        return {
+            isBranch: false,
+            branchName: 'Principal',
+            departamento: selectedCustomerData.departamento,
+            municipio: selectedCustomerData.municipio,
+            distrito: selectedCustomerData.distrito,
+            departamento_nombre: selectedCustomerData.departamento_nombre,
+            municipio_nombre: selectedCustomerData.municipio_nombre,
+            distrito_nombre: selectedCustomerData.distrito_nombre,
+            direccion: selectedCustomerData.direccion || 'Dirección s/n'
+        };
+    }, [selectedCustomerData, selectedBranchData]);
+
     // Campos de ubicación obligatorios para facturar (DTE)
-    const getMissingCustomerFields = (customer) => {
-        if (!customer) return [];
+    const getMissingLocationFields = (loc) => {
+        if (!loc) return [];
         const missing = [];
-        if (!customer.departamento) missing.push('Departamento');
-        if (!customer.municipio) missing.push('Municipio');
-        if (!customer.distrito) missing.push('Distrito');
+        if (!loc.departamento) missing.push('Departamento');
+        if (!loc.municipio) missing.push('Municipio');
+        if (!loc.distrito) missing.push('Distrito');
         return missing;
     };
 
-    const selectedCustomerMissing = selectedCustomerData ? getMissingCustomerFields(selectedCustomerData) : [];
+    const selectedCustomerMissing = activeAddressInfo ? getMissingLocationFields(activeAddressInfo) : [];
 
     const handleCustomerSelect = (value, option) => {
         setCustomerId(value);
@@ -368,19 +409,13 @@ const SalesTerminal = () => {
         if (value) {
             const cust = option || customersCache[parseInt(value)];
             if (cust) {
-                const missing = getMissingCustomerFields(cust);
+                const missing = getMissingLocationFields(cust);
                 if (missing.length > 0) {
                     toast.warning(`El cliente "${cust.nombre}" no tiene ${missing.join(', ')}. Complételos para facturar.`);
                 }
             }
         }
     };
-
-    const { data: customerBranches = [] } = useQuery({
-        queryKey: ['customer-branches', customerId],
-        queryFn: async () => (await axios.get('/api/customer-branches', { params: { customer_id: customerId } })).data,
-        enabled: !!customerId
-    });
 
     useEffect(() => {
         setCustomerBranchId('');
@@ -708,7 +743,12 @@ const SalesTerminal = () => {
                 ...data,
                 items: [...cart],
                 totals: { ...totals },
-                customer: selectedCustomerData || { nombre: manualCustomerName || 'Consumidor Final' },
+                customer: selectedCustomerData ? {
+                    ...selectedCustomerData,
+                    branch_name: selectedBranchData?.nombre || null,
+                    branch_address: selectedBranchData?.direccion || null,
+                    active_address: activeAddressInfo?.direccion || selectedCustomerData.direccion
+                } : { nombre: manualCustomerName || 'Consumidor Final' },
                 tipoDteName: tipoDte === '01' ? 'Factura' : tipoDte === '03' ? 'Crédito Fiscal' : tipoDte === '04' ? 'Nota Remisión' : tipoDte === '05' ? 'Nota Crédito' : tipoDte === '07' ? 'Comprobante Retención' : tipoDte === '11' ? 'Factura Exportación' : 'Documento',
                 seller: sellerSession?.seller_name
             });
@@ -1642,15 +1682,21 @@ const SalesTerminal = () => {
                                         </div>
 
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1">
-                                            <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Ubicación</span>
+                                            <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter flex items-center gap-1">
+                                                Ubicación {activeAddressInfo?.isBranch && (
+                                                    <span className="px-1 py-0.2 bg-amber-100 text-amber-700 text-[7px] font-black rounded-sm truncate max-w-[80px]">
+                                                        {activeAddressInfo.branchName}
+                                                    </span>
+                                                )}
+                                            </span>
                                             <span className="text-[10px] font-bold text-slate-600 truncate uppercase">
-                                                Dist. {selectedCustomerData.distrito_nombre || selectedCustomerData.distrito || '01'}, {selectedCustomerData.municipio_nombre || 'MUNIC.'}, {selectedCustomerData.departamento_nombre || 'DEPTO.'}
+                                                Dist. {activeAddressInfo?.distrito_nombre || activeAddressInfo?.distrito || '01'}, {activeAddressInfo?.municipio_nombre || 'MUNIC.'}, {activeAddressInfo?.departamento_nombre || 'DEPTO.'}
                                             </span>
                                         </div>
                                         <div className="flex flex-col border-t border-indigo-100/30 pt-1 text-right">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Dirección</span>
-                                            <span className="text-[10px] font-medium text-slate-500 line-clamp-1 italic text-right" title={selectedCustomerData.direccion}>
-                                                {selectedCustomerData.direccion || 'Dirección s/n'}
+                                            <span className="text-[10px] font-medium text-slate-500 line-clamp-1 italic text-right" title={activeAddressInfo?.direccion}>
+                                                {activeAddressInfo?.direccion || 'Dirección s/n'}
                                             </span>
                                         </div>
                                     </div>

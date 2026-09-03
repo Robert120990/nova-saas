@@ -3443,6 +3443,7 @@ exports.generarComplementaria = async (req, res) => {
                 header: {
                     dte_type: '01',
                     customer_id: null,
+                    cliente_nombre: 'CONSUMIDOR FINAL',
                     customer_name: 'CONSUMIDOR FINAL',
                     customer_nit: null,
                     customer_nrc: '',
@@ -3463,7 +3464,7 @@ exports.generarComplementaria = async (req, res) => {
                     seller_id: posShift[0].seller_id || null,
                 },
                 items: [item],
-                payments: [{ codigo: '01', monto: montoTotal, referencia: '', plazo: '', periodo: '' }],
+                payments: [{ codigo: '01', monto: montoTotal, referencia: null, plazo: null, periodo: null }],
                 linkedDocuments: [],
                 emisor_adicional: {
                     descActividad: company.actividad_economica || '',
