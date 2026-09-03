@@ -1608,7 +1608,7 @@ const generateRTEE = (data) => {
             doc.rect(startX, receptorY, pageWidth, receptorBoxHeight).stroke();
             doc.fontSize(9).font('Helvetica-Bold').text('DATOS DEL RECEPTOR', startX + 10, receptorY + 5);
             doc.fontSize(9).font('Helvetica');
-            doc.text(`Nombre: ${receptor.nombre}`, startX + 10, receptorY + 18, { width: 330 });
+            doc.text(`Nombre: ${receptor.nombre}`, startX + 10, receptorY + 18);
             
             let docIdentLabel = 'Documento:';
             if (dte.tipoDte === '03' && receptor.nit) docIdentLabel = 'NIT:';
