@@ -1608,7 +1608,7 @@ const generateRTEE = (data) => {
             doc.rect(startX, receptorY, pageWidth, receptorBoxHeight).stroke();
             doc.fontSize(9).font('Helvetica-Bold').text('DATOS DEL RECEPTOR', startX + 10, receptorY + 5);
             doc.fontSize(9).font('Helvetica');
-            doc.text(`Nombre: ${receptor.nombre}`, startX + 10, receptorY + 18);
+            doc.text(`Nombre: ${receptor.nombre}`, startX + 10, receptorY + 18, { width: 330 });
             
             let docIdentLabel = 'Documento:';
             if (dte.tipoDte === '03' && receptor.nit) docIdentLabel = 'NIT:';
@@ -1625,7 +1625,7 @@ const generateRTEE = (data) => {
                 doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, receptorY + 42);
             }
 
-            doc.text(`Condición: ${venta.condicion_operacion === 1 ? 'Contado' : 'Crédito'}`, startX + 350, receptorY + 18);
+            doc.text(`Condición: ${venta.condicion_operacion === 1 ? 'Contado' : 'Crédito'}`, startX + 350, receptorY + 42);
             doc.text(`Fecha Emisión: ${venta.fecha_emision} ${venta.hora_emision}`, startX + 350, receptorY + 30);
 
             doc.moveDown(2);
