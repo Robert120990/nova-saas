@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import ProviderModal from '../components/providers/ProviderModal';
 
 const today = () => new Date().toISOString().split('T')[0];
 const formatDate = (dateStr) => {
@@ -39,6 +40,8 @@ const Quedan = () => {
     const [formBranchId, setFormBranchId] = useState(user?.branch_id || '');
     const [formNumQuedan, setFormNumQuedan] = useState('');
     const [formProviderId, setFormProviderId] = useState('');
+    const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
+    const [editingProvider, setEditingProvider] = useState(null);
     const [formProviderDias, setFormProviderDias] = useState(0);
     const [formFecha, setFormFecha] = useState(today());
     const [formFechaVenc, setFormFechaVenc] = useState('');
@@ -567,7 +570,38 @@ const Quedan = () => {
                         </div>
                     </div>
                     <div>
-                        <label className={`${labelCls} block mb-1`}>Proveedor</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className={`${labelCls} block`}>Proveedor</label>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingProvider(null);
+                                        setIsProviderModalOpen(true);
+                                    }}
+                                    className="text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
+                                    title="Nuevo Proveedor"
+                                >
+                                    <Plus size={11} />
+                                    <span className="hidden sm:inline">Nuevo</span>
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => {
+                                        const p = creditProvidersCache[parseInt(formProviderId)];
+                                        if (!p) return;
+                                        setEditingProvider(p);
+                                        setIsProviderModalOpen(true);
+                                    }}
+                                    disabled={!formProviderId}
+                                    className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all disabled:opacity-20 flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
+                                    title="Editar Proveedor Seleccionado"
+                                >
+                                    <Edit size={11} />
+                                    <span className="hidden sm:inline">Editar</span>
+                                </button>
+                            </div>
+                        </div>
                         <SearchableSelect
                             loadOptions={loadCreditProviders}
                             value={formProviderId}
@@ -805,6 +839,23 @@ const Quedan = () => {
                     </div>
                 </div>
             </Modal>
+            <ProviderModal 
+                isOpen={isProviderModalOpen}
+                onClose={() => {
+                    setIsProviderModalOpen(false);
+                    setEditingProvider(null);
+                }}
+                provider={editingProvider}
+                onSuccess={(savedProvider) => {
+                    if (savedProvider && savedProvider.id) {
+                        setCreditProvidersCache(prev => ({ ...prev, [savedProvider.id]: savedProvider }));
+                        setFormProviderId(String(savedProvider.id));
+                        const dias = Number(savedProvider.dias_credito) || 0;
+                        setFormProviderDias(dias);
+                        setFormFechaVenc(recalcVenc(formFecha, dias));
+                    }
+                }}
+            />
         </div>
     );
 };
