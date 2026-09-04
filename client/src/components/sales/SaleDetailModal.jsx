@@ -3,10 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
-import { FileText, User, Tag, MapPin, ShoppingCart, CreditCard, Banknote, Code, Info, Terminal } from 'lucide-react';
+import { FileText, User, Tag, MapPin, ShoppingCart, CreditCard, Banknote, Code, Info, Terminal, Download, Copy, Check } from 'lucide-react';
+import { toast } from 'sonner';
 
 const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) => {
     const [view, setView] = useState(initialView);
+    const [downloadingPDF, setDownloadingPDF] = useState(false);
+    const [copiedJSON, setCopiedJSON] = useState(false);
 
     useEffect(() => {
         if (isOpen) setView(initialView);
@@ -21,6 +24,72 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
     const handleClose = () => {
         setView('detalle');
         onClose();
+    };
+
+    const handleDownloadJSON = () => {
+        if (!saleDetail?.json_original) return;
+        const codigoGeneracion = saleDetail.codigo_generacion 
+            || saleDetail.json_original?.identificacion?.codigoGeneracion 
+            || `DTE-${saleId}`;
+        const filename = `${codigoGeneracion}.json`;
+        const jsonStr = typeof saleDetail.json_original === 'string' 
+            ? saleDetail.json_original 
+            : JSON.stringify(saleDetail.json_original, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success(`Descargando ${filename}`);
+    };
+
+    const handleDownloadPDF = async () => {
+        if (!saleId) return;
+        const codigoGeneracion = saleDetail?.codigo_generacion 
+            || saleDetail?.json_original?.identificacion?.codigoGeneracion 
+            || `DTE-${saleId}`;
+        const filename = `${codigoGeneracion}.pdf`;
+        setDownloadingPDF(true);
+        try {
+            const response = await axios.get(`/api/sales/rtee/${saleId}`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            toast.success(`Descargando ${filename}`);
+        } catch (error) {
+            console.error('Error downloading PDF:', error);
+            toast.error('Error al descargar el PDF de la representación gráfica');
+        } finally {
+            setDownloadingPDF(false);
+        }
+    };
+
+    const handleCopyJSON = async () => {
+        if (!saleDetail?.json_original) return;
+        const jsonStr = typeof saleDetail.json_original === 'string' 
+            ? saleDetail.json_original 
+            : JSON.stringify(saleDetail.json_original, null, 2);
+        try {
+            await navigator.clipboard.writeText(jsonStr);
+            setCopiedJSON(true);
+            toast.success('JSON copiado al portapapeles');
+            setTimeout(() => setCopiedJSON(false), 2000);
+        } catch (err) {
+            console.error('Error al copiar al portapapeles:', err);
+            toast.error('No se pudo copiar al portapapeles');
+        }
     };
 
     return (
@@ -260,12 +329,47 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
                     </div>
                 ) : saleDetail?.json_original ? (
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 p-3 bg-slate-100 text-slate-600 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-widest">
-                            <Code size={18} /> JSON Literal del DTE (Representación Técnica)
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-100 text-slate-600 rounded-2xl border border-slate-200">
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                                <Code size={18} className="text-indigo-600" /> 
+                                <span>JSON Literal del DTE (Representación Técnica)</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={handleCopyJSON}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                                    title="Copiar JSON al portapapeles"
+                                >
+                                    {copiedJSON ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                                    <span>{copiedJSON ? '¡Copiado!' : 'Copiar'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadPDF}
+                                    disabled={downloadingPDF}
+                                    className="flex items-center justify-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer disabled:opacity-50"
+                                    title="Descargar Representación Gráfica (PDF legible)"
+                                >
+                                    <FileText size={14} />
+                                    <span>{downloadingPDF ? 'Descargando...' : 'Descargar PDF (Legible)'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadJSON}
+                                    className="flex items-center justify-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer"
+                                    title="Descargar archivo JSON"
+                                >
+                                    <Download size={14} />
+                                    <span>Descargar JSON</span>
+                                </button>
+                            </div>
                         </div>
                         <div className="bg-slate-950 p-6 rounded-3xl overflow-auto max-h-[70vh] border border-slate-800 shadow-2xl">
                             <pre className="text-emerald-400 font-mono text-xs leading-relaxed">
-                                {JSON.stringify(saleDetail.json_original, null, 2)}
+                                {typeof saleDetail.json_original === 'string'
+                                    ? saleDetail.json_original
+                                    : JSON.stringify(saleDetail.json_original, null, 2)}
                             </pre>
                         </div>
                     </div>
