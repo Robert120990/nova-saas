@@ -131,8 +131,8 @@ process.on('uncaughtException', (err) => {
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
-// Inicializar el WebSocket acoplado al servidor HTTP
-initWebSocket(server);
+// Inicializar el WebSocket acoplado al servidor HTTP con la versión del servidor
+initWebSocket(server, SERVER_VERSION);
 
 // Inicializar worker de notificaciones en segundo plano
 startWorker();

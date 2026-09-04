@@ -13,6 +13,8 @@ export default defineConfig({
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        skipWaiting: true,
+        clientsClaim: true,
       }
     })
   ],

@@ -30,9 +30,11 @@ const telemetryState = {
 };
 
 let telemetryInterval = null;
+let currentAppVersion = 'unknown';
 
-function initWebSocket(server) {
-    console.log('Inicializando servidor WebSocket para Procesamiento Industrial...');
+function initWebSocket(server, appVersion = 'unknown') {
+    currentAppVersion = appVersion || 'unknown';
+    console.log(`Inicializando servidor WebSocket (Versión: ${currentAppVersion})...`);
     
     const wss = new WebSocket.Server({ noServer: true });
 
@@ -72,6 +74,16 @@ function initWebSocket(server) {
                 userClients.set(userId, new Set());
             }
             userClients.get(userId).add(ws);
+        }
+
+        // Emitir versión actual del sistema en tiempo real a todo cliente conectado
+        if (currentAppVersion && currentAppVersion !== 'unknown') {
+            try {
+                ws.send(JSON.stringify({
+                    event: 'app_version',
+                    data: { version: currentAppVersion }
+                }));
+            } catch (e) {}
         }
 
         // Solo egg-industrial envía estado inicial de telemetría
@@ -269,9 +281,27 @@ function broadcastToCompany(companyId, event, data) {
     }
 }
 
+function broadcastToAll(event, data) {
+    const payload = JSON.stringify({ event, data });
+    for (const clientSet of companyClients.values()) {
+        for (const ws of clientSet) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(payload);
+            }
+        }
+    }
+}
+
+function setAppVersion(version) {
+    currentAppVersion = version;
+    broadcastToAll('app_version', { version });
+}
+
 module.exports = {
     initWebSocket,
     broadcastToCompany,
+    broadcastToAll,
     sendToUser,
+    setAppVersion,
     telemetryState
 };

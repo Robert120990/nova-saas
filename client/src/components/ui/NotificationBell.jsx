@@ -74,6 +74,11 @@ const NotificationBell = () => {
       ws.onmessage = (event) => {
         try {
           const { event: evt, data } = JSON.parse(event.data);
+          if ((evt === 'app_version' || evt === 'system_update') && data?.version) {
+            if (typeof window.__onVersionReceived === 'function') {
+              window.__onVersionReceived(data.version);
+            }
+          }
           if (evt === 'new_notification') {
             queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
             if (isOpen) {

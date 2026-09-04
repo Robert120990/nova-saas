@@ -13,8 +13,17 @@ let mismatchCount = 0;
 let pendingVersion = null;
 let updateToastId = null;
 
-registerSW({
+// Capturar errores de carga de chunks dinámicos en despliegues
+window.addEventListener('vite:preloadError', (event) => {
+    console.warn('Vite preload error (chunk no encontrado tras despliegue), recargando página...', event);
+    window.location.reload();
+});
+
+const updateSW = registerSW({
     immediate: true,
+    onNeedRefresh() {
+        console.log('Nuevo Service Worker listo para activar');
+    },
     onRegisteredSW(_swUrl, registration) {
         swRegistration = registration || null;
     }
@@ -26,18 +35,31 @@ const checkForUpdates = () => {
     } catch (e) {}
 };
 
-const doReload = (version) => {
-    localStorage.setItem('app_version', version);
-    swRegistration?.update().catch(() => {});
+const doReload = async (version) => {
+    if (version) localStorage.setItem('app_version', version);
+    // Forzar activación inmediata del nuevo Service Worker (skipWaiting)
+    if (swRegistration?.waiting) {
+        swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+    try {
+        await swRegistration?.update();
+    } catch (e) {}
+
+    if (typeof updateSW === 'function') {
+        try {
+            await updateSW(true);
+            return;
+        } catch (e) {}
+    }
     window.location.reload();
 };
 
 const showPersistentUpdateToast = (version) => {
     if (updateToastId) return;
     updateToastId = toast.warning(
-        'NUEVA VERSION DISPONIBLE',
+        'NUEVA VERSIÓN DISPONIBLE',
         {
-            description: 'Guarde su trabajo antes de actualizar. Se actualizara automaticamente cuando no haya datos pendientes.',
+            description: 'Guarde su trabajo antes de actualizar. Se actualizará automáticamente cuando no haya datos pendientes.',
             duration: Infinity,
             dismissible: false,
             id: 'update-persistent',
@@ -66,6 +88,36 @@ const dismissPersistentToast = () => {
     }
 };
 
+const processVersionMismatch = (version) => {
+    if (!version || version === 'unknown' || isUpdating) return;
+    const last = localStorage.getItem('app_version');
+    if (!last) {
+        localStorage.setItem('app_version', version);
+        return;
+    }
+    if (last !== version) {
+        pendingVersion = version;
+
+        if (isAnyDirty()) {
+            showPersistentUpdateToast(version);
+        } else {
+            isUpdating = true;
+            dismissPersistentToast();
+            localStorage.setItem('app_version', version);
+            toast.info('Nueva versión disponible. Actualizando...', { duration: 4000 });
+            checkForUpdates();
+            setTimeout(() => doReload(version), 4000);
+        }
+    }
+};
+
+// Receptor para notificaciones en tiempo real vía WebSocket
+window.__onVersionReceived = (version) => {
+    if (version && version !== 'unknown') {
+        processVersionMismatch(version);
+    }
+};
+
 const checkVersion = async () => {
     if (isUpdating || document.visibilityState !== 'visible') return;
     try {
@@ -76,18 +128,7 @@ const checkVersion = async () => {
         if (last && last !== version) {
             mismatchCount++;
             if (mismatchCount >= 2) {
-                pendingVersion = version;
-
-                if (isAnyDirty()) {
-                    showPersistentUpdateToast(version);
-                } else {
-                    isUpdating = true;
-                    dismissPersistentToast();
-                    localStorage.setItem('app_version', version);
-                    toast.info('Nueva version disponible. Actualizando...', { duration: 4000 });
-                    checkForUpdates();
-                    setTimeout(() => window.location.reload(), 4000);
-                }
+                processVersionMismatch(version);
             }
             return;
         }
@@ -104,9 +145,9 @@ setInterval(() => {
     if (pendingVersion && updateToastId && !isAnyDirty()) {
         isUpdating = true;
         dismissPersistentToast();
-        toast.info('Actualizando aplicacion...', { duration: 3000 });
+        toast.info('Actualizando aplicación...', { duration: 3000 });
         checkForUpdates();
-        setTimeout(() => window.location.reload(), 3000);
+        setTimeout(() => doReload(pendingVersion), 3000);
     }
 }, 30000);
 
