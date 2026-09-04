@@ -778,6 +778,87 @@ const exportArqueosPDF = async (req, res) => {
 
         const mappedRows = rows.map(mapRow);
 
+        // Consultar detalle de gastos y remesas de los turnos listados
+        const shiftIds = rows.map(r => r.id);
+        let expensesRows = [];
+        let remesasRows = [];
+
+        if (shiftIds.length > 0) {
+            const [exp] = await pool.query(`
+                SELECT
+                    e.id,
+                    e.shift_id,
+                    e.description,
+                    e.amount,
+                    s.shift_number,
+                    s.start_time,
+                    p.nombre as pos_name,
+                    b.nombre as branch_name,
+                    sel.nombre as seller_name
+                FROM pos_shift_expenses e
+                JOIN pos_shifts s ON e.shift_id = s.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                LEFT JOIN branches b ON s.branch_id = b.id
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                WHERE e.shift_id IN (?)
+                ORDER BY s.start_time ASC, s.shift_number ASC, e.id ASC
+            `, [shiftIds]);
+            expensesRows = exp;
+
+            const [rem] = await pool.query(`
+                SELECT
+                    r.id,
+                    r.shift_id,
+                    r.numero,
+                    r.codigo,
+                    r.description,
+                    r.amount,
+                    s.shift_number,
+                    s.start_time,
+                    p.nombre as pos_name,
+                    b.nombre as branch_name,
+                    sel.nombre as seller_name
+                FROM pos_shift_remesas r
+                JOIN pos_shifts s ON r.shift_id = s.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                LEFT JOIN branches b ON s.branch_id = b.id
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                WHERE r.shift_id IN (?)
+                ORDER BY s.start_time ASC, s.shift_number ASC, r.numero ASC, r.id ASC
+            `, [shiftIds]);
+            remesasRows = rem;
+        }
+
+        const mapExpense = (e) => {
+            const start = e.start_time ? new Date(e.start_time) : null;
+            return {
+                fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
+                turno: e.shift_number != null ? `#${e.shift_number}` : '---',
+                sucursal: e.branch_name || '---',
+                pos: e.pos_name || '---',
+                vendedor: e.seller_name || '---',
+                descripcion: e.description || 'Gasto operativo',
+                monto: num(e.amount)
+            };
+        };
+
+        const mapRemesa = (r) => {
+            const start = r.start_time ? new Date(r.start_time) : null;
+            return {
+                fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
+                turno: r.shift_number != null ? `#${r.shift_number}` : '---',
+                sucursal: r.branch_name || '---',
+                pos: r.pos_name || '---',
+                vendedor: r.seller_name || '---',
+                numero: r.numero != null ? `#${r.numero}` : (r.codigo || '---'),
+                descripcion: r.description || 'Remesa',
+                monto: num(r.amount)
+            };
+        };
+
+        const mappedExpenses = expensesRows.map(mapExpense);
+        const mappedRemesas = remesasRows.map(mapRemesa);
+
         const reportData = {
             company_name: company.razon_social,
             company_nit: company.nit,
@@ -785,6 +866,8 @@ const exportArqueosPDF = async (req, res) => {
             start_date,
             end_date,
             data: mappedRows,
+            gastos_detalle: mappedExpenses,
+            remesas_detalle: mappedRemesas,
             totales: {
                 fondo: mappedRows.reduce((s, r) => s + r.fondo, 0),
                 ventas: mappedRows.reduce((s, r) => s + r.ventas, 0),
@@ -799,9 +882,8 @@ const exportArqueosPDF = async (req, res) => {
         };
 
         if (req.query.format === 'excel') {
-            const buffer = await excelService.createExcelBuffer({
-                title: `Reporte de Arqueos ${start_date} al ${end_date}`,
-                sheets: [{
+            const sheets = [
+                {
                     name: 'Arqueos',
                     columns: [
                         { header: 'Fecha', key: 'fecha', width: 16 },
@@ -832,7 +914,51 @@ const exportArqueosPDF = async (req, res) => {
                         contado: r.contado.toFixed(2),
                         diferencia: r.diferencia.toFixed(2),
                     }))
-                }]
+                }
+            ];
+
+            if (mappedExpenses.length > 0) {
+                sheets.push({
+                    name: 'Detalle Gastos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 16 },
+                        { header: 'Turno', key: 'turno', width: 10 },
+                        { header: 'Sucursal', key: 'sucursal', width: 24 },
+                        { header: 'POS', key: 'pos', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor', width: 22 },
+                        { header: 'Descripción', key: 'descripcion', width: 35 },
+                        { header: 'Monto', key: 'monto', width: 14 }
+                    ],
+                    data: mappedExpenses.map(g => ({
+                        ...g,
+                        monto: g.monto.toFixed(2)
+                    }))
+                });
+            }
+
+            if (mappedRemesas.length > 0) {
+                sheets.push({
+                    name: 'Detalle Remesas',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 16 },
+                        { header: 'Turno', key: 'turno', width: 10 },
+                        { header: 'N° Remesa', key: 'numero', width: 14 },
+                        { header: 'Sucursal', key: 'sucursal', width: 24 },
+                        { header: 'POS', key: 'pos', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor', width: 22 },
+                        { header: 'Descripción', key: 'descripcion', width: 35 },
+                        { header: 'Monto', key: 'monto', width: 14 }
+                    ],
+                    data: mappedRemesas.map(r => ({
+                        ...r,
+                        monto: r.monto.toFixed(2)
+                    }))
+                });
+            }
+
+            const buffer = await excelService.createExcelBuffer({
+                title: `Reporte de Arqueos ${start_date} al ${end_date}`,
+                sheets
             });
             return excelService.sendExcelResponse(res, buffer, `Reporte_Arqueos_${start_date}_al_${end_date}.xlsx`);
         }

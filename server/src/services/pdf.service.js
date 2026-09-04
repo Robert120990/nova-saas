@@ -3848,6 +3848,127 @@ const generateArqueosReportPDF = (data) => {
             doc.text(formatVal(data.totales?.contado), tX, totalsY, { align: 'right', width: colWidths.contado }); tX += colWidths.contado;
             doc.text(formatVal(data.totales?.diferencia), tX, totalsY, { align: 'right', width: colWidths.diferencia });
 
+            // DETALLE DE GASTOS Y REMESAS (AL FINAL DEL REPORTE)
+            const gastosList = data.gastos_detalle || [];
+            const remesasList = data.remesas_detalle || [];
+            const hasDetails = gastosList.length > 0 || remesasList.length > 0;
+
+            if (hasDetails) {
+                // Si no hay suficiente espacio para cabeceras y algunas filas, saltar de página
+                if (doc.y > 410) {
+                    doc.addPage();
+                } else {
+                    doc.moveDown(1.5);
+                }
+
+                const leftColX = 20;
+                const colW = 385;
+                const gap = 32;
+                const rightColX = leftColX + colW + gap;
+
+                const gCols = { fecha: 55, turno: 25, pos: 55, descripcion: 190, monto: 60 };
+                const rCols = { fecha: 52, turno: 24, numero: 32, pos: 55, descripcion: 162, monto: 60 };
+
+                const drawDetailHeaders = () => {
+                    const topY = doc.y;
+
+                    // Títulos de sección
+                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text('DETALLE DE GASTOS', leftColX, topY, { width: colW });
+                    doc.text('DETALLE DE REMESAS', rightColX, topY, { width: colW });
+
+                    const headerY = topY + 12;
+                    doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#475569');
+
+                    // Encabezados Gastos
+                    let gx = leftColX;
+                    doc.text('Fecha', gx, headerY, { width: gCols.fecha }); gx += gCols.fecha;
+                    doc.text('Turno', gx, headerY, { width: gCols.turno }); gx += gCols.turno;
+                    doc.text('POS', gx, headerY, { width: gCols.pos }); gx += gCols.pos;
+                    doc.text('Descripción', gx, headerY, { width: gCols.descripcion }); gx += gCols.descripcion;
+                    doc.text('Monto', gx, headerY, { align: 'right', width: gCols.monto });
+
+                    // Encabezados Remesas
+                    let rx = rightColX;
+                    doc.text('Fecha', rx, headerY, { width: rCols.fecha }); rx += rCols.fecha;
+                    doc.text('Turno', rx, headerY, { width: rCols.turno }); rx += rCols.turno;
+                    doc.text('N°', rx, headerY, { width: rCols.numero }); rx += rCols.numero;
+                    doc.text('POS', rx, headerY, { width: rCols.pos }); rx += rCols.pos;
+                    doc.text('Descripción', rx, headerY, { width: rCols.descripcion }); rx += rCols.descripcion;
+                    doc.text('Monto', rx, headerY, { align: 'right', width: rCols.monto });
+
+                    const lineY = headerY + 10;
+                    doc.moveTo(leftColX, lineY).lineTo(leftColX + colW, lineY).stroke('#94a3b8');
+                    doc.moveTo(rightColX, lineY).lineTo(rightColX + colW, lineY).stroke('#94a3b8');
+
+                    doc.fillColor('#000000');
+                    return lineY + 4;
+                };
+
+                let curY = drawDetailHeaders();
+                const maxRows = Math.max(gastosList.length, remesasList.length);
+
+                for (let i = 0; i < maxRows; i++) {
+                    if (curY > 520) {
+                        doc.addPage();
+                        curY = drawDetailHeaders();
+                    }
+
+                    const rowH = 10;
+                    doc.fontSize(6).font('Helvetica');
+
+                    // Fila Gasto
+                    if (i < gastosList.length) {
+                        const g = gastosList[i];
+                        let gx = leftColX;
+                        doc.text(g.fecha || '---', gx, curY, { width: gCols.fecha, lineBreak: false }); gx += gCols.fecha;
+                        doc.text(g.turno || '---', gx, curY, { width: gCols.turno, lineBreak: false }); gx += gCols.turno;
+                        doc.text(g.pos || '---', gx, curY, { width: gCols.pos, lineBreak: false, ellipsis: true }); gx += gCols.pos;
+                        doc.text(g.descripcion || '---', gx, curY, { width: gCols.descripcion, lineBreak: false, ellipsis: true }); gx += gCols.descripcion;
+                        doc.text(formatVal(g.monto), gx, curY, { align: 'right', width: gCols.monto, lineBreak: false });
+                    } else if (i === 0 && gastosList.length === 0) {
+                        doc.fillColor('#94a3b8').text('Sin gastos registrados', leftColX, curY, { width: colW });
+                        doc.fillColor('#000000');
+                    }
+
+                    // Fila Remesa
+                    if (i < remesasList.length) {
+                        const r = remesasList[i];
+                        let rx = rightColX;
+                        doc.text(r.fecha || '---', rx, curY, { width: rCols.fecha, lineBreak: false }); rx += rCols.fecha;
+                        doc.text(r.turno || '---', rx, curY, { width: rCols.turno, lineBreak: false }); rx += rCols.turno;
+                        doc.text(r.numero || '---', rx, curY, { width: rCols.numero, lineBreak: false }); rx += rCols.numero;
+                        doc.text(r.pos || '---', rx, curY, { width: rCols.pos, lineBreak: false, ellipsis: true }); rx += rCols.pos;
+                        doc.text(r.descripcion || '---', rx, curY, { width: rCols.descripcion, lineBreak: false, ellipsis: true }); rx += rCols.descripcion;
+                        doc.text(formatVal(r.monto), rx, curY, { align: 'right', width: rCols.monto, lineBreak: false });
+                    } else if (i === 0 && remesasList.length === 0) {
+                        doc.fillColor('#94a3b8').text('Sin remesas registradas', rightColX, curY, { width: colW });
+                        doc.fillColor('#000000');
+                    }
+
+                    curY += rowH;
+                }
+
+                // Línea de totales
+                if (curY > 520) {
+                    doc.addPage();
+                    curY = 30;
+                }
+                doc.moveTo(leftColX, curY).lineTo(leftColX + colW, curY).stroke('#94a3b8');
+                doc.moveTo(rightColX, curY).lineTo(rightColX + colW, curY).stroke('#94a3b8');
+                curY += 4;
+
+                doc.fontSize(6.5).font('Helvetica-Bold');
+                const totalGastos = gastosList.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
+                const totalRemesas = remesasList.reduce((acc, r) => acc + (parseFloat(r.monto) || 0), 0);
+
+                doc.text('TOTAL GASTOS', leftColX, curY, { width: colW - gCols.monto });
+                doc.text(formatVal(totalGastos), leftColX + colW - gCols.monto, curY, { align: 'right', width: gCols.monto });
+
+                doc.text('TOTAL REMESAS', rightColX, curY, { width: colW - rCols.monto });
+                doc.text(formatVal(totalRemesas), rightColX + colW - rCols.monto, curY, { align: 'right', width: rCols.monto });
+            }
+
             doc.end();
         } catch (err) { reject(err); }
     });
