@@ -32,6 +32,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import ProviderModal from '../components/providers/ProviderModal';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -51,6 +52,8 @@ const Purchases = () => {
     // Header State
     const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [providerId, setProviderId] = useState('');
+    const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
+    const [editingProvider, setEditingProvider] = useState(null);
     const [tipoDocId, setTipoDocId] = useState('03'); // Default CCF
     const [condicionId, setCondicionId] = useState('1'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
@@ -830,7 +833,37 @@ const Purchases = () => {
                                     </select>
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className={labelCls}>Proveedor / Emisor</label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className={labelCls}>Proveedor / Emisor</label>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingProvider(null);
+                                                    setIsProviderModalOpen(true);
+                                                }}
+                                                className="text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
+                                                title="Nuevo Proveedor"
+                                            >
+                                                <Plus size={11} />
+                                                <span className="hidden sm:inline">Nuevo</span>
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!selectedProvider) return;
+                                                    setEditingProvider(selectedProvider);
+                                                    setIsProviderModalOpen(true);
+                                                }}
+                                                disabled={!selectedProvider}
+                                                className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all disabled:opacity-20 flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
+                                                title="Editar Proveedor Seleccionado"
+                                            >
+                                                <Edit size={11} />
+                                                <span className="hidden sm:inline">Editar</span>
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div className="relative">
                                         <SearchableSelect 
                                             loadOptions={loadProvidersOptions} value={providerId} 
@@ -1268,6 +1301,20 @@ const Purchases = () => {
                     </div>
                 </div>
             )}
+            <ProviderModal 
+                isOpen={isProviderModalOpen}
+                onClose={() => {
+                    setIsProviderModalOpen(false);
+                    setEditingProvider(null);
+                }}
+                provider={editingProvider}
+                onSuccess={(savedProvider) => {
+                    if (savedProvider && savedProvider.id) {
+                        setProvidersCache(prev => ({ ...prev, [savedProvider.id]: savedProvider }));
+                        setProviderId(String(savedProvider.id));
+                    }
+                }}
+            />
             <ProductSelectionModal 
                 isOpen={isProductModalOpen}
                 onClose={() => setIsProductModalOpen(false)}
