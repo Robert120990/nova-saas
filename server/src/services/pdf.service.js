@@ -1727,7 +1727,11 @@ const generateRTEE = (data) => {
             addTotalLine('SUMA DE OPERACIONES:', venta.total_gravado, true);
             addTotalLine('(-) DESCUENTOS:', venta.total_descuento);
             addTotalLine('VENTAS GRAVADAS:', venta.total_gravado, true);
-            addTotalLine('TOTAL IVA (13%):', venta.total_iva, true);
+            
+            // Para DTE de Consumidor Final ('01'), el IVA ya está incorporado en las ventas gravadas y no se traslada en el resumen
+            const esConsumidorFinal = dte.tipoDte === '01' || dte.tipoDte === 1 || String(dte.tipoDteNombre || '').toUpperCase().includes('CONSUMIDOR FINAL') || String(dte.tipoDteNombre || '').toUpperCase() === 'FACTURA';
+            const ivaFinal = esConsumidorFinal ? 0 : venta.total_iva;
+            addTotalLine('TOTAL IVA (13%):', ivaFinal, true);
 
             // Tributos adicionales (Retención 1%, FOVIAL, COTRAN, etc.)
             const processedCodes = new Set();
