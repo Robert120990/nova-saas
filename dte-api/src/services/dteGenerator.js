@@ -9,7 +9,7 @@ const { sanitizeText, cleanNumbers } = require('../utils/text');
 
 function sanitizeNrc(value) {
     const clean = cleanNumbers(value || '');
-    return /^\d{6,10}$/.test(clean) ? clean : null;
+    return /^\d{2,10}$/.test(clean) ? clean : null;
 }
 const { validateDTE } = require('../validators/schemaValidator');
 const { getSchemaVersion } = require('../utils/versionMap');
@@ -320,6 +320,15 @@ async function generateDTE(payload) {
             ? payload.documentoRelacionado[0].numeroDocumento
             : ".";
 
+        let itemFinalTributos;
+        if (tipoDte === '04' || tipoDte === '11') {
+            itemFinalTributos = null;
+        } else if (tipoDte === '03' || tipoDte === '05') {
+            itemFinalTributos = itemTributos;
+        } else {
+            itemFinalTributos = item.tipoItem === 1 ? null : itemTributos;
+        }
+
         const baseItem = {
             numItem: index + 1,
             tipoItem: item.tipoItem || 1, // 1: Gravada
@@ -334,7 +343,7 @@ async function generateDTE(payload) {
             ventaNoSuj: round(calcItem.ventaNoSuj),
             ventaExenta: round(calcItem.ventaExenta),
             ventaGravada: round(calcItem.ventaGravada),
-            tributos: (tipoDte === '04' || tipoDte === '11') ? null : ((tipoDte === '03' || tipoDte === '05') ? itemTributos : (item.tipoItem === 1 ? null : itemTributos))
+            tributos: itemFinalTributos
         };
 
         if (tipoDte === '11') {
@@ -353,7 +362,7 @@ async function generateDTE(payload) {
         if (tipoDte === '05') {
             baseItem.noGravado = 0;
             baseItem.ivaPerci = 0;
-            baseItem.totalIva = round(calcItem.ivaItem || 0);
+            baseItem.totalIva = 0;
             baseItem.ivaRete = 0;
         }
 
@@ -525,11 +534,12 @@ async function generateDTE(payload) {
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '05') {
-            base.totalIva = round(totals.montoPorIVA || 0);
+            base.totalIva = 0; // Hacienda valida totalIva = 0 cuando el IVA se desglosa en tributos (consistente con CCF)
             base.ivaPerci = 0;
             base.ivaRete = 0;
-            base.codigoRetencionMH = '22';
+            base.codigoRetencionMH = null;
             base.totalPagar = round(totals.totalPagar);
+            base.tributos = (base.tributos && base.tributos.length > 0) ? base.tributos : null;
             delete base.descuNoSuj;
             delete base.descuExenta;
             delete base.descuGravada;

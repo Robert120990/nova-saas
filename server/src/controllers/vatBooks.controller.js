@@ -35,7 +35,7 @@ const safeFormatDate = (date) => {
  */
 const DTE_JOIN_SQL = `
     LEFT JOIN (
-        SELECT dd.venta_id, dd.numero_control, dd.status, dd.sello_recepcion
+        SELECT dd.venta_id, dd.numero_control, dd.status, dd.sello_recepcion, dd.json_original
         FROM dtes dd
         INNER JOIN (
             SELECT venta_id, MAX(id) AS max_id
@@ -58,12 +58,13 @@ const DTE_VALIDO_SQL = `(
 )`;
 
 /**
- * Summary Box with extreme layout safety
+ * Summary Box with extreme layout safety and credit notes support
  */
 const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
     try {
+        const hasNc = (totals.nc_total && totals.nc_total > 0) || (totals.nc_grav && totals.nc_grav > 0);
         const boxWidth = 250;
-        const boxHeight = 140;
+        const boxHeight = hasNc ? 165 : 140;
 
         if (y + boxHeight > 550) {
             doc.addPage();
@@ -72,25 +73,37 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
 
         doc.save();
         doc.lineWidth(1).strokeColor('#e2e8f0').rect(x, y, boxWidth, boxHeight).stroke();
-        doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold').text(String(title), x + 10, y + 10);
+        doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold').text(String(title), x + 10, y + 8);
         
-        let rowY = y + 35;
-        const drawRow = (label, val, isBold = false) => {
-            doc.fillColor('#475569').fontSize(8).font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(String(label), x + 10, rowY);
-            doc.fillColor('#1e293b').font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(`$${n(val).toFixed(2)}`, x + 150, rowY, { width: 90, align: 'right' });
-            rowY += 14;
+        let rowY = y + 25;
+        const drawRow = (label, val, isBold = false, isNegative = false) => {
+            doc.fillColor(isBold ? '#1e293b' : '#475569').fontSize(8).font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(String(label), x + 10, rowY);
+            const formattedVal = isNegative ? `-$${Math.abs(n(val)).toFixed(2)}` : `$${n(val).toFixed(2)}`;
+            doc.fillColor(isBold ? '#1e293b' : '#334155').font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(formattedVal, x + 150, rowY, { width: 90, align: 'right' });
+            rowY += 13;
         };
 
-        drawRow('Gravadas:', totals.grav);
+        if (hasNc) {
+            drawRow('Total Bruto:', totals.bruto_total || (totals.total + (totals.nc_total || 0)));
+            drawRow('(-) Notas de Crédito:', totals.nc_total, false, true);
+            doc.moveTo(x + 10, rowY).lineTo(x + boxWidth - 10, rowY).strokeColor('#e2e8f0').stroke();
+            rowY += 3;
+        }
+
+        drawRow(hasNc ? 'Gravadas Netas:' : 'Gravadas:', totals.grav);
         drawRow('Exentas:', totals.exe);
-        drawRow('IVA:', totals.iva);
-        drawRow('FOVIAL:', totals.fovial);
-        drawRow('COTRANS:', totals.cotrans);
-        drawRow('Retenciones/Percepciones:', totals.ret);
+        drawRow(hasNc ? 'IVA Neto:' : 'IVA:', totals.iva);
+        if (totals.fovial > 0 || totals.cotrans > 0) {
+            drawRow('FOVIAL:', totals.fovial);
+            drawRow('COTRANS:', totals.cotrans);
+        }
+        if (totals.ret !== undefined) {
+            drawRow('Retenciones/Percepciones:', totals.ret);
+        }
         
         doc.moveTo(x + 10, rowY).lineTo(x + boxWidth - 10, rowY).strokeColor('#cbd5e1').stroke();
-        rowY += 5;
-        drawRow('TOTAL GENERAL:', totals.total, true);
+        rowY += 4;
+        drawRow(hasNc ? 'TOTAL GENERAL NETO:' : 'TOTAL GENERAL:', totals.total, true);
         doc.restore();
     } catch (err) {
         console.error('[VAT Books] Error drawing summary box:', err);
@@ -156,19 +169,29 @@ const getVatBookPurchasesPDF = async (req, res) => {
         `;
         const [rows] = await pool.query(query, params);
 
+        const isNotaCreditoCompra = (r) => {
+            const tId = String(r.tipo_documento_id || '').trim();
+            const desc = String(r.tipo_doc_nombre || '').toLowerCase();
+            return tId === '06' || tId === '05' || desc.includes('crédito');
+        };
+
         if (req.query.format === 'excel') {
-            const excelData = rows.map(r => ({
-                Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
-                'Tipo Doc': r.tipo_doc_nombre || '',
-                'No. Documento': r.numero_documento || '',
-                Proveedor: r.provider_nombre || 'S/N',
-                NIT: r.provider_nit || '',
-                NRC: r.provider_nrc || '',
-                Exento: n(r.total_exenta).toFixed(2),
-                Neto: n(r.total_gravada).toFixed(2),
-                IVA: n(r.iva).toFixed(2),
-                Total: n(r.monto_total).toFixed(2)
-            }));
+            const excelData = rows.map(r => {
+                const esNC = isNotaCreditoCompra(r);
+                const sign = esNC ? -1 : 1;
+                return {
+                    Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                    'Tipo Doc': r.tipo_doc_nombre || (esNC ? 'Nota de Crédito' : 'Crédito Fiscal'),
+                    'No. Documento': r.numero_documento || '',
+                    Proveedor: r.provider_nombre || 'S/N',
+                    NIT: r.provider_nit || '',
+                    NRC: r.provider_nrc || '',
+                    Exento: (sign * n(r.total_exenta)).toFixed(2),
+                    Neto: (sign * n(r.total_gravada)).toFixed(2),
+                    IVA: (sign * n(r.iva)).toFixed(2),
+                    Total: (sign * n(r.monto_total)).toFixed(2)
+                };
+            });
             const buffer = await excelService.createExcelBuffer({
                 sheets: [{ name: 'Libro Compras', columns: [
                     { header: 'Fecha', key: 'Fecha', width: 14 },
@@ -215,10 +238,11 @@ const getVatBookPurchasesPDF = async (req, res) => {
             };
 
             currentY = drawHeader(currentY);
-            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
 
             rows.forEach(r => {
                 if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
+                const esNC = isNotaCreditoCompra(r);
                 const g = n(r.total_gravada), e = n(r.total_exenta), i = n(r.iva);
                 const f = n(r.fovial), c = n(r.cotrans), re = n(r.retencion) + n(r.percepcion), to = n(r.monto_total);
 
@@ -227,15 +251,23 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 doc.text(`${String(r.tipo_doc_nombre || '')} ${String(r.numero_documento || '')}`, startX + 50, currentY, { width: 95, truncate: true });
                 doc.text(String(r.provider_nombre || 'S/N'), startX + 150, currentY, { width: 135, truncate: true });
                 doc.text(String(r.provider_nit || ''), startX + 290, currentY, { width: 80, truncate: true });
-                doc.text(`$${g.toFixed(2)}`, startX + 370, currentY, { width: 50, align: 'right' });
-                doc.text(`$${e.toFixed(2)}`, startX + 420, currentY, { width: 50, align: 'right' });
-                doc.text(`$${i.toFixed(2)}`, startX + 470, currentY, { width: 40, align: 'right' });
-                doc.text(`$${f.toFixed(2)}`, startX + 510, currentY, { width: 40, align: 'right' });
-                doc.text(`$${c.toFixed(2)}`, startX + 550, currentY, { width: 40, align: 'right' });
-                doc.text(`$${re.toFixed(2)}`, startX + 590, currentY, { width: 50, align: 'right' });
-                doc.text(`$${to.toFixed(2)}`, startX + 645, currentY, { width: 75, align: 'right' });
 
-                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                const fmtAmount = (val) => esNC ? `-$${val.toFixed(2)}` : `$${val.toFixed(2)}`;
+                doc.text(fmtAmount(g), startX + 370, currentY, { width: 50, align: 'right' });
+                doc.text(fmtAmount(e), startX + 420, currentY, { width: 50, align: 'right' });
+                doc.text(fmtAmount(i), startX + 470, currentY, { width: 40, align: 'right' });
+                doc.text(fmtAmount(f), startX + 510, currentY, { width: 40, align: 'right' });
+                doc.text(fmtAmount(c), startX + 550, currentY, { width: 40, align: 'right' });
+                doc.text(fmtAmount(re), startX + 590, currentY, { width: 50, align: 'right' });
+                doc.text(fmtAmount(to), startX + 645, currentY, { width: 75, align: 'right' });
+
+                if (esNC) {
+                    t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
+                    t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+                } else {
+                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                    t.bruto_total += to;
+                }
                 currentY += 13;
             });
             drawPdfSummaryBox(doc, 480, currentY + 15, t, 'RESUMEN DE COMPRAS');
@@ -271,7 +303,25 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '03'", "sh.estado != 'ANULADO'", DTE_VALIDO_SQL];
+        const ccfFilterSql = `(
+            sh.tipo_documento = '03'
+            OR (
+                sh.tipo_documento = '05'
+                AND (
+                    (c.nrc IS NOT NULL AND TRIM(c.nrc) != '')
+                    OR JSON_UNQUOTE(JSON_EXTRACT(d.json_original, '$.documentoRelacionado[0].tipoDocumento')) = '03'
+                )
+            )
+        )`;
+
+        let whereClauses = [
+            'sh.company_id = ?',
+            'YEAR(sh.fecha_emision) = ?',
+            'MONTH(sh.fecha_emision) = ?',
+            ccfFilterSql,
+            "sh.estado != 'ANULADO'",
+            DTE_VALIDO_SQL
+        ];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -286,21 +336,25 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
         const [rows] = await pool.query(query, params);
 
         if (req.query.format === 'excel') {
-            const excelData = rows.map(r => ({
-                Fecha: new Date(r.fecha_emision).toLocaleDateString('es-SV'),
-                'Tipo Doc': 'Crédito Fiscal',
-                'No. Documento': r.numero_control || '---',
-                Cliente: r.customer_nombre || 'CLIENTE S/N',
-                NIT: r.customer_nit || '',
-                NRC: r.customer_nrc || '',
-                Exento: n(r.total_exento).toFixed(2),
-                Neto: n(r.total_gravado).toFixed(2),
-                IVA: n(r.total_iva).toFixed(2),
-                FOVIAL: n(r.fovial).toFixed(2),
-                COTRANS: n(r.cotrans).toFixed(2),
-                'Ret/Per': (n(r.iva_retenido) + n(r.iva_percibido)).toFixed(2),
-                Total: n(r.total_pagar).toFixed(2)
-            }));
+            const excelData = rows.map(r => {
+                const esNC = r.tipo_documento === '05';
+                const sign = esNC ? -1 : 1;
+                return {
+                    Fecha: new Date(r.fecha_emision).toLocaleDateString('es-SV'),
+                    'Tipo Doc': esNC ? 'Nota de Crédito' : 'Crédito Fiscal',
+                    'No. Documento': r.numero_control || '---',
+                    Cliente: r.customer_nombre || 'CLIENTE S/N',
+                    NIT: r.customer_nit || '',
+                    NRC: r.customer_nrc || '',
+                    Exento: (sign * n(r.total_exento)).toFixed(2),
+                    Neto: (sign * n(r.total_gravado)).toFixed(2),
+                    IVA: (sign * n(r.total_iva)).toFixed(2),
+                    FOVIAL: (sign * n(r.fovial)).toFixed(2),
+                    COTRANS: (sign * n(r.cotrans)).toFixed(2),
+                    'Ret/Per': (sign * (n(r.iva_retenido) + n(r.iva_percibido))).toFixed(2),
+                    Total: (sign * n(r.total_pagar)).toFixed(2)
+                };
+            });
             const buffer = await excelService.createExcelBuffer({
                 sheets: [{ name: 'Libro CCF', columns: [
                     { header: 'Fecha', key: 'Fecha', width: 14 },
@@ -349,10 +403,11 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             };
 
             currentY = drawHeader(currentY);
-            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
 
             rows.forEach(r => {
                 if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
+                const esNC = r.tipo_documento === '05';
                 const g = n(r.total_gravado), e = n(r.total_exento), i = n(r.total_iva);
                 const f = n(r.fovial), c = n(r.cotrans), re = n(r.iva_retenido) + n(r.iva_percibido), to = n(r.total_pagar);
 
@@ -361,15 +416,23 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
                 doc.text(cleanStr(r.numero_control || '---'), startX + 36, currentY, { width: 132 });
                 doc.text(cleanStr(r.customer_nombre || 'CLIENTE S/N').toUpperCase(), startX + 168, currentY, { width: 227, height: 10, ellipsis: true });
                 doc.text(cleanStr(r.customer_nrc || ''), startX + 395, currentY, { width: 41, height: 10, ellipsis: true });
-                doc.text(`$${g.toFixed(2)}`, startX + 436, currentY, { width: 48, align: 'right' });
-                doc.text(`$${e.toFixed(2)}`, startX + 484, currentY, { width: 42, align: 'right' });
-                doc.text(`$${i.toFixed(2)}`, startX + 526, currentY, { width: 42, align: 'right' });
-                doc.text(`$${f.toFixed(2)}`, startX + 568, currentY, { width: 30, align: 'right' });
-                doc.text(`$${c.toFixed(2)}`, startX + 598, currentY, { width: 30, align: 'right' });
-                doc.text(`$${re.toFixed(2)}`, startX + 628, currentY, { width: 42, align: 'right' });
-                doc.text(`$${to.toFixed(2)}`, startX + 670, currentY, { width: 55, align: 'right' });
 
-                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                const fmtAmount = (val) => esNC ? `-$${val.toFixed(2)}` : `$${val.toFixed(2)}`;
+                doc.text(fmtAmount(g), startX + 436, currentY, { width: 48, align: 'right' });
+                doc.text(fmtAmount(e), startX + 484, currentY, { width: 42, align: 'right' });
+                doc.text(fmtAmount(i), startX + 526, currentY, { width: 42, align: 'right' });
+                doc.text(fmtAmount(f), startX + 568, currentY, { width: 30, align: 'right' });
+                doc.text(fmtAmount(c), startX + 598, currentY, { width: 30, align: 'right' });
+                doc.text(fmtAmount(re), startX + 628, currentY, { width: 42, align: 'right' });
+                doc.text(fmtAmount(to), startX + 670, currentY, { width: 55, align: 'right' });
+
+                if (esNC) {
+                    t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
+                    t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+                } else {
+                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                    t.bruto_total += to;
+                }
                 currentY += 13;
             });
             drawPdfSummaryBox(doc, 505, currentY + 15, t, 'RESUMEN VENTAS CCF');
@@ -403,7 +466,23 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['sh.company_id = ?', 'YEAR(sh.fecha_emision) = ?', 'MONTH(sh.fecha_emision) = ?', "sh.tipo_documento = '01'", "sh.estado != 'ANULADO'", DTE_VALIDO_SQL];
+        const facFilterSql = `(
+            sh.tipo_documento = '01'
+            OR (
+                sh.tipo_documento = '05'
+                AND (c.nrc IS NULL OR TRIM(c.nrc) = '')
+                AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(d.json_original, '$.documentoRelacionado[0].tipoDocumento')), '01') = '01'
+            )
+        )`;
+
+        let whereClauses = [
+            'sh.company_id = ?',
+            'YEAR(sh.fecha_emision) = ?',
+            'MONTH(sh.fecha_emision) = ?',
+            facFilterSql,
+            "sh.estado != 'ANULADO'",
+            DTE_VALIDO_SQL
+        ];
         let params = [companyId, year, month];
         if (branch_id && branch_id !== 'all') { whereClauses.push('sh.branch_id = ?'); params.push(branch_id); }
 
@@ -411,10 +490,18 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
         if (isResumen) {
             const query = `
                 SELECT DATE(sh.fecha_emision) as fecha, MIN(d.numero_control) as num_desde, MAX(d.numero_control) as num_hasta,
-                       SUM(sh.total_gravado) as t_grav, SUM(sh.total_exento) as t_exe, SUM(sh.total_iva) as t_iva,
-                       SUM(sh.fovial) as t_fov, SUM(sh.cotrans) as t_cot, SUM(sh.total_pagar) as t_pagar
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_gravado ELSE sh.total_gravado END) as t_grav,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_exento ELSE sh.total_exento END) as t_exe,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_iva ELSE sh.total_iva END) as t_iva,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.fovial ELSE sh.fovial END) as t_fov,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.cotrans ELSE sh.cotrans END) as t_cot,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_pagar ELSE sh.total_pagar END) as t_pagar,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN sh.total_pagar ELSE 0 END) as nc_total,
+                       SUM(CASE WHEN sh.tipo_documento = '05' THEN sh.total_gravado ELSE 0 END) as nc_grav,
+                       SUM(CASE WHEN sh.tipo_documento != '05' THEN sh.total_pagar ELSE 0 END) as bruto_total
                 FROM sales_headers sh
                 ${DTE_JOIN_SQL}
+                LEFT JOIN customers c ON sh.customer_id = c.id
                 WHERE ${whereClauses.join(' AND ')}
                 GROUP BY DATE(sh.fecha_emision)
                 ORDER BY fecha ASC
@@ -422,7 +509,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             [rows] = await pool.query(query, params);
         } else {
             const query = `
-                SELECT sh.fecha_emision as fecha, d.numero_control,
+                SELECT sh.fecha_emision as fecha, d.numero_control, sh.tipo_documento,
                        COALESCE(c.nombre, sh.cliente_nombre, 'CONSUMIDOR FINAL') as cliente,
                        COALESCE(c.nit, '') as nit,
                        sh.total_gravado, sh.total_exento, sh.total_iva,
@@ -468,22 +555,28 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 });
                 return excelService.sendExcelResponse(res, buffer, `Libro_FAC_${month}_${year}.xlsx`);
             } else {
-                const excelData = rows.map(r => ({
-                    'N° Control': r.numero_control || 'SIN DTE',
-                    Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
-                    Cliente: r.cliente || 'CONSUMIDOR FINAL',
-                    NIT: r.nit || '',
-                    Exento: n(r.total_exento).toFixed(2),
-                    Neto: n(r.total_gravado).toFixed(2),
-                    IVA: n(r.total_iva).toFixed(2),
-                    FOVIAL: n(r.fovial).toFixed(2),
-                    COTRANS: n(r.cotrans).toFixed(2),
-                    Total: n(r.total_pagar).toFixed(2)
-                }));
+                const excelData = rows.map(r => {
+                    const esNC = r.tipo_documento === '05';
+                    const sign = esNC ? -1 : 1;
+                    return {
+                        'N° Control': r.numero_control || 'SIN DTE',
+                        Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                        'Tipo Doc': esNC ? 'Nota de Crédito' : 'Factura',
+                        Cliente: r.cliente || 'CONSUMIDOR FINAL',
+                        NIT: r.nit || '',
+                        Exento: (sign * n(r.total_exento)).toFixed(2),
+                        Neto: (sign * n(r.total_gravado)).toFixed(2),
+                        IVA: (sign * n(r.total_iva)).toFixed(2),
+                        FOVIAL: (sign * n(r.fovial)).toFixed(2),
+                        COTRANS: (sign * n(r.cotrans)).toFixed(2),
+                        Total: (sign * n(r.total_pagar)).toFixed(2)
+                    };
+                });
                 const buffer = await excelService.createExcelBuffer({
                     sheets: [{ name: 'Detalle FAC', columns: [
                         { header: 'N° Control', key: 'N° Control', width: 22 },
                         { header: 'Fecha', key: 'Fecha', width: 14 },
+                        { header: 'Tipo Doc', key: 'Tipo Doc', width: 16 },
                         { header: 'Cliente', key: 'Cliente', width: 30 },
                         { header: 'NIT', key: 'NIT', width: 18 },
                         { header: 'Exento', key: 'Exento', width: 14 },
@@ -526,7 +619,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 };
 
                 currentY = drawHeader(currentY);
-                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, bruto_total: 0 };
 
                 rows.forEach(r => {
                     if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
@@ -546,6 +639,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                     doc.text(`$${to.toFixed(2)}`, startX + 585, currentY, { width: 65, align: 'right' });
 
                     t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                    t.nc_total += n(r.nc_total); t.nc_grav += n(r.nc_grav); t.bruto_total += n(r.bruto_total);
                     currentY += 13;
                 });
                 drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');
@@ -567,10 +661,11 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 };
 
                 currentY = drawDetailHeader(currentY);
-                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
 
                 rows.forEach(r => {
                     if (currentY > 540) { doc.addPage(); currentY = drawDetailHeader(30); }
+                    const esNC = r.tipo_documento === '05';
                     const g = n(r.total_gravado), i = n(r.total_iva);
                     const e = n(r.total_exento);
                     const f = n(r.fovial), c = n(r.cotrans), to = n(r.total_pagar);
@@ -580,14 +675,22 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                     doc.text(safeFormatDate(r.fecha), startX + 120, currentY, { width: 60 });
                     doc.text(String(r.cliente || 'CONSUMIDOR FINAL'), startX + 185, currentY, { width: 135, truncate: true });
                     doc.text(String(r.nit || ''), startX + 325, currentY, { width: 85, truncate: true });
-                    doc.text(`$${g.toFixed(2)}`, startX + 415, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${e.toFixed(2)}`, startX + 475, currentY, { width: 50, align: 'right' });
-                    doc.text(`$${i.toFixed(2)}`, startX + 530, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${f.toFixed(2)}`, startX + 575, currentY, { width: 35, align: 'right' });
-                    doc.text(`$${c.toFixed(2)}`, startX + 615, currentY, { width: 35, align: 'right' });
-                    doc.text(`$${to.toFixed(2)}`, startX + 655, currentY, { width: 55, align: 'right' });
 
-                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                    const fmtAmount = (val) => esNC ? `-$${val.toFixed(2)}` : `$${val.toFixed(2)}`;
+                    doc.text(fmtAmount(g), startX + 415, currentY, { width: 55, align: 'right' });
+                    doc.text(fmtAmount(e), startX + 475, currentY, { width: 50, align: 'right' });
+                    doc.text(fmtAmount(i), startX + 530, currentY, { width: 40, align: 'right' });
+                    doc.text(fmtAmount(f), startX + 575, currentY, { width: 35, align: 'right' });
+                    doc.text(fmtAmount(c), startX + 615, currentY, { width: 35, align: 'right' });
+                    doc.text(fmtAmount(to), startX + 655, currentY, { width: 55, align: 'right' });
+
+                    if (esNC) {
+                        t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.total -= to;
+                        t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+                    } else {
+                        t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                        t.bruto_total += to;
+                    }
                     currentY += 11;
                 });
                 drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');

@@ -27,6 +27,7 @@ const purchaseController = require('../controllers/purchase.controller');
 const salesController = require('../controllers/sales.controller');
 const salesConfigController = require('../controllers/salesConfig.controller');
 const tiendaVentasController = require('../controllers/tiendaVentas.controller');
+const storeProfitabilityController = require('../controllers/storeProfitability.controller');
 const periodController = require('../controllers/period.controller');
 const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
@@ -323,6 +324,8 @@ router.get('/sales/reports/by-customer/pdf', salesController.exportSalesByCustom
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
 router.get('/sales/reports/detalle/pdf', salesController.exportSalesDetailPDF);
+router.get('/sales/reports/store-profitability', checkPermission('view_store_profitability_report'), storeProfitabilityController.getStoreProfitabilityData);
+router.get('/sales/reports/store-profitability/pdf', checkPermission('view_store_profitability_report'), storeProfitabilityController.exportStoreProfitabilityPDF);
 router.post('/sales', salesController.createSale);
 router.get('/sales/rtee/:id', salesController.exportRTEE);
 router.post('/sales/resend-email/:id', salesController.resendDTEEmail);
