@@ -69,6 +69,7 @@ router.delete('/variable-costs/:id', eggController.deleteBatchVariableCost);
 const eggCosteoController = require('../controllers/eggCosteoLibra.controller');
 
 // 16. Costeo por Libra y Simulador Comercial (Oficial ANDELSA)
+router.get('/costeo-libra/actual-operational-cost', eggCosteoController.getActualOperationalCost);
 router.get('/costeo-libra/config', eggCosteoController.getCostingConfig);
 router.put('/costeo-libra/config', eggCosteoController.updateCostingConfig);
 
@@ -77,8 +78,11 @@ router.post('/costeo-libra/cip-items', eggCosteoController.saveCipItem);
 router.delete('/costeo-libra/cip-items/:id', eggCosteoController.deleteCipItem);
 
 router.get('/costeo-libra/packaging-items', eggCosteoController.getPackagingItems);
+router.get('/costeo-libra/packaging', eggCosteoController.getPackagingItems);
 router.post('/costeo-libra/packaging-items', eggCosteoController.savePackagingItem);
+router.post('/costeo-libra/packaging', eggCosteoController.savePackagingItem);
 router.delete('/costeo-libra/packaging-items/:id', eggCosteoController.deletePackagingItem);
+router.delete('/costeo-libra/packaging/:id', eggCosteoController.deletePackagingItem);
 
 router.get('/costeo-libra/customer-agreements', eggCosteoController.getCustomerAgreements);
 router.post('/costeo-libra/customer-agreements', eggCosteoController.saveCustomerAgreement);
