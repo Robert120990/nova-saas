@@ -45,7 +45,7 @@ const Expenses = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
-    const [activeTab, setActiveTab] = useState('nuevo');
+    const [activeTab, setActiveTab] = useState('historial');
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState(null);
     
@@ -416,24 +416,43 @@ const Expenses = () => {
         <div className="max-w-7xl mx-auto pb-20 space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-xl font-black tracking-tighter text-slate-900 uppercase leading-none text-[Spanish]">Gastos Operativos</h2>
+                    <h2 className="text-xl font-black tracking-tighter text-slate-900 uppercase leading-none text-[Spanish]">
+                        {activeTab === 'historial' ? 'Gastos Operativos' : (isEditing ? 'Modificar Gasto' : 'Nuevo Gasto')}
+                    </h2>
                     <div className="flex items-center gap-2 mt-1.5">
                         <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-widest leading-none text-[Spanish]">
-                            Registro de gastos no inventariables
+                            {activeTab === 'historial' 
+                                ? 'Historial y auditoría de egresos y gastos no inventariables' 
+                                : (isEditing ? `Modificando gasto ${numeroDoc || ''}` : 'Formulario de registro de gasto operativo')}
                         </span>
                     </div>
                 </div>
-                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
-                    <button onClick={() => setActiveTab('nuevo')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
-                        <Plus size={12} /> {isEditing ? 'Editando' : 'Nuevo'}
-                    </button>
-                    <button onClick={() => setActiveTab('historial')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'historial' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
-                        <History size={12} /> Historial
-                    </button>
+                <div className="flex items-center gap-2">
+                    {activeTab === 'historial' ? (
+                        <button 
+                            onClick={() => {
+                                resetForm();
+                                setActiveTab('nuevo');
+                            }} 
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95"
+                        >
+                            <Plus size={14} /> Nuevo Gasto
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={() => {
+                                resetForm();
+                                setActiveTab('historial');
+                            }} 
+                            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm active:scale-95"
+                        >
+                            <History size={13} /> Volver al Listado
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {(!activePeriod && !loadingPeriod) && (
+            {(!activePeriod && !loadingPeriod && activeTab === 'nuevo') && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 text-[Spanish]">
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-sm w-full text-center space-y-6 animate-in zoom-in-95 duration-300">
                         <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto">
@@ -759,8 +778,12 @@ const Expenses = () => {
                                     {(createMutation.isPending || updateMutation.isPending) ? 'Procesando...' : (isEditing ? <Check size={16} /> : <Save size={16} />)}
                                     {isEditing ? 'ACTUALIZAR GASTO' : 'REGISTRAR GASTO'}
                                 </button>
-                                <button onClick={resetForm} className="w-full bg-white/5 border border-white/10 text-slate-400 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all">
-                                    Limpiar Formulario
+                                <button 
+                                    type="button"
+                                    onClick={() => { resetForm(); setActiveTab('historial'); }} 
+                                    className="w-full bg-white/5 border border-white/10 text-slate-400 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all"
+                                >
+                                    {isEditing ? 'Cancelar Edición' : 'Volver al Listado'}
                                 </button>
                             </div>
                         </div>

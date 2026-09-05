@@ -35,7 +35,7 @@ const Transfers = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
-    const [activeTab, setActiveTab] = useState('nuevo');
+    const [activeTab, setActiveTab] = useState('historial');
     
     // Form State
     const [origenBranch, setOrigenBranch] = useState('');
@@ -285,24 +285,39 @@ const Transfers = () => {
         <div className="max-w-6xl mx-auto space-y-6 pb-20">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Traslados de Inventario</h2>
-                    <p className="text-slate-500 mt-1 font-medium text-sm text-[Spanish]">Gestión y control de movimientos entre sucursales</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                        {activeTab === 'historial' ? 'Traslados de Inventario' : 'Nuevo Traslado'}
+                    </h2>
+                    <p className="text-slate-500 mt-1 font-medium text-sm text-[Spanish]">
+                        {activeTab === 'historial' 
+                            ? 'Historial y auditoría de movimientos entre sucursales' 
+                            : 'Formulario de despacho y transferencia de stock'}
+                    </p>
                 </div>
-                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl">
-                    <button 
-                        onClick={() => setActiveTab('nuevo')}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <Plus size={14} />
-                        Nuevo Traslado
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('historial')}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'historial' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <History size={14} />
-                        Historial
-                    </button>
+                <div className="flex items-center gap-2">
+                    {activeTab === 'historial' ? (
+                        <button 
+                            onClick={() => {
+                                resetForm();
+                                setActiveTab('nuevo');
+                            }}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95"
+                        >
+                            <Plus size={14} />
+                            Nuevo Traslado
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={() => {
+                                resetForm();
+                                setActiveTab('historial');
+                            }}
+                            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm active:scale-95"
+                        >
+                            <History size={14} />
+                            Volver al Listado
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -383,6 +398,13 @@ const Transfers = () => {
                                 >
                                     <Save size={18} />
                                     <span>{createMutation.isPending ? 'Procesando...' : 'Completar Traslado'}</span>
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => { resetForm(); setActiveTab('historial'); }}
+                                    className="w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded-xl text-xs font-bold transition-all text-center"
+                                >
+                                    Cancelar y Volver
                                 </button>
                             </div>
                         )}

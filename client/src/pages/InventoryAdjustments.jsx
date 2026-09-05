@@ -35,7 +35,7 @@ const InventoryAdjustments = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
-    const [activeTab, setActiveTab] = useState('nuevo');
+    const [activeTab, setActiveTab] = useState('historial');
     const barcodeInputRef = useRef(null);
     
     // Form State
@@ -353,31 +353,46 @@ const InventoryAdjustments = () => {
             {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Movimientos de Inventario</h2>
-                    <p className="text-slate-500 mt-1 font-medium text-sm">Registro de entradas y salidas de stock</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                        {activeTab === 'historial' ? 'Movimientos de Inventario' : 'Nuevo Movimiento de Inventario'}
+                    </h2>
+                    <p className="text-slate-500 mt-1 font-medium text-sm">
+                        {activeTab === 'historial'
+                            ? 'Historial de ajustes, entradas y salidas de stock'
+                            : 'Registro de entradas y salidas de stock'}
+                    </p>
                 </div>
-                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl">
-                    <button 
-                        onClick={() => setActiveTab('nuevo')}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <Plus size={14} />
-                        Nuevo Movimiento
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('historial')}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'historial' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <History size={14} />
-                        Historial
-                    </button>
+                <div className="flex items-center gap-2">
                     <button 
                         onClick={() => setIsMotivosModalOpen(true)}
-                        className="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 text-slate-500 hover:text-slate-700"
+                        className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm active:scale-95"
                     >
                         <Settings size={14} />
                         Motivos
                     </button>
+                    {activeTab === 'historial' ? (
+                        <button 
+                            onClick={() => {
+                                resetForm();
+                                setActiveTab('nuevo');
+                            }}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95"
+                        >
+                            <Plus size={14} />
+                            Nuevo Movimiento
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={() => {
+                                resetForm();
+                                setActiveTab('historial');
+                            }}
+                            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm active:scale-95"
+                        >
+                            <History size={14} />
+                            Volver al Listado
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -481,14 +496,23 @@ const InventoryAdjustments = () => {
                                         <span className="text-2xl font-black"><Money value={totalAjuste} /></span>
                                     </div>
                                 </div>
-                                <button 
-                                    onClick={handleSubmit}
-                                    disabled={createMutation.isPending || selectedItems.length === 0}
-                                    className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50 mt-4"
-                                >
-                                    <Save size={18} />
-                                    <span>{createMutation.isPending ? 'Guardando...' : 'Guardar Movimiento'}</span>
-                                </button>
+                                <div className="space-y-2 mt-4">
+                                    <button 
+                                        onClick={handleSubmit}
+                                        disabled={createMutation.isPending || selectedItems.length === 0}
+                                        className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50"
+                                    >
+                                        <Save size={18} />
+                                        <span>{createMutation.isPending ? 'Guardando...' : 'Guardar Movimiento'}</span>
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => { resetForm(); setActiveTab('historial'); }}
+                                        className="w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded-xl text-xs font-bold transition-all text-center"
+                                    >
+                                        Cancelar y Volver
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

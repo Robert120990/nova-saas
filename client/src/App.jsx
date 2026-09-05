@@ -188,12 +188,16 @@ const ProtectedRoute = () => {
 function App() {
   useEffect(() => {
     const preventNumberInputScroll = (e) => {
-      if (e.target && e.target.type === 'number') {
+      if (document.activeElement && document.activeElement.type === 'number') {
+        e.preventDefault();
+        document.activeElement.blur();
+      } else if (e.target && e.target.type === 'number') {
+        e.preventDefault();
         e.target.blur();
       }
     };
-    document.addEventListener('wheel', preventNumberInputScroll, { passive: true });
-    return () => document.removeEventListener('wheel', preventNumberInputScroll);
+    window.addEventListener('wheel', preventNumberInputScroll, { passive: false });
+    return () => window.removeEventListener('wheel', preventNumberInputScroll);
   }, []);
 
   return (

@@ -133,6 +133,30 @@ const createPurchase = async (req, res) => {
 
         if (!companyId || !usuarioId) throw new Error('Sesión no válida');
 
+        // 1. Validar y asegurar cálculos fiscales (IVA, totales)
+        const [provRows] = await connection.query('SELECT exento_iva, nombre FROM providers WHERE id = ? AND company_id = ?', [provider_id, companyId]);
+        const isProviderExempt = provRows.length > 0 ? Boolean(provRows[0].exento_iva) : false;
+        const providerName = provRows.length > 0 ? (provRows[0].nombre || '') : '';
+
+        const gravadaNum = parseFloat(total_gravada) || 0;
+        const nosujetaNum = parseFloat(total_nosujeta) || 0;
+        const exentaNum = parseFloat(total_exenta) || 0;
+        const retencionNum = parseFloat(retencion) || 0;
+        const percepcionNum = parseFloat(percepcion) || 0;
+        const fovialNum = parseFloat(fovial) || 0;
+        const cotransNum = parseFloat(cotrans) || 0;
+
+        let finalIva = 0;
+        if (tipo_documento_id === '01' || isProviderExempt) {
+            finalIva = 0;
+        } else if (['03', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
+            finalIva = Math.round(gravadaNum * 0.13 * 100) / 100;
+        } else {
+            finalIva = parseFloat(iva) || 0;
+        }
+
+        const finalMontoTotal = Math.round((gravadaNum + exentaNum + nosujetaNum + finalIva + fovialNum + cotransNum - retencionNum + percepcionNum) * 100) / 100;
+
         // 1. Insertar Cabecera
         const [headerResult] = await connection.query(`
              INSERT INTO purchase_headers 
@@ -148,8 +172,8 @@ const createPurchase = async (req, res) => {
              companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
              tipo_documento_id, condicion_operacion_id, observaciones,
              dias_credito || 0, fecha_vencimiento || null,
-             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
+             nosujetaNum, exentaNum, gravadaNum,
+             finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
              req.body.documento_afectado || null, req.body.fecha_afectada || null,
              period_year, period_month
          ]);
@@ -218,9 +242,6 @@ const createPurchase = async (req, res) => {
         }
 
         await connection.commit();
-
-        const [provRows] = await pool.query('SELECT nombre FROM providers WHERE id = ? AND company_id = ?', [provider_id, companyId]);
-        const providerName = provRows.length > 0 ? provRows[0].nombre : '';
 
         notificationService.notify('purchase_created', req.company_id, req.user.branch_id, {
             compra_id: purchaseId,
@@ -299,6 +320,29 @@ const updatePurchase = async (req, res) => {
         // Eliminar items antiguos
         await connection.query('DELETE FROM purchase_items WHERE purchase_id = ?', [id]);
 
+        // Validar y asegurar cálculos fiscales (IVA, totales)
+        const [provRows] = await connection.query('SELECT exento_iva FROM providers WHERE id = ? AND company_id = ?', [provider_id, companyId]);
+        const isProviderExempt = provRows.length > 0 ? Boolean(provRows[0].exento_iva) : false;
+
+        const gravadaNum = parseFloat(total_gravada) || 0;
+        const nosujetaNum = parseFloat(total_nosujeta) || 0;
+        const exentaNum = parseFloat(total_exenta) || 0;
+        const retencionNum = parseFloat(retencion) || 0;
+        const percepcionNum = parseFloat(percepcion) || 0;
+        const fovialNum = parseFloat(fovial) || 0;
+        const cotransNum = parseFloat(cotrans) || 0;
+
+        let finalIva = 0;
+        if (tipo_documento_id === '01' || isProviderExempt) {
+            finalIva = 0;
+        } else if (['03', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
+            finalIva = Math.round(gravadaNum * 0.13 * 100) / 100;
+        } else {
+            finalIva = parseFloat(iva) || 0;
+        }
+
+        const finalMontoTotal = Math.round((gravadaNum + exentaNum + nosujetaNum + finalIva + fovialNum + cotransNum - retencionNum + percepcionNum) * 100) / 100;
+
         // 2. Actualizar Cabecera
         await connection.query(`
             UPDATE purchase_headers SET 
@@ -314,8 +358,8 @@ const updatePurchase = async (req, res) => {
             branch_id, provider_id, fecha, numero_documento,
             tipo_documento_id, condicion_operacion_id, observaciones,
             dias_credito || 0, fecha_vencimiento || null,
-            total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
+            nosujetaNum, exentaNum, gravadaNum,
+            finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
             req.body.documento_afectado || null, req.body.fecha_afectada || null,
             period_year, period_month,
             id, companyId

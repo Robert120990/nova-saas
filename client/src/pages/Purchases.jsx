@@ -45,7 +45,7 @@ const Purchases = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
-    const [activeTab, setActiveTab] = useState('nuevo');
+    const [activeTab, setActiveTab] = useState('historial');
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState(null);
     
@@ -116,7 +116,6 @@ const Purchases = () => {
         total: 0
     });
 
-    const [manualIVA, setManualIVA] = useState(0);
     const [manualRetencion, setManualRetencion] = useState(0);
     const [manualPercepcion, setManualPercepcion] = useState(0);
     const [manualNosujeta, setManualNosujeta] = useState(0);
@@ -318,7 +317,7 @@ const Purchases = () => {
         // FISCAL LOGIC: For 'Factura' (01), the buyer cannot deduct IVA, so for our records IVA = 0
         const esFactura = tipoDocId === '01';
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
-        const iva = (selectedProvider?.exento_iva || esFactura) ? 0 : (gravada * ivaRate);
+        const iva = (selectedProvider?.exento_iva || esFactura) ? 0 : Number((gravada * ivaRate).toFixed(2));
         
         // Advanced Fiscal Logic
         // 1. Retención (Nosotros retenemos al proveedor)
@@ -343,17 +342,17 @@ const Purchases = () => {
 
         setTotals({
             gravada,
-            iva: manualIVA || iva,
+            iva,
             retencion: manualRetencion || retencion,
             percepcion: manualPercepcion || percepcion,
             fovial,
             cotrans,
             nosujeta: manualNosujeta,
             exenta: selectedProvider?.exento_iva ? (manualExenta + gravada) : manualExenta,
-            total: (selectedProvider?.exento_iva ? 0 : gravada) + (manualIVA || iva) + fovial + cotrans + manualNosujeta + (selectedProvider?.exento_iva ? (manualExenta + gravada) : manualExenta) - (manualRetencion || retencion) + (manualPercepcion || percepcion)
+            total: (selectedProvider?.exento_iva ? 0 : gravada) + iva + fovial + cotrans + manualNosujeta + (selectedProvider?.exento_iva ? (manualExenta + gravada) : manualExenta) - (manualRetencion || retencion) + (manualPercepcion || percepcion)
         });
 
-    }, [selectedItems, tipoDocId, selectedProvider, currentCompany, manualIVA, manualRetencion, manualPercepcion, manualNosujeta, manualExenta, taxSettings]);
+    }, [selectedItems, tipoDocId, selectedProvider, currentCompany, manualRetencion, manualPercepcion, manualNosujeta, manualExenta, taxSettings]);
 
     const handleSelectProduct = (product) => {
         setQuickProd(product);
@@ -546,6 +545,7 @@ const Purchases = () => {
 
                     if (newItems.length > 0) {
                         setSelectedItems(newItems);
+                        setActiveTab('nuevo');
                         toast.success(`Se cargaron ${matchedCount} productos.`);
                     }
 
@@ -558,7 +558,6 @@ const Purchases = () => {
 
                 // 4. Totals (Override with fiscal precision)
                 if (json.resumen) {
-                    setManualIVA(parseFloat(json.resumen.iva || json.resumen.totalIva || 0));
                     setManualRetencion(parseFloat(json.resumen.retencionValue || json.resumen.totalRetencion || 0));
                     setManualNosujeta(parseFloat(json.resumen.totalNoSuj || 0));
                     setManualExenta(parseFloat(json.resumen.totalExenta || 0));
@@ -641,11 +640,10 @@ const Purchases = () => {
             setFechaAfectada(detail.fecha_afectada ? new Date(detail.fecha_afectada).toISOString().split('T')[0] : '');
             
             // Totals
-            setManualNosujeta(parseFloat(detail.total_nosujeta));
-            setManualExenta(parseFloat(detail.total_exenta));
-            setManualIVA(parseFloat(detail.iva));
-            setManualRetencion(parseFloat(detail.retencion));
-            setManualPercepcion(parseFloat(detail.percepcion));
+            setManualNosujeta(parseFloat(detail.total_nosujeta) || 0);
+            setManualExenta(parseFloat(detail.total_exenta) || 0);
+            setManualRetencion(parseFloat(detail.retencion) || 0);
+            setManualPercepcion(parseFloat(detail.percepcion) || 0);
 
             setSelectedItems(detail.items.map(it => ({
                 product_id: it.product_id,
@@ -744,20 +742,19 @@ const Purchases = () => {
         <div className="max-w-7xl mx-auto pb-20 space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-xl font-black tracking-tighter text-slate-900 uppercase leading-none">Gestión de Compras</h2>
+                    <h2 className="text-xl font-black tracking-tighter text-slate-900 uppercase leading-none">
+                        {activeTab === 'historial' ? 'Gestión de Compras' : (isEditing ? 'Modificar Compra' : 'Nueva Compra')}
+                    </h2>
                     <div className="flex items-center gap-2 mt-1.5">
                         <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-widest leading-none">
-                            ADministre sus compras desde aquí 
+                            {activeTab === 'historial' 
+                                ? 'Historial y auditoría de documentos de compras' 
+                                : (isEditing ? `Modificando comprobante ${numeroDoc || ''}` : 'Formulario de registro de compra')}
                         </span>
                     </div>
                 </div>
-                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
-                    <button onClick={() => setActiveTab('nuevo')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
-                        <Plus size={12} /> {isEditing ? 'Editando' : 'Nueva'}
-                    </button>
-                    <button onClick={() => setActiveTab('historial')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'historial' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
-                        <History size={12} /> Historial
-                    </button>
+                
+                <div className="flex items-center gap-2">
                     <input 
                         type="file" 
                         ref={fileInputRef} 
@@ -765,18 +762,53 @@ const Purchases = () => {
                         accept=".json" 
                         className="hidden" 
                     />
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 text-amber-600 hover:bg-amber-50"
-                        title="Importar desde archivo JSON oficial (Hacienda SV)"
-                    >
-                        <Zap size={12} className="fill-amber-500" /> Importar DTE
-                    </button>
+
+                    {activeTab === 'historial' ? (
+                        <>
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                title="Importar desde archivo JSON oficial (Hacienda SV)"
+                            >
+                                <Zap size={13} className="fill-amber-500 text-amber-500" /> Importar DTE
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    resetForm();
+                                    setActiveTab('nuevo');
+                                }} 
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95"
+                            >
+                                <Plus size={14} /> Nueva Compra
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            {!isEditing && (
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                    title="Importar desde archivo JSON oficial (Hacienda SV)"
+                                >
+                                    <Zap size={13} className="fill-amber-500 text-amber-500" /> Importar DTE
+                                </button>
+                            )}
+                            <button 
+                                onClick={() => {
+                                    resetForm();
+                                    setActiveTab('historial');
+                                }} 
+                                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm active:scale-95"
+                            >
+                                <History size={13} /> Volver al Listado
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {/* Redirección/Bloqueo si no hay periodo */}
-            {(!activePeriod && !loadingPeriod) && (
+            {/* Redirección/Bloqueo si no hay periodo (solo aplica al intentar crear/editar) */}
+            {(!activePeriod && !loadingPeriod && activeTab === 'nuevo') && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-sm w-full text-center space-y-6 animate-in zoom-in-95 duration-300">
                         <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto">
@@ -1046,7 +1078,6 @@ const Purchases = () => {
                                 <div className="space-y-0.5 border-t border-white/5 pt-2">
                                     <div className="flex justify-between items-center">
                                         <span className="text-[8px] opacity-40 font-black uppercase text-[Spanish]">IVA ({(taxSettings?.iva_rate || 13)}%)</span>
-                                        {manualIVA > 0 && <span className="text-[7px] text-indigo-400 font-black px-1.5 py-0.5 bg-indigo-500/10 rounded uppercase tracking-tighter text-[Spanish]">Manual</span>}
                                     </div>
                                     <div className="text-sm font-black text-right text-white/90">${totals.iva.toFixed(2)}</div>
                                 </div>
@@ -1108,11 +1139,13 @@ const Purchases = () => {
                                     <button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50">
                                         {(createMutation.isPending || updateMutation.isPending) ? 'PROCESANDO...' : (isEditing ? 'ACTUALIZAR COMPRA' : 'GUARDAR COMPRA')}
                                     </button>
-                                    {isEditing && (
-                                        <button onClick={resetForm} className="w-full mt-2 text-[8px] font-black text-slate-400 uppercase tracking-widest hover:text-rose-500 transition-colors">
-                                            Cancelar Edición
-                                        </button>
-                                    )}
+                                    <button 
+                                        type="button"
+                                        onClick={() => { resetForm(); setActiveTab('historial'); }} 
+                                        className="w-full mt-2 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-rose-400 hover:bg-white/5 rounded-xl transition-all"
+                                    >
+                                        {isEditing ? 'Cancelar Edición' : 'Volver al Listado'}
+                                    </button>
                                 </div>
                             </div>
                         </div>
