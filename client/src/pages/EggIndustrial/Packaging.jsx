@@ -199,14 +199,13 @@ const EggPackaging = () => {
     // Helper for freezer statuses
     const getFreezerStatusBadge = (status) => {
         switch (status) {
-            case 'congelando':
-                return 'bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse';
             case 'congelado_ok':
-                return 'bg-teal-500/10 text-teal-400 border border-teal-500/20';
+                return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
             case 'alarma_tiempo':
-                return 'bg-rose-500/10 text-rose-500 border border-rose-500/20 animate-bounce';
+                return 'bg-rose-50 text-rose-700 border border-rose-300';
+            case 'congelando':
             default:
-                return 'bg-slate-800 text-slate-400';
+                return 'bg-cyan-50 text-cyan-700 border border-cyan-200';
         }
     };
 
@@ -364,200 +363,205 @@ const EggPackaging = () => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 text-slate-900">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 bg-purple-500/10 rounded-2xl border border-purple-500/20 text-purple-400">
+                    <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-purple-600">
                         <Barcode className="h-8 w-8" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-black text-white uppercase tracking-wider">Empaque Final y Túnel de Congelación</h1>
-                        <p className="text-[12px] text-slate-400 font-semibold tracking-tight">Impresión de etiquetas con código de barras GS1/QR, inocuidad de envasado y monitoreo de congelación ultra-rápida (Blast Freezer)</p>
+                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Empaque Final y Túnel de Congelación</h1>
+                        <p className="text-xs text-slate-500 font-medium">Impresión de etiquetas GS1/QR, inocuidad de envasado y monitoreo de congelación ultra-rápida (Blast Freezer)</p>
                     </div>
                 </div>
-                <button
-                    onClick={() => setIsNewPackagingModalOpen(true)}
-                    className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 flex items-center gap-1.5 shadow-lg"
-                >
-                    <Plus size={14} />
-                    Registrar Envasado
-                </button>
-                <button
-                    onClick={() => setIsFreezerModalOpen(true)}
-                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-extrabold transition-all border border-cyan-500 flex items-center gap-1.5 shadow-lg"
-                >
-                    <Snowflake size={14} />
-                    Blast Freezer
-                </button>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => setIsNewPackagingModalOpen(true)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                        <Plus size={14} />
+                        Registrar Envasado
+                    </button>
+                    <button
+                        onClick={() => setIsFreezerModalOpen(true)}
+                        className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                        <Snowflake size={14} />
+                        Blast Freezer
+                    </button>
+                </div>
             </div>
 
             {/* HISTORIAL DE LOTES EMPACADOS */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                            <Boxes className="h-4 w-4 text-indigo-400" />
-                            Historial de Unidades Empacadas
-                        </h2>
-                        <div className="relative w-full md:w-72">
-                            <input
-                                type="text"
-                                placeholder="Buscar por lote, producto..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-8 pr-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                            />
-                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-                        </div>
-                    </div>
-
-                    {/* Stock de Producto Terminado */}
-                    {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').length > 0 && (() => {
-                        const stockByProduct = {};
-                        batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').forEach(b => {
-                            const key = b.product_type || 'otro';
-                            if (!stockByProduct[key]) stockByProduct[key] = 0;
-                            stockByProduct[key] += Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0));
-                        });
-                        const entries = Object.entries(stockByProduct);
-                        return (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                                {entries.map(([product, lbs]) => (
-                                    <div key={product} className="bg-slate-950 border border-slate-850 rounded-xl p-3 text-center">
-                                        <span className="text-[8px] font-black text-slate-500 uppercase block truncate">{product}</span>
-                                        <span className={`text-sm font-black ${lbs > 0 ? 'text-teal-400' : 'text-rose-500'}`}>{lbs.toLocaleString(undefined, {maximumFractionDigits: 0})} Lbs</span>
-                                        <span className="text-[7px] text-slate-500 block">disponible</span>
-                                    </div>
-                                ))}
-                            </div>
-                        );
-                    })()}
-                    <div className="h-px bg-slate-800" />
-
-                    <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950">
-                        {loading ? (
-                            <div className="p-8 text-center text-slate-400 text-xs font-bold animate-pulse">
-                                Cargando empaques finalizados...
-                            </div>
-                        ) : filteredPackaging.length === 0 ? (
-                            <div className="p-8 text-center text-slate-500 text-xs font-semibold">
-                                No se han registrado envasados todavía.
-                            </div>
-                        ) : (
-                            <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                                        <th className="p-3">Código Lote / Barra</th>
-                                        <th className="p-3">Producto</th>
-                                        <th className="p-3">Presentación</th>
-                                        <th className="p-3">Estado / Zona</th>
-                                        <th className="p-3 text-right">Cant. Envasada</th>
-                                        <th className="p-3 text-right">Peso Total (Lbs)</th>
-                                        <th className="p-3">Vencimiento</th>
-                                        <th className="p-3">Operador</th>
-                                        <th className="p-3 text-center">Etiquetas</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
-                                    {filteredPackaging.map(p => (
-                                        <tr key={p.id} className="hover:bg-slate-900/40 transition-colors">
-                                            <td className="p-3">
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="font-black text-white text-[12px]">{p.lot_code}</span>
-                                                    <span className="text-[9px] text-indigo-400 font-semibold tracking-wider flex items-center gap-1">
-                                                        <Barcode size={10} />
-                                                        {p.barcode}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="p-3 font-bold text-white capitalize">{p.product_type}</td>
-                                            <td className="p-3 font-semibold text-slate-300">{p.presentation}</td>
-                                            <td className="p-3">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase w-fit flex items-center gap-1 ${
-                                                        p.product_state === 'congelado' 
-                                                            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
-                                                            : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                                    }`}>
-                                                        {p.product_state === 'congelado' && <Snowflake size={9} />}
-                                                        {p.product_state || 'líquido'}
-                                                    </span>
-                                                    <span className="text-[9px] text-slate-400 font-bold">
-                                                        Zona: <span className="text-white">{p.warehouse_zone || 'COOLER'}</span>
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="p-3 text-right text-white font-bold">{p.units_packaged} Uds</td>
-                                            <td className="p-3 text-right text-teal-400 font-black">
-                                                {parseFloat(p.total_batch_weight_lbs).toLocaleString()} Lbs
-                                            </td>
-                                            <td className="p-3">
-                                                <span className="text-slate-400 flex items-center gap-1 text-[11px]">
-                                                    <Calendar size={12} />
-                                                    {formatDate(p.expiry_date)}
-                                                </span>
-                                            </td>
-                                            <td className="p-3 text-slate-400">
-                                                <span className="flex items-center gap-1 text-[11px]">
-                                                    <User size={12} />
-                                                    {p.operator_name}
-                                                </span>
-                                            </td>
-                                            <td className="p-3 text-center">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        onClick={() => setSelectedLabel(p)}
-                                                        className="px-2 py-1 bg-indigo-600/10 hover:bg-indigo-600/25 border border-indigo-500/20 text-indigo-400 hover:text-indigo-300 rounded-lg text-[9px] font-extrabold transition-all flex items-center gap-1"
-                                                    >
-                                                        <QrCode size={10} />
-                                                        QR
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handlePrintLabel(p)}
-                                                        className="p-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg border border-purple-500/20 transition-colors"
-                                                        title="Imprimir Etiqueta PDF"
-                                                    >
-                                                        <Printer size={11} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleEdit(p)}
-                                                        className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg border border-indigo-500/20 transition-colors"
-                                                        title="Editar"
-                                                    >
-                                                        <Pencil size={11} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setDeleteConfirmId(p.id)}
-                                                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-colors"
-                                                        title="Eliminar"
-                                                    >
-                                                        <Trash2 size={11} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                        <Boxes className="h-4 w-4 text-indigo-600" />
+                        Historial de Unidades Empacadas
+                    </h2>
+                    <div className="relative w-full md:w-72">
+                        <input
+                            type="text"
+                            placeholder="Buscar por lote, producto..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-8 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                        />
+                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                     </div>
                 </div>
 
+                {/* Stock de Producto Terminado */}
+                {batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').length > 0 && (() => {
+                    const stockByProduct = {};
+                    batches.filter(b => b.status === 'pasteurizado' || b.status === 'empaquetado').forEach(b => {
+                        const key = b.product_type || 'otro';
+                        if (!stockByProduct[key]) stockByProduct[key] = 0;
+                        stockByProduct[key] += Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0));
+                    });
+                    const entries = Object.entries(stockByProduct);
+                    return (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                            {entries.map(([product, lbs]) => (
+                                <div key={product} className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block truncate">{product}</span>
+                                    <span className={`text-sm font-bold ${lbs > 0 ? 'text-teal-700' : 'text-slate-400'}`}>
+                                        {lbs.toLocaleString(undefined, { maximumFractionDigits: 0 })} Lbs
+                                    </span>
+                                    <span className="text-[9px] text-slate-400 block font-medium">disponible</span>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })()}
+                <div className="h-px bg-slate-100" />
+
+                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    {loading ? (
+                        <div className="p-8 text-center text-slate-500 text-xs font-medium animate-pulse">
+                            Cargando empaques finalizados...
+                        </div>
+                    ) : filteredPackaging.length === 0 ? (
+                        <div className="p-8 text-center text-slate-500 text-xs font-medium">
+                            No se han registrado envasados todavía.
+                        </div>
+                    ) : (
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                                    <th className="p-3">Código Lote / Barra</th>
+                                    <th className="p-3">Producto</th>
+                                    <th className="p-3">Presentación</th>
+                                    <th className="p-3">Estado / Zona</th>
+                                    <th className="p-3 text-right">Cant. Envasada</th>
+                                    <th className="p-3 text-right">Peso Total</th>
+                                    <th className="p-3">Vencimiento</th>
+                                    <th className="p-3">Operador</th>
+                                    <th className="p-3 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                                {filteredPackaging.map(p => (
+                                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                                        <td className="p-3">
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="font-bold text-slate-900 text-xs">{p.lot_code}</span>
+                                                <span className="text-[10px] text-indigo-600 font-medium tracking-wide flex items-center gap-1">
+                                                    <Barcode size={11} />
+                                                    {p.barcode}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="p-3 font-bold text-slate-900 capitalize text-xs">{p.product_type}</td>
+                                        <td className="p-3 font-medium text-slate-600 text-xs">{p.presentation}</td>
+                                        <td className="p-3">
+                                            <div className="flex flex-col gap-1">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase w-fit flex items-center gap-1 ${
+                                                    p.product_state === 'congelado' 
+                                                        ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' 
+                                                        : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                }`}>
+                                                    {p.product_state === 'congelado' && <Snowflake size={10} />}
+                                                    {p.product_state || 'líquido'}
+                                                </span>
+                                                <span className="text-[10px] text-slate-500 font-medium">
+                                                    Zona: <span className="text-slate-800 font-bold">{p.warehouse_zone || 'COOLER'}</span>
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="p-3 text-right text-slate-900 font-bold text-xs">{p.units_packaged} Uds</td>
+                                        <td className="p-3 text-right text-teal-700 font-bold text-xs">
+                                            {parseFloat(p.total_batch_weight_lbs).toLocaleString()} Lbs
+                                        </td>
+                                        <td className="p-3">
+                                            <span className="text-slate-600 flex items-center gap-1 text-xs font-medium">
+                                                <Calendar size={12} className="text-slate-400" />
+                                                {formatDate(p.expiry_date)}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-slate-600">
+                                            <span className="flex items-center gap-1 text-xs font-medium">
+                                                <User size={12} className="text-slate-400" />
+                                                {p.operator_name}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                    onClick={() => setSelectedLabel(p)}
+                                                    className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                                                    title="Ver Etiqueta QR"
+                                                >
+                                                    <QrCode size={11} />
+                                                    QR
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePrintLabel(p)}
+                                                    className="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition-colors"
+                                                    title="Imprimir Etiqueta PDF"
+                                                >
+                                                    <Printer size={12} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleEdit(p)}
+                                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setDeleteConfirmId(p.id)}
+                                                    className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors"
+                                                    title="Eliminar"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+
             {isNewPackagingModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
                     <div>
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                            <Plus className="h-4 w-4 text-purple-400" />
+                        <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                            <Plus className="h-5 w-5 text-purple-600" />
                             Registrar Empaque y Envasado de Producto
                         </h2>
-                        <p className="text-[11px] text-slate-400">Genere la numeración de lote comercial e imprima la etiqueta QR de trazabilidad total.</p>
-                        <div className="h-px bg-slate-800 mt-4" />
+                        <p className="text-xs text-slate-500 mt-1">Genere la numeración de lote comercial e imprima la etiqueta QR de trazabilidad.</p>
+                        <div className="h-px bg-slate-100 mt-4" />
                     </div>
 
                     <form onSubmit={handleCreatePackaging} className="space-y-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Pasteurizado Aprobado *</label>
+                        <div>
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Lote Pasteurizado Aprobado *</label>
                             <select
                                 value={packagingForm.batch_id}
                                 onChange={(e) => {
@@ -570,7 +574,7 @@ const EggPackaging = () => {
                                         weight_per_unit_lbs: cfg ? String(cfg.weight_per_unit_lbs) : '30.00' 
                                     });
                                 }}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             >
                                 <option value="">Seleccione Lote Disponible...</option>
                                 {batches.filter(b => {
@@ -587,27 +591,27 @@ const EggPackaging = () => {
                         </div>
 
                         {packagingForm.batch_id && batches.find(b => b.id === parseInt(packagingForm.batch_id))?.status === 'bloqueado_haccp' && (
-                            <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-rose-500 flex gap-2 font-black text-xs uppercase animate-pulse">
-                                <Lock size={16} className="shrink-0" />
-                                <span>ERROR CRÍTICO: Este lote tiene bloqueo HACCP activo. El envasado está inhabilitado por normativas de inocuidad.</span>
+                            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-rose-800 flex gap-2 font-bold text-xs">
+                                <Lock size={16} className="shrink-0 text-rose-600" />
+                                <span>Este lote tiene bloqueo de inocuidad activo. El envasado está inhabilitado hasta su evaluación de calidad.</span>
                             </div>
                         )}
 
                         {packagingForm.batch_id && (() => {
                             const b = batches.find(x => x.id === parseInt(packagingForm.batch_id));
                             if (b) return (
-                                <div className="bg-slate-950 border border-slate-850 rounded-2xl p-4 grid grid-cols-3 gap-3 text-center">
+                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-3 gap-3 text-center">
                                     <div>
-                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Rendimiento Lote</span>
-                                        <span className="text-sm font-bold text-teal-400">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Rendimiento Lote</span>
+                                        <span className="text-sm font-bold text-teal-700">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
                                     </div>
                                     <div>
-                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Ya Envasado</span>
-                                        <span className="text-sm font-bold text-indigo-400">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Ya Envasado</span>
+                                        <span className="text-sm font-bold text-indigo-700">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
                                     </div>
                                     <div>
-                                        <span className="text-[8px] font-black text-slate-500 uppercase block">Disponible</span>
-                                        <span className="text-sm font-bold text-amber-400">{Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()} Lbs</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Disponible</span>
+                                        <span className="text-sm font-bold text-amber-700">{Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()} Lbs</span>
                                     </div>
                                 </div>
                             );
@@ -616,8 +620,8 @@ const EggPackaging = () => {
 
                         {/* Presentación y Pesaje */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Presentación Comercial</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presentación Comercial</label>
                                 <select
                                     value={packagingForm.presentation}
                                     onChange={(e) => {
@@ -630,7 +634,7 @@ const EggPackaging = () => {
                                         else if (pres.includes('2LB')) defaultW = '2.00';
                                         setPackagingForm({ ...packagingForm, presentation: pres, weight_per_unit_lbs: defaultW });
                                     }}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="cubeta 30LB">Cubeta 30 Lbs (Estándar)</option>
                                     <option value="cubeta 32LB">Cubeta 32 Lbs</option>
@@ -640,24 +644,24 @@ const EggPackaging = () => {
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Unidades Envasadas</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Unidades Envasadas</label>
                                 <input
                                     type="number"
                                     value={packagingForm.units_packaged}
                                     onChange={(e) => setPackagingForm({ ...packagingForm, units_packaged: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 320"
                                 />
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Peso por Unidad (Lbs)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Peso por Unidad (Lbs)</label>
                                 <input
                                     type="number"
                                     value={packagingForm.weight_per_unit_lbs}
                                     onChange={(e) => setPackagingForm({ ...packagingForm, weight_per_unit_lbs: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 30.00"
                                     step="0.01"
                                 />
@@ -665,11 +669,11 @@ const EggPackaging = () => {
                         </div>
 
                         {/* Estado del Producto & Ubicación de Almacenamiento */}
-                        <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-850 space-y-3">
-                            <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Cadena de Frío & Vida Útil</h4>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h4 className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">Cadena de Frío & Vida Útil</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estado / Proceso Frío</label>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Estado / Proceso Frío</label>
                                     <select
                                         value={packagingForm.product_state}
                                         onChange={(e) => {
@@ -677,19 +681,19 @@ const EggPackaging = () => {
                                             const zone = state === 'congelado' ? 'BLAST' : 'COOLER';
                                             setPackagingForm({ ...packagingForm, product_state: state, warehouse_zone: zone });
                                         }}
-                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-bold focus:outline-none"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
                                     >
                                         <option value="líquido">Líquido Refrigerado (2-4°C) - Vida útil: 28 días</option>
                                         <option value="congelado">Congelado (-18°C) - Vida útil: 365 días (1 Año)</option>
                                     </select>
                                 </div>
 
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Zona de Bodega Destino</label>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Zona de Bodega Destino</label>
                                     <select
                                         value={packagingForm.warehouse_zone}
                                         onChange={(e) => setPackagingForm({ ...packagingForm, warehouse_zone: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-bold focus:outline-none"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
                                     >
                                         <option value="COOLER">COOLER (Cámara de Refrigeración Líquido PT 2-4°C)</option>
                                         <option value="BLAST">BLAST (Túnel Congelación Ultra-rápida)</option>
@@ -700,26 +704,26 @@ const EggPackaging = () => {
                         </div>
 
                         {packagingForm.units_packaged && packagingForm.weight_per_unit_lbs && (
-                            <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 text-center">
-                                <span className="text-[9px] font-black text-teal-400 uppercase block">Total Producido</span>
-                                <span className="text-base font-black text-teal-300">
+                            <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 text-center">
+                                <span className="text-[10px] font-bold text-teal-700 uppercase block">Total Producido</span>
+                                <span className="text-base font-bold text-teal-800">
                                     {(parseFloat(packagingForm.units_packaged || 0) * parseFloat(packagingForm.weight_per_unit_lbs || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Lbs
                                 </span>
                             </div>
                         )}
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                             <button
                                 type="button"
                                 onClick={() => setIsNewPackagingModalOpen(false)}
-                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="submit"
                                 disabled={isSubmitting || (packagingForm.batch_id && batches.find(b => b.id === parseInt(packagingForm.batch_id))?.status === 'bloqueado_haccp')}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold transition-all border border-indigo-500 shadow-lg shadow-indigo-600/15 disabled:opacity-40"
+                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-40"
                             >
                                 {isSubmitting ? 'Guardando...' : 'Confirmar & Generar Lote'}
                             </button>
@@ -731,79 +735,79 @@ const EggPackaging = () => {
 
             {/* INTERACTIVE GS1 LABEL PREVIEW MODAL */}
             {selectedLabel && (
-                <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-md w-full space-y-6">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-5 text-slate-900">
                         <div className="flex justify-between items-center">
-                            <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                                <QrCode size={16} className="text-purple-400" />
-                                Etiqueta de Trazabilidad Industrial
+                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                                <QrCode size={16} className="text-purple-600" />
+                                Etiqueta de Trazabilidad
                             </h3>
                             <button
                                 onClick={() => setSelectedLabel(null)}
-                                className="text-slate-500 hover:text-slate-300 text-xs font-black uppercase"
+                                className="text-slate-400 hover:text-slate-600 text-xs font-bold uppercase"
                             >
                                 Cerrar
                             </button>
                         </div>
-                        <div className="h-px bg-slate-800" />
+                        <div className="h-px bg-slate-100" />
 
                         {/* Printable Area Representation */}
-                        <div className="bg-white text-slate-950 p-6 rounded-2xl border-2 border-slate-300 shadow-inner flex flex-col items-center text-center font-mono space-y-4 max-w-sm mx-auto">
-                            <div className="w-full flex justify-between items-center border-b-2 border-slate-950 pb-2 text-[9px] font-black tracking-tighter">
-                                <span>NOVA INDUSTRIAL PLANT</span>
-                                <span>FDA CERTIFIED #98217A</span>
+                        <div className="bg-white text-slate-900 p-6 rounded-xl border border-slate-300 shadow-sm flex flex-col items-center text-center font-mono space-y-4 max-w-sm mx-auto">
+                            <div className="w-full flex justify-between items-center border-b border-slate-900 pb-2 text-[9px] font-bold">
+                                <span>ANDELSA PLANTA INDUSTRIAL</span>
+                                <span>REGISTRO SANITARIO</span>
                             </div>
 
                             <div className="space-y-1">
-                                <span className="text-[10px] text-slate-500 uppercase tracking-widest block font-sans">Código de Lote GS1</span>
-                                <span className="text-base font-black tracking-tight text-slate-950 uppercase border-2 border-slate-950 px-3 py-1 rounded-md">{selectedLabel.lot_code}</span>
+                                <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-sans">Código de Lote</span>
+                                <span className="text-base font-bold tracking-tight text-slate-900 uppercase border border-slate-900 px-3 py-1 rounded-md">{selectedLabel.lot_code}</span>
                             </div>
 
-                            <div className="w-full grid grid-cols-2 gap-2 text-left text-[9px] font-semibold border-t-2 border-b-2 border-slate-950 py-3 font-sans">
+                            <div className="w-full grid grid-cols-2 gap-2 text-left text-[10px] font-medium border-t border-b border-slate-900 py-3 font-sans">
                                 <div>
-                                    <span className="text-slate-500 block text-[7px] uppercase font-black">Producto:</span>
-                                    <span className="font-extrabold capitalize text-slate-950">{selectedLabel.product_type}</span>
+                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">Producto:</span>
+                                    <span className="font-bold capitalize text-slate-900">{selectedLabel.product_type}</span>
                                 </div>
                                 <div>
-                                    <span className="text-slate-500 block text-[7px] uppercase font-black">Presentación:</span>
-                                    <span className="font-extrabold text-slate-950">{selectedLabel.presentation}</span>
+                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">Presentación:</span>
+                                    <span className="font-bold text-slate-900">{selectedLabel.presentation}</span>
                                 </div>
                                 <div className="mt-1">
-                                    <span className="text-slate-500 block text-[7px] uppercase font-black">Cant. Envasada:</span>
-                                    <span className="font-extrabold text-slate-950">{selectedLabel.units_packaged} Unidades</span>
+                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">Cant. Envasada:</span>
+                                    <span className="font-bold text-slate-900">{selectedLabel.units_packaged} Unidades</span>
                                 </div>
                                 <div className="mt-1">
-                                    <span className="text-slate-500 block text-[7px] uppercase font-black">Peso Total:</span>
-                                    <span className="font-extrabold text-slate-950">{selectedLabel.total_batch_weight_lbs} Lbs</span>
+                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">Peso Total:</span>
+                                    <span className="font-bold text-slate-900">{selectedLabel.total_batch_weight_lbs} Lbs</span>
                                 </div>
                                 <div className="mt-1">
-                                    <span className="text-slate-500 block text-[7px] uppercase font-black">F. Empaque:</span>
-                                    <span className="font-extrabold text-slate-950">{formatDate(selectedLabel.created_at)}</span>
+                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">F. Empaque:</span>
+                                    <span className="font-bold text-slate-900">{formatDate(selectedLabel.created_at)}</span>
                                 </div>
                                 <div className="mt-1">
-                                    <span className="text-slate-500 block text-[7px] uppercase font-black">F. Vencimiento:</span>
-                                    <span className="font-extrabold text-rose-600">{formatDate(selectedLabel.expiry_date)}</span>
+                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">F. Vencimiento:</span>
+                                    <span className="font-bold text-rose-600">{formatDate(selectedLabel.expiry_date)}</span>
                                 </div>
                             </div>
 
                             {/* Simulated Barcode block */}
                             <div className="py-2 flex flex-col items-center">
-                                <div className="h-10 w-44 bg-slate-950 flex items-center justify-between px-2 text-white font-mono text-[9px] tracking-[4px] font-black rounded border border-slate-800 shadow">
+                                <div className="h-10 w-44 bg-slate-900 flex items-center justify-between px-2 text-white font-mono text-[9px] tracking-[4px] font-bold rounded">
                                     |||| | | ||| || ||| || |||
                                 </div>
-                                <span className="text-[9px] text-slate-700 font-bold font-mono mt-1">({selectedLabel.barcode})</span>
+                                <span className="text-[10px] text-slate-600 font-bold font-mono mt-1">({selectedLabel.barcode})</span>
                             </div>
 
                             {/* Dynamic QR Code from API */}
                             <div className="flex flex-col items-center bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <div className="h-28 w-28 bg-white rounded-xl flex items-center justify-center p-1 shadow-md relative overflow-hidden">
+                                <div className="h-28 w-28 bg-white rounded-lg flex items-center justify-center p-1 shadow-xs relative overflow-hidden border border-slate-200">
                                     <img
                                         src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(selectedLabel.qr_code_payload)}`}
                                         alt="QR Trazabilidad"
                                         className="h-full w-full object-contain"
                                     />
                                 </div>
-                                <span className="text-[7px] text-slate-500 font-black mt-2 tracking-tight uppercase">Escanear para verificar Trazabilidad 360°</span>
+                                <span className="text-[8px] text-slate-500 font-bold mt-2 tracking-tight uppercase">Escanee para verificar trazabilidad</span>
                             </div>
                         </div>
 
@@ -813,7 +817,7 @@ const EggPackaging = () => {
                                     handlePrintLabel(selectedLabel);
                                     setSelectedLabel(null);
                                 }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95"
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
                             >
                                 <Printer size={14} />
                                 Imprimir Etiqueta (PDF)
@@ -824,28 +828,29 @@ const EggPackaging = () => {
             )}
 
             {isFreezerModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto text-slate-900">
                     {/* Add Blast Freezer Log Form */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl h-fit space-y-5">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                                <Snowflake className="h-4 w-4 text-cyan-400" />
+                            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                <Snowflake className="h-4 w-4 text-cyan-600" />
                                 Blast Freezer
                             </h2>
-                            <button onClick={() => setIsFreezerModalOpen(false)} className="text-slate-500 hover:text-white transition-colors">
+                            <button onClick={() => setIsFreezerModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                                 <XCircle size={18} />
                             </button>
                         </div>
-                        <div className="h-px bg-slate-800" />
+                        <p className="text-xs text-slate-500">Registro de congelación ultra-rápida</p>
+                        <div className="h-px bg-slate-100" />
 
                         <form onSubmit={handleCreateFreezerLog} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Envasado a Congelar</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Lote Envasado a Congelar</label>
                                 <select
                                     value={freezerForm.packaging_id}
                                     onChange={(e) => setFreezerForm({ ...freezerForm, packaging_id: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="">Seleccione Lote Envasado...</option>
                                     {packagingRecords.map(p => (
@@ -856,12 +861,12 @@ const EggPackaging = () => {
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ubicación del Túnel</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Ubicación del Túnel</label>
                                 <select
                                     value={freezerForm.freezer_location}
                                     onChange={(e) => setFreezerForm({ ...freezerForm, freezer_location: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="Túnel A - Posición 1">Túnel Rápido A - Posición 1</option>
                                     <option value="Túnel A - Posición 2">Túnel Rápido A - Posición 2</option>
@@ -871,37 +876,37 @@ const EggPackaging = () => {
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Temp Núcleo (°C)</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Temp Núcleo (°C)</label>
                                     <input
                                         type="number"
                                         value={freezerForm.core_temperature_c}
                                         onChange={(e) => setFreezerForm({ ...freezerForm, core_temperature_c: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: -18.5"
                                         step="0.1"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Horas en Túnel</label>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Horas en Túnel</label>
                                     <input
                                         type="number"
                                         value={freezerForm.freezing_duration_hours}
                                         onChange={(e) => setFreezerForm({ ...freezerForm, freezing_duration_hours: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 4.0"
                                         step="0.1"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estatus del Congelado</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Estado del Proceso</label>
                                 <select
                                     value={freezerForm.status}
                                     onChange={(e) => setFreezerForm({ ...freezerForm, status: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="congelando">Congelando (Activo)</option>
                                     <option value="congelado_ok">Congelado Aprobado (-18°C núcleo)</option>
@@ -912,7 +917,7 @@ const EggPackaging = () => {
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 shadow-lg shadow-teal-600/15"
+                                className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                             >
                                 Guardar Registro Túnel
                             </button>
@@ -920,39 +925,44 @@ const EggPackaging = () => {
                     </div>
 
                     {/* Freezer active logs */}
-                    <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-cyan-400" />
-                            Bitácora del Blast Freezer (Cadena de Frío Ultra-baja)
-                        </h2>
-                        <div className="h-px bg-slate-800" />
+                    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl space-y-4">
+                        <div>
+                            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                <Activity className="h-4 w-4 text-cyan-600" />
+                                Bitácora del Blast Freezer (Cadena de Frío)
+                            </h2>
+                            <p className="text-xs text-slate-500">Monitoreo de tiempos y temperatura interna de congelación</p>
+                            <div className="h-px bg-slate-100 mt-3" />
+                        </div>
 
                         <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
-                            {freezerLogs.map(log => (
-                                <div key={log.id} className="bg-slate-950 border border-slate-850 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4">
-                                    <div className="space-y-2">
+                            {freezerLogs.length === 0 ? (
+                                <p className="text-xs text-slate-500 text-center py-6">No hay registros de túnel registrados.</p>
+                            ) : freezerLogs.map(log => (
+                                <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                                    <div className="space-y-1.5">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black text-white">{log.lot_code}</span>
-                                            <span className="text-[10px] text-slate-500 capitalize">{log.product_type}</span>
+                                            <span className="text-xs font-bold text-slate-900">{log.lot_code}</span>
+                                            <span className="text-[11px] text-slate-500 capitalize">{log.product_type}</span>
                                         </div>
-                                        <p className="text-[11px] text-slate-400 font-semibold">Ubicación física: <b>{log.freezer_location}</b></p>
-                                        <div className="flex gap-2.5 text-[9px] text-slate-500 font-extrabold uppercase">
-                                            <span>Entrado: <b>{formatDateTime(log.created_at)}</b></span>
+                                        <p className="text-xs text-slate-600 font-medium">Ubicación: <b className="text-slate-800">{log.freezer_location}</b></p>
+                                        <div className="text-[11px] text-slate-500">
+                                            <span>Ingreso: <b className="text-slate-700">{formatDateTime(log.created_at)}</b></span>
                                         </div>
                                     </div>
                                     
                                     <div className="flex md:flex-col justify-between items-end text-right">
-                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${getFreezerStatusBadge(log.status)}`}>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getFreezerStatusBadge(log.status)}`}>
                                             {log.status === 'congelado_ok' ? 'Congelado Aprobado' : log.status}
                                         </span>
-                                        <div className="flex gap-3 text-xs mt-2">
-                                            <div className="text-center bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
-                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Núcleo</span>
-                                                <span className="text-[11px] font-bold text-cyan-400">{log.core_temperature_c}°C</span>
+                                        <div className="flex gap-2 text-xs mt-2">
+                                            <div className="text-center bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                                                <span className="text-[8px] font-bold block text-slate-400 uppercase">Núcleo</span>
+                                                <span className="text-xs font-bold text-cyan-700">{log.core_temperature_c}°C</span>
                                             </div>
-                                            <div className="text-center bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
-                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Horas</span>
-                                                <span className="text-[11px] font-bold text-white">{log.freezing_duration_hours}h</span>
+                                            <div className="text-center bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                                                <span className="text-[8px] font-bold block text-slate-400 uppercase">Horas</span>
+                                                <span className="text-xs font-bold text-slate-800">{log.freezing_duration_hours}h</span>
                                             </div>
                                         </div>
                                     </div>
@@ -965,49 +975,50 @@ const EggPackaging = () => {
             )}
 
             {isEditModalOpen && editingPackaging && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-md w-full mx-4 space-y-4">
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                        <Pencil className="h-4 w-4 text-indigo-400" />
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-4 text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                        <Pencil className="h-4 w-4 text-indigo-600" />
                         Editar Empaque
                     </h3>
-                    <form onSubmit={handleEditSubmit} className="space-y-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase">Lote</label>
-                            <input type="text" value={editingPackaging.lot_code} disabled className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-slate-500 font-semibold" />
+                    <div className="h-px bg-slate-100" />
+                    <form onSubmit={handleEditSubmit} className="space-y-4">
+                        <div>
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Lote</label>
+                            <input type="text" value={editingPackaging.lot_code} disabled className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-600 font-bold" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Unidades</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Unidades</label>
                                 <input
                                     type="number"
                                     value={packagingForm.units_packaged}
                                     onChange={(e) => setPackagingForm({ ...packagingForm, units_packaged: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 />
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase">Peso/Unidad (Lbs)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Peso/Unidad (Lbs)</label>
                                 <input
                                     type="number"
                                     value={packagingForm.weight_per_unit_lbs}
                                     onChange={(e) => setPackagingForm({ ...packagingForm, weight_per_unit_lbs: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     step="0.01"
                                 />
                             </div>
                         </div>
                         {packagingForm.units_packaged && packagingForm.weight_per_unit_lbs && (
-                            <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-2 text-center">
-                                <span className="text-[9px] font-black text-teal-400 uppercase block">Total</span>
-                                <span className="text-sm font-black text-teal-300">
+                            <div className="bg-teal-50 border border-teal-200 rounded-xl p-2.5 text-center">
+                                <span className="text-[10px] font-bold text-teal-700 uppercase block">Total</span>
+                                <span className="text-sm font-bold text-teal-800">
                                     {(parseFloat(packagingForm.units_packaged || 0) * parseFloat(packagingForm.weight_per_unit_lbs || 0)).toFixed(2)} Lbs
                                 </span>
                             </div>
                         )}
                         <div className="flex justify-end gap-3 pt-2">
-                            <button type="button" onClick={() => { setIsEditModalOpen(false); setEditingPackaging(null); }} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Cancelar</button>
-                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold">Guardar</button>
+                            <button type="button" onClick={() => { setIsEditModalOpen(false); setEditingPackaging(null); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200">Cancelar</button>
+                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm">Guardar</button>
                         </div>
                     </form>
                 </div>
@@ -1015,13 +1026,13 @@ const EggPackaging = () => {
             )}
 
             {deleteConfirmId !== null && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-sm w-full mx-4 space-y-4">
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Confirmar Eliminación</h3>
-                    <p className="text-xs text-slate-400">¿Eliminar este registro de empaque? Se liberará el stock consumido del lote.</p>
-                    <div className="flex justify-end gap-3">
-                        <button onClick={() => setDeleteConfirmId(null)} className="px-4 py-2 bg-slate-900 text-slate-300 rounded-xl text-xs font-bold">Cancelar</button>
-                        <button onClick={() => handleDelete(deleteConfirmId)} className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-extrabold">Eliminar</button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-sm w-full space-y-4 text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Confirmar Eliminación</h3>
+                    <p className="text-xs text-slate-600">¿Eliminar este registro de empaque? Se liberará el stock consumido del lote.</p>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button onClick={() => setDeleteConfirmId(null)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200">Cancelar</button>
+                        <button onClick={() => handleDelete(deleteConfirmId)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm">Eliminar</button>
                     </div>
                 </div>
                 </div>

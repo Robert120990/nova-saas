@@ -258,19 +258,19 @@ const EggProduction = () => {
     const getBatchStatusBadge = (status) => {
         switch (status) {
             case 'en_proceso':
-                return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
+                return 'bg-blue-50 text-blue-700 border border-blue-200';
             case 'pasteurizado':
-                return 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20';
+                return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
             case 'empaquetado':
-                return 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
+                return 'bg-purple-50 text-purple-700 border border-purple-200';
             case 'congelado':
-                return 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 animate-pulse';
+                return 'bg-cyan-50 text-cyan-700 border border-cyan-200';
             case 'bloqueado_haccp':
-                return 'bg-rose-500/10 text-rose-500 border border-rose-500/20 animate-pulse font-black';
+                return 'bg-rose-50 text-rose-700 border border-rose-300 font-bold';
             case 'aprobado_calidad':
-                return 'bg-teal-500/10 text-teal-400 border border-teal-500/20';
+                return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
             default:
-                return 'bg-slate-800 text-slate-400';
+                return 'bg-slate-100 text-slate-700 border border-slate-200';
         }
     };
 
@@ -281,163 +281,163 @@ const EggProduction = () => {
     );
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 text-slate-900">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-amber-500">
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-600">
                         <Flame className="h-8 w-8" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-black text-white uppercase tracking-wider">Sala de Producción y Pasteurización</h1>
-                        <p className="text-[12px] text-slate-400 font-semibold tracking-tight">Monitoreo de limpieza CIP, inocuidad HACCP, control térmico de pasteurizadores y balance de masas</p>
+                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Sala de Producción y Pasteurización</h1>
+                        <p className="text-xs text-slate-500 font-medium">Control de lotes, sanitización CIP, pasteurización térmica y balance de masas</p>
                     </div>
                 </div>
             </div>
 
             {/* Custom Tab Selectors */}
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-900 w-fit">
-                <button
-                    onClick={() => { setActiveTab('batches'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        activeTab === 'batches' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                    Lotes de Producción
-                </button>
-                <button
-                    onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        activeTab === 'cip' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                    Registros CIP
-                </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-                <button
-                    onClick={() => { setIsNewBatchModalOpen(true); setCipBlockedError(null); }}
-                    className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 flex items-center gap-1.5 shadow-lg shadow-teal-600/15"
-                >
-                    <Plus size={14} />
-                    Iniciar Nueva Producción
-                </button>
-                <button
-                    onClick={() => { setIsPasteurizeModalOpen(true); setHaccpViolationAlert(null); }}
-                    className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-extrabold transition-all border border-orange-500 flex items-center gap-1.5 shadow-lg shadow-orange-600/15"
-                >
-                    <Flame size={14} />
-                    Pasteurizar
-                </button>
-            </div>
+                <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
+                    <button
+                        onClick={() => { setActiveTab('batches'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                            activeTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        Lotes de Producción
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                            activeTab === 'cip' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        Registros de Sanitización (CIP)
+                    </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => { setIsNewBatchModalOpen(true); setCipBlockedError(null); }}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                        <Plus size={14} />
+                        Iniciar Nueva Producción
+                    </button>
+                    <button
+                        onClick={() => { setIsPasteurizeModalOpen(true); setHaccpViolationAlert(null); }}
+                        className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                        <Flame size={14} />
+                        Pasteurizar
+                    </button>
+                </div>
             </div>
 
             {/* TAB CONTENT */}
             {activeTab === 'batches' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
                     <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                            <ClipboardList className="h-4 w-4 text-indigo-400" />
+                        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                            <ClipboardList className="h-4 w-4 text-indigo-600" />
                             Historial de Procesamiento por Lotes
                         </h2>
                         <div className="relative w-full md:w-72">
                             <input
                                 type="text"
-                                placeholder="Buscar por UUID, producto..."
+                                placeholder="Buscar por lote, producto..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-8 pr-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                className="w-full pl-8 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
                             />
-                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                         </div>
                     </div>
-                    <div className="h-px bg-slate-800" />
+                    <div className="h-px bg-slate-100" />
 
-                    <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                         {loading ? (
-                            <div className="p-8 text-center text-slate-400 text-xs font-bold animate-pulse">
+                            <div className="p-8 text-center text-slate-500 text-xs font-medium animate-pulse">
                                 Cargando lotes de producción...
                             </div>
                         ) : filteredBatches.length === 0 ? (
-                            <div className="p-8 text-center text-slate-500 text-xs font-semibold">
+                            <div className="p-8 text-center text-slate-500 text-xs font-medium">
                                 No hay lotes de producción registrados.
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[9px]">
-                                        <th className="px-2 py-1.5">Lote Juliano / UUID</th>
-                                        <th className="px-2 py-1.5">Producto</th>
-                                        <th className="px-2 py-1.5">Presentación</th>
-                                        <th className="px-2 py-1.5 text-right">Peso Ent.</th>
-                                        <th className="px-2 py-1.5 text-right">Rend.</th>
-                                        <th className="px-2 py-1.5 text-right">Disp.</th>
-                                        <th className="px-2 py-1.5 text-center">Estado</th>
-                                        <th className="px-2 py-1.5 min-w-[200px]">Inicio / Fin</th>
-                                        <th className="px-2 py-1.5 text-center w-10"></th>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                        <th className="px-3 py-2.5">Lote Juliano / UUID</th>
+                                        <th className="px-3 py-2.5">Producto</th>
+                                        <th className="px-3 py-2.5">Presentación</th>
+                                        <th className="px-3 py-2.5 text-right">Peso Entrada</th>
+                                        <th className="px-3 py-2.5 text-right">Rendimiento</th>
+                                        <th className="px-3 py-2.5 text-right">Disponible</th>
+                                        <th className="px-3 py-2.5 text-center">Estado</th>
+                                        <th className="px-3 py-2.5 min-w-[180px]">Inicio / Fin</th>
+                                        <th className="px-3 py-2.5 text-center">Acciones</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
+                                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                                     {filteredBatches.map(b => (
-                                        <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
-                                            <td className="px-2 py-1.5">
+                                        <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                                            <td className="px-3 py-2.5">
                                                 <div className="flex flex-col gap-0.5">
                                                     {b.batch_code_display ? (
-                                                        <span className="bg-indigo-950/70 border border-indigo-500/30 text-indigo-300 font-mono text-[11px] font-black px-2 py-0.5 rounded-lg w-fit">
+                                                        <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg w-fit">
                                                             {b.batch_code_display}
                                                         </span>
                                                     ) : null}
                                                     <div className="flex items-center gap-1">
-                                                        <span className="font-mono text-[9px] text-slate-500 select-all truncate max-w-[200px]">{b.batch_uuid}</span>
+                                                        <span className="font-mono text-[10px] text-slate-500 select-all truncate max-w-[180px]">{b.batch_uuid}</span>
                                                         <button
                                                             onClick={() => { navigator.clipboard.writeText(b.batch_code_display || b.batch_uuid); toast.success('Lote copiado'); }}
-                                                            className="p-0.5 hover:bg-indigo-500/10 rounded text-slate-500 hover:text-indigo-400 transition-colors flex-shrink-0"
+                                                            className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-colors flex-shrink-0"
                                                             title="Copiar Lote"
                                                         >
-                                                            <Copy size={10} />
+                                                            <Copy size={11} />
                                                         </button>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-2 py-1.5">
-                                                <div className="font-bold text-white text-[11px] capitalize">{b.product_type}</div>
+                                            <td className="px-3 py-2.5">
+                                                <div className="font-bold text-slate-900 text-xs capitalize">{b.product_type}</div>
                                                 {b.raw_materials && b.raw_materials.length > 0 && (
-                                                    <div className="text-[8px] text-slate-500 mt-0.5">
-                                                        {b.raw_materials.map(m => `${m.egg_type} (${parseFloat(m.quantity_lbs).toFixed(0)}Lbs)`).join(', ')}
+                                                    <div className="text-[10px] text-slate-500 mt-0.5">
+                                                        {b.raw_materials.map(m => `${m.egg_type} (${parseFloat(m.quantity_lbs).toFixed(0)} Lbs)`).join(', ')}
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-2 py-1.5 font-semibold text-slate-400 text-[10px]">{b.presentation}</td>
-                                            <td className="px-2 py-1.5 text-right text-white font-bold text-[11px]">{parseFloat(b.input_weight_lbs).toLocaleString()}</td>
-                                            <td className="px-2 py-1.5 text-right text-teal-400 font-black text-[11px]">
-                                                {b.yield_liquid_lbs > 0 ? parseFloat(b.yield_liquid_lbs).toLocaleString() : '-'}
+                                            <td className="px-3 py-2.5 font-medium text-slate-600 text-xs">{b.presentation}</td>
+                                            <td className="px-3 py-2.5 text-right text-slate-900 font-bold text-xs">{parseFloat(b.input_weight_lbs).toLocaleString()} Lbs</td>
+                                            <td className="px-3 py-2.5 text-right text-teal-700 font-bold text-xs">
+                                                {b.yield_liquid_lbs > 0 ? `${parseFloat(b.yield_liquid_lbs).toLocaleString()} Lbs` : '-'}
                                             </td>
-                                            <td className="px-2 py-1.5 text-right font-bold text-[11px]">
+                                            <td className="px-3 py-2.5 text-right font-bold text-xs">
                                                 {b.yield_liquid_lbs > 0 ? (
-                                                    <span className={Math.max(0, parseFloat(b.yield_liquid_lbs) - parseFloat(b.packaged_weight_lbs || 0)) > 0 ? 'text-amber-400' : 'text-rose-500'}>
-                                                        {Math.max(0, parseFloat(b.yield_liquid_lbs) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()}
+                                                    <span className={Math.max(0, parseFloat(b.yield_liquid_lbs) - parseFloat(b.packaged_weight_lbs || 0)) > 0 ? 'text-amber-600' : 'text-slate-400'}>
+                                                        {Math.max(0, parseFloat(b.yield_liquid_lbs) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()} Lbs
                                                     </span>
                                                 ) : '-'}
                                             </td>
-                                            <td className="px-2 py-1.5 text-center">
-                                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${getBatchStatusBadge(b.status)}`}>
+                                            <td className="px-3 py-2.5 text-center">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getBatchStatusBadge(b.status)}`}>
                                                     {b.status}
                                                 </span>
                                             </td>
-                                            <td className="px-2 py-1.5 text-[9px] text-slate-400 space-y-0.5 min-w-[200px] whitespace-nowrap">
+                                            <td className="px-3 py-2.5 text-[10px] text-slate-600 space-y-0.5 min-w-[180px]">
                                                 <div>
-                                                    <span className="text-slate-500 font-extrabold block uppercase text-[7px]">Iniciado:</span>
+                                                    <span className="text-slate-400 font-bold uppercase text-[9px] mr-1">Iniciado:</span>
                                                     {new Date(b.started_at).toLocaleString()}
                                                 </div>
                                                 {b.completed_at && (
                                                     <div>
-                                                        <span className="text-slate-500 font-extrabold block uppercase text-[7px]">Completado:</span>
+                                                        <span className="text-slate-400 font-bold uppercase text-[9px] mr-1">Finalizado:</span>
                                                         {new Date(b.completed_at).toLocaleString()}
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-2 py-1.5 text-center">
+                                            <td className="px-3 py-2.5 text-center">
                                                 {b.status === 'pasteurizado' && (
                                                     <button
                                                         onClick={() => {
@@ -452,9 +452,9 @@ const EggProduction = () => {
                                                                 waste_loss_lbs: (parseFloat(b.input_weight_lbs) * lossPct).toFixed(2)
                                                             });
                                                         }}
-                                                        className="px-3 py-1 bg-teal-600/10 hover:bg-teal-600/25 border border-teal-500/20 text-teal-400 hover:text-teal-300 rounded-lg text-[10px] font-extrabold transition-all"
+                                                        className="px-3 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-xs font-bold transition-all shadow-xs"
                                                     >
-                                                        Finalizar Balance
+                                                        Balance
                                                     </button>
                                                 )}
                                                 {b.status === 'en_proceso' && (
@@ -463,15 +463,15 @@ const EggProduction = () => {
                                                             setSelectedBatchForPasteurize(b.id);
                                                             setIsPasteurizeModalOpen(true);
                                                         }}
-                                                        className="px-3 py-1 bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/20 text-amber-400 hover:text-amber-300 rounded-lg text-[10px] font-extrabold transition-all flex items-center gap-1 mx-auto"
+                                                        className="px-3 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1 mx-auto shadow-xs"
                                                     >
-                                                        <Flame size={10} />
+                                                        <Flame size={12} />
                                                         Pasteurizar
                                                     </button>
                                                 )}
                                                 {b.status === 'bloqueado_haccp' && (
-                                                    <span className="text-rose-500 font-bold text-[10px] flex items-center justify-center gap-0.5">
-                                                        <Lock size={10} />
+                                                    <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1">
+                                                        <Lock size={12} />
                                                         Bloqueado
                                                     </span>
                                                 )}
@@ -488,22 +488,23 @@ const EggProduction = () => {
             {activeTab === 'cip' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Log New CIP Form */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-fit space-y-6">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit space-y-5">
                         <div>
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <Wrench className="h-4 w-4 text-teal-400" />
+                            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-1 flex items-center gap-2">
+                                <Wrench className="h-4 w-4 text-teal-600" />
                                 Registrar Limpieza CIP
                             </h2>
-                            <div className="h-px bg-slate-800" />
+                            <p className="text-xs text-slate-500">Bitácora de sanitización y control de inocuidad</p>
+                            <div className="h-px bg-slate-100 mt-3" />
                         </div>
 
                         <form onSubmit={handleCreateCip} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Equipo Sanitizado</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Equipo Sanitizado</label>
                                 <select
                                     value={cipForm.equipment_name}
                                     onChange={(e) => setCipForm({ ...cipForm, equipment_name: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="pasteurizador">Pasteurizador de Placas</option>
                                     <option value="quebradora">Quebradora Centrífuga</option>
@@ -513,60 +514,60 @@ const EggProduction = () => {
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Agente Químico Sanitizante</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Agente Químico Sanitizante</label>
                                 <input
                                     type="text"
                                     value={cipForm.chemical_used}
                                     onChange={(e) => setCipForm({ ...cipForm, chemical_used: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: Ácido Peracético 1.5%"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Temp Limpieza (°C)</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Temp Limpieza (°C)</label>
                                     <input
                                         type="number"
                                         value={cipForm.temperature_c}
                                         onChange={(e) => setCipForm({ ...cipForm, temperature_c: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 78.5"
                                         step="0.01"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Duración (Minutos)</label>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Duración (Minutos)</label>
                                     <input
                                         type="number"
                                         value={cipForm.duration_minutes}
                                         onChange={(e) => setCipForm({ ...cipForm, duration_minutes: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 45"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estado de Validación</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Estado de Validación</label>
                                 <select
                                     value={cipForm.validation_status}
                                     onChange={(e) => setCipForm({ ...cipForm, validation_status: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
-                                    <option value="completado">Completado & Aprobado</option>
+                                    <option value="completado">Completado y Aprobado</option>
                                     <option value="fallido">Fallido / Requiere Reinicio</option>
                                     <option value="pendiente">Pendiente de Aprobación</option>
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Notas de Bitácora</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Notas de Bitácora</label>
                                 <textarea
                                     value={cipForm.notes}
                                     onChange={(e) => setCipForm({ ...cipForm, notes: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500 h-20"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 h-20"
                                     placeholder="Detalles sobre enjuague, conductividad..."
                                 />
                             </div>
@@ -574,7 +575,7 @@ const EggProduction = () => {
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 shadow-lg shadow-teal-600/15"
+                                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                             >
                                 Registrar Limpieza
                             </button>
@@ -582,42 +583,47 @@ const EggProduction = () => {
                     </div>
 
                     {/* CIP History */}
-                    <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-indigo-400" />
-                            Historial CIP Reciente (Habilita el arranque de planta)
-                        </h2>
-                        <div className="h-px bg-slate-800" />
+                    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                        <div>
+                            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                <Activity className="h-4 w-4 text-indigo-600" />
+                                Historial de Sanitización CIP Reciente
+                            </h2>
+                            <p className="text-xs text-slate-500">Valida la autorización higiénica para el inicio de producción</p>
+                            <div className="h-px bg-slate-100 mt-3" />
+                        </div>
 
-                        <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
-                            {cipLogs.map(log => (
-                                <div key={log.id} className="bg-slate-950 border border-slate-850 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4">
-                                    <div className="space-y-2">
+                        <div className="space-y-3 overflow-y-auto max-h-[520px] pr-1">
+                            {cipLogs.length === 0 ? (
+                                <p className="text-xs text-slate-500 text-center py-6">No hay registros de limpieza disponibles.</p>
+                            ) : cipLogs.map(log => (
+                                <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                                    <div className="space-y-1.5">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black text-white capitalize">{log.equipment_name}</span>
-                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                                                log.validation_status === 'completado' ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20' : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                                            <span className="text-xs font-bold text-slate-900 capitalize">{log.equipment_name}</span>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                                log.validation_status === 'completado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                                             }`}>
                                                 {log.validation_status}
                                             </span>
                                         </div>
-                                        <p className="text-[11px] text-slate-400 font-semibold">{log.notes || 'Sin anotaciones adicionales.'}</p>
-                                        <div className="flex flex-wrap gap-4 text-[10px] text-slate-500">
-                                            <span>Químico: <b>{log.chemical_used}</b></span>
-                                            <span>Operador: <b>{log.operator_name}</b></span>
+                                        <p className="text-xs text-slate-600 font-medium">{log.notes || 'Sin anotaciones adicionales.'}</p>
+                                        <div className="flex flex-wrap gap-4 text-[11px] text-slate-500">
+                                            <span>Químico: <b className="text-slate-700">{log.chemical_used}</b></span>
+                                            <span>Operador: <b className="text-slate-700">{log.operator_name}</b></span>
                                         </div>
                                     </div>
                                     
                                     <div className="flex md:flex-col justify-between items-end text-right">
-                                        <span className="text-[10px] text-slate-500 font-semibold">{new Date(log.created_at).toLocaleString()}</span>
-                                        <div className="flex gap-3 text-xs mt-2">
-                                            <div className="text-center bg-slate-900 border border-slate-800 px-2 py-1 rounded-xl">
-                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Temp</span>
-                                                <span className="text-[11px] font-bold text-white">{log.temperature_c}°C</span>
+                                        <span className="text-[11px] text-slate-500 font-medium">{new Date(log.created_at).toLocaleString()}</span>
+                                        <div className="flex gap-2 text-xs mt-2">
+                                            <div className="text-center bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                                                <span className="text-[8px] font-bold block text-slate-400 uppercase">Temp</span>
+                                                <span className="text-xs font-bold text-slate-800">{log.temperature_c}°C</span>
                                             </div>
-                                            <div className="text-center bg-slate-900 border border-slate-800 px-2 py-1 rounded-xl">
-                                                <span className="text-[8px] font-black block text-slate-500 uppercase">Tiempo</span>
-                                                <span className="text-[11px] font-bold text-white">{log.duration_minutes}m</span>
+                                            <div className="text-center bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                                                <span className="text-[8px] font-bold block text-slate-400 uppercase">Tiempo</span>
+                                                <span className="text-xs font-bold text-slate-800">{log.duration_minutes}m</span>
                                             </div>
                                         </div>
                                     </div>
@@ -629,56 +635,56 @@ const EggProduction = () => {
             )}
 
             {isNewBatchModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-6">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
                     <div>
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                            <Plus className="h-4 w-4 text-teal-400" />
+                        <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                            <Plus className="h-5 w-5 text-emerald-600" />
                             Iniciar Nueva Producción
                         </h2>
-                        <p className="text-[11px] text-slate-400">Recuerde que el pasteurizador debe contar con una limpieza CIP válida en las últimas 12 horas.</p>
-                        <div className="h-px bg-slate-800 mt-4" />
+                        <p className="text-xs text-slate-500 mt-1">El pasteurizador debe contar con una limpieza CIP aprobada en las últimas 12 horas.</p>
+                        <div className="h-px bg-slate-100 mt-4" />
                     </div>
 
                     {/* CIP Block Warning Alert */}
                     {cipBlockedError && (
-                        <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-2 text-rose-400 animate-pulse">
-                            <div className="flex gap-2 items-center font-black text-xs uppercase tracking-wider">
-                                <AlertOctagon size={16} />
-                                ALERTA CRÍTICA DE PLANTA: BLOQUEO DE ARRANQUE CIP
+                        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2 text-rose-800">
+                            <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide">
+                                <AlertOctagon size={16} className="text-rose-600" />
+                                ALERTA DE INOCUIDAD: BLOQUEO POR SANITIZACIÓN CIP
                             </div>
-                            <p className="text-[11px] font-bold leading-relaxed">{cipBlockedError}</p>
+                            <p className="text-xs leading-relaxed">{cipBlockedError}</p>
                             <button
                                 onClick={() => { setActiveTab('cip'); setCipBlockedError(null); }}
-                                className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 hover:text-rose-300 rounded-xl text-[10px] font-extrabold transition-all"
+                                className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 border border-rose-300 text-rose-800 rounded-lg text-xs font-bold transition-all"
                             >
                                 Registrar Sanitización CIP Ahora
                             </button>
                         </div>
                     )}
 
-                    <form onSubmit={handleCreateBatch} className="space-y-4">
+                    <form onSubmit={handleCreateBatch} className="space-y-5">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Corrida del Día (Run #)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="99"
                                     value={batchForm.run_number}
                                     onChange={(e) => setBatchForm({ ...batchForm, run_number: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-bold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 1"
                                 />
-                                <span className="text-[8px] text-indigo-400">Genera lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
+                                <span className="text-[10px] text-indigo-600 font-medium block mt-1">Lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Producto a Fabricar</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Producto a Fabricar</label>
                                 <select
                                     value={batchForm.product_type}
                                     onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="huevo entero">Huevo Entero Pasteurizado</option>
                                     <option value="clara">Clara Pasteurizada</option>
@@ -688,12 +694,12 @@ const EggProduction = () => {
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Presentación Comercial</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presentación Comercial</label>
                                 <select
                                     value={batchForm.presentation}
                                     onChange={(e) => setBatchForm({ ...batchForm, presentation: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="cubeta 30LB">Cubeta Industrial (30 Lbs - Estándar)</option>
                                     <option value="cubeta 32LB">Cubeta Industrial (32 Lbs)</option>
@@ -705,15 +711,15 @@ const EggProduction = () => {
                         </div>
 
                         {/* Materias Primas */}
-                        <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-850">
+                        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Materia Prima Base (Lotes Recibidos)</label>
-                                <span className="text-[10px] font-bold text-teal-400">
+                                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Materia Prima Base (Lotes en Recepción)</label>
+                                <span className="text-xs font-bold text-emerald-700">
                                     Total: {batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs
                                 </span>
                             </div>
                             {batchForm.raw_materials.map((rm, idx) => (
-                                <div key={idx} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl p-2">
+                                <div key={idx} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-2.5">
                                     <select
                                         value={rm.raw_material_id}
                                         onChange={(e) => {
@@ -721,12 +727,12 @@ const EggProduction = () => {
                                             updated[idx].raw_material_id = e.target.value;
                                             setBatchForm({ ...batchForm, raw_materials: updated });
                                         }}
-                                        className="flex-1 px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[10px] text-white font-semibold focus:outline-none"
+                                        className="flex-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
                                     >
                                         <option value="">Seleccionar lote recepcionado...</option>
                                         {rawMaterials.map(m => (
                                             <option key={m.id} value={m.id} disabled={batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id))}>
-                                                {m.egg_type} - {m.provider_lot} (Stock: {parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs)
+                                                {m.egg_type} - Lote: {m.provider_lot} (Stock: {parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs)
                                             </option>
                                         ))}
                                     </select>
@@ -738,7 +744,7 @@ const EggProduction = () => {
                                             updated[idx].quantity_lbs = e.target.value;
                                             setBatchForm({ ...batchForm, raw_materials: updated });
                                         }}
-                                        className="w-24 px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[10px] text-white font-bold focus:outline-none text-right"
+                                        className="w-28 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold focus:outline-none text-right"
                                         placeholder="Lbs"
                                         step="0.01"
                                     />
@@ -747,119 +753,120 @@ const EggProduction = () => {
                                         onClick={() => {
                                             setBatchForm({ ...batchForm, raw_materials: batchForm.raw_materials.filter((_, i) => i !== idx) });
                                         }}
-                                        className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg"
+                                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
+                                        title="Eliminar línea"
                                     >
-                                        <XCircle size={14} />
+                                        <XCircle size={16} />
                                     </button>
                                 </div>
                             ))}
                             <button
                                 type="button"
                                 onClick={() => setBatchForm({ ...batchForm, raw_materials: [...batchForm.raw_materials, { raw_material_id: '', quantity_lbs: '' }] })}
-                                className="w-full py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-[10px] font-extrabold transition-all border border-indigo-500/20 flex items-center justify-center gap-1"
+                                className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200 flex items-center justify-center gap-1.5"
                             >
-                                <Plus size={12} />
+                                <Plus size={14} />
                                 Agregar Lote de Materia Prima
                             </button>
                         </div>
 
-                        {/* Insumos de Formulación / BOM Roberto */}
-                        <div className="space-y-3 bg-slate-950/40 p-3.5 rounded-2xl border border-slate-850">
+                        {/* Insumos de Formulación / Receta */}
+                        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Insumos y Aditivos de Formulación (BOM)</label>
-                                <span className="text-[9px] text-slate-500 font-medium">Opcional para fórmulas compuestas</span>
+                                <label className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">Insumos y Aditivos de Formulación (Receta)</label>
+                                <span className="text-[10px] text-slate-500">Opcional para fórmulas compuestas</span>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Cajas Huevo</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Cajas Huevo</label>
                                     <input
                                         type="number"
                                         placeholder="0 cjs"
                                         value={batchForm.ingredients.boxes_count}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, boxes_count: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">H2O (Garrafones)</label>
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Agua (Garrafones)</label>
                                     <input
                                         type="number"
                                         placeholder="0 garrafones"
                                         value={batchForm.ingredients.water_bottles}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, water_bottles: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Azúcar (Lbs)</label>
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Azúcar (Lbs)</label>
                                     <input
                                         type="number"
                                         step="0.1"
                                         placeholder="0.0"
                                         value={batchForm.ingredients.sugar_lbs}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, sugar_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Sal (Lbs)</label>
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Sal (Lbs)</label>
                                     <input
                                         type="number"
                                         step="0.1"
                                         placeholder="0.0"
                                         value={batchForm.ingredients.salt_lbs}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, salt_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Ác. Cítrico (Lbs)</label>
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Ác. Cítrico (Lbs)</label>
                                     <input
                                         type="number"
                                         step="0.01"
                                         placeholder="0.0"
                                         value={batchForm.ingredients.citric_acid_lbs}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, citric_acid_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Leche Polvo (Lbs)</label>
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Leche Polvo (Lbs)</label>
                                     <input
                                         type="number"
                                         step="0.1"
                                         placeholder="0.0"
                                         value={batchForm.ingredients.milk_powder_lbs}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, milk_powder_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[9px] text-slate-400 font-bold uppercase">PPG (Gramos)</label>
+                                <div>
+                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">PPG (Gramos)</label>
                                     <input
                                         type="number"
                                         step="0.1"
                                         placeholder="0.0"
                                         value={batchForm.ingredients.ppg_g}
                                         onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, ppg_g: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
                                     />
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                             <button
                                 type="button"
                                 onClick={() => setIsNewBatchModalOpen(false)}
-                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold transition-all border border-indigo-500 shadow-lg shadow-indigo-600/15"
+                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                             >
                                 {isSubmitting ? 'Iniciando...' : 'Iniciar Lote'}
                             </button>
@@ -870,65 +877,65 @@ const EggProduction = () => {
             )}
 
             {isPasteurizeModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
                     <div>
-                        <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                            <Flame className="h-4 w-4 text-orange-400" />
-                            Registro de Parámetros Críticos (HACCP PCC-1)
+                        <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                            <Flame className="h-5 w-5 text-orange-600" />
+                            Registro de Parámetros de Pasteurización
                         </h2>
-                        <p className="text-[11px] text-slate-400">Verifique los termómetros y flujómetros del PLC antes de registrar la telemetría.</p>
-                        <div className="h-px bg-slate-800 mt-4" />
+                        <p className="text-xs text-slate-500 mt-1">Verifique termómetros y manómetros antes de validar el tratamiento térmico.</p>
+                        <div className="h-px bg-slate-100 mt-4" />
                     </div>
 
-                    {/* Guía Rápida de Límites HACCP Planta ANDELSA */}
-                    <div className="grid grid-cols-3 gap-2 bg-slate-950 p-3 rounded-2xl border border-slate-800 text-[10px]">
-                        <div className="text-center p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                            <span className="text-slate-400 block font-bold uppercase">Huevo Entero</span>
-                            <span className="text-white font-black text-xs">≥ 64.0°C</span>
-                            <span className="text-slate-500 block text-[9px]">210 seg</span>
+                    {/* Guía Rápida de Límites de Pasteurización ANDELSA */}
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                        <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
+                            <span className="text-slate-500 block font-bold uppercase text-[10px]">Huevo Entero</span>
+                            <span className="text-slate-900 font-bold text-xs">≥ 64.0°C</span>
+                            <span className="text-slate-400 block text-[9px]">210 seg</span>
                         </div>
-                        <div className="text-center p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                            <span className="text-slate-400 block font-bold uppercase">Clara Líquida</span>
-                            <span className="text-white font-black text-xs">≥ 56.0°C</span>
-                            <span className="text-slate-500 block text-[9px]">210 seg</span>
+                        <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
+                            <span className="text-slate-500 block font-bold uppercase text-[10px]">Clara Líquida</span>
+                            <span className="text-slate-900 font-bold text-xs">≥ 56.0°C</span>
+                            <span className="text-slate-400 block text-[9px]">210 seg</span>
                         </div>
-                        <div className="text-center p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                            <span className="text-slate-400 block font-bold uppercase">Yema / Salada</span>
-                            <span className="text-white font-black text-xs">≥ 66.5°C</span>
-                            <span className="text-slate-500 block text-[9px]">210 seg</span>
+                        <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
+                            <span className="text-slate-500 block font-bold uppercase text-[10px]">Yema / Salada</span>
+                            <span className="text-slate-900 font-bold text-xs">≥ 66.5°C</span>
+                            <span className="text-slate-400 block text-[9px]">210 seg</span>
                         </div>
                     </div>
 
-                    {/* Glowing HACCP Failure Alert Box */}
+                    {/* Alert HACCP */}
                     {haccpViolationAlert && (
-                        <div className="bg-rose-500/10 border-2 border-rose-500 rounded-2xl p-4 text-rose-500 animate-pulse space-y-3 shadow-lg shadow-rose-500/10">
-                            <div className="flex gap-2 items-center font-black text-sm uppercase tracking-wider">
-                                <AlertOctagon size={20} className="text-rose-500 animate-bounce" />
-                                SISTEMA DE INOCUIDAD ALIMENTARIA: ALERTA DE FALLA HACCP
+                        <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4 text-rose-900 space-y-3 shadow-sm">
+                            <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide text-rose-700">
+                                <AlertOctagon size={18} className="text-rose-600" />
+                                ALERTA DE INOCUIDAD ALIMENTARIA: PARÁMETROS FUERA DE RANGO
                             </div>
-                            <p className="text-[12px] font-black leading-relaxed">{haccpViolationAlert}</p>
-                            <p className="text-[11px] font-semibold text-rose-400">
-                                <b>ACCIÓN AUTOMÁTICA DEL SISTEMA:</b> El lote de producción ha sido BLOQUEADO para empaque comercial. La válvula de desvío del pasteurizador se ha activado y se ha inyectado un evento crítico en la bitácora de auditoría digital.
+                            <p className="text-xs font-bold leading-relaxed">{haccpViolationAlert}</p>
+                            <p className="text-xs text-rose-700">
+                                <b>ACCIÓN AUTOMÁTICA:</b> El lote ha sido marcado como bloqueado para empaque comercial y requiere evaluación de calidad.
                             </p>
                             <button
                                 onClick={() => { setHaccpViolationAlert(null); setIsPasteurizeModalOpen(false); }}
-                                className="px-4 py-2 bg-rose-600 text-white border border-rose-500 rounded-xl text-[10px] font-extrabold hover:bg-rose-500 transition-all shadow-md"
+                                className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition-all shadow-xs"
                             >
-                                Volver al Historial y Ver Bloqueo
+                                Volver al Historial
                             </button>
                         </div>
                     )}
 
                     <form onSubmit={handlePasteurize} className="space-y-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lote Activo a Pasteurizar</label>
+                        <div>
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Lote en Proceso a Pasteurizar</label>
                             <select
                                 value={selectedBatchForPasteurize}
                                 onChange={(e) => setSelectedBatchForPasteurize(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             >
-                                <option value="">Seleccione Lote Activo...</option>
+                                <option value="">Seleccione Lote...</option>
                                 {batches.filter(b => b.status === 'en_proceso').map(b => (
                                     <option key={b.id} value={b.id}>
                                         [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation})
@@ -938,68 +945,68 @@ const EggProduction = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Temperatura Pasteurización (°C)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Temperatura Pasteurización (°C)</label>
                                 <input
                                     type="number"
                                     value={pasteurizeForm.temperature_c}
                                     onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, temperature_c: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     step="0.01"
                                     placeholder="Ej: 64.5"
                                 />
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tiempo de Retención (Segundos)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Tiempo de Retención (Segundos)</label>
                                 <input
                                     type="number"
                                     value={pasteurizeForm.holding_time_seconds}
                                     onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, holding_time_seconds: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 210"
                                 />
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Presión Hidráulica (PSI)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presión Hidráulica (PSI)</label>
                                 <input
                                     type="number"
                                     value={pasteurizeForm.pressure_psi}
                                     onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, pressure_psi: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     step="0.01"
                                     placeholder="Ej: 48.0"
                                 />
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Flujo de Bomba (GPM)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Flujo de Bomba (GPM)</label>
                                 <input
                                     type="number"
                                     value={pasteurizeForm.flow_rate_gpm}
                                     onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, flow_rate_gpm: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     step="0.01"
                                     placeholder="Ej: 12.5"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                             <button
                                 type="button"
                                 onClick={() => setIsPasteurizeModalOpen(false)}
-                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition-all border border-amber-500 shadow-lg shadow-amber-600/15"
+                                className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                             >
-                                {isSubmitting ? 'Validando...' : 'Validar & Guardar Log'}
+                                {isSubmitting ? 'Validando...' : 'Validar & Guardar'}
                             </button>
                         </div>
                     </form>
@@ -1009,79 +1016,79 @@ const EggProduction = () => {
 
             {/* BALANCE DE MASAS DIALOG MODAL */}
             {selectedBatchForComplete && (
-                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-lg w-full space-y-6">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full space-y-6 text-slate-900">
                         <div>
-                            <h3 className="text-base font-black text-white uppercase tracking-wider">Balance de Masas & Finalización de Lote</h3>
-                            <p className="text-[11px] text-slate-400 mt-1">Lote: <b>{selectedBatchForComplete.batch_uuid}</b></p>
+                            <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">Balance de Masas y Cierre de Lote</h3>
+                            <p className="text-xs text-slate-500 mt-1">Lote: <b>{selectedBatchForComplete.batch_uuid}</b></p>
                         </div>
-                        <div className="h-px bg-slate-800" />
+                        <div className="h-px bg-slate-100" />
 
-                        <div className="grid grid-cols-3 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-850">
+                        <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="text-center">
-                                <span className="text-[9px] font-black text-slate-500 block uppercase">Entrada Raw</span>
-                                <span className="text-xs font-bold text-white">{parseFloat(selectedBatchForComplete.input_weight_lbs).toLocaleString()} Lbs</span>
+                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Entrada</span>
+                                <span className="text-xs font-bold text-slate-900">{parseFloat(selectedBatchForComplete.input_weight_lbs).toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[9px] font-black text-slate-500 block uppercase">Producto Esperado ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</span>
-                                <span className="text-xs font-bold text-indigo-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return parseFloat(cfg.yield_pct || 85) / 100; })()).toLocaleString()} Lbs</span>
+                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Esperado ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</span>
+                                <span className="text-xs font-bold text-indigo-600">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return parseFloat(cfg.yield_pct || 85) / 100; })()).toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[9px] font-black text-slate-500 block uppercase">Cáscara+Pérdida ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 12}%+{(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 3}%)</span>
-                                <span className="text-xs font-bold text-slate-400">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return (parseFloat(cfg.waste_shell_pct || 12) + parseFloat(cfg.waste_loss_pct || 3)) / 100; })()).toLocaleString()} Lbs</span>
+                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Cáscara/Merma ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 12}%+{(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 3}%)</span>
+                                <span className="text-xs font-bold text-slate-600">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return (parseFloat(cfg.waste_shell_pct || 12) + parseFloat(cfg.waste_loss_pct || 3)) / 100; })()).toLocaleString()} Lbs</span>
                             </div>
                         </div>
 
                         <form onSubmit={handleCompleteBatch} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Rendimiento Líquido ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Rendimiento Líquido ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</label>
                                 <input
                                     type="number"
                                     value={completeForm.yield_liquid_lbs}
                                     onChange={(e) => setCompleteForm({ ...completeForm, yield_liquid_lbs: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 10320"
                                     step="0.01"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Cáscara ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 12}%)</label>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Cáscara ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 12}%)</label>
                                     <input
                                         type="number"
                                         value={completeForm.waste_shell_lbs}
                                         onChange={(e) => setCompleteForm({ ...completeForm, waste_shell_lbs: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 1440"
                                         step="0.01"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Merma ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 3}%)</label>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Merma ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 3}%)</label>
                                     <input
                                         type="number"
                                         value={completeForm.waste_loss_lbs}
                                         onChange={(e) => setCompleteForm({ ...completeForm, waste_loss_lbs: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 240"
                                         step="0.01"
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
                                     onClick={() => setSelectedBatchForComplete(null)}
-                                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-slate-800"
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-extrabold transition-all border border-teal-500 shadow-lg"
+                                    className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                                 >
                                     Guardar & Cerrar
                                 </button>
