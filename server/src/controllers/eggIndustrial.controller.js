@@ -1303,6 +1303,906 @@ const registerReturnableMovement = async (req, res) => {
     }
 };
 
+// =========================================================================
+// 19. CALENDARIO DE PRODUCCIÓN INTELIGENTE, ROLES DE PLANTA Y SUGERENCIAS
+// =========================================================================
+
+// 19.1 Listar producciones programadas
+const getScheduledProductions = async (req, res) => {
+    try {
+        const { start_date, end_date, status, product_profile } = req.query;
+        let sql = `
+            SELECT p.*, b.batch_code_display, b.status as batch_status, b.started_at as batch_started_at, b.completed_at as batch_completed_at
+            FROM egg_scheduled_productions p
+            LEFT JOIN egg_production_batches b ON p.batch_id = b.id
+            WHERE p.company_id = ?
+        `;
+        const params = [req.company_id];
+
+        if (start_date) {
+            sql += ' AND p.production_date >= ?';
+            params.push(start_date);
+        }
+        if (end_date) {
+            sql += ' AND p.production_date <= ?';
+            params.push(end_date);
+        }
+        if (status) {
+            sql += ' AND p.status = ?';
+            params.push(status);
+        }
+        if (product_profile) {
+            sql += ' AND p.product_profile = ?';
+            params.push(product_profile);
+        }
+
+        sql += ' ORDER BY p.production_date ASC, p.start_time ASC';
+        const [productions] = await pool.query(sql, params);
+
+        // Adjuntar tareas asignadas a cada producción
+        for (const prod of productions) {
+            const [tasks] = await pool.query(
+                `SELECT t.*, u.username, u.nombre as user_full_name
+                 FROM egg_scheduled_tasks t
+                 LEFT JOIN users u ON t.user_id = u.id
+                 WHERE t.scheduled_production_id = ?
+                 ORDER BY t.id ASC`,
+                [prod.id]
+            );
+            prod.tasks = tasks;
+
+            // Parsear mix_formula_json si viene como string
+            if (typeof prod.mix_formula_json === 'string') {
+                try {
+                    prod.mix_formula_json = JSON.parse(prod.mix_formula_json);
+                } catch (e) {
+                    prod.mix_formula_json = {};
+                }
+            }
+        }
+
+        res.json(productions);
+    } catch (error) {
+        console.error('Error al listar producciones programadas:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.2 Crear producción programada con tareas
+const createScheduledProduction = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const {
+            production_date,
+            start_time,
+            end_time,
+            lot_code,
+            product_profile,
+            presentation,
+            target_quantity_lbs,
+            target_solids_pct,
+            status,
+            priority,
+            mix_formula_json,
+            assigned_operator_id,
+            assigned_operator_name,
+            suggestion_source,
+            notes,
+            tasks
+        } = req.body;
+
+        const company_id = req.company_id;
+        const branch_id = req.body.branch_id || null;
+
+        // Generar lote correlativo automático si no viene
+        let finalLotCode = lot_code;
+        if (!finalLotCode || finalLotCode.trim() === '') {
+            const dateStr = (production_date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+            const [countRows] = await connection.query(
+                'SELECT COUNT(*) as cnt FROM egg_scheduled_productions WHERE company_id = ? AND production_date = ?',
+                [company_id, production_date]
+            );
+            const nextNum = String((countRows[0]?.cnt || 0) + 1).padStart(2, '0');
+            finalLotCode = `LOTE-${dateStr}-${nextNum}`;
+        }
+
+        const [result] = await connection.query(
+            `INSERT INTO egg_scheduled_productions (
+                company_id, branch_id, production_date, start_time, end_time,
+                lot_code, product_profile, presentation, target_quantity_lbs,
+                target_solids_pct, status, priority, mix_formula_json,
+                assigned_operator_id, assigned_operator_name, suggestion_source,
+                notes, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                company_id,
+                branch_id,
+                production_date,
+                start_time || '06:00:00',
+                end_time || '14:00:00',
+                finalLotCode,
+                product_profile || 'Huevo Entero Pasteurizado',
+                presentation || 'cubeta 30LB',
+                parseFloat(target_quantity_lbs) || 12000.00,
+                parseFloat(target_solids_pct) || 21.50,
+                status || 'programado',
+                priority || 'media',
+                JSON.stringify(mix_formula_json || {}),
+                assigned_operator_id || null,
+                assigned_operator_name || null,
+                suggestion_source || 'manual',
+                notes || null,
+                req.user?.nombre || req.user?.username || 'Sistema'
+            ]
+        );
+
+        const scheduledId = result.insertId;
+
+        // Guardar tareas y asignación de roles de fábrica
+        if (Array.isArray(tasks) && tasks.length > 0) {
+            for (const task of tasks) {
+                if (task.task_description && task.task_description.trim() !== '') {
+                    await connection.query(
+                        `INSERT INTO egg_scheduled_tasks (
+                            company_id, scheduled_production_id, user_id, user_name,
+                            factory_role, task_description, checklist_status, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            company_id,
+                            scheduledId,
+                            task.user_id || null,
+                            task.user_name || 'Operario de Planta',
+                            task.factory_role || 'General',
+                            task.task_description,
+                            task.checklist_status || 'pendiente',
+                            task.notes || null
+                        ]
+                    );
+                }
+            }
+        }
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'calendar.created', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Producción programada ${finalLotCode} (${product_profile}) para el día ${production_date}.`,
+                JSON.stringify({ scheduled_id: scheduledId, lot_code: finalLotCode, production_date }),
+                req.user?.nombre || 'Planificador'
+            ]
+        );
+
+        await connection.commit();
+        res.status(201).json({ id: scheduledId, lot_code: finalLotCode, message: 'Producción programada exitosamente.' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error al crear producción programada:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+// 19.3 Actualizar producción programada
+const updateScheduledProduction = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const {
+            production_date,
+            start_time,
+            end_time,
+            lot_code,
+            product_profile,
+            presentation,
+            target_quantity_lbs,
+            target_solids_pct,
+            status,
+            priority,
+            mix_formula_json,
+            assigned_operator_id,
+            assigned_operator_name,
+            notes,
+            tasks
+        } = req.body;
+
+        await connection.query(
+            `UPDATE egg_scheduled_productions SET
+                production_date = ?, start_time = ?, end_time = ?, lot_code = ?,
+                product_profile = ?, presentation = ?, target_quantity_lbs = ?,
+                target_solids_pct = ?, status = ?, priority = ?,
+                mix_formula_json = ?, assigned_operator_id = ?,
+                assigned_operator_name = ?, notes = ?
+             WHERE id = ? AND company_id = ?`,
+            [
+                production_date,
+                start_time || '06:00:00',
+                end_time || '14:00:00',
+                lot_code,
+                product_profile,
+                presentation,
+                parseFloat(target_quantity_lbs) || 12000.00,
+                parseFloat(target_solids_pct) || 21.50,
+                status || 'programado',
+                priority || 'media',
+                JSON.stringify(mix_formula_json || {}),
+                assigned_operator_id || null,
+                assigned_operator_name || null,
+                notes || null,
+                id,
+                company_id
+            ]
+        );
+
+        // Sincronizar tareas si se proporcionaron
+        if (Array.isArray(tasks)) {
+            await connection.query(
+                'DELETE FROM egg_scheduled_tasks WHERE scheduled_production_id = ? AND company_id = ?',
+                [id, company_id]
+            );
+
+            for (const task of tasks) {
+                if (task.task_description && task.task_description.trim() !== '') {
+                    await connection.query(
+                        `INSERT INTO egg_scheduled_tasks (
+                            company_id, scheduled_production_id, user_id, user_name,
+                            factory_role, task_description, checklist_status, completed_at, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            company_id,
+                            id,
+                            task.user_id || null,
+                            task.user_name || 'Operario de Planta',
+                            task.factory_role || 'General',
+                            task.task_description,
+                            task.checklist_status || 'pendiente',
+                            task.checklist_status === 'completado' ? (task.completed_at || new Date()) : null,
+                            task.notes || null
+                        ]
+                    );
+                }
+            }
+        }
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'calendar.updated', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Producción programada #${id} (${lot_code}) actualizada para fecha ${production_date}.`,
+                JSON.stringify({ scheduled_id: id, lot_code, production_date }),
+                req.user?.nombre || 'Planificador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({ message: 'Producción actualizada correctamente.' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error al actualizar producción programada:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+// 19.4 Mover producción (Drag & Drop)
+const moveScheduledProduction = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { production_date, start_time, end_time } = req.body;
+        const company_id = req.company_id;
+
+        if (!production_date) {
+            return res.status(400).json({ message: 'La nueva fecha es obligatoria.' });
+        }
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Producción programada no encontrada.' });
+        }
+
+        let updateSql = 'UPDATE egg_scheduled_productions SET production_date = ?';
+        let params = [production_date];
+
+        if (start_time) {
+            updateSql += ', start_time = ?';
+            params.push(start_time);
+        }
+        if (end_time) {
+            updateSql += ', end_time = ?';
+            params.push(end_time);
+        }
+
+        updateSql += ' WHERE id = ? AND company_id = ?';
+        params.push(id, company_id);
+
+        await pool.query(updateSql, params);
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'calendar.moved', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Producción ${existing[0].lot_code} movida de ${existing[0].production_date} a ${production_date}.`,
+                JSON.stringify({ id, lot_code: existing[0].lot_code, old_date: existing[0].production_date, new_date: production_date }),
+                req.user?.nombre || 'Planificador'
+            ]
+        );
+
+        res.json({ id, lot_code: existing[0].lot_code, production_date, message: 'Producción reprogramada exitosamente.' });
+    } catch (error) {
+        console.error('Error al mover producción en calendario:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.5 Eliminar producción programada
+const deleteScheduledProduction = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Producción no encontrada.' });
+        }
+
+        if (existing[0].status === 'en_proceso' || existing[0].status === 'completado') {
+            return res.status(400).json({
+                message: `No se puede eliminar una producción en estado "${existing[0].status}". Si ya se inició en planta, cancélela o márquela adecuadamente.`
+            });
+        }
+
+        await pool.query(
+            'DELETE FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'calendar.deleted', 'warning', ?, ?, ?)`,
+            [
+                company_id,
+                `Producción programada ${existing[0].lot_code} para ${existing[0].production_date} eliminada.`,
+                JSON.stringify({ id, lot_code: existing[0].lot_code }),
+                req.user?.nombre || 'Planificador'
+            ]
+        );
+
+        res.json({ message: 'Producción programada eliminada correctamente.' });
+    } catch (error) {
+        console.error('Error al eliminar producción:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.6 Iniciar lote real en planta desde la producción programada
+const startBatchFromSchedule = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [schedRows] = await connection.query(
+            'SELECT * FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+
+        if (schedRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Producción programada no encontrada.' });
+        }
+
+        const sched = schedRows[0];
+
+        // Mapear product_profile a product_type oficial
+        let mappedType = 'huevo entero';
+        const profLower = (sched.product_profile || '').toLowerCase();
+        if (profLower.includes('clara')) mappedType = 'clara';
+        else if (profLower.includes('yema')) mappedType = 'yema';
+        else if (profLower.includes('plus')) mappedType = 'huevo entero plus';
+        else if (profLower.includes('leche')) mappedType = 'huevo con leche';
+        else if (profLower.includes('separaci') || profLower.includes('formulado')) mappedType = 'huevo formulado';
+
+        const batch_uuid = require('crypto').randomUUID();
+
+        // Insertar en egg_production_batches
+        const [batchResult] = await connection.query(
+            `INSERT INTO egg_production_batches (
+                company_id, branch_id, batch_uuid, batch_code_display, product_type,
+                presentation, ingredients_json, status, input_weight_lbs,
+                target_solids_pct, operator_name, started_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, NOW())`,
+            [
+                company_id,
+                sched.branch_id || 1,
+                batch_uuid,
+                sched.lot_code,
+                mappedType,
+                sched.presentation || 'cubeta 30LB',
+                sched.mix_formula_json ? JSON.stringify(sched.mix_formula_json) : JSON.stringify({}),
+                parseFloat(sched.target_quantity_lbs) || 12000.00,
+                parseFloat(sched.target_solids_pct) || 21.50,
+                sched.assigned_operator_name || req.user?.nombre || 'Operador de Planta'
+            ]
+        );
+
+        const newBatchId = batchResult.insertId;
+
+        // Actualizar egg_scheduled_productions
+        await connection.query(
+            'UPDATE egg_scheduled_productions SET batch_id = ?, status = "en_proceso" WHERE id = ? AND company_id = ?',
+            [newBatchId, id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'batch.started_from_calendar', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Lote de producción ${sched.lot_code} iniciado en planta desde el calendario (Batch #${newBatchId}).`,
+                JSON.stringify({ scheduled_id: id, batch_id: newBatchId, lot_code: sched.lot_code }),
+                req.user?.nombre || 'Supervisor'
+            ]
+        );
+
+        await connection.commit();
+        res.json({
+            message: `Lote ${sched.lot_code} iniciado con éxito en planta.`,
+            batch_id: newBatchId,
+            batch_uuid,
+            scheduled_id: id
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error al iniciar lote desde calendario:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+// 19.7 Alternar estado de tarea del checklist de preparación
+const toggleTaskStatus = async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const company_id = req.company_id;
+
+        const [taskRows] = await pool.query(
+            'SELECT * FROM egg_scheduled_tasks WHERE id = ? AND company_id = ?',
+            [taskId, company_id]
+        );
+
+        if (taskRows.length === 0) {
+            return res.status(404).json({ message: 'Tarea no encontrada.' });
+        }
+
+        const currentStatus = taskRows[0].checklist_status;
+        let nextStatus = 'en_progreso';
+        let completedAt = null;
+
+        if (currentStatus === 'pendiente') {
+            nextStatus = 'completado';
+            completedAt = new Date();
+        } else if (currentStatus === 'completado') {
+            nextStatus = 'pendiente';
+            completedAt = null;
+        } else {
+            nextStatus = 'completado';
+            completedAt = new Date();
+        }
+
+        await pool.query(
+            'UPDATE egg_scheduled_tasks SET checklist_status = ?, completed_at = ? WHERE id = ? AND company_id = ?',
+            [nextStatus, completedAt, taskId, company_id]
+        );
+
+        res.json({ id: taskId, checklist_status: nextStatus, completed_at: completedAt });
+    } catch (error) {
+        console.error('Error al alternar tarea:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.8 Motor de Sugerencias Inteligentes de Producción
+const getProductionSuggestions = async (req, res) => {
+    try {
+        const company_id = req.company_id;
+
+        // 1. Obtener pedidos pendientes
+        const [orders] = await pool.query(
+            `SELECT * FROM egg_customer_orders
+             WHERE company_id = ? AND status IN ('pendiente', 'programado')
+             ORDER BY required_delivery_date ASC`,
+            [company_id]
+        );
+
+        // 2. Obtener acuerdos comerciales activos
+        const [agreements] = await pool.query(
+            `SELECT * FROM egg_costing_customer_agreements
+             WHERE company_id = ? AND status = 'activo'`,
+            [company_id]
+        );
+
+        // 3. Stock actual de materia prima disponible
+        const [rmRows] = await pool.query(
+            `SELECT SUM(stock_lbs) as total_stock_lbs, SUM(total_boxes) as total_boxes
+             FROM egg_raw_materials
+             WHERE company_id = ? AND status = 'aprobado' AND stock_lbs > 0`,
+            [company_id]
+        );
+        const availableStockLbs = parseFloat(rmRows[0]?.total_stock_lbs || 0);
+
+        // 4. Histórico de ventas de los últimos 6 meses (ventas de productos de huevo)
+        const [salesHistory] = await pool.query(
+            `SELECT p.nombre as product_name, SUM(si.cantidad) as total_lbs, COUNT(DISTINCT sh.id) as trans_count
+             FROM sales_items si
+             JOIN sales_headers sh ON si.sale_id = sh.id
+             JOIN products p ON si.product_id = p.id
+             WHERE sh.company_id = ? AND sh.estado != 'ANULADO'
+               AND sh.fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+               AND (p.nombre LIKE '%huevo%' OR p.nombre LIKE '%clara%' OR p.nombre LIKE '%yema%')
+             GROUP BY p.nombre
+             ORDER BY total_lbs DESC`,
+            [company_id]
+        );
+
+        // Agregación de demanda por categoría
+        let demandClara = 0;
+        let demandYema = 0;
+        let demandEntero = 0;
+        let demandFormulado = 0;
+
+        orders.forEach(o => {
+            const qty = parseFloat(o.quantity_lbs || 0);
+            const pType = (o.product_type || '').toLowerCase();
+            if (pType.includes('clara')) demandClara += qty;
+            else if (pType.includes('yema')) demandYema += qty;
+            else if (pType.includes('formulado') || pType.includes('separaci')) demandFormulado += qty;
+            else demandEntero += qty;
+        });
+
+        // Sumar demanda prorrateada semanal de los acuerdos comerciales
+        agreements.forEach(a => {
+            const weeklyVol = (parseFloat(a.monthly_volume_lbs || 0)) / 4.2;
+            const pType = (a.product_type || '').toLowerCase();
+            if (pType.includes('clara')) demandClara += weeklyVol;
+            else if (pType.includes('yema')) demandYema += weeklyVol;
+            else if (pType.includes('formulado') || pType.includes('separaci')) demandFormulado += weeklyVol;
+            else demandEntero += weeklyVol;
+        });
+
+        // Si no hay pedidos cargados aún, proveer una base de simulación realista basada en históricos o estándares de planta
+        const isSimulation = (demandClara + demandYema + demandEntero + demandFormulado) === 0;
+        if (isSimulation) {
+            demandClara = 5400; // Pedido de Clara típico (PriceSmart / repostería)
+            demandYema = 0;    // Cero pedidos de yema pura
+            demandEntero = 12000;
+            demandFormulado = 6000;
+        }
+
+        const suggestions = [];
+
+        // -------------------------------------------------------------------------------------
+        // SUGERENCIA 1: BALANCE Y ARBITRAJE DE COPRODUCTO (CLARA -> EXCEDENTE DE YEMA CON H2O)
+        // -------------------------------------------------------------------------------------
+        // Quebrado rinde ~53.95% de Clara y ~30.8% de Yema (con 15.25% de cáscara y merma)
+        if (demandClara > 0) {
+            const rawLiquidNeededForClara = demandClara / 0.5395;
+            const coproductYolkGenerated = rawLiquidNeededForClara * 0.308;
+            const surplusYolk = Math.max(0, coproductYolkGenerated - demandYema);
+
+            if (surplusYolk > 200) {
+                // Reformulación: Yema pura (50% sólidos) rebajada con H2O purificada a 22.5% de sólidos
+                // Ratio: 1 lb de yema + 1.22 lbs H2O -> 2.22 lbs de Huevo Formulado
+                const waterAddedLbs = surplusYolk * 1.22;
+                const formulatedYieldLbs = surplusYolk + waterAddedLbs;
+                const citricAcidLbs = (formulatedYieldLbs * 0.0015).toFixed(2); // 0.15% estabilizador
+                const boxesSaved = Math.round(formulatedYieldLbs / 36.1); // ~36.1 lbs líquido útil por caja
+                const moneySaved = boxesSaved * 38.00; // Ahorro neto en cajas de materia prima
+
+                // Fecha sugerida: próximo martes o jueves a las 06:00
+                const nextDate = new Date();
+                nextDate.setDate(nextDate.getDate() + ((2 + 7 - nextDate.getDay()) % 7 || 7));
+                const recDateStr = nextDate.toISOString().split('T')[0];
+
+                suggestions.push({
+                    id: 'sug-coproduct-yolk-h2o',
+                    type: 'coproduct_arbitrage',
+                    priority: 'alta',
+                    title: 'Arbitraje de Coproducto: Reutilización de Yema con H2O Purificada',
+                    badge: 'Ahorro Máximo & Margen Alto',
+                    color: 'emerald',
+                    summary: `Detectada demanda de ${Math.round(demandClara).toLocaleString()} Lbs de Clara con solo ${Math.round(demandYema).toLocaleString()} Lbs de Yema requerida. El quebrado generará un excedente de ${Math.round(surplusYolk).toLocaleString()} Lbs de yema pura (50% sólidos). En lugar de congelarla y saturar cuartos fríos, se recomienda reincorporarla con ${Math.round(waterAddedLbs).toLocaleString()} Lbs de H2O purificada y ácido cítrico para formular ${Math.round(formulatedYieldLbs).toLocaleString()} Lbs de Huevo Entero Formulado estandarizado al 22.5% de sólidos.`,
+                    economic_impact: {
+                        boxes_saved: boxesSaved,
+                        cost_savings_usd: moneySaved,
+                        cost_per_lb_formulated: '$0.36 - $0.42 / Lb',
+                        roi_note: `Ahorra $${moneySaved.toLocaleString()} al evitar comprar ${boxesSaved} cajas de huevo cáscara adicionales.`
+                    },
+                    suggested_production: {
+                        production_date: recDateStr,
+                        start_time: '06:00:00',
+                        end_time: '14:30:00',
+                        lot_code: `LOTE-${recDateStr.replace(/-/g, '')}-01`,
+                        product_profile: 'Huevo Formulado por Separación',
+                        presentation: 'cubeta 30LB',
+                        target_quantity_lbs: Math.round(formulatedYieldLbs),
+                        target_solids_pct: 22.50,
+                        priority: 'alta',
+                        suggestion_source: 'ai_balance_coproductos',
+                        mix_formula_json: {
+                            raw_egg_boxes: Math.round(rawLiquidNeededForClara / 36.1),
+                            raw_liquid_lbs: Math.round(rawLiquidNeededForClara),
+                            clara_separated_pct: 100,
+                            clara_produced_lbs: Math.round(demandClara),
+                            yema_coproduct_lbs: Math.round(coproductYolkGenerated),
+                            yema_reutilized_lbs: Math.round(surplusYolk),
+                            water_h2o_lbs: Math.round(waterAddedLbs),
+                            water_bottles: Math.ceil(waterAddedLbs / 41.8), // ~41.8 lbs por garrafa de 5 galones
+                            citric_acid_lbs: citricAcidLbs,
+                            target_solids_pct: 22.5,
+                            notes: `Batch combinado: 1) Separar ${Math.round(demandClara).toLocaleString()} Lbs de clara para pedidos PriceSmart/repostería. 2) Reincorporar ${Math.round(surplusYolk).toLocaleString()} Lbs de yema coproducto con ${Math.round(waterAddedLbs).toLocaleString()} Lbs de H2O y ${citricAcidLbs} Lbs de ácido cítrico para envasar Huevo Formulado.`
+                        },
+                        tasks: [
+                            { factory_role: 'Quebrado y Carga', task_description: `Almacenar y quebrar ${Math.round(rawLiquidNeededForClara / 36.1)} cajas de huevo blanco para alimentar separadora centrífuga.` },
+                            { factory_role: 'Sanitización CIP', task_description: 'Ejecutar CIP ácido/alcalino de 45 min en pasteurizador y tanque de mezcla antes de las 05:30 AM.' },
+                            { factory_role: 'Dosificación H2O / Mezcla', task_description: `Medir y dosificar ${Math.round(waterAddedLbs).toLocaleString()} Lbs de H2O desmineralizada con ${citricAcidLbs} Lbs de ácido cítrico grado alimentario.` },
+                            { factory_role: 'Control de Calidad LAB-004', task_description: 'Verificar refractómetro: Sólidos totales 22.5% ± 0.5% Brix y pH 6.8 antes de autorizar pasteurización.' },
+                            { factory_role: 'Pasteurización HACCP', task_description: 'Pasteurizar a 64.5°C por 210 segundos, monitoreando CCP-1 y flujo de 12.5 GPM.' },
+                            { factory_role: 'Empaque y Cuarto Frío', task_description: `Preparar ${Math.ceil(formulatedYieldLbs / 30)} cubetas de 30 Lb sanitizadas y ${Math.ceil(demandClara / 30)} cubetas para clara.` }
+                        ]
+                    }
+                });
+            }
+        }
+
+        // -------------------------------------------------------------------------------------
+        // SUGERENCIA 2: OPTIMIZACIÓN DE SECUENCIA DE LAVADOS CIP EN PLANTA
+        // -------------------------------------------------------------------------------------
+        const nextWed = new Date();
+        nextWed.setDate(nextWed.getDate() + ((3 + 7 - nextWed.getDay()) % 7 || 7));
+        const wedStr = nextWed.toISOString().split('T')[0];
+
+        suggestions.push({
+            id: 'sug-cip-sequencing',
+            type: 'cip_optimization',
+            priority: 'media',
+            title: 'Secuenciación CIP: Lote Puro Primero, Formulado/Aditivado al Final',
+            badge: 'Eficiencia Térmica & Químicos',
+            color: 'indigo',
+            summary: 'Al correr Huevo Entero Pasteurizado Puro en el primer turno y Huevo con Leche / Yema Azucarada en el segundo turno, se evita un lavado químico CIP intermedio profundo. Se ahorran 2 horas de paro de planta y $180 en ácido peracético y soda cáustica.',
+            economic_impact: {
+                hours_saved: 2.5,
+                cost_savings_usd: 180.00,
+                efficiency: 'Reducción de consumo de agua y vapor en caldera'
+            },
+            suggested_production: {
+                production_date: wedStr,
+                start_time: '06:00:00',
+                end_time: '13:00:00',
+                lot_code: `LOTE-${wedStr.replace(/-/g, '')}-01`,
+                product_profile: 'Huevo Entero Pasteurizado',
+                presentation: 'cubeta 30LB',
+                target_quantity_lbs: 12000,
+                target_solids_pct: 23.50,
+                priority: 'media',
+                suggestion_source: 'ai_optimizador_pedidos',
+                mix_formula_json: {
+                    raw_egg_boxes: 332,
+                    raw_liquid_lbs: 12000,
+                    clara_separated_pct: 0,
+                    clara_produced_lbs: 0,
+                    yema_coproduct_lbs: 0,
+                    water_h2o_lbs: 0,
+                    notes: 'Corrida pura sin aditivos. Al finalizar, limpiar línea con enjuague rápido y pasar al lote con azúcar/leche sin desmontaje completo.'
+                },
+                tasks: [
+                    { factory_role: 'Sanitización CIP', task_description: 'Verificar que el pasteurizador tenga CIP activo de la noche anterior (temperatura 78°C validada).' },
+                    { factory_role: 'Quebrado y Carga', task_description: 'Alinear 332 cajas de huevo cáscara lote Aprobado en cámara de quebrado.' },
+                    { factory_role: 'Pasteurización HACCP', task_description: 'Mantener régimen estándar de 64.5°C por 210s.' }
+                ]
+            }
+        });
+
+        // -------------------------------------------------------------------------------------
+        // SUGERENCIA 3: ATENCIÓN DE PEDIDOS PENDIENTES CON FECHA CRÍTICA
+        // -------------------------------------------------------------------------------------
+        const pendingCriticalOrders = orders.filter(o => o.status === 'pendiente');
+        if (pendingCriticalOrders.length > 0) {
+            const firstOrder = pendingCriticalOrders[0];
+            const orderDateStr = firstOrder.required_delivery_date ? new Date(firstOrder.required_delivery_date).toISOString().split('T')[0] : wedStr;
+            const targetLbs = Math.max(3000, Math.ceil(parseFloat(firstOrder.quantity_lbs || 0)));
+
+            suggestions.push({
+                id: 'sug-critical-order',
+                type: 'order_fulfillment',
+                priority: 'urgente',
+                title: `Cumplimiento de Pedido: ${firstOrder.customer_name}`,
+                badge: 'Fecha de Entrega Crítica',
+                color: 'amber',
+                summary: `El cliente ${firstOrder.customer_name} requiere ${parseFloat(firstOrder.quantity_lbs).toLocaleString()} Lbs de ${firstOrder.product_type} para el ${orderDateStr}. Se recomienda programar la producción al menos 24 horas antes para permitir liberación de laboratorio LAB-004 (sólidos y coliformes).`,
+                economic_impact: {
+                    order_value_usd: (parseFloat(firstOrder.quantity_lbs || 0) * parseFloat(firstOrder.price_per_lb || 1.15)),
+                    customer: firstOrder.customer_name,
+                    delivery_deadline: orderDateStr
+                },
+                suggested_production: {
+                    production_date: orderDateStr,
+                    start_time: '05:30:00',
+                    end_time: '12:00:00',
+                    lot_code: `LOTE-${orderDateStr.replace(/-/g, '')}-ORD01`,
+                    product_profile: firstOrder.product_type,
+                    presentation: firstOrder.presentation || 'cubeta 30LB',
+                    target_quantity_lbs: targetLbs,
+                    target_solids_pct: 22.00,
+                    priority: 'urgente',
+                    suggestion_source: 'ai_optimizador_pedidos',
+                    mix_formula_json: {
+                        order_id: firstOrder.id,
+                        customer_name: firstOrder.customer_name,
+                        target_lbs: targetLbs,
+                        notes: `Producción exclusiva para despacho orden #${firstOrder.order_number || firstOrder.id} - ${firstOrder.customer_name}`
+                    },
+                    tasks: [
+                        { factory_role: 'Control de Calidad LAB-004', task_description: `Toma de muestra aséptica de 250ml para liberación rápida LAB-004 a ${firstOrder.customer_name}.` },
+                        { factory_role: 'Empaque y Cuarto Frío', task_description: `Etiquetado especial con código de cliente y traslado inmediato a zona HOLDING.` }
+                    ]
+                }
+            });
+        }
+
+        res.json({
+            kpis: {
+                demand_clara_lbs: Math.round(demandClara),
+                demand_yema_lbs: Math.round(demandYema),
+                demand_entero_lbs: Math.round(demandEntero),
+                demand_formulado_lbs: Math.round(demandFormulado),
+                available_stock_lbs: availableStockLbs,
+                pending_orders_count: orders.length,
+                active_agreements_count: agreements.length,
+                is_simulation_active: isSimulation
+            },
+            suggestions
+        });
+    } catch (error) {
+        console.error('Error al generar sugerencias de producción:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.9 Gestión de Pedidos de Clientes (Ovoproductos)
+const getEggCustomerOrders = async (req, res) => {
+    try {
+        const { status } = req.query;
+        let sql = 'SELECT * FROM egg_customer_orders WHERE company_id = ?';
+        const params = [req.company_id];
+
+        if (status) {
+            sql += ' AND status = ?';
+            params.push(status);
+        }
+
+        sql += ' ORDER BY required_delivery_date ASC, created_at DESC';
+        const [orders] = await pool.query(sql, params);
+        res.json(orders);
+    } catch (error) {
+        console.error('Error al listar pedidos de ovoproductos:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const saveEggCustomerOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            customer_id,
+            customer_name,
+            order_number,
+            product_type,
+            presentation,
+            quantity_lbs,
+            required_delivery_date,
+            status,
+            price_per_lb,
+            notes
+        } = req.body;
+
+        const company_id = req.company_id;
+
+        if (!customer_name || !product_type || !quantity_lbs || !required_delivery_date) {
+            return res.status(400).json({ message: 'Cliente, Producto, Cantidad (Lbs) y Fecha requerida son obligatorios.' });
+        }
+
+        if (id) {
+            await pool.query(
+                `UPDATE egg_customer_orders SET
+                    customer_id = ?, customer_name = ?, order_number = ?, product_type = ?,
+                    presentation = ?, quantity_lbs = ?, required_delivery_date = ?,
+                    status = ?, price_per_lb = ?, notes = ?
+                 WHERE id = ? AND company_id = ?`,
+                [
+                    customer_id || null, customer_name, order_number || null, product_type,
+                    presentation || 'cubeta 30LB', parseFloat(quantity_lbs) || 0,
+                    required_delivery_date, status || 'pendiente', parseFloat(price_per_lb) || 0,
+                    notes || null, id, company_id
+                ]
+            );
+            return res.json({ id, message: 'Pedido actualizado exitosamente.' });
+        } else {
+            const [result] = await pool.query(
+                `INSERT INTO egg_customer_orders (
+                    company_id, customer_id, customer_name, order_number, product_type,
+                    presentation, quantity_lbs, required_delivery_date, status, price_per_lb, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    company_id, customer_id || null, customer_name, order_number || null, product_type,
+                    presentation || 'cubeta 30LB', parseFloat(quantity_lbs) || 0,
+                    required_delivery_date, status || 'pendiente', parseFloat(price_per_lb) || 0,
+                    notes || null
+                ]
+            );
+            return res.status(201).json({ id: result.insertId, message: 'Pedido registrado exitosamente.' });
+        }
+    } catch (error) {
+        console.error('Error al guardar pedido de ovoproductos:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteEggCustomerOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        await pool.query(
+            'DELETE FROM egg_customer_orders WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+
+        res.json({ message: 'Pedido eliminado correctamente.' });
+    } catch (error) {
+        console.error('Error al eliminar pedido de ovoproductos:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.10 Usuarios de Fábrica para Asignación de Roles
+const getFactoryUsers = async (req, res) => {
+    try {
+        const company_id = req.company_id;
+        const [users] = await pool.query(
+            `SELECT u.id, u.username, u.nombre, r.name as role_name
+             FROM users u
+             INNER JOIN usuario_empresa ue ON u.id = ue.usuario_id
+             LEFT JOIN roles r ON ue.role_id = r.id
+             WHERE u.status = 'activo' AND ue.empresa_id = ?
+             ORDER BY u.nombre ASC`,
+            [company_id]
+        );
+        res.json(users);
+    } catch (error) {
+        console.error('Error al obtener usuarios de fábrica:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -1337,11 +2237,25 @@ module.exports = {
     getBatchVariableCosts,
     saveBatchVariableCost,
     deleteBatchVariableCost,
-    // Nuevas funciones
+    // Laboratorio y retornables
     getLabLogs,
     createLabLog,
     getSolidsCalculation,
     getReturnableBalances,
     saveReturnableCustomer,
-    registerReturnableMovement
+    registerReturnableMovement,
+    // Calendario de Producción, Roles y Sugerencias Inteligentes
+    getScheduledProductions,
+    createScheduledProduction,
+    updateScheduledProduction,
+    moveScheduledProduction,
+    deleteScheduledProduction,
+    startBatchFromSchedule,
+    toggleTaskStatus,
+    getProductionSuggestions,
+    getEggCustomerOrders,
+    saveEggCustomerOrder,
+    deleteEggCustomerOrder,
+    getFactoryUsers
 };
+

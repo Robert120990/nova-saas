@@ -21,7 +21,8 @@ import {
     Edit,
     UserPlus,
     Printer,
-    CheckCircle2
+    CheckCircle2,
+    Handshake
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -239,6 +240,91 @@ const SalesTerminal = () => {
         if (!selectedCustomerData?.id || !productId) return null;
         return customerDiscounts.find(d => d.product_id === productId && d.customer_id === selectedCustomerData.id);
     };
+
+    // Acuerdos de precios pactados con cliente (Multi-empresa: si no tiene acuerdos activos, continúa normal)
+    const { data: customerAgreements = [] } = useQuery({
+        queryKey: ['customer-agreements-sales', customerId],
+        queryFn: async () => {
+            const res = await axios.get(`/api/crm/customer-agreements/active-by-customer/${customerId}`);
+            return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        },
+        enabled: !!customerId,
+        staleTime: 60000
+    });
+
+    // Helper para verificar y obtener el precio pactado de un producto para el cliente actual
+    const getCustomerAgreedPrice = useCallback((itemData) => {
+        if (!customerId || !customerAgreements || customerAgreements.length === 0 || !itemData) {
+            return null;
+        }
+        const prodId = Number(itemData.id);
+        const prodName = (itemData.nombre || itemData.name || '').toUpperCase();
+        const prodCode = (itemData.codigo || itemData.barcode || '').toUpperCase();
+
+        // 1. Coincidencia directa por product_id vinculado
+        let agreement = customerAgreements.find(a => a.status === 'activo' && Number(a.product_id) === prodId);
+
+        // 2. Coincidencia por regla heurística (tipo de producto + presentación en nombre/código)
+        if (!agreement) {
+            agreement = customerAgreements.find(a => {
+                if (a.status !== 'activo') return false;
+                const typeMatches = (
+                    (a.product_type === 'Huevo Entero' && (prodName.includes('ENTERO') || prodCode.startsWith('HE'))) ||
+                    (a.product_type === 'Clara' && (prodName.includes('CLARA') || prodCode.startsWith('CL'))) ||
+                    (a.product_type === 'Yema' && (prodName.includes('YEMA') || prodCode.startsWith('YM')))
+                );
+                if (!typeMatches) return false;
+
+                const pres = (a.presentation || '').toUpperCase().replace(/\s+/g, '');
+                const normName = prodName.replace(/\s+/g, '');
+                const normCode = prodCode.replace(/\s+/g, '');
+                return normName.includes(pres) || normCode.includes(pres);
+            });
+        }
+
+        if (agreement) {
+            let unitPrice = parseFloat(agreement.agreed_unit_price);
+            if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
+                const priceLb = parseFloat(agreement.agreed_price_per_lb) || 0;
+                let weight = 1;
+                const presMatch = (agreement.presentation || '').match(/(\d+)/);
+                if (presMatch) weight = parseFloat(presMatch[1]);
+                unitPrice = priceLb * weight;
+            }
+            return {
+                agreementId: agreement.id,
+                agreedUnitPrice: unitPrice,
+                pricePerLb: parseFloat(agreement.agreed_price_per_lb),
+                presentation: agreement.presentation,
+                productType: agreement.product_type
+            };
+        }
+        return null;
+    }, [customerId, customerAgreements]);
+
+    // Recalcular ítems del carrito si se cambia o asigna cliente con acuerdos comerciales
+    useEffect(() => {
+        if (!customerId || !customerAgreements.length || !cart.length) return;
+        let anyUpdated = false;
+        const newCart = cart.map(item => {
+            if (item.isManual || item.combo_id || !item.id) return item;
+            const agreed = getCustomerAgreedPrice(item);
+            if (agreed && Math.abs(parseFloat(item.precio || 0) - agreed.agreedUnitPrice) > 0.0001) {
+                anyUpdated = true;
+                return {
+                    ...item,
+                    precio: agreed.agreedUnitPrice,
+                    isAgreedPrice: true,
+                    agreedPriceInfo: agreed
+                };
+            }
+            return item;
+        });
+        if (anyUpdated) {
+            setCart(newCart);
+            toast.info('Se actualizaron los precios del carrito según los acuerdos pactados con el cliente.');
+        }
+    }, [customerAgreements, customerId, getCustomerAgreedPrice]);
 
     // Product discount rules (independientes del cliente)
     const { data: productDiscountRules = [] } = useQuery({
@@ -1153,7 +1239,8 @@ const SalesTerminal = () => {
 
     const addToCart = (itemData, isCombo = false) => {
         const itemName = itemData.nombre || itemData.name;
-        let itemPrice = itemData.precio_unitario || itemData.price || 0;
+        const agreedPriceInfo = !isCombo ? getCustomerAgreedPrice(itemData) : null;
+        let itemPrice = agreedPriceInfo ? agreedPriceInfo.agreedUnitPrice : (itemData.precio_unitario || itemData.price || 0);
 
         // Combustible siempre va a su modal dedicado
         if (itemData.tipo_combustible > 0 && !isCombo) {
@@ -1171,9 +1258,14 @@ const SalesTerminal = () => {
             const prodData = isCombo
                 ? { ...itemData, nombre: itemData.name, precio_unitario: itemData.price, isCombo: true }
                 : itemData;
-            const discountRule = getCustomerDiscount(prodData.id);
-            const basePrice = prodData.precio_unitario || prodData.price || 0;
-            const finalPrice = discountRule ? calculateDiscountedPrice(basePrice, discountRule) : basePrice;
+            let finalPrice;
+            if (agreedPriceInfo) {
+                finalPrice = agreedPriceInfo.agreedUnitPrice;
+            } else {
+                const discountRule = getCustomerDiscount(prodData.id);
+                const basePrice = prodData.precio_unitario || prodData.price || 0;
+                finalPrice = discountRule ? calculateDiscountedPrice(basePrice, discountRule) : basePrice;
+            }
 
             setQuickProd(prodData);
             setQuickPrecio(tipoDte === '04' ? '0.00001' : finalPrice.toString());
@@ -1182,6 +1274,10 @@ const SalesTerminal = () => {
             quickAddFocusRef.current = true;
             setIsProductModalOpen(false);
             setProductSearch('');
+
+            if (agreedPriceInfo) {
+                toast.info(`Precio pactado aplicado: $${agreedPriceInfo.agreedUnitPrice.toFixed(2)}`);
+            }
 
             setTimeout(() => {
                 qtyInputRef.current?.focus();
@@ -1205,7 +1301,7 @@ const SalesTerminal = () => {
         if (existing) {
             setCart(cart.map(item => 
                 (isCombo ? item.combo_id === itemData.id : (item.id === itemData.id && !item.isManual && !item.combo_id))
-                ? { ...item, cantidad: item.cantidad + 1 } 
+                ? { ...item, cantidad: item.cantidad + 1, precio: itemPrice, isAgreedPrice: !!agreedPriceInfo || item.isAgreedPrice } 
                 : item
             ));
         } else {
@@ -1217,18 +1313,24 @@ const SalesTerminal = () => {
                 nombre: itemName,
                 codigo: itemData.codigo || itemData.barcode,
                 tipo_combustible: itemData.tipo_combustible || 0,
-                precio: itemData.precio_unitario || itemData.price,
+                precio: itemPrice,
                 cantidad: 1,
                 descuento: 0,
                 exento: false,
                 isManual: false,
                 referencedDoc: itemData.referencedDoc || null,
-                discountRule: productRule || null
+                discountRule: productRule || null,
+                isAgreedPrice: !!agreedPriceInfo,
+                agreedPriceInfo: agreedPriceInfo || null
             }]);
         }
         setIsProductModalOpen(false);
         setProductSearch('');
-        toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido: ${itemName}`);
+        if (agreedPriceInfo) {
+            toast.success(`${itemName} añadido con precio pactado: $${agreedPriceInfo.agreedUnitPrice.toFixed(2)}`);
+        } else {
+            toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido: ${itemName}`);
+        }
         // Devolver foco al buscador de código
         setTimeout(() => barcodeInputRef.current?.focus(), 100);
     };
@@ -1268,7 +1370,7 @@ const SalesTerminal = () => {
         }
     };
 
-    const autoAddScannedProduct = (product, isCombo = false, price = 0) => {
+    const autoAddScannedProduct = (product, isCombo = false, price = 0, isAgreed = false) => {
         let finalPrice = price;
 
         // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
@@ -1289,7 +1391,7 @@ const SalesTerminal = () => {
         if (existing) {
             setCart(cart.map(item => 
                 (isCombo ? item.combo_id === product.id : (item.id === product.id && !item.isManual && !item.combo_id))
-                ? { ...item, cantidad: item.cantidad + 1, precio: finalPrice } 
+                ? { ...item, cantidad: item.cantidad + 1, precio: finalPrice, isAgreedPrice: isAgreed || item.isAgreedPrice } 
                 : item
             ));
         } else {
@@ -1305,7 +1407,8 @@ const SalesTerminal = () => {
                 descuento: 0,
                 exento: false,
                 isManual: false,
-                discountRule: productRule || null
+                discountRule: productRule || null,
+                isAgreedPrice: isAgreed
             }]);
         }
 
@@ -1345,16 +1448,23 @@ const SalesTerminal = () => {
             return;
         }
 
-        const discountRule = getCustomerDiscount(product.id);
-        const finalPrice = calculateDiscountedPrice(product.precio_unitario || product.price || 0, discountRule);
-        if (discountRule) toast.info('Descuento de cliente aplicado');
+        const agreedPriceInfo = !isCombo ? getCustomerAgreedPrice(product) : null;
+        let finalPrice;
+        if (agreedPriceInfo) {
+            finalPrice = agreedPriceInfo.agreedUnitPrice;
+            toast.info(`Precio pactado aplicado: $${finalPrice.toFixed(2)}`);
+        } else {
+            const discountRule = getCustomerDiscount(product.id);
+            finalPrice = calculateDiscountedPrice(product.precio_unitario || product.price || 0, discountRule);
+            if (discountRule) toast.info('Descuento de cliente aplicado');
+        }
 
         if (autoAdd) {
-            autoAddScannedProduct(product, isCombo, finalPrice);
+            autoAddScannedProduct(product, isCombo, finalPrice, !!agreedPriceInfo);
         } else {
             setQuickProd(isCombo
                 ? { ...product, nombre: product.name, precio_unitario: product.price, isCombo: true }
-                : product);
+                : { ...product, isAgreedPrice: !!agreedPriceInfo, agreedPriceInfo });
             setQuickPrecio(finalPrice.toFixed(2));
             setQuickDesc(product.nombre || product.name);
             setQuickCant('1');
@@ -1427,6 +1537,8 @@ const SalesTerminal = () => {
         if (quickProd) {
             if (qty <= 0) return toast.error('Cantidad inválida');
             const isCombo = quickProd.isCombo === true;
+            const agreedPriceInfo = !isCombo ? getCustomerAgreedPrice(quickProd) : null;
+            const isAgreed = !!agreedPriceInfo || quickProd.isAgreedPrice === true;
             
             const existing = cart.find(item => 
                 isCombo ? (item.combo_id === quickProd.id) : (item.id === quickProd.id && !item.isManual && !item.combo_id)
@@ -1435,7 +1547,7 @@ const SalesTerminal = () => {
             if (existing) {
                 setCart(cart.map(item => 
                     (isCombo ? item.combo_id === quickProd.id : (item.id === quickProd.id && !item.isManual && !item.combo_id))
-                    ? { ...item, cantidad: item.cantidad + qty, precio: price } 
+                    ? { ...item, cantidad: item.cantidad + qty, precio: price, isAgreedPrice: isAgreed || item.isAgreedPrice } 
                     : item
                 ));
             } else {
@@ -1449,7 +1561,9 @@ const SalesTerminal = () => {
                     cantidad: qty,
                     descuento: 0,
                     exento: false,
-                    isManual: false
+                    isManual: false,
+                    isAgreedPrice: isAgreed,
+                    agreedPriceInfo: agreedPriceInfo || quickProd.agreedPriceInfo || null
                 }]);
             }
             toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido al carrito`);
@@ -1890,6 +2004,11 @@ const SalesTerminal = () => {
                                                 <Tag size={8} /> Especial
                                             </div>
                                         )}
+                                        {getCustomerAgreedPrice(quickProd) && (
+                                            <div className="absolute -bottom-4 right-0 flex items-center gap-1 text-[7px] font-black text-indigo-600 uppercase italic">
+                                                <Handshake size={8} /> Pactado
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div>
@@ -1924,7 +2043,15 @@ const SalesTerminal = () => {
                                             <tr key={item.id} className="group hover:bg-slate-50/50 transition-colors">
                                                 <td className="pl-6 py-4" data-label="Ítem">
                                                     <div className="font-bold text-slate-800 text-xs">{item.nombre}</div>
-                                                    <div className="text-[9px] font-mono text-indigo-400">{item.codigo}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[9px] font-mono text-indigo-400">{item.codigo}</span>
+                                                        {item.isAgreedPrice && (
+                                                            <span className="inline-flex items-center gap-1 text-[8px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full" title={`Precio pactado en acuerdo con cliente: $${parseFloat(item.precio || 0).toFixed(2)}`}>
+                                                                <Handshake size={9} className="text-indigo-600" />
+                                                                Pactado
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     {item.discountRule && !item.discountApplied && (
                                                         <button
                                                             onClick={() => applyDiscountRule(item.id)}
@@ -2324,16 +2451,35 @@ const SalesTerminal = () => {
                                 {/* Productos */}
                                 {isLoadingModalProducts ? (
                                     <div className="col-span-full py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                                ) : filteredProducts.map(p => (
-                                    <button key={p.id} onClick={() => addToCart(p)} className="flex items-center gap-3 p-3 rounded-2xl border border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all text-left group">
-                                        <div className="p-2 bg-white rounded-xl shadow-sm group-hover:text-indigo-500 group-hover:scale-110 transition-transform text-slate-400"><Package size={20} /></div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-slate-900 text-sm truncate leading-tight">{p.nombre}</div>
-                                            <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">{p.codigo}</div>
-                                            <div className="font-black mt-0.5 text-slate-700"><Money value={p.precio_unitario || 0} /></div>
-                                        </div>
-                                    </button>
-                                ))}
+                                ) : filteredProducts.map(p => {
+                                    const agreed = getCustomerAgreedPrice(p);
+                                    return (
+                                        <button key={p.id} onClick={() => addToCart(p)} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group ${agreed ? 'border-indigo-200 bg-indigo-50/20 hover:border-indigo-500 hover:bg-indigo-50/50' : 'border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40'}`}>
+                                            <div className={`p-2 bg-white rounded-xl shadow-sm transition-transform group-hover:scale-110 ${agreed ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-500'}`}><Package size={20} /></div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-slate-900 text-sm truncate leading-tight">{p.nombre}</span>
+                                                    {agreed && (
+                                                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-100/80 px-1.5 py-0.5 rounded-full shrink-0">
+                                                            <Handshake size={10} /> Pactado
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">{p.codigo}</div>
+                                                <div className="flex items-baseline gap-2 mt-0.5">
+                                                    {agreed ? (
+                                                        <>
+                                                            <span className="font-black text-indigo-700 text-sm"><Money value={agreed.agreedUnitPrice} /></span>
+                                                            <span className="text-[10px] text-slate-400 line-through"><Money value={p.precio_unitario || 0} /></span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="font-black text-slate-700"><Money value={p.precio_unitario || 0} /></span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                             {!isLoadingModalProducts && filteredProducts.length === 0 && filteredCombos.length === 0 && (
                                 <div className="text-center py-20 opacity-30">

@@ -106,4 +106,23 @@ router.get('/returnables/balances', eggController.getReturnableBalances);
 router.post('/returnables/customers', eggController.saveReturnableCustomer);
 router.post('/returnables/movements', eggController.registerReturnableMovement);
 
+// 19. Calendario de Producción y Roles de Planta
+router.get('/calendar', eggController.getScheduledProductions);
+router.post('/calendar', eggController.createScheduledProduction);
+router.put('/calendar/:id', eggController.updateScheduledProduction);
+router.patch('/calendar/:id/move', eggController.moveScheduledProduction);
+router.delete('/calendar/:id', eggController.deleteScheduledProduction);
+router.post('/calendar/:id/start-batch', eggController.startBatchFromSchedule);
+router.patch('/calendar/tasks/:taskId/toggle', eggController.toggleTaskStatus);
+router.get('/calendar/suggestions', eggController.getProductionSuggestions);
+
+// 20. Pedidos de Clientes de Ovoproductos
+router.get('/orders', eggController.getEggCustomerOrders);
+router.post('/orders', eggController.saveEggCustomerOrder);
+router.put('/orders/:id', eggController.saveEggCustomerOrder);
+router.delete('/orders/:id', eggController.deleteEggCustomerOrder);
+
+// 21. Usuarios de Planta para Roles
+router.get('/factory-users', eggController.getFactoryUsers);
+
 module.exports = router;

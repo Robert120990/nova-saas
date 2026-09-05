@@ -208,9 +208,11 @@ const getCustomerAgreements = async (req, res) => {
     try {
         await ensureSeedData(req.company_id);
         const [rows] = await pool.query(
-            `SELECT a.*, c.nombre as customer_registered_name, c.telefono, c.correo as email
+            `SELECT a.*, c.nombre as customer_registered_name, c.telefono, c.correo as email,
+                    p.nombre as catalog_product_name, p.codigo as product_code
              FROM egg_costing_customer_agreements a
              LEFT JOIN customers c ON a.customer_id = c.id
+             LEFT JOIN products p ON a.product_id = p.id
              WHERE a.company_id = ?
              ORDER BY a.agreed_price_per_lb DESC`,
             [req.company_id]
@@ -223,20 +225,37 @@ const getCustomerAgreements = async (req, res) => {
 
 const saveCustomerAgreement = async (req, res) => {
     try {
-        const { id, customer_id, customer_name, product_type, presentation, agreed_price_per_lb, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status } = req.body;
+        const { id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status } = req.body;
+        
+        const pricePerLb = parseFloat(agreed_price_per_lb) || 0;
+        let unitPrice = parseFloat(agreed_unit_price);
+        if (isNaN(unitPrice) || unitPrice <= 0) {
+            let lbs = 1;
+            const text = `${presentation || ''} ${product_type || ''}`.toLowerCase();
+            const m = text.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)/i);
+            if (m) {
+                lbs = parseFloat(m[1]) || 1;
+            } else if (text.includes('galón') || text.includes('galon')) {
+                lbs = 8;
+            } else if (text.includes('litro')) {
+                lbs = 2;
+            }
+            unitPrice = pricePerLb * lbs;
+        }
+
         if (id) {
             await pool.query(
                 `UPDATE egg_costing_customer_agreements 
-                 SET customer_id = ?, customer_name = ?, product_type = ?, presentation = ?, agreed_price_per_lb = ?, monthly_volume_lbs = ?, target_margin_pct = ?, freight_cost_per_lb = ?, payment_terms_days = ?, notes = ?, status = ?
+                 SET customer_id = ?, customer_name = ?, product_id = ?, product_type = ?, presentation = ?, agreed_price_per_lb = ?, agreed_unit_price = ?, monthly_volume_lbs = ?, target_margin_pct = ?, freight_cost_per_lb = ?, payment_terms_days = ?, notes = ?, status = ?
                  WHERE id = ? AND company_id = ?`,
-                [customer_id || null, customer_name, product_type, presentation || 'cubeta 30LB', agreed_price_per_lb, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, notes || null, status || 'activo', id, req.company_id]
+                [customer_id || null, customer_name, product_id || null, product_type, presentation || 'cubeta 30LB', pricePerLb, unitPrice, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, notes || null, status || 'activo', id, req.company_id]
             );
             res.json({ message: 'Acuerdo comercial actualizado.', id });
         } else {
             const [result] = await pool.query(
-                `INSERT INTO egg_costing_customer_agreements (company_id, customer_id, customer_name, product_type, presentation, agreed_price_per_lb, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.company_id, customer_id || null, customer_name, product_type, presentation || 'cubeta 30LB', agreed_price_per_lb, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, notes || null, status || 'activo']
+                `INSERT INTO egg_costing_customer_agreements (company_id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.company_id, customer_id || null, customer_name, product_id || null, product_type, presentation || 'cubeta 30LB', pricePerLb, unitPrice, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, notes || null, status || 'activo']
             );
             res.status(201).json({ message: 'Acuerdo comercial registrado.', id: result.insertId });
         }

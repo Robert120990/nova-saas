@@ -649,6 +649,29 @@ REGLAS DE MULTI-TENENCIA:
 - severity ENUM('info','warning','critical')
 - description TEXT, payload JSON, operator_name, created_at
 
+### egg_scheduled_productions (Calendario de Producciones Programadas)
+- id, company_id, branch_id, production_date DATE, start_time TIME, end_time TIME
+- lot_code VARCHAR(100), product_profile VARCHAR(100), presentation VARCHAR(100)
+- target_quantity_lbs DECIMAL(12,2), target_solids_pct DECIMAL(5,2)
+- status ENUM('programado','en_preparacion','en_proceso','completado','cancelado'), priority ENUM('baja','media','alta','urgente')
+- mix_formula_json JSON, assigned_operator_id INT, assigned_operator_name VARCHAR(150), batch_id INT
+- suggestion_source VARCHAR(100), notes TEXT, created_by, created_at, updated_at
+
+### egg_scheduled_tasks (Roles de Planta y Checklist de Preparación)
+- id, company_id, scheduled_production_id FK, user_id FK, user_name, factory_role, task_description
+- checklist_status ENUM('pendiente','en_progreso','completado'), completed_at DATETIME, notes TEXT, created_at, updated_at
+
+### egg_customer_orders (Pedidos de Clientes de Ovoproductos)
+- id, company_id, customer_id FK, customer_name, order_number, product_type, presentation, quantity_lbs, required_delivery_date
+- status ENUM('pendiente','programado','en_proceso','entregado','cancelado'), price_per_lb DECIMAL, notes TEXT, created_at, updated_at
+
+### egg_costing_customer_agreements (Acuerdos de Precios Pactados con Clientes - CRM)
+- id, company_id, customer_id FK, customer_name, product_id FK (products.id), product_type, presentation
+- agreed_price_per_lb DECIMAL(10,4), agreed_unit_price DECIMAL(10,4), status ENUM('activo','inactivo'), notes TEXT
+- payment_terms_days INT, target_margin_percent DECIMAL(5,2), estimated_weekly_lbs DECIMAL(10,2)
+- created_at, updated_at
+
+
 ---
 
 ## RELACIONES CLAVE PARA JOINs

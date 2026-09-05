@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -12,11 +13,13 @@ import {
     ClipboardList,
     Wrench,
     AlertOctagon,
-    Lock
+    Lock,
+    Calendar
 } from 'lucide-react';
 
 const EggProduction = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const companyId = user?.company_id || 1;
 
     // Lists
@@ -316,6 +319,13 @@ const EggProduction = () => {
                     </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => navigate('/industrial/calendario')}
+                        className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-indigo-200 shadow-sm"
+                    >
+                        <Calendar size={14} />
+                        Calendario de Producción
+                    </button>
                     <button
                         onClick={() => { setIsNewBatchModalOpen(true); setCipBlockedError(null); }}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"

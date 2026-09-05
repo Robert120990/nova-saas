@@ -63,6 +63,7 @@ const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinal
 const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.controller');
 const rhPlanillaController = require('../controllers/rhPlanilla.controller');
 const changelogController = require('../controllers/changelog.controller');
+const crmAgreementsController = require('../controllers/crmAgreements.controller');
 
 // Gas Station Controllers
 const gasDistributorController = require('../controllers/gasDistributor.controller');
@@ -553,6 +554,12 @@ router.use('/ai', aiRoutes);
 // Industrial Egg Processing Module
 const eggIndustrialRoutes = require('./eggIndustrial.routes');
 router.use('/egg-industrial', eggIndustrialRoutes);
+
+// CRM — Acuerdos Comerciales de Precios con Clientes
+router.get('/crm/customer-agreements', crmAgreementsController.getAgreements);
+router.get('/crm/customer-agreements/active-by-customer/:customerId', crmAgreementsController.getActiveAgreementsByCustomer);
+router.post('/crm/customer-agreements', crmAgreementsController.saveAgreement);
+router.delete('/crm/customer-agreements/:id', crmAgreementsController.deleteAgreement);
 
 // Gas Station - Distributors
 router.get('/gas-station/distributors', gasDistributorController.getDistributors);

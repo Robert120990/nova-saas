@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -14,10 +15,12 @@ import {
     Settings,
     ShieldAlert,
     Cpu,
-    ArrowRight
+    ArrowRight,
+    Calendar
 } from 'lucide-react';
 
 const EggDashboard = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const companyId = user?.company_id || 1;
 
@@ -149,11 +152,18 @@ const EggDashboard = () => {
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2 px-3.5 py-2 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold">
                         <span className={`h-2.5 w-2.5 rounded-full ${socketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                         <span className="text-slate-700">Telemetría: {socketConnected ? 'En Línea' : 'Desconectada'}</span>
                     </div>
+                    <button 
+                        onClick={() => navigate('/industrial/calendario')}
+                        className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2"
+                    >
+                        <Calendar size={14} />
+                        Calendario de Producción
+                    </button>
                     <button 
                         onClick={handleResetSimulation}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2"

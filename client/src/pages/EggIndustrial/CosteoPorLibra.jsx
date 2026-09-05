@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -23,11 +24,13 @@ import {
     Edit2,
     Trash2,
     ArrowDownRight,
-    Split
+    Split,
+    Handshake
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
 
 export default function EggCosteoPorLibra() {
+    const navigate = useNavigate();
     // Tab actual
     const [activeTab, setActiveTab] = useState('calculator'); // 'calculator', 'simulator', 'clients', 'catalog', 'history'
 
@@ -1518,13 +1521,23 @@ export default function EggCosteoPorLibra() {
                                 Compara precios pactados contra el costo actual de absorción para evaluar la rentabilidad de cada contrato.
                             </p>
                         </div>
-                        <button
-                            onClick={() => setAgreementModal({ open: true, data: {} })}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
-                        >
-                            <Plus className="w-4 h-4" />
-                            <span>Nuevo Acuerdo de Precio</span>
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/crm/acuerdos')}
+                                className="px-3.5 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-200 transition-all"
+                            >
+                                <Handshake className="w-4 h-4 text-indigo-600" />
+                                <span>Módulo CRM Acuerdos</span>
+                            </button>
+                            <button
+                                onClick={() => setAgreementModal({ open: true, data: {} })}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span>Nuevo Acuerdo de Precio</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

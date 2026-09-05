@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
 import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X } from 'lucide-react';
 import axios from 'axios';
@@ -35,6 +35,9 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const permissions = getPermissions();
     const isSuperAdmin = user?.role === 'SuperAdmin';
 
+    const location = useLocation();
+    const navigate = useNavigate();
+
     // Initialize groups as collapsed
     const [expandedGroups, setExpandedGroups] = useState({});
     const [expandedItems, setExpandedItems] = useState({});
@@ -45,6 +48,15 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
             ...prev,
             [groupId]: !prev[groupId]
         }));
+    };
+
+    const handleGroupClick = (group, children) => {
+        if (effectiveCollapsed) return;
+        toggleGroup(group.id);
+        if (children.length === 1 && children[0].path) {
+            navigate(children[0].path);
+            if (isMobileOpen && onCloseMobile) onCloseMobile();
+        }
     };
 
     const hasPermission = (item) => {
@@ -59,6 +71,19 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     });
 
     const { topLevelItems, menuConfig } = useMenuItems();
+
+    // Auto-expand group containing current route
+    useEffect(() => {
+        if (!menuConfig) return;
+        menuConfig.forEach(group => {
+            const hasActive = group.children?.some(child => 
+                child.path && (location.pathname === child.path || (child.path !== '/' && location.pathname.startsWith(child.path)))
+            );
+            if (hasActive) {
+                setExpandedGroups(prev => ({ ...prev, [group.id]: true }));
+            }
+        });
+    }, [location.pathname, menuConfig]);
 
     const [hoveredItem, setHoveredItem] = useState(null);
     const [hoveredPos, setHoveredPos] = useState({ top: 0, left: 0 });
@@ -270,7 +295,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                         <div key={group.id} className="mb-4">
                             {!effectiveCollapsed ? (
                                 <button
-                                    onClick={() => toggleGroup(group.id)}
+                                    onClick={() => handleGroupClick(group, children)}
                                     className="w-full px-4 py-2 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-widest flex items-center justify-between transition-colors group"
                                 >
                                     <div className="flex items-center gap-2">

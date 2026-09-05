@@ -156,6 +156,10 @@ import EggCostsMaintenance from './pages/EggIndustrial/CostsMaintenance';
 import EggCosteoPorLibra from './pages/EggIndustrial/CosteoPorLibra';
 import EggTraceability from './pages/EggIndustrial/Traceability';
 import EggConfig from './pages/EggIndustrial/Config';
+import EggProductionCalendar from './pages/EggIndustrial/ProductionCalendar';
+
+// CRM Pages
+import CustomerAgreements from './pages/CRM/CustomerAgreements';
 
 import Layout from './components/layout/Layout';
 
@@ -234,15 +238,7 @@ function App() {
                         <Route path="/iva/ventas-fac" element={<VatBookSalesConsumers />} />
                         <Route path="/iva/anexos-iva" element={<VatBookAnexosIVA />} />
                         
-                        {/* Procesamiento Industrial de Huevo */}
-                        <Route path="/industrial/planta" element={<EggDashboard />} />
-                        <Route path="/industrial/recepcion" element={<EggReception />} />
-                        <Route path="/industrial/produccion" element={<EggProduction />} />
-                        <Route path="/industrial/empaque" element={<EggPackaging />} />
-                        <Route path="/industrial/costos-mantenimiento" element={<EggCostsMaintenance />} />
-                        <Route path="/industrial/trazabilidad" element={<EggTraceability />} />
-                        <Route path="/industrial/configuracion" element={<EggConfig />} />
-                        
+
                         <Route path="/compras" element={<Purchases />} />
                         <Route path="/compras/gastos" element={<Expenses />} />
                         <Route path="/compras/reportes/compras" element={<PurchaseReport />} />
@@ -363,11 +359,15 @@ function App() {
                         <Route path="/industrial/planta" element={<EggDashboard />} />
                         <Route path="/industrial/recepcion" element={<EggReception />} />
                         <Route path="/industrial/produccion" element={<EggProduction />} />
+                        <Route path="/industrial/calendario" element={<EggProductionCalendar />} />
                         <Route path="/industrial/empaque" element={<EggPackaging />} />
                         <Route path="/industrial/costos-mantenimiento" element={<EggCostsMaintenance />} />
                         <Route path="/industrial/costeo-libra" element={<EggCosteoPorLibra />} />
                         <Route path="/industrial/trazabilidad" element={<EggTraceability />} />
                         <Route path="/industrial/configuracion" element={<EggConfig />} />
+
+                        {/* CRM Comercial */}
+                        <Route path="/crm/acuerdos" element={<CustomerAgreements />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>
