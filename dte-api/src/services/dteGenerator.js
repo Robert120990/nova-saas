@@ -65,14 +65,16 @@ async function resolveCountryCode(rawInput) {
  */
 async function resolveActividadEconomica(codigoActividad) {
     if (!codigoActividad) return null;
+    const cleanCod = String(codigoActividad).trim();
+    const padded = cleanCod.length === 4 && /^\d+$/.test(cleanCod) ? cleanCod.padStart(5, '0') : cleanCod;
     try {
         const [rows] = await pool.query(
-            'SELECT description FROM cat_019_actividad_economica WHERE code = ?',
-            [String(codigoActividad).trim()]
+            'SELECT description FROM cat_019_actividad_economica WHERE code = ? OR code = ?',
+            [cleanCod, padded]
         );
         return rows.length > 0 ? rows[0].description : null;
     } catch (err) {
-        console.warn('[DTE-Generator] Error resolviendo actividad económica del emisor:', err.message);
+        console.warn('[DTE-Generator] Error resolviendo actividad económica:', err.message);
         return null;
     }
 }
@@ -348,6 +350,13 @@ async function generateDTE(payload) {
             baseItem.noGravado = 0;
         }
 
+        if (tipoDte === '05') {
+            baseItem.noGravado = 0;
+            baseItem.ivaPerci = 0;
+            baseItem.totalIva = round(calcItem.ivaItem || 0);
+            baseItem.ivaRete = 0;
+        }
+
         if (tipoDte === '01') {
             baseItem.ivaItem = round6(calcItem.ivaItem || 0);
         }
@@ -516,10 +525,19 @@ async function generateDTE(payload) {
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '05') {
+            base.totalIva = round(totals.montoPorIVA || 0);
             base.ivaPerci = 0;
             base.ivaRete = 0;
             base.codigoRetencionMH = '22';
             base.totalPagar = round(totals.totalPagar);
+            delete base.descuNoSuj;
+            delete base.descuExenta;
+            delete base.descuGravada;
+            delete base.porcentajeDescuento;
+            delete base.subTotal;
+            delete base.saldoFavor;
+            delete base.pagos;
+            delete base.numPagoElectronico;
         } else if (type === '04') {
             // Nota de Remisión es muy básica
             delete base.pagos;
@@ -597,9 +615,14 @@ async function generateDTE(payload) {
     rawDistrito = String(receptor.direccion?.distrito || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
     if (rawDistrito === '00') rawDistrito = '01';
 
+    let cleanCodActividad = receptor.codActividad ? String(receptor.codActividad).trim() : '';
+    if (cleanCodActividad && cleanCodActividad.length === 4 && /^\d+$/.test(cleanCodActividad)) {
+        cleanCodActividad = cleanCodActividad.padStart(5, '0');
+    }
+
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
-        codActividad: receptor.codActividad || '10005',
+        codActividad: cleanCodActividad || '10005',
         descActividad: sanitizeText(receptor.descActividad || 'Otros'),
         direccion: receptor.direccion ? {
             departamento: rawDepto,
@@ -617,16 +640,7 @@ async function generateDTE(payload) {
         finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
         finalReceptor.nrc = sanitizeNrc(receptor.nrc);
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
-        finalReceptor.codActividad = receptor.codActividad || '10005';
-        finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
-    }
-
-    if (tipoDte === '07') {
-        finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '36';
-        finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
-        finalReceptor.nrc = sanitizeNrc(receptor.nrc);
-        finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
-        finalReceptor.codActividad = receptor.codActividad || '10005';
+        finalReceptor.codActividad = cleanCodActividad || '10005';
         finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
     }
 
@@ -656,7 +670,7 @@ async function generateDTE(payload) {
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || finalReceptor.nombre;
     }
 
-    if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || (tipoDte === '05' && !receptor.nit))) {
+    if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05')) {
         // Consumidor Final sin documento: dejar campos como null
         const isConsumidorFinal = !receptor.nit && !receptor.numDocumento;
         if (isConsumidorFinal && tipoDte === '01') {
@@ -677,6 +691,9 @@ async function generateDTE(payload) {
         }
         finalReceptor.numDocumento = rawNumDoc;
         finalReceptor.nrc = sanitizeNrc(receptor.nrc);
+        if (tipoDte === '05') {
+            finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
+        }
         } 
     } else if (tipoDte !== '11' && tipoDte !== '07') {
         finalReceptor.nit = cleanNumbers(receptor.nit || receptor.numDocumento);
@@ -701,6 +718,12 @@ async function generateDTE(payload) {
 
     if (tipoDte === '11') {
         dte.compraTercero = null;
+    }
+
+    if (tipoDte === '05') {
+        if (!payload.documentoRelacionado || payload.documentoRelacionado.length === 0) {
+            throw new Error('La Nota de Crédito requiere al menos un documento relacionado (Factura o Crédito Fiscal previo)');
+        }
     }
 
     if (tipoDte !== '11' && tipoDte !== '07') {

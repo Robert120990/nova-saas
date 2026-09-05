@@ -34,6 +34,9 @@ function renderHeader(doc, company, title, periodText) {
 }
 
 function renderSignatures(doc, signatures) {
+    if (doc.y > doc.page.height - doc.page.margins.bottom - 70) {
+        doc.addPage();
+    }
     const colW = 180;
     const margin = 70;
     const leftX = margin;
@@ -71,7 +74,7 @@ function monthFilter(year, month, alias) {
 }
 
 function buildPDF(res, buildContent) {
-    const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
+    const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape', bufferPages: true });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => {
@@ -90,7 +93,18 @@ function fiscalYearMonthParams(year, month) {
 
 function formatDate(d) {
     if (!d) return '---';
-    return new Date(d).toLocaleDateString('es-SV');
+    if (typeof d === 'string') {
+        const parts = d.split('T')[0].split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+    }
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return '---';
+    const day = String(dt.getUTCDate()).padStart(2, '0');
+    const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const year = dt.getUTCFullYear();
+    return `${day}/${month}/${year}`;
 }
 
 function fmt(num) {
@@ -175,7 +189,7 @@ const getLibroDiario = async (req, res) => {
             let subDebit = 0, subCredit = 0;
 
             entries.forEach((row, i) => {
-                if (y > 560) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
 
                 if (row.date !== entryDate) {
                     if (entryDate !== null) {
@@ -300,7 +314,7 @@ const getLibroDiarioMayor = async (req, res) => {
             let accDebit = 0, accCredit = 0;
 
             rows.forEach((row, i) => {
-                if (y > 560) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
 
                 if (row.account_code !== currentAccount) {
                     if (currentAccount !== null) {
@@ -364,9 +378,11 @@ const getLibroMayor = async (req, res) => {
 
         let accountFilter = '';
         const params = [req.company_id, start_date, end_date];
+        const openParams = [start_date, req.company_id];
         if (account_id && account_id !== 'all') {
             accountFilter = ' AND a.id = ?';
             params.push(account_id);
+            openParams.push(account_id);
         }
 
         // Saldos iniciales (antes del período)
@@ -384,7 +400,7 @@ const getLibroMayor = async (req, res) => {
             GROUP BY a.id
             HAVING balance != 0
             ORDER BY a.code
-        `, [start_date, ...params]);
+        `, openParams);
 
         // Movimientos del período
         const [movements] = await pool.query(`
@@ -474,7 +490,7 @@ const getLibroMayor = async (req, res) => {
             openBalances.forEach(o => { openMap[o.id] = parseFloat(o.balance || 0); });
 
             movements.forEach((row, i) => {
-                if (y > 530) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
 
                 if (row.id !== currentAccount) {
                     runningBalance = openMap[row.id] || 0;
@@ -581,7 +597,7 @@ const getEstadoResultados = async (req, res) => {
             let currentType = 0;
 
             rows.forEach(row => {
-                if (y > 650) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
 
                 if (row.account_type_id !== currentType) {
                     currentType = row.account_type_id;
@@ -696,7 +712,7 @@ const getBalanceGeneral = async (req, res) => {
             let totalActivo = 0, totalPasivo = 0, totalPatrimonio = 0;
 
             rows.forEach(row => {
-                if (y > 650) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
                 const b = parseFloat(row.balance || 0);
 
                 if (row.account_type_id === 1) totalActivo += b;
@@ -811,7 +827,7 @@ const getAnexoBalance = async (req, res) => {
             let currentType = 0;
 
             rows.forEach(row => {
-                if (y > 600) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
 
                 if (row.account_type_id !== currentType) {
                     currentType = row.account_type_id;
@@ -909,7 +925,7 @@ const getAuxiliarOperaciones = async (req, res) => {
             let currentType = 0;
 
             rows.forEach(row => {
-                if (y > 600) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
 
                 if (row.account_type_id !== currentType) {
                     currentType = row.account_type_id;
@@ -1006,7 +1022,7 @@ const getBalanceComprobacion = async (req, res) => {
             let sumDebit = 0, sumCredit = 0;
 
             rows.forEach(row => {
-                if (y > 580) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
                 const d = parseFloat(row.total_debit || 0);
                 const c = parseFloat(row.total_credit || 0);
                 sumDebit += d; sumCredit += c;
@@ -1112,7 +1128,7 @@ const getListadoPartidas = async (req, res) => {
             let totalDebit = 0, totalCredit = 0;
 
             rows.forEach(row => {
-                if (y > 580) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
                 const d = parseFloat(row.total_debit || 0);
                 const c = parseFloat(row.total_credit || 0);
                 totalDebit += d; totalCredit += c;
@@ -1194,7 +1210,7 @@ const getCambiosPatrimonio = async (req, res) => {
             GROUP BY a.id
             HAVING opening != 0
             ORDER BY a.code
-        `, month ? [`${year}-${String(month).padStart(2, '0')}-01`, year] : [`${year}-01-01`, year, req.company_id]);
+        `, month ? [`${year}-${String(month).padStart(2, '0')}-01`, year, req.company_id] : [`${year}-01-01`, year, req.company_id]);
 
         const openMap = {};
         openRows.forEach(o => { openMap[o.code] = parseFloat(o.opening || 0); });
@@ -1244,7 +1260,7 @@ const getCambiosPatrimonio = async (req, res) => {
             let totalOpen = 0, totalClose = 0;
 
             rows.forEach(row => {
-                if (y > 560) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
                 const open = openMap[row.code] || 0;
                 const d = parseFloat(row.total_debit || 0);
                 const c = parseFloat(row.total_credit || 0);
@@ -1300,7 +1316,7 @@ const getFlujoEfectivo = async (req, res) => {
 
         // Saldo inicial de efectivo
         const cashIds = cashAccounts.map(c => c.id);
-        let cashFilter = '';
+        let cashFilter = 'AND 1 = 0';
         if (cashIds.length > 0) {
             cashFilter = `AND a.id IN (${cashIds.join(',')})`;
         }
@@ -1374,8 +1390,8 @@ const getFlujoEfectivo = async (req, res) => {
             const investingFlow = getNet(1);
             const financingFlow = getNet(3) + getNet(2);
             const netFlow = operatingFlow + investingFlow + financingFlow;
-            const beginBal = parseFloat(beginCash.balance || 0);
-            const endBal = parseFloat(endCash.balance || 0);
+            const beginBal = parseFloat(beginCash[0]?.balance || 0);
+            const endBal = parseFloat(endCash[0]?.balance || 0);
             const rowsForExcel = [
                 { concepto: 'ACTIVIDADES DE OPERACIÓN', monto: operatingFlow },
                 { concepto: '  Ingresos', monto: opIncome },
@@ -1407,7 +1423,7 @@ const getFlujoEfectivo = async (req, res) => {
             const colVal = 120;
 
             const section = (label, amount, color) => {
-                if (y > 680) { doc.addPage(); y = doc.y; }
+                if (y > 510) { doc.addPage(); y = 30; }
                 doc.fontSize(8).font('Helvetica-Bold').fillColor(color || '#4f46e5');
                 doc.text(label, startX, y);
                 doc.text(fmt(amount), startX + colLabel, y, { align: 'right', width: colVal });
@@ -1417,7 +1433,7 @@ const getFlujoEfectivo = async (req, res) => {
             };
 
             const line = (label, amount, ind = 0) => {
-                if (y > 700) { doc.addPage(); y = doc.y; }
+                if (y > 510) { doc.addPage(); y = 30; }
                 doc.fontSize(8).font('Helvetica');
                 doc.text(label, startX + ind * indent, y);
                 doc.text(fmt(amount), startX + colLabel, y, { align: 'right', width: colVal });
@@ -1426,7 +1442,7 @@ const getFlujoEfectivo = async (req, res) => {
             };
 
             const total = (label, amount) => {
-                if (y > 700) { doc.addPage(); y = doc.y; }
+                if (y > 510) { doc.addPage(); y = 30; }
                 doc.moveTo(startX, y).lineTo(startX + colLabel + colVal, y).stroke();
                 y += 8;
                 doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b');
@@ -1472,8 +1488,8 @@ const getFlujoEfectivo = async (req, res) => {
             y = total('Efectivo neto en financiamiento', financingFlow);
 
             const netFlow = operatingFlow + investingFlow + financingFlow;
-            const beginBal = parseFloat(beginCash.balance || 0);
-            const endBal = parseFloat(endCash.balance || 0);
+            const beginBal = parseFloat(beginCash[0]?.balance || 0);
+            const endBal = parseFloat(endCash[0]?.balance || 0);
 
             y = section('RESUMEN', 0);
             y = line('Saldo inicial de efectivo', beginBal, 1);
@@ -1573,7 +1589,7 @@ const getBalanceComparativo = async (req, res) => {
             let totalCurr = 0, totalPrev = 0;
 
             currentRows.forEach(row => {
-                if (y > 560) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
                 const curr = parseFloat(row.balance || 0);
                 const prev = prevMap[row.code] || 0;
                 const vari = curr - prev;
@@ -1735,7 +1751,7 @@ const getCedulaAuditoria = async (req, res) => {
             const isDebitNature = account.nature === 'debit';
 
             movements.forEach(row => {
-                if (y > 560) { y = drawHeader(doc.addPage()); }
+                if (y > 510) { doc.addPage(); y = drawHeader(30); }
                 const d = parseFloat(row.debit || 0);
                 const c = parseFloat(row.credit || 0);
                 if (isDebitNature) running += d - c;
@@ -1870,7 +1886,7 @@ const getRetenciones = async (req, res) => {
                 let totalDebit = 0, totalCredit = 0, totalBalance = 0;
 
                 movements.forEach(row => {
-                    if (y > 580) { y = drawHeader(doc.addPage()); }
+                    if (y > 510) { doc.addPage(); y = drawHeader(30); }
                     const d = parseFloat(row.total_debit || 0);
                     const c = parseFloat(row.total_credit || 0);
                     const b = parseFloat(row.balance || 0);

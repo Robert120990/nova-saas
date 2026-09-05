@@ -113,6 +113,13 @@ const createCustomer = async (req, res) => {
         }
     }
 
+    if (data.codigo_actividad) {
+        const actStr = String(data.codigo_actividad).trim();
+        if (actStr.length === 4 && /^\d+$/.test(actStr)) {
+            data.codigo_actividad = actStr.padStart(5, '0');
+        }
+    }
+
     data.company_id = req.company_id;
     if (!data.tipo_persona) data.tipo_persona = '1';
     if (!data.pais) data.pais = '9579';
@@ -140,6 +147,13 @@ const updateCustomer = async (req, res) => {
         const duiRegex = /^\d{8}-\d{1}$/;
         if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
             return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
+        }
+    }
+
+    if (data.codigo_actividad) {
+        const actStr = String(data.codigo_actividad).trim();
+        if (actStr.length === 4 && /^\d+$/.test(actStr)) {
+            data.codigo_actividad = actStr.padStart(5, '0');
         }
     }
 

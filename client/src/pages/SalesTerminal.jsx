@@ -510,7 +510,7 @@ const SalesTerminal = () => {
                     handlePrintTicketRef.current(saleResult);
                 } else if (activeView === 'pago') {
                     handleProcessSaleRef.current();
-                } else if (tipoDte === '07' ? linkedDocs.length > 0 : cart.length > 0) {
+                } else if (tipoDte === '07' ? linkedDocs.length > 0 : (tipoDte === '05' ? (cart.length > 0 && linkedDocs.length > 0) : cart.length > 0)) {
                     goToPayment();
                 }
             }
@@ -622,10 +622,13 @@ const SalesTerminal = () => {
         const customer = selectedCustomerData;
         const missing = [];
 
+        const rawActividad = customer.codigo_actividad ? String(customer.codigo_actividad).trim() : '';
+        const normalizedActividad = (rawActividad.length === 4 && /^\d+$/.test(rawActividad)) ? rawActividad.padStart(5, '0') : rawActividad;
+
         if (tipoDte === '03') { // Crédito Fiscal
             if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
             if (!customer.nrc) missing.push('NRC');
-            if (!customer.codigo_actividad || String(customer.codigo_actividad).trim().length < 5) missing.push('Giro/Actividad');
+            if (!normalizedActividad || normalizedActividad.length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
@@ -652,7 +655,7 @@ const SalesTerminal = () => {
             }
             if (!customer.nit) missing.push('NIT');
             if (!customer.nrc) missing.push('NRC');
-            if (!customer.codigo_actividad || String(customer.codigo_actividad).trim().length < 5) missing.push('Giro/Actividad');
+            if (!normalizedActividad || normalizedActividad.length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
@@ -689,8 +692,11 @@ const SalesTerminal = () => {
     };
 
     const goToPayment = () => {
-        if (tipoDte === '07') {
+        if (tipoDte === '07' || tipoDte === '05') {
             if (!validateCustomerData()) return;
+            if (tipoDte === '05' && linkedDocs.length === 0) {
+                return toast.error('Debe seleccionar el documento original a referenciar para la Nota de Crédito');
+            }
             handleProcessSale();
             return;
         }
@@ -939,7 +945,7 @@ const SalesTerminal = () => {
         if (tipoDte !== '07' && cart.length === 0) {
             return toast.error('El carrito está vacío');
         }
-        if (tipoDte === '07' && linkedDocs.length === 0) {
+        if ((tipoDte === '07' || tipoDte === '05') && linkedDocs.length === 0) {
             return toast.error('Debe agregar al menos un documento relacionado');
         }
 
@@ -960,12 +966,12 @@ const SalesTerminal = () => {
             }
         }
 
-        // 3. Validar que el total pagado cubra la venta (excepto crédito y CR)
-        if (tipoDte !== '07') {
-        const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
-        if (condicionPago === '1' && totalPaid < (totals.total - 0.01)) {
-            return toast.error('El monto pagado es insuficiente para una venta al contado');
-        }
+        // 3. Validar que el total pagado cubra la venta (excepto crédito, CR y NC)
+        if (tipoDte !== '07' && tipoDte !== '05') {
+            const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
+            if (condicionPago === '1' && totalPaid < (totals.total - 0.01)) {
+                return toast.error('El monto pagado es insuficiente para una venta al contado');
+            }
         }
 
 
@@ -1033,7 +1039,7 @@ const SalesTerminal = () => {
                     referencedDoc: item.referencedDoc || null
                 };
             }),
-            payments: payments.map(p => ({
+            payments: (tipoDte === '05' || tipoDte === '07') ? [] : payments.map(p => ({
                 codigo: p.metodo_pago,
                 monto: parseFloat(p.monto),
                 referencia: p.referencia || p.num_cheque || p.last_digits || null
@@ -2003,11 +2009,11 @@ const SalesTerminal = () => {
                                 </div>
                                 <div className="text-4xl font-black mb-4 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
                                 <button 
-                                    disabled={tipoDte === '07' ? linkedDocs.length === 0 : cart.length === 0}
+                                    disabled={tipoDte === '07' ? linkedDocs.length === 0 : (tipoDte === '05' ? (cart.length === 0 || linkedDocs.length === 0) : cart.length === 0)}
                                     onClick={goToPayment}
                                     className="w-full bg-indigo-600 text-white py-3 rounded-2xl font-black uppercase text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200"
                                 >
-                                    {tipoDte === '07' ? 'Emitir Retención (F10)' : 'Pagar (F10)'}
+                                    {tipoDte === '07' ? 'Emitir Retención (F10)' : tipoDte === '05' ? 'Emitir Nota de Crédito (F10)' : 'Pagar (F10)'}
                                 </button>
                             </div>
                         </div>

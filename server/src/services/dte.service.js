@@ -86,6 +86,7 @@ class DteService {
                     cantidad: item.cantidad,
                     precioUnitario: item.precio_unitario || item.precio,
                     montoDescu: item.monto_descuento || item.descuento || 0,
+                    referencedDoc: item.referencedDoc || null,
                     // Preservar tributos específicos o usar IVA por defecto
                     tributos: payload.header.dte_type === '11' ? []
                         : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
@@ -284,14 +285,19 @@ class DteService {
         
         const c = rows[0];
 
+        let codActividad = c.codigo_actividad ? String(c.codigo_actividad).trim() : null;
+        if (codActividad && codActividad.length === 4 && /^\d+$/.test(codActividad)) {
+            codActividad = codActividad.padStart(5, '0');
+        }
+
         // Resolver nombre oficial de actividad económica desde cat_019 cuando
         // el cliente no tiene actividad_nombre/giro (evita el fallback "Otros")
         let descActividad = c.actividad_nombre || c.giro || null;
-        if (!descActividad && c.codigo_actividad) {
+        if (!descActividad && codActividad) {
             try {
                 const [actRows] = await pool.query(
                     'SELECT description FROM cat_019_actividad_economica WHERE code = ?',
-                    [String(c.codigo_actividad).trim()]
+                    [codActividad]
                 );
                 if (actRows.length > 0) descActividad = actRows[0].description;
             } catch (e) {
@@ -323,7 +329,7 @@ class DteService {
             numDocumento: c.numero_documento,
             correo: c.correo,
             telefono: c.telefono,
-            codActividad: c.codigo_actividad,
+            codActividad: codActividad,
             descActividad: descActividad,
             tipo_persona: c.tipo_persona || 1,
             pais_code: c.pais_code || c.pais || null,
