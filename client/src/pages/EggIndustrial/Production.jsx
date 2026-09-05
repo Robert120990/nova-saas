@@ -33,7 +33,17 @@ const EggProduction = () => {
     const [batchForm, setBatchForm] = useState({
         product_type: 'huevo entero',
         presentation: 'cubeta 32LB',
+        run_number: 1,
         raw_materials: [],
+        ingredients: {
+            boxes_count: '',
+            water_bottles: '',
+            sugar_lbs: '',
+            salt_lbs: '',
+            citric_acid_lbs: '',
+            milk_powder_lbs: '',
+            ppg_g: ''
+        },
         operator_name: user?.nombre || ''
     });
 
@@ -113,13 +123,25 @@ const EggProduction = () => {
         try {
             await axios.post('/api/egg-industrial/batches', {
                 ...batchForm,
-                raw_materials: batchForm.raw_materials
+                run_number: parseInt(batchForm.run_number) || 1,
+                raw_materials: batchForm.raw_materials,
+                ingredients: batchForm.ingredients
             });
             toast.success('Lote de producción iniciado exitosamente.');
             setBatchForm({
                 product_type: 'huevo entero',
                 presentation: 'cubeta 32LB',
+                run_number: 1,
                 raw_materials: [],
+                ingredients: {
+                    boxes_count: '',
+                    water_bottles: '',
+                    sugar_lbs: '',
+                    salt_lbs: '',
+                    citric_acid_lbs: '',
+                    milk_powder_lbs: '',
+                    ppg_g: ''
+                },
                 operator_name: user?.nombre || ''
             });
             fetchData();
@@ -345,7 +367,7 @@ const EggProduction = () => {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[9px]">
-                                        <th className="px-2 py-1.5">UUID</th>
+                                        <th className="px-2 py-1.5">Lote Juliano / UUID</th>
                                         <th className="px-2 py-1.5">Producto</th>
                                         <th className="px-2 py-1.5">Presentación</th>
                                         <th className="px-2 py-1.5 text-right">Peso Ent.</th>
@@ -360,15 +382,22 @@ const EggProduction = () => {
                                     {filteredBatches.map(b => (
                                         <tr key={b.id} className="hover:bg-slate-900/40 transition-colors">
                                             <td className="px-2 py-1.5">
-                                                <div className="flex items-center gap-1">
-                                                    <span className="font-mono text-[9px] text-slate-400 select-all truncate max-w-[280px]">{b.batch_uuid}</span>
-                                                    <button
-                                                        onClick={() => { navigator.clipboard.writeText(b.batch_uuid); toast.success('UUID copiado'); }}
-                                                        className="p-0.5 hover:bg-indigo-500/10 rounded text-slate-500 hover:text-indigo-400 transition-colors flex-shrink-0"
-                                                        title="Copiar UUID"
-                                                    >
-                                                        <Copy size={10} />
-                                                    </button>
+                                                <div className="flex flex-col gap-0.5">
+                                                    {b.batch_code_display ? (
+                                                        <span className="bg-indigo-950/70 border border-indigo-500/30 text-indigo-300 font-mono text-[11px] font-black px-2 py-0.5 rounded-lg w-fit">
+                                                            {b.batch_code_display}
+                                                        </span>
+                                                    ) : null}
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="font-mono text-[9px] text-slate-500 select-all truncate max-w-[200px]">{b.batch_uuid}</span>
+                                                        <button
+                                                            onClick={() => { navigator.clipboard.writeText(b.batch_code_display || b.batch_uuid); toast.success('Lote copiado'); }}
+                                                            className="p-0.5 hover:bg-indigo-500/10 rounded text-slate-500 hover:text-indigo-400 transition-colors flex-shrink-0"
+                                                            title="Copiar Lote"
+                                                        >
+                                                            <Copy size={10} />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-2 py-1.5">
@@ -629,19 +658,33 @@ const EggProduction = () => {
                     )}
 
                     <form onSubmit={handleCreateBatch} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Corrida del Día (Run #)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="99"
+                                    value={batchForm.run_number}
+                                    onChange={(e) => setBatchForm({ ...batchForm, run_number: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-bold focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ej: 1"
+                                />
+                                <span className="text-[8px] text-indigo-400">Genera lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
+                            </div>
+
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Producto a Fabricar</label>
                                 <select
                                     value={batchForm.product_type}
                                     onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="huevo entero">Huevo Entero Pasteurizado</option>
                                     <option value="clara">Clara Pasteurizada</option>
                                     <option value="yema salada">Yema Líquida Salada (10% sal)</option>
                                     <option value="yema azucarada">Yema Líquida Azucarada (10% azúcar)</option>
-                                    <option value="fórmula especial">Fórmula Especial / Mezcla Premium</option>
+                                    <option value="fórmula especial">Fórmula Especial / HE Plus (18-21% sol)</option>
                                 </select>
                             </div>
 
@@ -650,27 +693,27 @@ const EggProduction = () => {
                                 <select
                                     value={batchForm.presentation}
                                     onChange={(e) => setBatchForm({ ...batchForm, presentation: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                 >
+                                    <option value="cubeta 30LB">Cubeta Industrial (30 Lbs - Estándar)</option>
                                     <option value="cubeta 32LB">Cubeta Industrial (32 Lbs)</option>
                                     <option value="galón 8LB">Galón (8 Lbs)</option>
                                     <option value="medio galón 4LB">Medio Galón (4 Lbs)</option>
                                     <option value="litro 2LB">Litro (2 Lbs)</option>
                                 </select>
                             </div>
-
                         </div>
 
                         {/* Materias Primas */}
-                        <div className="space-y-3">
+                        <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-850">
                             <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Materias Primas</label>
-                                <span className="text-[9px] font-bold text-slate-500">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Materia Prima Base (Lotes Recibidos)</label>
+                                <span className="text-[10px] font-bold text-teal-400">
                                     Total: {batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs
                                 </span>
                             </div>
                             {batchForm.raw_materials.map((rm, idx) => (
-                                <div key={idx} className="flex items-center gap-2 bg-slate-950 border border-slate-850 rounded-xl p-2">
+                                <div key={idx} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl p-2">
                                     <select
                                         value={rm.raw_material_id}
                                         onChange={(e) => {
@@ -678,12 +721,12 @@ const EggProduction = () => {
                                             updated[idx].raw_material_id = e.target.value;
                                             setBatchForm({ ...batchForm, raw_materials: updated });
                                         }}
-                                        className="flex-1 px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-[10px] text-white font-semibold focus:outline-none"
+                                        className="flex-1 px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[10px] text-white font-semibold focus:outline-none"
                                     >
-                                        <option value="">Seleccionar...</option>
+                                        <option value="">Seleccionar lote recepcionado...</option>
                                         {rawMaterials.map(m => (
                                             <option key={m.id} value={m.id} disabled={batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id))}>
-                                                {m.egg_type} - {m.provider_lot} ({parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs)
+                                                {m.egg_type} - {m.provider_lot} (Stock: {parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs)
                                             </option>
                                         ))}
                                     </select>
@@ -695,7 +738,7 @@ const EggProduction = () => {
                                             updated[idx].quantity_lbs = e.target.value;
                                             setBatchForm({ ...batchForm, raw_materials: updated });
                                         }}
-                                        className="w-24 px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-[10px] text-white font-semibold focus:outline-none text-right"
+                                        className="w-24 px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[10px] text-white font-bold focus:outline-none text-right"
                                         placeholder="Lbs"
                                         step="0.01"
                                     />
@@ -716,8 +759,93 @@ const EggProduction = () => {
                                 className="w-full py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-[10px] font-extrabold transition-all border border-indigo-500/20 flex items-center justify-center gap-1"
                             >
                                 <Plus size={12} />
-                                Agregar Materia Prima
+                                Agregar Lote de Materia Prima
                             </button>
+                        </div>
+
+                        {/* Insumos de Formulación / BOM Roberto */}
+                        <div className="space-y-3 bg-slate-950/40 p-3.5 rounded-2xl border border-slate-850">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Insumos y Aditivos de Formulación (BOM)</label>
+                                <span className="text-[9px] text-slate-500 font-medium">Opcional para fórmulas compuestas</span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Cajas Huevo</label>
+                                    <input
+                                        type="number"
+                                        placeholder="0 cjs"
+                                        value={batchForm.ingredients.boxes_count}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, boxes_count: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">H2O (Garrafones)</label>
+                                    <input
+                                        type="number"
+                                        placeholder="0 garrafones"
+                                        value={batchForm.ingredients.water_bottles}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, water_bottles: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Azúcar (Lbs)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        placeholder="0.0"
+                                        value={batchForm.ingredients.sugar_lbs}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, sugar_lbs: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Sal (Lbs)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        placeholder="0.0"
+                                        value={batchForm.ingredients.salt_lbs}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, salt_lbs: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Ác. Cítrico (Lbs)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.0"
+                                        value={batchForm.ingredients.citric_acid_lbs}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, citric_acid_lbs: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">Leche Polvo (Lbs)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        placeholder="0.0"
+                                        value={batchForm.ingredients.milk_powder_lbs}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, milk_powder_lbs: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-400 font-bold uppercase">PPG (Gramos)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        placeholder="0.0"
+                                        value={batchForm.ingredients.ppg_g}
+                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, ppg_g: e.target.value } })}
+                                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white text-center font-bold"
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
@@ -742,15 +870,34 @@ const EggProduction = () => {
             )}
 
             {isPasteurizeModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-6">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6">
                     <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
                             <Flame className="h-4 w-4 text-orange-400" />
-                            Registro de Parámetros Críticos (HACCP PCC)
+                            Registro de Parámetros Críticos (HACCP PCC-1)
                         </h2>
                         <p className="text-[11px] text-slate-400">Verifique los termómetros y flujómetros del PLC antes de registrar la telemetría.</p>
                         <div className="h-px bg-slate-800 mt-4" />
+                    </div>
+
+                    {/* Guía Rápida de Límites HACCP Planta ANDELSA */}
+                    <div className="grid grid-cols-3 gap-2 bg-slate-950 p-3 rounded-2xl border border-slate-800 text-[10px]">
+                        <div className="text-center p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                            <span className="text-slate-400 block font-bold uppercase">Huevo Entero</span>
+                            <span className="text-white font-black text-xs">≥ 64.0°C</span>
+                            <span className="text-slate-500 block text-[9px]">210 seg</span>
+                        </div>
+                        <div className="text-center p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                            <span className="text-slate-400 block font-bold uppercase">Clara Líquida</span>
+                            <span className="text-white font-black text-xs">≥ 56.0°C</span>
+                            <span className="text-slate-500 block text-[9px]">210 seg</span>
+                        </div>
+                        <div className="text-center p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                            <span className="text-slate-400 block font-bold uppercase">Yema / Salada</span>
+                            <span className="text-white font-black text-xs">≥ 66.5°C</span>
+                            <span className="text-slate-500 block text-[9px]">210 seg</span>
+                        </div>
                     </div>
 
                     {/* Glowing HACCP Failure Alert Box */}
@@ -784,7 +931,7 @@ const EggProduction = () => {
                                 <option value="">Seleccione Lote Activo...</option>
                                 {batches.filter(b => b.status === 'en_proceso').map(b => (
                                     <option key={b.id} value={b.id}>
-                                        [{b.batch_uuid}] {b.product_type} ({b.presentation})
+                                        [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation})
                                     </option>
                                 ))}
                             </select>

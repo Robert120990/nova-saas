@@ -153,6 +153,7 @@ import EggReception from './pages/EggIndustrial/Reception';
 import EggProduction from './pages/EggIndustrial/Production';
 import EggPackaging from './pages/EggIndustrial/Packaging';
 import EggCostsMaintenance from './pages/EggIndustrial/CostsMaintenance';
+import EggCosteoPorLibra from './pages/EggIndustrial/CosteoPorLibra';
 import EggTraceability from './pages/EggIndustrial/Traceability';
 import EggConfig from './pages/EggIndustrial/Config';
 
@@ -357,6 +358,16 @@ function App() {
                         <Route path="/contabilidad/reportes/listado-partidas" element={<ListadoPartidas />} />
                         <Route path="/contabilidad/reportes/cedula-auditoria" element={<CedulaAuditoria />} />
                         <Route path="/contabilidad/reportes/retenciones" element={<Retenciones />} />
+
+                        {/* Huevo Industrial / Ovoproductos (ANDELSA) */}
+                        <Route path="/industrial/planta" element={<EggDashboard />} />
+                        <Route path="/industrial/recepcion" element={<EggReception />} />
+                        <Route path="/industrial/produccion" element={<EggProduction />} />
+                        <Route path="/industrial/empaque" element={<EggPackaging />} />
+                        <Route path="/industrial/costos-mantenimiento" element={<EggCostsMaintenance />} />
+                        <Route path="/industrial/costeo-libra" element={<EggCosteoPorLibra />} />
+                        <Route path="/industrial/trazabilidad" element={<EggTraceability />} />
+                        <Route path="/industrial/configuracion" element={<EggConfig />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

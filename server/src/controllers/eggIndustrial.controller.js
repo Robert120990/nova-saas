@@ -25,21 +25,53 @@ const getRawMaterials = async (req, res) => {
 
 const createRawMaterial = async (req, res) => {
     try {
-        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status, fecha } = req.body;
+        const { 
+            provider_id, egg_type, egg_color, egg_size, weight_lbs, 
+            temperature_c, truck_temperature_c, truck_plate, driver_name, 
+            total_boxes, tarimas_json, provider_lot, certificate_urls, 
+            operator_name, status, fecha 
+        } = req.body;
+
+        // Si viene desglose de tarimas, calcular el peso neto total y cajas
+        let finalWeightLbs = weight_lbs;
+        let finalBoxes = total_boxes || 0;
+        if (Array.isArray(tarimas_json) && tarimas_json.length > 0) {
+            const sumNet = tarimas_json.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
+            const sumBoxes = tarimas_json.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
+            if (sumNet > 0) finalWeightLbs = sumNet;
+            if (sumBoxes > 0) finalBoxes = sumBoxes;
+        }
+
         const [result] = await pool.query(
-            `INSERT INTO egg_raw_materials (company_id, branch_id, provider_id, egg_type, egg_color, egg_size, fecha, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.company_id, req.body.branch_id || 1, provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', fecha || new Date().toISOString().split('T')[0], weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado']
+            `INSERT INTO egg_raw_materials (
+                company_id, branch_id, provider_id, egg_type, egg_color, egg_size, 
+                fecha, weight_lbs, total_boxes, stock_lbs, temperature_c, truck_temperature_c, 
+                truck_plate, driver_name, provider_lot, certificate_urls, tarimas_json, operator_name, status
+            ) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                req.company_id, req.body.branch_id || 1, provider_id, egg_type, 
+                egg_color || 'blanco', egg_size || 'L', fecha || new Date().toISOString().split('T')[0], 
+                finalWeightLbs, finalBoxes, finalWeightLbs, temperature_c || null, 
+                truck_temperature_c || null, truck_plate || null, driver_name || null, 
+                provider_lot, JSON.stringify(certificate_urls || []), 
+                JSON.stringify(tarimas_json || []), operator_name, status || 'aprobado'
+            ]
         );
 
         // Crear evento de auditoría
         await pool.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'raw_material.received', 'info', ?, ?, ?)`,
-            [req.company_id, `Recibido lote de materia prima ${egg_type} (${weight_lbs} LBS) del proveedor lote ${provider_lot}.`, JSON.stringify({ raw_material_id: result.insertId, weight_lbs }), operator_name]
+            [
+                req.company_id, 
+                `Recibido lote de materia prima ${egg_type} (${finalWeightLbs} LBS, ${finalBoxes} cajas) del proveedor lote ${provider_lot}.`, 
+                JSON.stringify({ raw_material_id: result.insertId, weight_lbs: finalWeightLbs, total_boxes: finalBoxes }), 
+                operator_name
+            ]
         );
 
-        res.status(201).json({ id: result.insertId, ...req.body });
+        res.status(201).json({ id: result.insertId, weight_lbs: finalWeightLbs, total_boxes: finalBoxes, ...req.body });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -48,7 +80,12 @@ const createRawMaterial = async (req, res) => {
 const updateRawMaterial = async (req, res) => {
     try {
         const { id } = req.params;
-        const { provider_id, egg_type, egg_color, egg_size, weight_lbs, temperature_c, provider_lot, certificate_urls, operator_name, status, fecha } = req.body;
+        const { 
+            provider_id, egg_type, egg_color, egg_size, weight_lbs, 
+            temperature_c, truck_temperature_c, truck_plate, driver_name, 
+            total_boxes, tarimas_json, provider_lot, certificate_urls, 
+            operator_name, status, fecha 
+        } = req.body;
 
         const [existing] = await pool.query(
             'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ?',
@@ -58,13 +95,38 @@ const updateRawMaterial = async (req, res) => {
             return res.status(404).json({ message: 'Recepción no encontrada.' });
         }
 
+        let finalWeightLbs = weight_lbs;
+        let finalBoxes = total_boxes || existing[0].total_boxes || 0;
+        if (Array.isArray(tarimas_json) && tarimas_json.length > 0) {
+            const sumNet = tarimas_json.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
+            const sumBoxes = tarimas_json.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
+            if (sumNet > 0) finalWeightLbs = sumNet;
+            if (sumBoxes > 0) finalBoxes = sumBoxes;
+        }
+
+        // Si el peso cambia y el lote aún no ha sido consumido, ajustar stock_lbs
+        const currentStock = parseFloat(existing[0].stock_lbs);
+        const prevWeight = parseFloat(existing[0].weight_lbs);
+        let updatedStock = currentStock;
+        if (currentStock === prevWeight) {
+            updatedStock = finalWeightLbs;
+        }
+
         await pool.query(
             `UPDATE egg_raw_materials SET 
                 provider_id = ?, egg_type = ?, egg_color = ?, egg_size = ?, 
-                fecha = ?, weight_lbs = ?, temperature_c = ?, provider_lot = ?, 
-                certificate_urls = ?, operator_name = ?, status = ?
+                fecha = ?, weight_lbs = ?, total_boxes = ?, stock_lbs = ?, 
+                temperature_c = ?, truck_temperature_c = ?, truck_plate = ?, driver_name = ?, 
+                provider_lot = ?, certificate_urls = ?, tarimas_json = ?, operator_name = ?, status = ?
              WHERE id = ? AND company_id = ?`,
-            [provider_id, egg_type, egg_color || 'N/A', egg_size || 'N/A', fecha || existing[0].fecha, weight_lbs, temperature_c, provider_lot, JSON.stringify(certificate_urls || []), operator_name, status || 'aprobado', id, req.company_id]
+            [
+                provider_id, egg_type, egg_color || 'blanco', egg_size || 'L', 
+                fecha || existing[0].fecha, finalWeightLbs, finalBoxes, updatedStock, 
+                temperature_c, truck_temperature_c || null, truck_plate || null, driver_name || null, 
+                provider_lot, JSON.stringify(certificate_urls || []), 
+                JSON.stringify(tarimas_json || []), operator_name, status || 'aprobado', 
+                id, req.company_id
+            ]
         );
 
         await pool.query(
@@ -73,7 +135,7 @@ const updateRawMaterial = async (req, res) => {
             [req.company_id, `Recepción de materia prima #${id} actualizada.`, JSON.stringify({ raw_material_id: parseInt(id), ...req.body }), operator_name]
         );
 
-        res.json({ id, ...req.body });
+        res.json({ id, weight_lbs: finalWeightLbs, total_boxes: finalBoxes, ...req.body });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -243,10 +305,35 @@ const createProductionBatch = async (req, res) => {
 
         const batch_uuid = require('crypto').randomUUID();
 
+        // Generar Nomenclatura Oficial ANDELSA: [Corrida] - [Día Juliano] - [Año 2 dígitos] (ej. 01 - 245 - 26)
+        const now = new Date();
+        const startOfYear = new Date(now.getFullYear(), 0, 0);
+        const diff = now - startOfYear;
+        const oneDay = 1000 * 60 * 60 * 24;
+        const dayOfYear = Math.floor(diff / oneDay);
+        const year2Digit = String(now.getFullYear()).slice(-2);
+
+        const [todayBatches] = await connection.query(
+            'SELECT COUNT(*) as count FROM egg_production_batches WHERE company_id = ? AND DATE(started_at) = CURDATE()',
+            [company_id]
+        );
+        const runNumber = String((todayBatches[0]?.count || 0) + 1).padStart(2, '0');
+        const batch_code_display = `${runNumber} - ${String(dayOfYear).padStart(3, '0')} - ${year2Digit}`;
+
+        const { ingredients_json, target_brix, target_solids_pct } = req.body;
+
         const [result] = await connection.query(
-            `INSERT INTO egg_production_batches (company_id, branch_id, batch_uuid, product_type, presentation, status, input_weight_lbs, operator_name) 
-             VALUES (?, ?, ?, ?, ?, 'en_proceso', ?, ?)`,
-            [company_id, branch_id, batch_uuid, product_type, presentation, totalInputWeight, operator_name]
+            `INSERT INTO egg_production_batches (
+                company_id, branch_id, batch_uuid, batch_code_display, product_type, 
+                presentation, ingredients_json, status, input_weight_lbs, 
+                target_brix, target_solids_pct, operator_name
+            ) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+            [
+                company_id, branch_id, batch_uuid, batch_code_display, product_type, 
+                presentation, JSON.stringify(ingredients_json || {}), totalInputWeight, 
+                target_brix || null, target_solids_pct || null, operator_name
+            ]
         );
         const batchId = result.insertId;
 
@@ -266,7 +353,12 @@ const createProductionBatch = async (req, res) => {
         await connection.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'production.started', 'info', ?, ?, ?)`,
-            [company_id, `Iniciado lote de producción ${product_type} (${presentation}) con UUID ${batch_uuid}, ${raw_materials.length} materias primas.`, JSON.stringify({ batch_id: batchId, batch_uuid, totalInputWeight, raw_materials }), operator_name]
+            [
+                company_id, 
+                `Iniciado lote oficial ${batch_code_display} (${product_type} - ${presentation}) con ${totalInputWeight} LBS.`, 
+                JSON.stringify({ batch_id: batchId, batch_uuid, batch_code_display, totalInputWeight, raw_materials }), 
+                operator_name
+            ]
         );
 
         await connection.commit();
@@ -279,7 +371,15 @@ const createProductionBatch = async (req, res) => {
             sucursal: ''
         }).catch(() => {});
 
-        res.status(201).json({ id: batchId, batch_uuid, product_type, presentation, status: 'en_proceso', totalInputWeight });
+        res.status(201).json({ 
+            id: batchId, 
+            batch_uuid, 
+            batch_code_display, 
+            product_type, 
+            presentation, 
+            status: 'en_proceso', 
+            totalInputWeight 
+        });
     } catch (error) {
         await connection.rollback();
         res.status(500).json({ message: error.message });
@@ -484,7 +584,11 @@ const getPackagingRecords = async (req, res) => {
 
 const createPackagingRecord = async (req, res) => {
     try {
-        const { batch_id, units_packaged, weight_per_unit_lbs, operator_name } = req.body;
+        const { 
+            batch_id, units_packaged, weight_per_unit_lbs, operator_name,
+            warehouse_zone = 'COOLER', product_state = 'liquido',
+            label_type = 'etiqueta_4x2', customer_destination = null
+        } = req.body;
         const company_id = req.company_id;
 
         // Obtener lote
@@ -502,20 +606,26 @@ const createPackagingRecord = async (req, res) => {
         const total_batch_weight_lbs = units_packaged * weight_per_unit_lbs;
         const cleanProduct = batch.product_type.replace(' ', '-').toUpperCase();
         
-        // Generar lote visible (ej: LOT-20260519-ENTERO-ID)
+        // Generar lote visible: si tiene batch_code_display usarlo, de lo contrario formato fecha
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const lot_code = `LOT-${dateStr}-${cleanProduct}-${batch_id}`;
+        const lot_code = batch.batch_code_display ? `LOT-${batch.batch_code_display.replace(/\s+/g, '')}` : `LOT-${dateStr}-${cleanProduct}-${batch_id}`;
         
         // Código de barras simulado (UPC-A de 12 dígitos)
         const barcode = `741258${String(batch_id).padStart(6, '0')}`;
 
+        // Vida útil según estado: Congelado a -18°C = 365 días (1 año), Líquido refrigerado 2° a 4°C = 28 días
+        const shelfLifeDays = product_state === 'congelado' ? 365 : 28;
+
         // Payload completo de trazabilidad para el código QR
         const qr_code_payload = JSON.stringify({
             lot_code,
+            batch_display: batch.batch_code_display || lot_code,
             product: batch.product_type,
             presentation: batch.presentation,
             units: units_packaged,
             weight_lbs: total_batch_weight_lbs,
+            warehouse_zone,
+            product_state,
             packaged_at: new Date().toISOString(),
             trace_uuid: batch.batch_uuid,
             operator: operator_name
@@ -523,25 +633,47 @@ const createPackagingRecord = async (req, res) => {
 
         // Insertar registro
         const [result] = await pool.query(
-            `INSERT INTO egg_packaging_records (company_id, batch_id, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, qr_code_payload, expiry_date, operator_name) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL 28 DAY), ?)`,
-            [company_id, batch_id, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, qr_code_payload, operator_name]
+            `INSERT INTO egg_packaging_records (
+                company_id, batch_id, units_packaged, warehouse_zone, product_state, 
+                weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type, 
+                customer_destination, qr_code_payload, expiry_date, operator_name
+            ) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?)`,
+            [
+                company_id, batch_id, units_packaged, warehouse_zone, product_state,
+                weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type,
+                customer_destination, qr_code_payload, shelfLifeDays, operator_name
+            ]
         );
 
         // Actualizar estado de lote
+        const newBatchStatus = warehouse_zone === 'BLAST' || product_state === 'congelado' ? 'congelado' : 'empaquetado';
         await pool.query(
-            `UPDATE egg_production_batches SET status = 'empaquetado' WHERE id = ?`,
-            [batch_id]
+            `UPDATE egg_production_batches SET status = ? WHERE id = ?`,
+            [newBatchStatus, batch_id]
         );
 
         // Crear evento
         await pool.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'packaging.completed', 'info', ?, ?, ?)`,
-            [company_id, `Empaque completado para el lote ${lot_code}. Unidades producidas: ${units_packaged}.`, qr_code_payload, operator_name]
+            [
+                company_id, 
+                `Empaque completado para lote ${lot_code} (${units_packaged} unidades en zona ${warehouse_zone}, estado ${product_state}).`, 
+                qr_code_payload, 
+                operator_name
+            ]
         );
 
-        res.status(201).json({ id: result.insertId, lot_code, barcode, qr_code_payload });
+        res.status(201).json({ 
+            id: result.insertId, 
+            lot_code, 
+            barcode, 
+            warehouse_zone, 
+            product_state, 
+            shelfLifeDays, 
+            qr_code_payload 
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -983,6 +1115,194 @@ const deleteBatchVariableCost = async (req, res) => {
     }
 };
 
+// 16. CONTROL MICROBIOLÓGICO Y CALIDAD LAB-004
+const getLabLogs = async (req, res) => {
+    try {
+        const { batch_id } = req.query;
+        let sql = `
+            SELECT l.*, b.batch_code_display, b.product_type, b.batch_uuid, b.started_at
+            FROM egg_lab_micro_logs l
+            JOIN egg_production_batches b ON l.batch_id = b.id
+            WHERE l.company_id = ?
+        `;
+        const params = [req.company_id];
+        if (batch_id) {
+            sql += ' AND l.batch_id = ?';
+            params.push(batch_id);
+        }
+        sql += ' ORDER BY l.sample_date DESC, l.id DESC';
+        const [rows] = await pool.query(sql, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const createLabLog = async (req, res) => {
+    try {
+        const {
+            batch_id, sample_date, mesophilic_aerobic_cfu, total_coliforms_mpn,
+            e_coli_mpn, salmonella_25g, fungi_yeasts_cfu, ph, brix, solids_percentage,
+            status, observations, analyst_name
+        } = req.body;
+
+        // Validar límites microbiológicos según especificación oficial LAB-004
+        // Aeróbicos < 10,000, Coliformes < 10, E. Coli < 10 / Ausencia, Salmonella = ausencia, Hongos < 100
+        let evaluatedStatus = status || 'aprobado';
+        if (salmonella_25g === 'presencia' || mesophilic_aerobic_cfu > 10000 || total_coliforms_mpn > 10 || e_coli_mpn > 10) {
+            evaluatedStatus = 'rechazado';
+        }
+
+        const [result] = await pool.query(
+            `INSERT INTO egg_lab_micro_logs (
+                company_id, batch_id, sample_date, mesophilic_aerobic_cfu, total_coliforms_mpn,
+                e_coli_mpn, salmonella_25g, fungi_yeasts_cfu, ph, brix, solids_percentage,
+                status, observations, analyst_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                req.company_id, batch_id, sample_date || new Date().toISOString().split('T')[0],
+                mesophilic_aerobic_cfu || null, total_coliforms_mpn || null, e_coli_mpn || null,
+                salmonella_25g || 'ausencia', fungi_yeasts_cfu || null, ph || null, brix || null,
+                solids_percentage || null, evaluatedStatus, observations || null, analyst_name
+            ]
+        );
+
+        // Si el estado es rechazado, bloquear el lote en producción
+        if (evaluatedStatus === 'rechazado') {
+            await pool.query('UPDATE egg_production_batches SET status = "bloqueado_haccp" WHERE id = ?', [batch_id]);
+            await pool.query(
+                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+                 VALUES (?, 'quality.rejection', 'critical', ?, ?, ?)`,
+                [req.company_id, `Lote #${batch_id} RECHAZADO por análisis microbiológico LAB-004.`, JSON.stringify({ batch_id, salmonella_25g, mesophilic_aerobic_cfu }), analyst_name]
+            );
+        } else {
+            // Actualizar a aprobado_calidad
+            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND (status = "congelado" OR status = "empaquetado")', [batch_id]);
+        }
+
+        res.status(201).json({ id: result.insertId, status: evaluatedStatus, ...req.body });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getSolidsCalculation = async (req, res) => {
+    try {
+        const { base_egg_solids = 24.2, target_solids = 21.5, batch_weight_lbs = 12000 } = req.query;
+        const baseSolids = parseFloat(base_egg_solids);
+        const targetSolids = parseFloat(target_solids);
+        const batchWeight = parseFloat(batch_weight_lbs);
+
+        // Fórmula matemática de HUEVO ENTERO PLUS (Mario - Calidad ANDELSA):
+        const waterPct = ((baseSolids - targetSolids) / baseSolids) * 100;
+        const eggBaseLbs = batchWeight * (targetSolids / baseSolids);
+        const waterLbs = batchWeight - eggBaseLbs;
+        const waterGarrafones = waterLbs / 42.0; // 1 garrafón = 42 lbs
+        const citricAcidLbs = batchWeight * 0.001; // 0.1% ácido cítrico
+
+        res.json({
+            base_egg_solids: baseSolids,
+            target_solids: targetSolids,
+            batch_weight_lbs: batchWeight,
+            water_percentage: Math.max(0, waterPct),
+            egg_base_lbs: eggBaseLbs,
+            water_lbs: Math.max(0, waterLbs),
+            water_garrafones: Math.max(0, waterGarrafones),
+            citric_acid_lbs: citricAcidLbs,
+            is_compliant: targetSolids >= 21.0
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 17. CONTROL DE CUBETAS Y TAPADERAS RETORNABLES (ROXY / LOGÍSTICA)
+const getReturnableBalances = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT r.*, c.nombre as customer_full_name, c.telefono
+             FROM egg_returnable_packaging r
+             LEFT JOIN customers c ON r.customer_id = c.id
+             WHERE r.company_id = ?
+             ORDER BY r.current_balance DESC`,
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const saveReturnableCustomer = async (req, res) => {
+    try {
+        const { id, customer_id, customer_name, packaging_type, initial_balance, notes } = req.body;
+        if (id) {
+            await pool.query(
+                `UPDATE egg_returnable_packaging 
+                 SET customer_id = ?, customer_name = ?, packaging_type = ?, initial_balance = ?, notes = ?
+                 WHERE id = ? AND company_id = ?`,
+                [customer_id || null, customer_name, packaging_type || 'cubeta_30lb', initial_balance || 0, notes || null, id, req.company_id]
+            );
+            res.json({ message: 'Registro actualizado con éxito.', id });
+        } else {
+            const [result] = await pool.query(
+                `INSERT INTO egg_returnable_packaging (company_id, customer_id, customer_name, packaging_type, initial_balance, notes)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [req.company_id, customer_id || null, customer_name, packaging_type || 'cubeta_30lb', initial_balance || 0, notes || null]
+            );
+            res.status(201).json({ message: 'Cliente registrado para control de retornables.', id: result.insertId });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const registerReturnableMovement = async (req, res) => {
+    try {
+        const { returnable_id, movement_type, quantity, reference_document, notes, registered_by } = req.body;
+        const qty = parseInt(quantity);
+        if (!qty || qty <= 0) {
+            return res.status(400).json({ message: 'La cantidad debe ser mayor a cero.' });
+        }
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_returnable_packaging WHERE id = ? AND company_id = ?',
+            [returnable_id, req.company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Registro de retornable no encontrado.' });
+        }
+
+        // Registrar movimiento
+        await pool.query(
+            `INSERT INTO egg_returnable_movements (company_id, returnable_id, movement_type, quantity, reference_document, notes, registered_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [req.company_id, returnable_id, movement_type, qty, reference_document || null, notes || null, registered_by || req.user?.nombre || 'Bodeguero']
+        );
+
+        // Actualizar saldos en egg_returnable_packaging
+        if (movement_type === 'entrega') {
+            await pool.query(
+                `UPDATE egg_returnable_packaging 
+                 SET delivered_qty = delivered_qty + ?, last_movement_date = CURDATE() 
+                 WHERE id = ?`,
+                [qty, returnable_id]
+            );
+        } else if (movement_type === 'devolucion') {
+            await pool.query(
+                `UPDATE egg_returnable_packaging 
+                 SET returned_qty = returned_qty + ?, last_movement_date = CURDATE() 
+                 WHERE id = ?`,
+                [qty, returnable_id]
+            );
+        }
+
+        res.status(201).json({ message: 'Movimiento registrado correctamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -1016,5 +1336,12 @@ module.exports = {
     deleteCostConcept,
     getBatchVariableCosts,
     saveBatchVariableCost,
-    deleteBatchVariableCost
+    deleteBatchVariableCost,
+    // Nuevas funciones
+    getLabLogs,
+    createLabLog,
+    getSolidsCalculation,
+    getReturnableBalances,
+    saveReturnableCustomer,
+    registerReturnableMovement
 };

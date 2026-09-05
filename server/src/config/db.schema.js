@@ -556,10 +556,13 @@ REGLAS DE MULTI-TENENCIA:
 ### egg_raw_materials (Materia prima — huevo)
 - id, company_id, branch_id, provider_id
 - egg_type ENUM, egg_color ENUM, egg_size ENUM
-- fecha DATE, weight_lbs DECIMAL, temperature_c DECIMAL
-- provider_lot, certificate_urls TEXT
+- fecha DATE, weight_lbs DECIMAL, total_boxes INT, temperature_c DECIMAL, truck_temperature_c DECIMAL, truck_plate, driver_name
+- provider_lot, certificate_urls TEXT, tarimas_json JSON
 - operator_name, stock_lbs DECIMAL
 - status ENUM('aprobado','cuarentena','rechazado','anulado'), created_at
+
+### egg_raw_material_tarimas (Pesaje de tarimas en recepción)
+- id, company_id, raw_material_id FK, tarima_number, gross_weight_lbs, tare_weight_lbs, net_weight_lbs, boxes_count, created_at
 
 ### egg_cip_logs (Limpieza CIP / Sanitización)
 - id, company_id, equipment_name, chemical_used
@@ -567,10 +570,11 @@ REGLAS DE MULTI-TENENCIA:
 - operator_name, validation_status ENUM, notes TEXT, created_at
 
 ### egg_production_batches (Lotes de producción)
-- id, company_id, branch_id, batch_uuid VARCHAR(36) UNIQUE
-- product_type ENUM, presentation ENUM
+- id, company_id, branch_id, batch_uuid VARCHAR(36) UNIQUE, batch_code_display VARCHAR(100)
+- product_type ENUM, presentation ENUM, ingredients_json JSON
 - status ENUM, raw_material_id FK
 - input_weight_lbs, yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs DECIMAL
+- target_brix, measured_brix, target_solids_pct, measured_solids_pct DECIMAL
 - operator_name, started_at, completed_at
 
 ### batch_raw_materials (Materias primas por lote)
@@ -587,9 +591,36 @@ REGLAS DE MULTI-TENENCIA:
 
 ### egg_packaging_records (Empaque final)
 - id, company_id, batch_id FK
-- units_packaged INT, weight_per_unit_lbs, total_batch_weight_lbs DECIMAL
-- lot_code VARCHAR(100) UNIQUE, barcode, qr_code_payload TEXT
+- units_packaged INT, warehouse_zone ENUM('BLAST','COOLER','HOLDING'), product_state ENUM('liquido','congelado')
+- weight_per_unit_lbs, total_batch_weight_lbs DECIMAL
+- lot_code VARCHAR(100) UNIQUE, barcode, label_type, customer_destination, qr_code_payload TEXT
 - expiry_date DATE, operator_name, created_at
+
+### egg_lab_micro_logs (Control Microbiológico y Calidad LAB-004)
+- id, company_id, batch_id FK, sample_date
+- mesophilic_aerobic_cfu, total_coliforms_mpn, e_coli_mpn, salmonella_25g ENUM('ausencia','presencia'), fungi_yeasts_cfu
+- ph, brix, solids_percentage, status ENUM('aprobado','cuarentena','rechazado','observacion'), observations, analyst_name, created_at
+
+### egg_costing_configurations (Parámetros de Costeo por Libra)
+- id, company_id, setting_key UNIQUE(company_id, setting_key), setting_label, setting_value, unit_label, category, updated_at
+
+### egg_costing_cip_items (Catálogo de Químicos CIP para Costeo)
+- id, company_id, item_name, presentation_qty, presentation_unit, presentation_cost, dose_per_batch, dose_unit, status, updated_at
+
+### egg_costing_packaging (Catálogo de Empaques)
+- id, company_id, item_code UNIQUE(company_id, item_code), item_name, unit_cost, category, updated_at
+
+### egg_costing_customer_agreements (Acuerdos de Precios con Clientes)
+- id, company_id, customer_id, customer_name, product_type, presentation, agreed_price_per_lb, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status, updated_at
+
+### egg_costing_scenarios (Simulaciones de Costeo Guardadas)
+- id, company_id, scenario_name, product_type, presentation, base_raw_egg_cost_per_box, batch_size_lbs, yield_liquid_pct, calculated_cost_per_lb, target_sale_price_per_lb, margin_pct, full_breakdown_json, created_by, created_at
+
+### egg_returnable_packaging (Control de Cubetas y Tapaderas Retornables)
+- id, company_id, customer_id, customer_name, packaging_type, initial_balance, delivered_qty, returned_qty, current_balance (virtual), last_movement_date, notes, updated_at
+
+### egg_returnable_movements (Movimientos de Empaques Retornables)
+- id, company_id, returnable_id FK, movement_type ENUM('entrega','devolucion','ajuste'), quantity, reference_document, notes, registered_by, created_at
 
 ### egg_product_config (Configuración de productos)
 - id, company_id, product_type VARCHAR(50)

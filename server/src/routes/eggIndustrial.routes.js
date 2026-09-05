@@ -66,4 +66,40 @@ router.get('/batches/:batchId/variable-costs', eggController.getBatchVariableCos
 router.post('/batches/:batchId/variable-costs', eggController.saveBatchVariableCost);
 router.delete('/variable-costs/:id', eggController.deleteBatchVariableCost);
 
+const eggCosteoController = require('../controllers/eggCosteoLibra.controller');
+
+// 16. Costeo por Libra y Simulador Comercial (Oficial ANDELSA)
+router.get('/costeo-libra/config', eggCosteoController.getCostingConfig);
+router.put('/costeo-libra/config', eggCosteoController.updateCostingConfig);
+
+router.get('/costeo-libra/cip-items', eggCosteoController.getCipItems);
+router.post('/costeo-libra/cip-items', eggCosteoController.saveCipItem);
+router.delete('/costeo-libra/cip-items/:id', eggCosteoController.deleteCipItem);
+
+router.get('/costeo-libra/packaging-items', eggCosteoController.getPackagingItems);
+router.post('/costeo-libra/packaging-items', eggCosteoController.savePackagingItem);
+router.delete('/costeo-libra/packaging-items/:id', eggCosteoController.deletePackagingItem);
+
+router.get('/costeo-libra/customer-agreements', eggCosteoController.getCustomerAgreements);
+router.post('/costeo-libra/customer-agreements', eggCosteoController.saveCustomerAgreement);
+router.delete('/costeo-libra/customer-agreements/:id', eggCosteoController.deleteCustomerAgreement);
+
+router.post('/costeo-libra/calculate', eggCosteoController.calculateDynamicCost);
+
+router.get('/costeo-libra/scenarios', eggCosteoController.getScenarios);
+router.post('/costeo-libra/scenarios', eggCosteoController.saveScenario);
+router.delete('/costeo-libra/scenarios/:id', eggCosteoController.deleteScenario);
+
+router.get('/costeo-libra/history', eggCosteoController.getCostingHistory);
+
+// 17. Laboratorio y Calidad Microbiológica LAB-004
+router.get('/lab/logs', eggController.getLabLogs);
+router.post('/lab/logs', eggController.createLabLog);
+router.get('/lab/solids-calc', eggController.getSolidsCalculation);
+
+// 18. Control de Retornables (Cubetas y Tapaderas)
+router.get('/returnables/balances', eggController.getReturnableBalances);
+router.post('/returnables/customers', eggController.saveReturnableCustomer);
+router.post('/returnables/movements', eggController.registerReturnableMovement);
+
 module.exports = router;

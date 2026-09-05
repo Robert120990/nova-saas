@@ -16,7 +16,8 @@ import {
     Boxes,
     Search,
     Pencil,
-    Ban
+    Ban,
+    Truck
 } from 'lucide-react';
 
 const EggReception = () => {
@@ -31,6 +32,18 @@ const EggReception = () => {
 
     const todayStr = new Date().toISOString().split('T')[0];
 
+    // Preset providers (ANDELSA plant habituals)
+    const PRESET_PROVIDERS = [
+        { name: 'Don Héctor', code: 'HD 25918', prefix: 'HD-25918' },
+        { name: 'Granja Candy', code: 'CANDY', prefix: 'GC-CANDY' },
+        { name: 'Avícola La Granja', code: 'AV-GRANJA', prefix: 'LOTE-AV' }
+    ];
+
+    const [useTarimas, setUseTarimas] = useState(false);
+    const [tarimas, setTarimas] = useState([
+        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }
+    ]);
+
     // Form state
     const [formData, setFormData] = useState({
         provider_id: '',
@@ -39,7 +52,11 @@ const EggReception = () => {
         egg_size: 'L',
         fecha: todayStr,
         weight_lbs: '',
+        total_boxes: 0,
         temperature_c: '',
+        truck_temperature_c: '',
+        truck_plate: '',
+        driver_name: '',
         provider_lot: '',
         certificate_urls: '',
         operator_name: user?.nombre || '',
@@ -58,13 +75,72 @@ const EggReception = () => {
         egg_size: 'L',
         fecha: '',
         weight_lbs: '',
+        total_boxes: 0,
         temperature_c: '',
+        truck_temperature_c: '',
+        truck_plate: '',
+        driver_name: '',
         provider_lot: '',
         certificate_urls: '',
         operator_name: '',
         status: 'aprobado'
     });
     const [voidConfirmId, setVoidConfirmId] = useState(null);
+
+    // Helpers para tarimas
+    const addTarima = () => {
+        const nextNum = tarimas.length + 1;
+        setTarimas([...tarimas, {
+            id: Date.now(),
+            tarima_number: nextNum,
+            gross_weight_lbs: '',
+            tare_weight_lbs: 60,
+            net_weight_lbs: 0,
+            boxes_count: 24
+        }]);
+    };
+
+    const removeTarima = (index) => {
+        const updated = tarimas.filter((_, i) => i !== index).map((t, idx) => ({
+            ...t,
+            tarima_number: idx + 1
+        }));
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+    };
+
+    const updateTarima = (index, field, value) => {
+        const updated = [...tarimas];
+        const val = field === 'boxes_count' ? (parseInt(value) || 0) : (parseFloat(value) || 0);
+        updated[index][field] = value;
+        
+        const gross = parseFloat(updated[index].gross_weight_lbs) || 0;
+        const tare = parseFloat(updated[index].tare_weight_lbs) || 0;
+        updated[index].net_weight_lbs = Math.max(0, gross - tare);
+
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+    };
+
+    const recalcTarimasTotals = (currentTarimas) => {
+        const totalNet = currentTarimas.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
+        const totalB = currentTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
+        setFormData(prev => ({
+            ...prev,
+            weight_lbs: totalNet > 0 ? totalNet.toFixed(2) : '',
+            total_boxes: totalB
+        }));
+    };
+
+    const applyPreset = (preset) => {
+        const match = providers.find(p => p.nombre?.toLowerCase().includes(preset.name.toLowerCase()));
+        setFormData(prev => ({
+            ...prev,
+            provider_id: match ? match.id : prev.provider_id,
+            provider_lot: `${preset.prefix}-${new Date().toISOString().slice(5, 10).replace(/-/g, '')}`
+        }));
+        toast.info(`Preset aplicado: ${preset.name}`);
+    };
 
     // Fetch raw materials and providers on mount
     const fetchData = async () => {
@@ -124,12 +200,19 @@ const EggReception = () => {
                 ...formData,
                 provider_lot: formData.provider_lot.trim().toUpperCase(),
                 weight_lbs: parsedWeight,
+                total_boxes: formData.total_boxes || 0,
                 temperature_c: parsedTemp,
+                truck_temperature_c: formData.truck_temperature_c ? parseFloat(formData.truck_temperature_c) : null,
+                truck_plate: formData.truck_plate || null,
+                driver_name: formData.driver_name || null,
+                tarimas_json: useTarimas ? tarimas : null,
                 certificate_urls: urlsArray
             });
 
             toast.success('Recepción de materia prima registrada con éxito.');
             setIsCreateModalOpen(false);
+            setUseTarimas(false);
+            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }]);
             setFormData({
                 provider_id: '',
                 egg_type: 'huevo cáscara',
@@ -137,7 +220,11 @@ const EggReception = () => {
                 egg_size: 'L',
                 fecha: new Date().toISOString().split('T')[0],
                 weight_lbs: '',
+                total_boxes: 0,
                 temperature_c: '',
+                truck_temperature_c: '',
+                truck_plate: '',
+                driver_name: '',
                 provider_lot: '',
                 certificate_urls: '',
                 operator_name: user?.nombre || '',
@@ -287,18 +374,93 @@ const EggReception = () => {
             </div>
 
             {isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-                    <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2">
-                        <Plus className="h-4 w-4 text-teal-400" />
-                        Formulario de Ingreso y Control de Calidad
-                    </h2>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-6">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <Plus className="h-4 w-4 text-teal-400" />
+                            Formulario de Ingreso y Control de Calidad (LOG-004)
+                        </h2>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsCreateModalOpen(false)}
+                            className="text-slate-400 hover:text-white p-1 rounded-lg"
+                        >
+                            <XCircle size={18} />
+                        </button>
+                    </div>
+
+                    {/* Presets Rápidos */}
+                    <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Atajos de Proveedores Habituales (ANDELSA):</span>
+                            <span className="text-[10px] text-indigo-400 font-semibold">Autocompleta proveedor y prefijo de lote</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {PRESET_PROVIDERS.map((preset, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => applyPreset(preset)}
+                                    className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-indigo-200 border border-indigo-500/20 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5"
+                                >
+                                    <span>📦 {preset.name}</span>
+                                    <span className="text-[9px] bg-indigo-900/50 px-1.5 py-0.5 rounded text-indigo-200">{preset.code}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Datos del Transporte (LOG-004) */}
+                        <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                            <h3 className="text-[11px] font-black text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+                                <Truck size={14} />
+                                Control de Transporte & Cadena de Frío (LOG-004)
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Placa de Vehículo</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Ej: C123-456"
+                                        value={formData.truck_plate}
+                                        onChange={(e) => setFormData({ ...formData, truck_plate: e.target.value.toUpperCase() })}
+                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Motorista / Chofer</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Nombre del conductor"
+                                        value={formData.driver_name}
+                                        onChange={(e) => setFormData({ ...formData, driver_name: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Temp. Termoking/Cabina (°C)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="Ej: 4.5"
+                                            value={formData.truck_temperature_c}
+                                            onChange={(e) => setFormData({ ...formData, truck_temperature_c: e.target.value })}
+                                            className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        />
+                                        <Thermometer size={13} className="absolute left-2.5 top-2.5 text-slate-500" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Datos de la Carga */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Provider selection */}
-                            <div className="space-y-2">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Proveedor de Origen</label>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Proveedor de Origen *</label>
                                 <SearchableSelect
                                     options={providers}
                                     value={formData.provider_id}
@@ -311,23 +473,23 @@ const EggReception = () => {
                                 />
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="space-y-1">
                                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Fecha de Recepción</label>
                                 <input
                                     type="date"
                                     value={formData.fecha}
                                     onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                 />
                             </div>
 
                             {/* Egg type */}
-                            <div className="space-y-2">
+                            <div className="space-y-1">
                                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Tipo de Huevo</label>
                                 <select
                                     value={formData.egg_type}
                                     onChange={(e) => setFormData({ ...formData, egg_type: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="huevo cáscara">Huevo en Cáscara</option>
                                     <option value="huevo líquido">Huevo Líquido</option>
@@ -337,26 +499,26 @@ const EggReception = () => {
                             </div>
 
                             {/* Egg color & size conditionally active */}
-                            {formData.egg_type === 'huevo cáscara' && (
-                                <>
-                                    <div className="space-y-2">
-                                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Color del Huevo</label>
+                            {formData.egg_type === 'huevo cáscara' ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase">Color</label>
                                         <select
                                             value={formData.egg_color}
                                             onChange={(e) => setFormData({ ...formData, egg_color: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="blanco">Blanco</option>
                                             <option value="marrón">Marrón</option>
                                             <option value="mixto">Mixto</option>
                                         </select>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Tamaño</label>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase">Tamaño</label>
                                         <select
                                             value={formData.egg_size}
                                             onChange={(e) => setFormData({ ...formData, egg_size: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="S">S (Chico)</option>
                                             <option value="M">M (Mediano)</option>
@@ -364,55 +526,194 @@ const EggReception = () => {
                                             <option value="XL">XL (Extra Grande)</option>
                                         </select>
                                     </div>
-                                </>
+                                </div>
+                            ) : (
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Lote del Proveedor *</label>
+                                    <input
+                                        type="text"
+                                        value={formData.provider_lot}
+                                        onChange={(e) => setFormData({ ...formData, provider_lot: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        placeholder="Ej: LOTE-AV-991A"
+                                    />
+                                </div>
                             )}
 
-                            {/* Weight and Temp */}
-                            <div className="space-y-2">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Peso Recibido (Libras)</label>
-                                <input
-                                    type="number"
-                                    value={formData.weight_lbs}
-                                    onChange={(e) => setFormData({ ...formData, weight_lbs: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
-                                    placeholder="Ej: 12000"
-                                    step="0.01"
-                                />
-                            </div>
+                            {formData.egg_type === 'huevo cáscara' && (
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Lote del Proveedor *</label>
+                                    <input
+                                        type="text"
+                                        value={formData.provider_lot}
+                                        onChange={(e) => setFormData({ ...formData, provider_lot: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        placeholder="Ej: LOTE-AV-991A"
+                                    />
+                                </div>
+                            )}
 
-                            <div className="space-y-2">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Temperatura en Sensor (°C)</label>
+                            {/* Temperature */}
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Temperatura Huevo (°C) *</label>
                                 <div className="relative">
                                     <input
                                         type="number"
                                         value={formData.temperature_c}
                                         onChange={(e) => setFormData({ ...formData, temperature_c: e.target.value })}
-                                        className="w-full pl-10 pr-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
-                                        placeholder="Ej: 4.2"
+                                        className="w-full pl-10 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                        placeholder="Máx 6.0°C"
                                         step="0.01"
                                     />
                                     <Thermometer className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-500" />
                                 </div>
                             </div>
+                        </div>
 
-                            {/* Lot & Quality certificates */}
-                            <div className="space-y-2">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Lote del Proveedor</label>
-                                <input
-                                    type="text"
-                                    value={formData.provider_lot}
-                                    onChange={(e) => setFormData({ ...formData, provider_lot: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
-                                    placeholder="Ej: LOTE-AV-991A"
-                                />
+                        {/* MODO PESAJE: GLOBAL VS TARIMAS */}
+                        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-850 pb-3">
+                                <div>
+                                    <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                        <Boxes size={14} className="text-teal-400" />
+                                        Detalle de Pesaje & Cajas
+                                    </h4>
+                                    <p className="text-[10px] text-slate-400">Seleccione si registrará el peso total directo o tarima por tarima de báscula</p>
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setUseTarimas(false)}
+                                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${!useTarimas ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        Pesaje Directo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setUseTarimas(true)}
+                                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${useTarimas ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        Por Tarimas (Báscula)
+                                    </button>
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
+                            {!useTarimas ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Total Cajas de Huevo</label>
+                                        <input
+                                            type="number"
+                                            value={formData.total_boxes}
+                                            onChange={(e) => setFormData({ ...formData, total_boxes: parseInt(e.target.value) || 0 })}
+                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                            placeholder="Ej: 360"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Peso Neto Recibido (Libras) *</label>
+                                        <input
+                                            type="number"
+                                            value={formData.weight_lbs}
+                                            onChange={(e) => setFormData({ ...formData, weight_lbs: e.target.value })}
+                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                            placeholder="Ej: 16500.50"
+                                            step="0.01"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                        <table className="w-full text-left text-xs">
+                                            <thead className="bg-slate-900 text-slate-400 text-[10px] uppercase font-bold">
+                                                <tr>
+                                                    <th className="p-2 text-center w-12">#</th>
+                                                    <th className="p-2 w-28">Cajas</th>
+                                                    <th className="p-2">Peso Bruto (lb)</th>
+                                                    <th className="p-2">Tara (lb)</th>
+                                                    <th className="p-2 text-right">Peso Neto (lb)</th>
+                                                    <th className="p-2 w-10"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800 font-semibold">
+                                                {tarimas.map((t, idx) => (
+                                                    <tr key={t.id || idx} className="hover:bg-slate-900/50">
+                                                        <td className="p-2 text-center text-slate-400 text-xs font-bold">{t.tarima_number}</td>
+                                                        <td className="p-2">
+                                                            <input
+                                                                type="number"
+                                                                value={t.boxes_count}
+                                                                onChange={(e) => updateTarima(idx, 'boxes_count', e.target.value)}
+                                                                className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-bold text-center"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                placeholder="0.0"
+                                                                value={t.gross_weight_lbs}
+                                                                onChange={(e) => updateTarima(idx, 'gross_weight_lbs', e.target.value)}
+                                                                className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-bold"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                value={t.tare_weight_lbs}
+                                                                onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
+                                                                className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 text-right font-black text-teal-400 text-xs">
+                                                            {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
+                                                        </td>
+                                                        <td className="p-2 text-center">
+                                                            {tarimas.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeTarima(idx)}
+                                                                    className="text-rose-400 hover:text-rose-300 p-1"
+                                                                >
+                                                                    <XCircle size={14} />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={addTarima}
+                                            className="px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-indigo-400 rounded-xl text-xs font-bold border border-slate-750 flex items-center gap-1.5 transition-all"
+                                        >
+                                            <Plus size={14} />
+                                            Agregar Tarima #{tarimas.length + 1}
+                                        </button>
+                                        <div className="flex items-center gap-4 bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 text-xs">
+                                            <span className="text-slate-400">Tarimas: <strong className="text-white">{tarimas.length}</strong></span>
+                                            <span className="text-slate-400">Total Cajas: <strong className="text-indigo-400">{formData.total_boxes}</strong></span>
+                                            <span className="text-slate-400">Neto Total: <strong className="text-teal-400">{formData.weight_lbs || '0.00'} lb</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Certificados y Calidad Inicial */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
                                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Estado Inicial Calidad</label>
                                 <select
                                     value={formData.status}
                                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="aprobado">Aprobado para Producción</option>
                                     <option value="cuarentena">En Cuarentena</option>
@@ -420,18 +721,15 @@ const EggReception = () => {
                                 </select>
                             </div>
 
-                            <div className="md:col-span-2 space-y-2">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">URLs de Certificados de Inocuidad (Separados por coma)</label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={formData.certificate_urls}
-                                        onChange={(e) => setFormData({ ...formData, certificate_urls: e.target.value })}
-                                        className="w-full pl-10 pr-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
-                                        placeholder="Ej: https://docs.quality.com/cert1.pdf, https://docs.quality.com/cert2.pdf"
-                                    />
-                                    <Award className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-500" />
-                                </div>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">URLs Certificados Inocuidad</label>
+                                <input
+                                    type="text"
+                                    value={formData.certificate_urls}
+                                    onChange={(e) => setFormData({ ...formData, certificate_urls: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ej: https://docs.quality.com/cert1.pdf"
+                                />
                             </div>
                         </div>
 
@@ -493,16 +791,17 @@ const EggReception = () => {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-900/50 border-b border-slate-850 text-slate-400 font-extrabold uppercase tracking-tighter text-[10px]">
-                                        <th className="px-2 py-1.5">Fecha</th>
-                                        <th className="px-2 py-1.5">Proveedor</th>
-                                        <th className="px-2 py-1.5">Lote</th>
-                                        <th className="px-2 py-1.5">Tipo</th>
-                                        <th className="px-2 py-1.5 text-right">Peso (Lbs)</th>
-                                        <th className="px-2 py-1.5 text-right">Stock</th>
-                                        <th className="px-2 py-1.5 text-center">Temp</th>
-                                        <th className="px-2 py-1.5 text-center">Estatus</th>
-                                        <th className="px-2 py-1.5">Operador</th>
-                                        <th className="px-2 py-1.5 text-center w-10"></th>
+                                        <th className="px-2 py-2">Fecha</th>
+                                        <th className="px-2 py-2">Proveedor / Lote</th>
+                                        <th className="px-2 py-2">Transporte (LOG-004)</th>
+                                        <th className="px-2 py-2">Tipo / Presentación</th>
+                                        <th className="px-2 py-2 text-right">Cajas</th>
+                                        <th className="px-2 py-2 text-right">Peso (Lbs)</th>
+                                        <th className="px-2 py-2 text-right">Stock</th>
+                                        <th className="px-2 py-2 text-center">Temp Huevo</th>
+                                        <th className="px-2 py-2 text-center">Estatus</th>
+                                        <th className="px-2 py-2">Operador</th>
+                                        <th className="px-2 py-2 text-center w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
@@ -516,36 +815,56 @@ const EggReception = () => {
 
                                         return (
                                             <tr key={rm.id} className="hover:bg-slate-900/40 transition-colors">
-                                                <td className="px-2 py-1.5 text-[10px] whitespace-nowrap">
-                                                    <span className="flex items-center gap-1 text-slate-400">
-                                                        <Calendar size={10} />
+                                                <td className="px-2 py-2 text-[10px] whitespace-nowrap">
+                                                    <span className="flex items-center gap-1 text-slate-400 font-bold">
+                                                        <Calendar size={11} />
                                                         {formatDate(rm.fecha || rm.created_at)}
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1.5 font-bold text-white text-[11px] truncate max-w-[220px]">{rm.provider_name}</td>
-                                                <td className="px-2 py-1.5">
-                                                    <span className="bg-slate-900 border border-slate-800 text-indigo-400 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                                        {rm.provider_lot}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-1.5 capitalize">
+                                                <td className="px-2 py-2">
                                                     <div className="flex flex-col">
-                                                        <span className="text-white text-[12px]">{rm.egg_type}</span>
+                                                        <span className="font-bold text-white text-[12px] truncate max-w-[200px]">{rm.provider_name}</span>
+                                                        <span className="bg-slate-900 border border-slate-800 text-indigo-400 px-1.5 py-0.5 rounded text-[10px] font-bold w-fit mt-0.5">
+                                                            {rm.provider_lot}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-2 py-2">
+                                                    <div className="flex flex-col text-[10px]">
+                                                        {rm.truck_plate ? (
+                                                            <span className="text-slate-200 font-bold flex items-center gap-1">
+                                                                <Truck size={11} className="text-indigo-400" />
+                                                                {rm.truck_plate}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-600 italic">Sin transporte</span>
+                                                        )}
+                                                        {rm.truck_temperature_c && (
+                                                            <span className="text-slate-400 text-[9px]">Termoking: {rm.truck_temperature_c}°C</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-2 py-2 capitalize">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-white text-[11px] font-bold">{rm.egg_type}</span>
                                                         {rm.egg_type === 'huevo cáscara' && (
                                                             <span className="text-[10px] text-slate-500">Color: {rm.egg_color} | Talla: {rm.egg_size}</span>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-2 py-1.5 text-right font-black text-white text-[11px]">
+                                                <td className="px-2 py-2 text-right font-black text-indigo-300 text-[11px]">
+                                                    {rm.total_boxes ? `${rm.total_boxes} cjs` : '-'}
+                                                </td>
+                                                <td className="px-2 py-2 text-right font-black text-white text-[11px]">
                                                     {parseFloat(rm.weight_lbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-2 py-1.5 text-right font-bold text-[11px]">
+                                                <td className="px-2 py-2 text-right font-bold text-[11px]">
                                                     <span className={parseFloat(rm.stock_lbs || 0) <= 0 ? 'text-rose-500' : parseFloat(rm.stock_lbs) < 1000 ? 'text-amber-400' : 'text-teal-400'}>
                                                         {parseFloat(rm.stock_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1.5 text-center">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                                <td className="px-2 py-2 text-center">
+                                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${
                                                         parseFloat(rm.temperature_c) > 6.0 
                                                             ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' 
                                                             : 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
@@ -553,7 +872,7 @@ const EggReception = () => {
                                                         {rm.temperature_c}°C
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1.5 text-center">
+                                                <td className="px-2 py-2 text-center">
                                                     <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight">
                                                         <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full font-black ${getStatusBadge(rm.status)}`}>
                                                             {getStatusIcon(rm.status)}
@@ -561,7 +880,7 @@ const EggReception = () => {
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="px-2 py-1.5">
+                                                <td className="px-2 py-2">
                                                     <div className="flex flex-col gap-0.5">
                                                         <span className="text-slate-400 flex items-center gap-1 text-[9px]">
                                                             <User size={9} />
@@ -585,7 +904,7 @@ const EggReception = () => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-2 py-1.5 text-center">
+                                                <td className="px-2 py-2 text-center">
                                                     <div className="flex items-center justify-center gap-1">
                                                         {rm.status !== 'anulado' && (
                                                             <button
