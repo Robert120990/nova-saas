@@ -3978,6 +3978,199 @@ const generateArqueosReportPDF = (data) => {
     });
 };
 
+/**
+ * Generates a PDF buffer for Store Profitability Report (Informe de Ventas y Rentabilidad de Tienda)
+ */
+const generateStoreProfitabilityPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'LETTER', bufferPages: true });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => {
+                const range = doc.bufferedPageRange();
+                for (let i = range.start; i < range.start + range.count; i++) {
+                    doc.switchToPage(i);
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000');
+                    doc.text(`Página ${i + 1} de ${range.count}`, 30, 28, {
+                        align: 'right',
+                        width: 730
+                    });
+                }
+                resolve(Buffer.concat(buffers));
+            });
+            doc.on('error', (err) => reject(err));
+
+            const formatMoney = (val) => {
+                if (val === null || val === undefined || isNaN(val)) return '$ -';
+                return `$ ${parseFloat(val).toFixed(2)}`;
+            };
+
+            const fitText = (text, maxWidth) => {
+                const str = text || '';
+                if (doc.widthOfString(str) <= maxWidth) return str;
+                let truncated = str;
+                while (truncated.length > 0 && doc.widthOfString(truncated + '...') > maxWidth) {
+                    truncated = truncated.slice(0, -1);
+                }
+                return truncated + '...';
+            };
+
+            const startX = 30;
+            const totalWidth = 730;
+            const colWidths = {
+                codigo: 75,
+                descripcion: 165,
+                categoria: 100,
+                costo: 45,
+                precio: 45,
+                cant: 42,
+                rentabilidad: 88,
+                costoTot: 55,
+                ventas: 55,
+                ganancia: 60
+            };
+
+            const drawPageHeader = () => {
+                const topY = 28;
+                doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000');
+                const titleStr = `INFORME DE VENTAS DESDE ${data.startDateFormatted} HASTA ${data.endDateFormatted}`;
+                doc.text(titleStr, startX, topY, { width: 550 });
+
+                if (data.branch_name) {
+                    doc.font('Helvetica').fontSize(8).fillColor('#475569');
+                    doc.text(`EMPRESA: ${data.company_name}   |   SUCURSAL: ${data.branch_name.toUpperCase()}`, startX, topY + 14);
+                }
+
+                const tableTop = topY + 28;
+                doc.lineWidth(1).strokeColor('#000000');
+                doc.moveTo(startX, tableTop).lineTo(startX + totalWidth, tableTop).stroke();
+
+                doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000');
+                let x = startX;
+                const headerY = tableTop + 4;
+                doc.text('CODIGO', x, headerY); x += colWidths.codigo;
+                doc.text('DESCRIPCION', x, headerY); x += colWidths.descripcion;
+                doc.text('CATEGORIA', x, headerY); x += colWidths.categoria;
+                doc.text('COSTO', x, headerY, { align: 'right', width: colWidths.costo }); x += colWidths.costo;
+                doc.text('PRECIO', x, headerY, { align: 'right', width: colWidths.precio }); x += colWidths.precio;
+                doc.text('CANT.', x, headerY, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
+                doc.text('RENTABILIDAD', x, headerY, { align: 'right', width: colWidths.rentabilidad }); x += colWidths.rentabilidad;
+                doc.text('COSTO TOT', x, headerY, { align: 'right', width: colWidths.costoTot }); x += colWidths.costoTot;
+                doc.text('VENTAS', x, headerY, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
+                doc.text('GANANCIA', x, headerY, { align: 'right', width: colWidths.ganancia });
+
+                doc.moveTo(startX, tableTop + 16).lineTo(startX + totalWidth, tableTop + 16).stroke();
+                return tableTop + 20;
+            };
+
+            let currentY = drawPageHeader();
+
+            data.items.forEach((item) => {
+                if (currentY > 550) {
+                    doc.addPage();
+                    currentY = drawPageHeader();
+                }
+
+                doc.font('Helvetica').fontSize(7).fillColor('#000000');
+                let x = startX;
+
+                // CODIGO
+                doc.text(String(item.codigo || '---'), x, currentY, { width: colWidths.codigo - 4, truncate: true });
+                x += colWidths.codigo;
+
+                // DESCRIPCION
+                doc.text(fitText(String(item.descripcion || '').toUpperCase(), colWidths.descripcion - 4), x, currentY, { width: colWidths.descripcion - 4 });
+                x += colWidths.descripcion;
+
+                // CATEGORIA
+                doc.text(fitText(String(item.categoria || 'SIN CATEGORIA').toUpperCase(), colWidths.categoria - 4), x, currentY, { width: colWidths.categoria - 4 });
+                x += colWidths.categoria;
+
+                // COSTO
+                const costoStr = item.hasCost ? formatMoney(item.costo) : '$ -';
+                doc.text(costoStr, x, currentY, { align: 'right', width: colWidths.costo });
+                x += colWidths.costo;
+
+                // PRECIO
+                doc.text(formatMoney(item.precio), x, currentY, { align: 'right', width: colWidths.precio });
+                x += colWidths.precio;
+
+                // CANT.
+                doc.text(parseFloat(item.cantidad || 0).toFixed(2), x, currentY, { align: 'right', width: colWidths.cant });
+                x += colWidths.cant;
+
+                // RENTABILIDAD: "$ 0.70 | 66.52%"
+                let rentStr = '$ - | 0.00%';
+                if (item.hasCost) {
+                    const unitMarginStr = `$ ${parseFloat(item.rentabilidadUnitaria || 0).toFixed(2)}`;
+                    const pctStr = `${parseFloat(item.rentabilidadPorcentaje || 0).toFixed(2)}%`;
+                    rentStr = `${unitMarginStr} | ${pctStr}`;
+                }
+                doc.text(rentStr, x, currentY, { align: 'right', width: colWidths.rentabilidad });
+                x += colWidths.rentabilidad;
+
+                // COSTO TOT
+                const costoTotStr = item.hasCost ? formatMoney(item.costoTotal) : '$ -';
+                doc.text(costoTotStr, x, currentY, { align: 'right', width: colWidths.costoTot });
+                x += colWidths.costoTot;
+
+                // VENTAS
+                doc.text(formatMoney(item.totalVenta), x, currentY, { align: 'right', width: colWidths.ventas });
+                x += colWidths.ventas;
+
+                // GANANCIA
+                const gananciaStr = item.hasCost ? formatMoney(item.ganancia) : '$ -';
+                doc.text(gananciaStr, x, currentY, { align: 'right', width: colWidths.ganancia });
+
+                currentY += 10.5;
+            });
+
+            // Resumen de Totales Generales
+            if (currentY + 40 > 550) {
+                doc.addPage();
+                currentY = drawPageHeader();
+            }
+
+            currentY += 5;
+            doc.lineWidth(1).strokeColor('#000000');
+            doc.moveTo(startX, currentY).lineTo(startX + totalWidth, currentY).stroke();
+            currentY += 5;
+
+            doc.font('Helvetica-Bold').fontSize(8).fillColor('#000000');
+            doc.text('TOTALES GENERALES:', startX, currentY, { width: colWidths.codigo + colWidths.descripcion + colWidths.categoria });
+            
+            let xTot = startX + colWidths.codigo + colWidths.descripcion + colWidths.categoria + colWidths.costo + colWidths.precio;
+            // CANT TOTAL
+            doc.text(parseFloat(data.totals.cantidad || 0).toFixed(2), xTot, currentY, { align: 'right', width: colWidths.cant });
+            xTot += colWidths.cant;
+
+            // RENTABILIDAD TOTAL %
+            const totPct = `${parseFloat(data.totals.rentabilidadPorcentaje || 0).toFixed(2)}%`;
+            doc.text(totPct, xTot, currentY, { align: 'right', width: colWidths.rentabilidad });
+            xTot += colWidths.rentabilidad;
+
+            // COSTO TOTAL
+            doc.text(formatMoney(data.totals.costoTotal), xTot, currentY, { align: 'right', width: colWidths.costoTot });
+            xTot += colWidths.costoTot;
+
+            // VENTAS TOTAL
+            doc.text(formatMoney(data.totals.totalVenta), xTot, currentY, { align: 'right', width: colWidths.ventas });
+            xTot += colWidths.ventas;
+
+            // GANANCIA TOTAL
+            doc.text(formatMoney(data.totals.ganancia), xTot, currentY, { align: 'right', width: colWidths.ganancia });
+
+            currentY += 14;
+            doc.moveTo(startX, currentY).lineTo(startX + totalWidth, currentY).stroke();
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 module.exports = {
     generateTransferPDF, 
       generateStatementPDF, 
@@ -3994,6 +4187,7 @@ module.exports = {
     generateSalesByCustomerPDF,
     generateSalesByCategoryPDF,
     generateSalesByPOSPDF,
+    generateStoreProfitabilityPDF,
     generatePendingDocumentsDetailedPDF,
     generateProviderPendingDocumentsDetailedPDF,
     generateRTEE,

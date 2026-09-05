@@ -81,6 +81,7 @@ import SalesByCategoryReport from './pages/SalesByCategoryReport';
 import SalesByPOSReport from './pages/SalesByPOSReport';
 import SalesDetailReport from './pages/SalesDetailReport';
 import ArqueosReport from './pages/ArqueosReport';
+import StoreProfitabilityReport from './pages/StoreProfitabilityReport';
 import SalesReport from './pages/SalesReport';
 import PendingDocumentsDetailedReport from './pages/PendingDocumentsDetailedReport';
 import ProviderPendingDocumentsDetailedReport from './pages/ProviderPendingDocumentsDetailedReport';
@@ -259,6 +260,7 @@ function App() {
                         <Route path="/ventas/reportes/pos" element={<SalesByPOSReport />} />
                         <Route path="/ventas/reportes/detalle-facturacion" element={<SalesDetailReport />} />
                         <Route path="/ventas/reportes/arqueos" element={<ArqueosReport />} />
+                        <Route path="/ventas/reportes/rentabilidad-tienda" element={<StoreProfitabilityReport />} />
                         <Route path="/ventas/combos" element={<Combos />} />
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
