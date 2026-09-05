@@ -1,6 +1,6 @@
-const mysql = require('mysql2/promise');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
+const mysql = require(path.join(__dirname, '../server/node_modules/mysql2/promise'));
+require(path.join(__dirname, '../server/node_modules/dotenv')).config({ path: path.join(__dirname, '../server/.env') });
 
 const PERMISSION_KEY = 'view_store_profitability_report';
 

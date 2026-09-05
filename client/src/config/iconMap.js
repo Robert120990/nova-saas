@@ -56,7 +56,8 @@ import {
     PlusCircle,
     FileMinus,
     FilePlus,
-    XCircle
+    XCircle,
+    TrendingUp
 } from 'lucide-react';
 
 const iconMap = {
@@ -118,6 +119,7 @@ const iconMap = {
     FileMinus,
     FilePlus,
     XCircle,
+    TrendingUp,
 };
 
 export default iconMap;
