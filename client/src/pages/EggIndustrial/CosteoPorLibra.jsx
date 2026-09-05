@@ -37,15 +37,19 @@ export default function EggCosteoPorLibra() {
         raw_egg_box_cost: '38.00',
         raw_egg_lbs_per_box: '43.5',
         batch_size_lbs: '12000',
-        water_added_pct: 0.0,
-        sugar_added_pct: 0.0,
-        salt_added_pct: 0.0,
+        base_egg_solids: '24.2',
+        target_solids: '21.5',
+        water_added_pct: '8.0',
+        sugar_added_pct: '4.0',
+        salt_added_pct: '10.0',
+        milk_added_pct: '5.0',
         target_sale_price_per_lb: '1.25',
         custom_cip_cost: null,
         custom_mod_per_lb: 0.0500,
         custom_gif_monthly: 24537.00,
         custom_monthly_volume_lbs: 100000
     });
+    const [showCustomSolids, setShowCustomSolids] = useState(false);
 
     // Resultados calculados
     const [calculationResult, setCalculationResult] = useState(null);
@@ -130,6 +134,12 @@ export default function EggCosteoPorLibra() {
                 raw_egg_box_cost: parseFloat(params.raw_egg_box_cost) || 0,
                 raw_egg_lbs_per_box: parseFloat(params.raw_egg_lbs_per_box) || 43.5,
                 batch_size_lbs: parseFloat(params.batch_size_lbs) || 12000,
+                base_egg_solids: parseFloat(params.base_egg_solids) || 24.2,
+                target_solids: parseFloat(params.target_solids) || 21.5,
+                water_added_pct: parseFloat(params.water_added_pct) || 0,
+                sugar_added_pct: parseFloat(params.sugar_added_pct) || 0,
+                salt_added_pct: parseFloat(params.salt_added_pct) || 0,
+                milk_added_pct: parseFloat(params.milk_added_pct) || 0,
                 target_sale_price_per_lb: parseFloat(params.target_sale_price_per_lb) || 0,
                 custom_gif_monthly: parseFloat(params.custom_gif_monthly) || 24537.00,
                 custom_monthly_volume_lbs: parseFloat(params.custom_monthly_volume_lbs) || 100000
@@ -149,7 +159,7 @@ export default function EggCosteoPorLibra() {
         }
     };
 
-    // Cambio en parámetros con debounce de 400ms para no saturar ni dar errores en vivo
+    // Cambio en parámetros con debounce de 350ms para no saturar ni dar errores en vivo
     const handleParamChange = (field, value) => {
         setCalcParams(prev => {
             const updated = { ...prev, [field]: value };
@@ -157,21 +167,44 @@ export default function EggCosteoPorLibra() {
             if (field === 'product_type') {
                 const valLower = (value || '').toLowerCase();
                 if (valLower.includes('plus')) {
-                    updated.water_added_pct = 8.0;
-                    updated.sugar_added_pct = 0.0;
-                    updated.salt_added_pct = 0.0;
+                    updated.base_egg_solids = '24.2';
+                    updated.target_solids = '21.5';
+                    updated.water_added_pct = '11.16';
+                    updated.sugar_added_pct = '0.0';
+                    updated.salt_added_pct = '0.0';
+                    updated.milk_added_pct = '0.0';
                 } else if (valLower.includes('azucarada')) {
-                    updated.water_added_pct = 0.0;
-                    updated.sugar_added_pct = 4.0;
-                    updated.salt_added_pct = 0.0;
+                    updated.water_added_pct = '0.0';
+                    updated.sugar_added_pct = '4.0';
+                    updated.salt_added_pct = '0.0';
+                    updated.milk_added_pct = '0.0';
                 } else if (valLower.includes('salada')) {
-                    updated.water_added_pct = 0.0;
-                    updated.salt_added_pct = 10.0;
-                    updated.sugar_added_pct = 0.0;
+                    updated.water_added_pct = '0.0';
+                    updated.salt_added_pct = '10.0';
+                    updated.sugar_added_pct = '0.0';
+                    updated.milk_added_pct = '0.0';
+                } else if (valLower.includes('leche')) {
+                    updated.milk_added_pct = '5.0';
+                    updated.water_added_pct = '0.0';
+                    updated.sugar_added_pct = '0.0';
+                    updated.salt_added_pct = '0.0';
                 } else {
-                    updated.water_added_pct = 0.0;
-                    updated.sugar_added_pct = 0.0;
-                    updated.salt_added_pct = 0.0;
+                    updated.water_added_pct = '0.0';
+                    updated.sugar_added_pct = '0.0';
+                    updated.salt_added_pct = '0.0';
+                    updated.milk_added_pct = '0.0';
+                }
+            } else if (field === 'base_egg_solids' || field === 'target_solids') {
+                const b = parseFloat(field === 'base_egg_solids' ? value : updated.base_egg_solids) || 0;
+                const t = parseFloat(field === 'target_solids' ? value : updated.target_solids) || 0;
+                if (b > 0 && t > 0 && b > t) {
+                    updated.water_added_pct = (((b - t) / b) * 100).toFixed(2);
+                }
+            } else if (field === 'water_added_pct') {
+                const w = parseFloat(value) || 0;
+                const b = parseFloat(updated.base_egg_solids) || 24.2;
+                if (b > 0 && w >= 0) {
+                    updated.target_solids = (b * (1 - (w / 100))).toFixed(1);
                 }
             }
 
@@ -646,6 +679,265 @@ export default function EggCosteoPorLibra() {
                                 </div>
                             </div>
 
+                            {/* SECCIÓN DE FORMULACIÓN Y BALANCE DE SÓLIDOS */}
+                            {calcParams.product_type.toLowerCase().includes('plus') || showCustomSolids ? (
+                                <div className="pt-3 pb-3 px-3.5 bg-cyan-50/80 border border-cyan-200 rounded-xl space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 text-cyan-900 font-bold text-xs uppercase tracking-wide">
+                                            <Droplets className="w-4 h-4 text-cyan-600" />
+                                            <span>Nivelación de Sólidos & Balance Hídrico (HE+)</span>
+                                        </div>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                            (parseFloat(calcParams.target_solids) || 0) >= 21.0
+                                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                                : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                        }`}>
+                                            {(parseFloat(calcParams.target_solids) || 0) >= 21.0 ? 'Norma Cumplida (≥21.0%)' : 'Sólidos Bajos (<21.0%)'}
+                                        </span>
+                                    </div>
+
+                                    {/* Inputs de Sólidos Base y Objetivo */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                                Sólidos Base (%)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="1"
+                                                max="40"
+                                                value={calcParams.base_egg_solids}
+                                                onChange={(e) => handleParamChange('base_egg_solids', e.target.value)}
+                                                placeholder="24.2"
+                                                className="w-full bg-white border border-cyan-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-slate-500 mt-0.5 block">Refractómetro</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                                Sólidos Target (%)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="1"
+                                                max="40"
+                                                value={calcParams.target_solids}
+                                                onChange={(e) => handleParamChange('target_solids', e.target.value)}
+                                                placeholder="21.5"
+                                                className="w-full bg-white border border-cyan-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-slate-500 mt-0.5 block">Mínimo 21.0%</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                                % Agua a Añadir
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                max="30"
+                                                value={calcParams.water_added_pct}
+                                                onChange={(e) => handleParamChange('water_added_pct', e.target.value)}
+                                                placeholder="8.0"
+                                                className="w-full bg-white border border-cyan-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-cyan-900 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-cyan-700 font-semibold mt-0.5 block">Sincronizado</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Banner con la fórmula oficial */}
+                                    <div className="bg-white/80 border border-cyan-200 rounded-lg p-2 text-[10px] text-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                        <div>
+                                            <span className="font-bold text-cyan-800">Fórmula de Planta: </span>
+                                            <span className="font-mono text-[10.5px] text-slate-800">% Agua = [(Sólidos Base − Sólidos Target) ÷ Sólidos Base] × 100</span>
+                                        </div>
+                                        <div className="font-bold text-cyan-900">
+                                            Lote: {(parseFloat(calcParams.batch_size_lbs) || 12000).toLocaleString()} lbs
+                                        </div>
+                                    </div>
+
+                                    {/* Desglose de componentes para el Batch actual */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                                        <div className="bg-white p-2 rounded-lg border border-cyan-200">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Huevo Líquido Puro</span>
+                                            <span className="font-bold text-slate-800 text-xs mt-0.5 block">
+                                                {(calculationResult?.formulation?.base_liquid_pure_lbs || (parseFloat(calcParams.batch_size_lbs || 12000) * (1 - (parseFloat(calcParams.water_added_pct || 0) / 100)))).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
+                                            </span>
+                                        </div>
+
+                                        <div className="bg-white p-2 rounded-lg border border-cyan-200">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Agua Purificada</span>
+                                            <span className="font-bold text-cyan-700 text-xs mt-0.5 block">
+                                                {(calculationResult?.formulation?.water_lbs || (parseFloat(calcParams.batch_size_lbs || 12000) * (parseFloat(calcParams.water_added_pct || 0) / 100))).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
+                                            </span>
+                                        </div>
+
+                                        <div className="bg-white p-2 rounded-lg border border-cyan-200">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Garrafones (42 lb)</span>
+                                            <span className="font-bold text-slate-800 text-xs mt-0.5 block">
+                                                {(calculationResult?.formulation?.water_garrafones || ((parseFloat(calcParams.batch_size_lbs || 12000) * (parseFloat(calcParams.water_added_pct || 0) / 100)) / 42.0)).toFixed(1)} u
+                                            </span>
+                                        </div>
+
+                                        <div className="bg-white p-2 rounded-lg border border-cyan-200">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Ácido Cítrico 0.1%</span>
+                                            <span className="font-bold text-amber-700 text-xs mt-0.5 block">
+                                                {(calculationResult?.formulation?.citric_acid_lbs || (parseFloat(calcParams.batch_size_lbs || 12000) * 0.001)).toFixed(1)} lbs
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Resumen de impacto económico de la formulación */}
+                                    <div className="flex items-center justify-between text-[10px] bg-cyan-100/60 p-2 rounded-lg text-cyan-900">
+                                        <span>
+                                            Costo MP Puro: <strong>${(calculationResult?.formulation?.pure_egg_cost_per_lb || 0).toFixed(2)}/lb</strong>
+                                        </span>
+                                        <span>
+                                            Costo MP Formulado: <strong>${(calculationResult?.formulation?.formulated_mp_cost_per_lb || calculationResult?.breakdown?.mp_cost_per_lb || 0).toFixed(2)}/lb</strong>
+                                        </span>
+                                        <span className="text-emerald-700 font-bold">
+                                            Ahorro: -${(calculationResult?.formulation?.mp_cost_savings_per_lb || 0).toFixed(2)}/lb
+                                        </span>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {/* FORMULACIÓN YEMA AZUCARADA */}
+                            {calcParams.product_type.toLowerCase().includes('azucarada') && (
+                                <div className="pt-3 pb-3 px-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2.5">
+                                    <div className="flex items-center justify-between text-amber-900 font-bold text-xs uppercase">
+                                        <span className="flex items-center gap-1.5">
+                                            <Package className="w-4 h-4 text-amber-600" />
+                                            Formulación Yema Azucarada
+                                        </span>
+                                        <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                                            Azúcar Industrial ($0.45/lb)
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">% Azúcar</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={calcParams.sugar_added_pct}
+                                                onChange={(e) => handleParamChange('sugar_added_pct', e.target.value)}
+                                                className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg border border-amber-200 text-center">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Libras de Azúcar</span>
+                                            <span className="font-bold text-amber-800 text-xs mt-0.5 block">
+                                                {((parseFloat(calcParams.batch_size_lbs || 12000) * (parseFloat(calcParams.sugar_added_pct || 4) / 100))).toLocaleString()} lbs
+                                            </span>
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg border border-amber-200 text-center">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Yema Pura Requerida</span>
+                                            <span className="font-bold text-slate-800 text-xs mt-0.5 block">
+                                                {((parseFloat(calcParams.batch_size_lbs || 12000) * (1 - (parseFloat(calcParams.sugar_added_pct || 4) / 100)))).toLocaleString()} lbs
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* FORMULACIÓN YEMA SALADA */}
+                            {calcParams.product_type.toLowerCase().includes('salada') && (
+                                <div className="pt-3 pb-3 px-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2.5">
+                                    <div className="flex items-center justify-between text-blue-900 font-bold text-xs uppercase">
+                                        <span className="flex items-center gap-1.5">
+                                            <Scale className="w-4 h-4 text-blue-600" />
+                                            Formulación Yema Salada
+                                        </span>
+                                        <span className="text-[10px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                                            Sal Refinada ($0.15/lb)
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">% Sal Industrial</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={calcParams.salt_added_pct}
+                                                onChange={(e) => handleParamChange('salt_added_pct', e.target.value)}
+                                                className="w-full bg-white border border-blue-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg border border-blue-200 text-center">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Libras de Sal</span>
+                                            <span className="font-bold text-blue-800 text-xs mt-0.5 block">
+                                                {((parseFloat(calcParams.batch_size_lbs || 12000) * (parseFloat(calcParams.salt_added_pct || 10) / 100))).toLocaleString()} lbs
+                                            </span>
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg border border-blue-200 text-center">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Yema Pura Requerida</span>
+                                            <span className="font-bold text-slate-800 text-xs mt-0.5 block">
+                                                {((parseFloat(calcParams.batch_size_lbs || 12000) * (1 - (parseFloat(calcParams.salt_added_pct || 10) / 100)))).toLocaleString()} lbs
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* FORMULACIÓN HUEVO CON LECHE */}
+                            {calcParams.product_type.toLowerCase().includes('leche') && (
+                                <div className="pt-3 pb-3 px-3.5 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2.5">
+                                    <div className="flex items-center justify-between text-purple-900 font-bold text-xs uppercase">
+                                        <span className="flex items-center gap-1.5">
+                                            <Droplets className="w-4 h-4 text-purple-600" />
+                                            Formulación Huevo con Leche (Institucional)
+                                        </span>
+                                        <span className="text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
+                                            Leche en Polvo ($1.80/lb)
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">% Leche en Polvo</label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={calcParams.milk_added_pct}
+                                                onChange={(e) => handleParamChange('milk_added_pct', e.target.value)}
+                                                className="w-full bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg border border-purple-200 text-center">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Lbs Leche en Polvo</span>
+                                            <span className="font-bold text-purple-800 text-xs mt-0.5 block">
+                                                {((parseFloat(calcParams.batch_size_lbs || 12000) * (parseFloat(calcParams.milk_added_pct || 5) / 100))).toLocaleString()} lbs
+                                            </span>
+                                        </div>
+                                        <div className="bg-white p-2 rounded-lg border border-purple-200 text-center">
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Huevo Líquido Base</span>
+                                            <span className="font-bold text-slate-800 text-xs mt-0.5 block">
+                                                {((parseFloat(calcParams.batch_size_lbs || 12000) * (1 - (parseFloat(calcParams.milk_added_pct || 5) / 100)))).toLocaleString()} lbs
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Botón para alternar nivelación de sólidos en cualquier momento */}
+                            {!calcParams.product_type.toLowerCase().includes('plus') && (
+                                <div className="flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCustomSolids(!showCustomSolids)}
+                                        className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 hover:underline"
+                                    >
+                                        <Droplets className="w-3.5 h-3.5" />
+                                        <span>{showCustomSolids ? 'Ocultar nivelación de sólidos' : '+ Ajustar sólidos / balance hídrico'}</span>
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Prorrateo GIF Mensual */}
                             <div className="pt-2 border-t border-slate-100 space-y-2">
                                 <div className="flex items-center justify-between text-slate-700 font-bold text-[11px] uppercase">
@@ -737,7 +1029,9 @@ export default function EggCosteoPorLibra() {
                                         icon: Package,
                                         color: 'text-amber-600',
                                         bg: 'bg-amber-50/80',
-                                        desc: 'Huevo cáscara descontando 17% cáscara'
+                                        desc: calculationResult?.formulation?.water_added_pct > 0 
+                                            ? `Base puro $${(calculationResult.formulation.pure_egg_cost_per_lb || 0).toFixed(2)} (Ahorro -$${(calculationResult.formulation.mp_cost_savings_per_lb || 0).toFixed(2)})`
+                                            : 'Huevo cáscara descontando 17% cáscara'
                                     },
                                     {
                                         label: 'Empaque & Etiquetas',

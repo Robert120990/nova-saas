@@ -266,9 +266,12 @@ const calculateDynamicCost = async (req, res) => {
             raw_egg_box_cost = 38.00, // Costo de caja de 360 huevos
             raw_egg_lbs_per_box = 43.50, // Peso aprox de caja
             batch_size_lbs = 12000.00, // Batch estándar
-            water_added_pct = 0.00, // Para Huevo Entero Plus (ej. 8% a 10%)
-            sugar_added_pct = 0.00, // Para Yema Azucarada (ej. 4%)
-            salt_added_pct = 0.00,  // Para Yema Salada (ej. 10%)
+            water_added_pct = null, // % Agua directa
+            sugar_added_pct = null, // % Azúcar
+            salt_added_pct = null,  // % Sal
+            milk_added_pct = null,  // % Leche
+            base_egg_solids = null, // Sólidos base medidos refractómetro
+            target_solids = null,   // Sólidos objetivo deseados
             custom_gif_monthly = null,
             custom_monthly_volume_lbs = null,
             target_sale_price_per_lb = null
@@ -294,8 +297,9 @@ const calculateDynamicCost = async (req, res) => {
         const safeLbsPerBox = Math.max(parseFloat(raw_egg_lbs_per_box) || 43.50, 1);
         const safeBoxCost = Math.max(parseFloat(raw_egg_box_cost) || 0, 0);
         const costPerLbRawEgg = safeBoxCost / safeLbsPerBox;
+        const safeBatchSize = Math.max(parseFloat(batch_size_lbs) || 12000, 1);
 
-        // Rendimiento según producto
+        // Rendimiento base de quebrado según producto
         let liquidYieldPct = 0.83; // 83% líquido para huevo entero (17% cáscara)
         let productBase = (product_type || '').toLowerCase();
 
@@ -305,19 +309,80 @@ const calculateDynamicCost = async (req, res) => {
             liquidYieldPct = 0.2905;
         }
 
-        // Si es Huevo Entero Plus, el agua adicionada incrementa el rendimiento final
-        let effectiveWaterPct = (productBase.includes('plus') || water_added_pct > 0) ? (water_added_pct || 8.0) / 100 : 0;
-        let effectiveSugarPct = (productBase.includes('azucarada') || sugar_added_pct > 0) ? (sugar_added_pct || 4.0) / 100 : 0;
-        let effectiveSaltPct = (productBase.includes('salada') || salt_added_pct > 0) ? (salt_added_pct || 10.0) / 100 : 0;
+        // Sólidos y Balance Hídrico
+        const bSolids = parseFloat(base_egg_solids) || 24.20;
+        let tSolids = parseFloat(target_solids);
+        if (isNaN(tSolids) || tSolids <= 0) {
+            tSolids = productBase.includes('plus') ? 21.50 : bSolids;
+        }
 
+        // Determinar % de agua a añadir
+        let effectiveWaterPct = 0;
+        if (productBase.includes('plus') || water_added_pct !== null || (base_egg_solids && target_solids)) {
+            if (water_added_pct !== null && water_added_pct !== undefined && !isNaN(parseFloat(water_added_pct))) {
+                effectiveWaterPct = Math.max(0, parseFloat(water_added_pct)) / 100;
+                // Si el agua fue ingresada directamente, calcular sólidos resultantes
+                tSolids = bSolids * (1 - effectiveWaterPct);
+            } else if (bSolids > tSolids && bSolids > 0) {
+                // Fórmula estequiométrica: % Agua = ((Sólidos Base - Sólidos Target) / Sólidos Base) * 100
+                effectiveWaterPct = Math.max(0, (bSolids - tSolids) / bSolids);
+            } else if (productBase.includes('plus')) {
+                effectiveWaterPct = 0.08; // 8% estándar ANDELSA
+                tSolids = bSolids * (1 - effectiveWaterPct);
+            }
+        }
+
+        // Otros aditivos
+        let effectiveSugarPct = (sugar_added_pct !== null && sugar_added_pct !== undefined && !isNaN(parseFloat(sugar_added_pct)))
+            ? Math.max(0, parseFloat(sugar_added_pct)) / 100
+            : (productBase.includes('azucarada') ? 0.04 : 0);
+
+        let effectiveSaltPct = (salt_added_pct !== null && salt_added_pct !== undefined && !isNaN(parseFloat(salt_added_pct)))
+            ? Math.max(0, parseFloat(salt_added_pct)) / 100
+            : (productBase.includes('salada') ? 0.10 : 0);
+
+        let effectiveMilkPct = (milk_added_pct !== null && milk_added_pct !== undefined && !isNaN(parseFloat(milk_added_pct)))
+            ? Math.max(0, parseFloat(milk_added_pct)) / 100
+            : (productBase.includes('leche') ? 0.05 : 0);
+
+        // Costo del huevo líquido puro por libra
         let baseLiquidCostPerLb = costPerLbRawEgg / Math.max(liquidYieldPct, 0.01);
 
+        // Costo de aditivos por libra
         let additiveCostPerLb = 0;
-        if (effectiveSugarPct > 0) additiveCostPerLb += effectiveSugarPct * 0.45;
-        if (effectiveSaltPct > 0) additiveCostPerLb += effectiveSaltPct * 0.15;
-        if (effectiveWaterPct > 0) additiveCostPerLb += effectiveWaterPct * 0.001;
+        if (effectiveSugarPct > 0) additiveCostPerLb += effectiveSugarPct * 0.45; // Azúcar $0.45/lb
+        if (effectiveSaltPct > 0) additiveCostPerLb += effectiveSaltPct * 0.15; // Sal $0.15/lb
+        if (effectiveMilkPct > 0) additiveCostPerLb += effectiveMilkPct * 1.80; // Leche en polvo $1.80/lb
+        if (effectiveWaterPct > 0) {
+            // Agua purificada ($0.001/lb) + Ácido cítrico 0.1% a $1.50/lb de insumo ($0.0015/lb producto)
+            additiveCostPerLb += (effectiveWaterPct * 0.001) + 0.0015;
+        }
 
-        const mpCostPerLb = (baseLiquidCostPerLb * (1 - effectiveWaterPct - effectiveSugarPct - effectiveSaltPct)) + additiveCostPerLb;
+        const effectivePureEggFraction = Math.max(0, 1 - effectiveWaterPct - effectiveSugarPct - effectiveSaltPct - effectiveMilkPct);
+        const mpCostPerLb = (baseLiquidCostPerLb * effectivePureEggFraction) + additiveCostPerLb;
+
+        // Desglose de formulación física para el batch
+        const formulation = {
+            product_type,
+            base_liquid_pure_lbs: safeBatchSize * effectivePureEggFraction,
+            water_added_pct: effectiveWaterPct * 100,
+            water_lbs: safeBatchSize * effectiveWaterPct,
+            water_garrafones: (safeBatchSize * effectiveWaterPct) / 42.0,
+            citric_acid_pct: effectiveWaterPct > 0 ? 0.10 : 0,
+            citric_acid_lbs: effectiveWaterPct > 0 ? safeBatchSize * 0.001 : 0,
+            sugar_pct: effectiveSugarPct * 100,
+            sugar_lbs: safeBatchSize * effectiveSugarPct,
+            salt_pct: effectiveSaltPct * 100,
+            salt_lbs: safeBatchSize * effectiveSaltPct,
+            milk_pct: effectiveMilkPct * 100,
+            milk_lbs: safeBatchSize * effectiveMilkPct,
+            base_egg_solids: bSolids,
+            target_solids: tSolids,
+            is_solids_compliant: tSolids >= 21.0,
+            pure_egg_cost_per_lb: baseLiquidCostPerLb,
+            formulated_mp_cost_per_lb: mpCostPerLb,
+            mp_cost_savings_per_lb: Math.max(0, baseLiquidCostPerLb - mpCostPerLb)
+        };
 
         // B. COSTO DE EMPAQUE POR LIBRA SEGÚN PRESENTACIÓN
         let packagingCostPerUnit = 0;
@@ -361,7 +426,6 @@ const calculateDynamicCost = async (req, res) => {
             totalCipBatchCost += unitPrice * parseFloat(item.dose_per_batch);
         });
         if (totalCipBatchCost === 0) totalCipBatchCost = 50.85;
-        const safeBatchSize = Math.max(parseFloat(batch_size_lbs) || 12000, 1);
         const cipCostPerLb = totalCipBatchCost / safeBatchSize;
 
         // D. COSTO DE CALDERA, ENERGÍA, DIESEL Y AGUA (PASTEURIZADOR)
@@ -477,12 +541,17 @@ const calculateDynamicCost = async (req, res) => {
                 total_cost_per_lb: totalCostPerLb,
                 cost_per_unit: totalCostPerLb * presentationLbs
             },
+            formulation,
             clients_comparison: clientsComparison,
             target_simulation: targetSimulation,
             parameters_used: {
                 liquid_yield_pct: liquidYieldPct * 100,
                 water_added_pct: effectiveWaterPct * 100,
                 sugar_added_pct: effectiveSugarPct * 100,
+                salt_added_pct: effectiveSaltPct * 100,
+                milk_added_pct: effectiveMilkPct * 100,
+                base_egg_solids: bSolids,
+                target_solids: tSolids,
                 monthly_projected_lbs: monthlyProjectedLbs,
                 monthly_gif: monthlyGifTotal
             }
