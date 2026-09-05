@@ -40,6 +40,20 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         [ventaId]
     );
 
+    // 3b. Obtener documentos relacionados (requerido para Nota de Crédito 05 y Nota de Remisión 04)
+    const [linkedRows] = await pool.query(
+        'SELECT * FROM sales_linked_documents WHERE sale_id = ? ORDER BY id',
+        [ventaId]
+    );
+    const documentoRelacionado = linkedRows.map(doc => ({
+        tipoDocumento: doc.doc_type || '03',
+        tipoGeneracion: parseInt(doc.generation_type) || 2,
+        numeroDocumento: doc.doc_number || '',
+        fechaEmision: doc.emission_date instanceof Date
+            ? `${doc.emission_date.getFullYear()}-${String(doc.emission_date.getMonth() + 1).padStart(2, '0')}-${String(doc.emission_date.getDate()).padStart(2, '0')}`
+            : String(doc.emission_date || '').substring(0, 10)
+    }));
+
     // 4. Obtener cliente (si existe)
     let customer = null;
     if (sale.customer_id) {
@@ -185,6 +199,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         retencion: parseFloat(sale.iva_retenido) || 0,
         percepcion: parseFloat(sale.iva_percibido) || 0,
         condicionOperacion: sale.condicion_operacion || 1,
+        documentoRelacionado: documentoRelacionado.length > 0 ? documentoRelacionado : null,
         dias_credito: customer && customer.dias_credito != null ? parseInt(customer.dias_credito) || 15 : 15,
         emisor_adicional: {
             descActividad: company?.actividad_economica || 'Actividad no definida',
