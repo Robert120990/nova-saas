@@ -272,6 +272,10 @@ const calculateDynamicCost = async (req, res) => {
             milk_added_pct = null,  // % Leche
             base_egg_solids = null, // Sólidos base medidos refractómetro
             target_solids = null,   // Sólidos objetivo deseados
+            // Parámetros de Separación Clara/Yema & Huevo Formulado con H2O
+            clara_separated_pct = 100.0, // % de clara destinada a venta directa
+            clara_sale_price_per_lb = 1.35, // Precio de venta pactado de clara ($/lb)
+            yema_solids_pct = 50.0, // Sólidos de la yema pura (%)
             custom_gif_monthly = null,
             custom_monthly_volume_lbs = null,
             target_sale_price_per_lb = null
@@ -302,10 +306,11 @@ const calculateDynamicCost = async (req, res) => {
         // Rendimiento base de quebrado según producto
         let liquidYieldPct = 0.83; // 83% líquido para huevo entero (17% cáscara)
         let productBase = (product_type || '').toLowerCase();
+        let isSeparationMode = productBase.includes('separaci') || productBase.includes('separad') || productBase.includes('reconstituido');
 
-        if (productBase.includes('clara')) {
+        if (productBase.includes('clara') && !isSeparationMode) {
             liquidYieldPct = 0.5395;
-        } else if (productBase.includes('yema')) {
+        } else if (productBase.includes('yema') && !isSeparationMode) {
             liquidYieldPct = 0.2905;
         }
 
@@ -313,26 +318,10 @@ const calculateDynamicCost = async (req, res) => {
         const bSolids = parseFloat(base_egg_solids) || 24.20;
         let tSolids = parseFloat(target_solids);
         if (isNaN(tSolids) || tSolids <= 0) {
-            tSolids = productBase.includes('plus') ? 21.50 : bSolids;
+            tSolids = (productBase.includes('plus') || isSeparationMode) ? 21.50 : bSolids;
         }
 
-        // Determinar % de agua a añadir
         let effectiveWaterPct = 0;
-        if (productBase.includes('plus') || water_added_pct !== null || (base_egg_solids && target_solids)) {
-            if (water_added_pct !== null && water_added_pct !== undefined && !isNaN(parseFloat(water_added_pct))) {
-                effectiveWaterPct = Math.max(0, parseFloat(water_added_pct)) / 100;
-                // Si el agua fue ingresada directamente, calcular sólidos resultantes
-                tSolids = bSolids * (1 - effectiveWaterPct);
-            } else if (bSolids > tSolids && bSolids > 0) {
-                // Fórmula estequiométrica: % Agua = ((Sólidos Base - Sólidos Target) / Sólidos Base) * 100
-                effectiveWaterPct = Math.max(0, (bSolids - tSolids) / bSolids);
-            } else if (productBase.includes('plus')) {
-                effectiveWaterPct = 0.08; // 8% estándar ANDELSA
-                tSolids = bSolids * (1 - effectiveWaterPct);
-            }
-        }
-
-        // Otros aditivos
         let effectiveSugarPct = (sugar_added_pct !== null && sugar_added_pct !== undefined && !isNaN(parseFloat(sugar_added_pct)))
             ? Math.max(0, parseFloat(sugar_added_pct)) / 100
             : (productBase.includes('azucarada') ? 0.04 : 0);
@@ -345,21 +334,104 @@ const calculateDynamicCost = async (req, res) => {
             ? Math.max(0, parseFloat(milk_added_pct)) / 100
             : (productBase.includes('leche') ? 0.05 : 0);
 
-        // Costo del huevo líquido puro por libra
         let baseLiquidCostPerLb = costPerLbRawEgg / Math.max(liquidYieldPct, 0.01);
-
-        // Costo de aditivos por libra
         let additiveCostPerLb = 0;
-        if (effectiveSugarPct > 0) additiveCostPerLb += effectiveSugarPct * 0.45; // Azúcar $0.45/lb
-        if (effectiveSaltPct > 0) additiveCostPerLb += effectiveSaltPct * 0.15; // Sal $0.15/lb
-        if (effectiveMilkPct > 0) additiveCostPerLb += effectiveMilkPct * 1.80; // Leche en polvo $1.80/lb
-        if (effectiveWaterPct > 0) {
-            // Agua purificada ($0.001/lb) + Ácido cítrico 0.1% a $1.50/lb de insumo ($0.0015/lb producto)
-            additiveCostPerLb += (effectiveWaterPct * 0.001) + 0.0015;
-        }
+        let mpCostPerLb = 0;
+        let effectivePureEggFraction = 1;
+        let separationData = null;
 
-        const effectivePureEggFraction = Math.max(0, 1 - effectiveWaterPct - effectiveSugarPct - effectiveSaltPct - effectiveMilkPct);
-        const mpCostPerLb = (baseLiquidCostPerLb * effectivePureEggFraction) + additiveCostPerLb;
+        if (isSeparationMode) {
+            // --- MODELO OFICIAL ANDELSA: SEPARACIÓN DE CLARA + HUEVO FORMULADO CON YEMA & H2O ---
+            const rawShellLbs = safeBatchSize;
+            const grossRawCost = (rawShellLbs / safeLbsPerBox) * safeBoxCost;
+            
+            const totalLiquidLbs = rawShellLbs * 0.83; // 83% líquido neto
+            const naturalClaraLbs = rawShellLbs * 0.5395; // 65% del líquido (53.95% del huevo cáscara)
+            const naturalYemaLbs = rawShellLbs * 0.2905;  // 35% del líquido (29.05% del huevo cáscara)
+
+            const claraSepRate = Math.min(100, Math.max(0, parseFloat(clara_separated_pct) || 100)) / 100;
+            const claraForSaleLbs = naturalClaraLbs * claraSepRate;
+            const remainingClaraLbs = naturalClaraLbs * (1 - claraSepRate);
+            const claraPrice = Math.max(0, parseFloat(clara_sale_price_per_lb) || 1.35);
+            const claraRevenue = claraForSaleLbs * claraPrice;
+
+            // Sólidos totales disponibles
+            const ySolids = parseFloat(yema_solids_pct) || 50.0;
+            const targetSolidsPct = Math.max(15, parseFloat(tSolids) || 21.5);
+            const solidsFromYema = naturalYemaLbs * (ySolids / 100);
+            const solidsFromRemClara = remainingClaraLbs * 0.118; // 11.8% sólidos en clara
+            const totalSolidsLbs = solidsFromYema + solidsFromRemClara;
+
+            // Peso final formulado para alcanzar targetSolidsPct
+            const finalFormulatedLbs = totalSolidsLbs / (targetSolidsPct / 100);
+            const h2oRequiredLbs = Math.max(0, finalFormulatedLbs - naturalYemaLbs - remainingClaraLbs);
+            const h2oGarrafones = h2oRequiredLbs / 42.0;
+
+            // Aditivo estabilizador: Ácido cítrico al 0.1% a $2.10/lb
+            const citricAcidLbs = finalFormulatedLbs * 0.001;
+            const citricAcidCost = citricAcidLbs * 2.10;
+            const h2oCost = h2oRequiredLbs * 0.001;
+            const totalAdditiveCost = citricAcidCost + h2oCost;
+
+            // Costo neto atribuible a la MP del huevo formulado:
+            // Se resta el crédito/ingreso por la venta de la clara premium
+            const netRawEggCost = Math.max(0, grossRawCost - claraRevenue) + totalAdditiveCost;
+            const mpCostPerLbFormulated = finalFormulatedLbs > 0 ? netRawEggCost / finalFormulatedLbs : 0;
+
+            mpCostPerLb = mpCostPerLbFormulated;
+            effectiveWaterPct = finalFormulatedLbs > 0 ? h2oRequiredLbs / finalFormulatedLbs : 0;
+            effectivePureEggFraction = finalFormulatedLbs > 0 ? (naturalYemaLbs + remainingClaraLbs) / finalFormulatedLbs : 1;
+
+            const claraCostPerLb = (grossRawCost * 0.65) / Math.max(naturalClaraLbs, 1);
+            const claraProfit = (claraPrice - claraCostPerLb) * claraForSaleLbs;
+
+            separationData = {
+                is_separation_mode: true,
+                raw_shell_batch_lbs: rawShellLbs,
+                gross_raw_cost: grossRawCost,
+                natural_clara_lbs: naturalClaraLbs,
+                clara_for_sale_lbs: claraForSaleLbs,
+                clara_sale_price: claraPrice,
+                clara_revenue: claraRevenue,
+                clara_cost_per_lb: claraCostPerLb,
+                clara_profit: claraProfit,
+                natural_yema_lbs: naturalYemaLbs,
+                remaining_clara_lbs: remainingClaraLbs,
+                yema_solids_pct: ySolids,
+                target_solids_pct: targetSolidsPct,
+                total_solids_lbs: totalSolidsLbs,
+                h2o_required_lbs: h2oRequiredLbs,
+                h2o_garrafones: h2oGarrafones,
+                citric_acid_lbs: citricAcidLbs,
+                final_formulated_lbs: finalFormulatedLbs,
+                total_additive_cost: totalAdditiveCost,
+                net_raw_egg_cost: netRawEggCost,
+                mp_cost_per_lb_formulated: mpCostPerLbFormulated,
+                standard_mp_cost_without_separation: grossRawCost / Math.max(totalLiquidLbs, 1),
+                mp_cost_reduction_per_lb: Math.max(0, (grossRawCost / Math.max(totalLiquidLbs, 1)) - mpCostPerLbFormulated)
+            };
+        } else {
+            // Modelo de mezclado / adición estándar
+            if (productBase.includes('plus') || water_added_pct !== null || (base_egg_solids && target_solids)) {
+                if (water_added_pct !== null && water_added_pct !== undefined && !isNaN(parseFloat(water_added_pct))) {
+                    effectiveWaterPct = Math.max(0, parseFloat(water_added_pct)) / 100;
+                    tSolids = bSolids * (1 - effectiveWaterPct);
+                } else if (bSolids > tSolids && bSolids > 0) {
+                    effectiveWaterPct = Math.max(0, (bSolids - tSolids) / bSolids);
+                } else if (productBase.includes('plus')) {
+                    effectiveWaterPct = 0.08; // 8% estándar ANDELSA
+                    tSolids = bSolids * (1 - effectiveWaterPct);
+                }
+            }
+
+            if (effectiveSugarPct > 0) additiveCostPerLb += effectiveSugarPct * 0.45;
+            if (effectiveSaltPct > 0) additiveCostPerLb += effectiveSaltPct * 0.15;
+            if (effectiveMilkPct > 0) additiveCostPerLb += effectiveMilkPct * 1.80;
+            if (effectiveWaterPct > 0) additiveCostPerLb += (effectiveWaterPct * 0.001) + 0.0015;
+
+            effectivePureEggFraction = Math.max(0, 1 - effectiveWaterPct - effectiveSugarPct - effectiveSaltPct - effectiveMilkPct);
+            mpCostPerLb = (baseLiquidCostPerLb * effectivePureEggFraction) + additiveCostPerLb;
+        }
 
         // Desglose de formulación física para el batch
         const formulation = {
@@ -542,6 +614,7 @@ const calculateDynamicCost = async (req, res) => {
                 cost_per_unit: totalCostPerLb * presentationLbs
             },
             formulation,
+            separation_data: separationData,
             clients_comparison: clientsComparison,
             target_simulation: targetSimulation,
             parameters_used: {

@@ -22,7 +22,8 @@ import {
     ShoppingCart,
     Edit2,
     Trash2,
-    ArrowDownRight
+    ArrowDownRight,
+    Split
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
 
@@ -43,6 +44,9 @@ export default function EggCosteoPorLibra() {
         sugar_added_pct: '4.0',
         salt_added_pct: '10.0',
         milk_added_pct: '5.0',
+        clara_separated_pct: '100',
+        clara_sale_price_per_lb: '1.35',
+        yema_solids_pct: '50.0',
         target_sale_price_per_lb: '1.25',
         custom_cip_cost: null,
         custom_mod_per_lb: 0.0500,
@@ -140,6 +144,9 @@ export default function EggCosteoPorLibra() {
                 sugar_added_pct: parseFloat(params.sugar_added_pct) || 0,
                 salt_added_pct: parseFloat(params.salt_added_pct) || 0,
                 milk_added_pct: parseFloat(params.milk_added_pct) || 0,
+                clara_separated_pct: parseFloat(params.clara_separated_pct) || 100,
+                clara_sale_price_per_lb: parseFloat(params.clara_sale_price_per_lb) || 1.35,
+                yema_solids_pct: parseFloat(params.yema_solids_pct) || 50.0,
                 target_sale_price_per_lb: parseFloat(params.target_sale_price_per_lb) || 0,
                 custom_gif_monthly: parseFloat(params.custom_gif_monthly) || 24537.00,
                 custom_monthly_volume_lbs: parseFloat(params.custom_monthly_volume_lbs) || 100000
@@ -166,7 +173,17 @@ export default function EggCosteoPorLibra() {
 
             if (field === 'product_type') {
                 const valLower = (value || '').toLowerCase();
-                if (valLower.includes('plus')) {
+                if (valLower.includes('separaci') || valLower.includes('separad') || valLower.includes('reconstituido')) {
+                    updated.base_egg_solids = '50.0';
+                    updated.yema_solids_pct = '50.0';
+                    updated.target_solids = '21.5';
+                    updated.clara_separated_pct = '100';
+                    updated.clara_sale_price_per_lb = '1.35';
+                    updated.water_added_pct = '0.0';
+                    updated.sugar_added_pct = '0.0';
+                    updated.salt_added_pct = '0.0';
+                    updated.milk_added_pct = '0.0';
+                } else if (valLower.includes('plus')) {
                     updated.base_egg_solids = '24.2';
                     updated.target_solids = '21.5';
                     updated.water_added_pct = '11.16';
@@ -597,6 +614,7 @@ export default function EggCosteoPorLibra() {
                                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
                                 >
                                     <option value="Huevo Entero Pasteurizado">Huevo Entero Pasteurizado (83% rend.)</option>
+                                    <option value="Huevo Formulado por Separación">Huevo Formulado por Separación (Yema + H2O + Venta de Clara)</option>
                                     <option value="Huevo Entero Plus">Huevo Entero Plus (Con agua 8% y ácido cítrico)</option>
                                     <option value="Clara de Huevo Pasteurizada">Clara Pasteurizada (53.95% rend.)</option>
                                     <option value="Yema Azucarada">Yema Azucarada (4% azúcar)</option>
@@ -678,6 +696,173 @@ export default function EggCosteoPorLibra() {
                                     />
                                 </div>
                             </div>
+
+                            {/* SECCIÓN DE FORMULACIÓN POR SEPARACIÓN CLARA/YEMA CON ADITIVO H2O */}
+                            {(calcParams.product_type.toLowerCase().includes('separaci') || calcParams.product_type.toLowerCase().includes('separad')) && (
+                                <div className="pt-3.5 pb-3.5 px-4 bg-emerald-50/90 border border-emerald-300 rounded-xl space-y-3.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs uppercase tracking-wide">
+                                            <Split className="w-4 h-4 text-emerald-600" />
+                                            <span>Modelo de Separación & Arbitraje con Aditivo H2O</span>
+                                        </div>
+                                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                            Alta Rentabilidad (Crédito Clara)
+                                        </span>
+                                    </div>
+
+                                    <p className="text-[11px] text-emerald-900 leading-relaxed">
+                                        Separa la <strong>Clara</strong> para venta comercial a mejor precio (PriceSmart, repostería, hoteles), y utiliza la <strong>Yema pura</strong> (50% sólidos) agregando aditivo <strong>H2O purificada</strong> y ácido cítrico para formular huevo entero estandarizado al <strong>{calcParams.target_solids || '21.5'}%</strong> de sólidos, reduciendo drásticamente el costo por libra.
+                                    </p>
+
+                                    {/* Inputs de la Separación */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                                                % Clara a Separar
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="1"
+                                                min="0"
+                                                max="100"
+                                                value={calcParams.clara_separated_pct}
+                                                onChange={(e) => handleParamChange('clara_separated_pct', e.target.value)}
+                                                placeholder="100"
+                                                className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-slate-500 mt-0.5 block">100% = Venta total de clara</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                                                Precio Venta Clara ($/lb)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={calcParams.clara_sale_price_per_lb}
+                                                onChange={(e) => handleParamChange('clara_sale_price_per_lb', e.target.value)}
+                                                placeholder="1.35"
+                                                className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-900 focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-emerald-700 font-semibold mt-0.5 block">PriceSmart ($1.35 - $1.50)</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                                                Sólidos Yema (%)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                min="30"
+                                                max="60"
+                                                value={calcParams.yema_solids_pct}
+                                                onChange={(e) => handleParamChange('yema_solids_pct', e.target.value)}
+                                                placeholder="50.0"
+                                                className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-slate-500 mt-0.5 block">Estándar planta: 50.0%</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                                                Sólidos Target Formulado (%)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="15"
+                                                max="30"
+                                                value={calcParams.target_solids}
+                                                onChange={(e) => handleParamChange('target_solids', e.target.value)}
+                                                placeholder="21.5"
+                                                className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                            />
+                                            <span className="text-[9px] text-slate-500 mt-0.5 block">Norma técnica: ≥21.0%</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Fórmulas matemáticas de planta */}
+                                    <div className="bg-white/90 border border-emerald-200 rounded-lg p-2.5 text-[10.5px] text-slate-800 space-y-1">
+                                        <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-100 pb-1">
+                                            <span>Fórmula de Balance de Masa & Crédito:</span>
+                                            <span>Base Batch: {(parseFloat(calcParams.batch_size_lbs) || 12000).toLocaleString()} lbs Huevo Líquido</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 font-mono text-[10px] text-slate-700">
+                                            <div>
+                                                • H2O Necesaria = [(Lbs Yema × % Sólidos Yema) ÷ Sólidos Target] − Lbs Yema
+                                            </div>
+                                            <div>
+                                                • Costo Neto MP = Costo Cáscara − (Lbs Clara × Precio Clara) + Aditivos
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Tarjetas de balance para el Lote actual */}
+                                    {calculationResult?.separation_data && (
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                                            <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase block">Clara para Venta</span>
+                                                <span className="font-bold text-emerald-800 text-xs mt-0.5 block">
+                                                    {(calculationResult.separation_data.clara_for_sale_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
+                                                </span>
+                                                <span className="text-[9px] text-emerald-600 font-semibold block mt-0.5">
+                                                    +<Money value={calculationResult.separation_data.clara_revenue || 0} /> ingreso
+                                                </span>
+                                            </div>
+
+                                            <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase block">Yema Base Concentrada</span>
+                                                <span className="font-bold text-amber-800 text-xs mt-0.5 block">
+                                                    {(calculationResult.separation_data.natural_yema_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
+                                                </span>
+                                                <span className="text-[9px] text-slate-500 block mt-0.5">
+                                                    {calculationResult.separation_data.yema_solids_pct}% sólidos
+                                                </span>
+                                            </div>
+
+                                            <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase block">Aditivo H2O Requerido</span>
+                                                <span className="font-bold text-cyan-700 text-xs mt-0.5 block">
+                                                    {(calculationResult.separation_data.h2o_required_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
+                                                </span>
+                                                <span className="text-[9px] text-cyan-800 font-semibold block mt-0.5">
+                                                    {(calculationResult.separation_data.h2o_garrafones || 0).toFixed(1)} garrafones (42 lb)
+                                                </span>
+                                            </div>
+
+                                            <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase block">Huevo Formulado Final</span>
+                                                <span className="font-bold text-indigo-800 text-xs mt-0.5 block">
+                                                    {(calculationResult.separation_data.final_formulated_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
+                                                </span>
+                                                <span className="text-[9px] text-indigo-600 font-semibold block mt-0.5">
+                                                    {calculationResult.separation_data.target_solids_pct}% sólidos (Norma)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Resumen de Arbitraje y Ahorro */}
+                                    {calculationResult?.separation_data && (
+                                        <div className="flex flex-wrap items-center justify-between text-xs bg-emerald-100/80 p-2.5 rounded-lg text-emerald-950 font-medium gap-2 border border-emerald-200">
+                                            <div>
+                                                <span>Costo MP Normal: </span>
+                                                <strong className="text-slate-700"><Money value={calculationResult.separation_data.standard_mp_cost_without_separation || 0} />/lb</strong>
+                                            </div>
+                                            <div>
+                                                <span>Costo MP Formulado: </span>
+                                                <strong className="text-emerald-900 text-sm font-black"><Money value={calculationResult.separation_data.mp_cost_per_lb_formulated || 0} />/lb</strong>
+                                            </div>
+                                            <div className="bg-emerald-600 text-white font-black px-2.5 py-1 rounded-md text-[11px] shadow-sm">
+                                                Ahorro Arbitraje: -<Money value={calculationResult.separation_data.mp_cost_reduction_per_lb || 0} /> /lb
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* SECCIÓN DE FORMULACIÓN Y BALANCE DE SÓLIDOS */}
                             {calcParams.product_type.toLowerCase().includes('plus') || showCustomSolids ? (
@@ -970,6 +1155,90 @@ export default function EggCosteoPorLibra() {
 
                     {/* Panel de Resultados y Desglose */}
                     <div className="lg:col-span-7 space-y-6">
+                        {/* BANNER DESTACADO: ARBITRAJE COMERCIAL POR SEPARACIÓN Y ADITIVO H2O */}
+                        {calculationResult?.separation_data?.is_separation_mode && (
+                            <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 rounded-2xl p-6 text-white shadow-xl border border-emerald-500/40 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-white/10">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                                            <Sparkles className="w-5 h-5 text-emerald-400" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                                                Arbitraje Industrial: Separación & Reconstitución con H2O
+                                            </h4>
+                                            <p className="text-xs text-emerald-200/80">
+                                                Doble producto de alto margen: Venta de Clara a precio premium + Huevo Entero Formulado a costo mínimo
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right self-start sm:self-auto">
+                                        <span className="text-[10px] font-bold text-emerald-300 uppercase block">Costo MP Formulado</span>
+                                        <div className="text-2xl font-black text-emerald-400">
+                                            <Money value={calculationResult.separation_data.mp_cost_per_lb_formulated || 0} />
+                                            <span className="text-xs text-emerald-200 font-normal"> /lb</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* 1. Clara Separada para Venta Premium */}
+                                    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                                        <div className="flex items-center justify-between text-emerald-300 text-xs font-bold uppercase mb-2.5 pb-1 border-b border-white/10">
+                                            <span>1. Venta de Clara Premium</span>
+                                            <span className="text-emerald-400 font-black">
+                                                <Money value={calculationResult.separation_data.clara_sale_price || 0} /> /lb
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2 text-xs">
+                                            <div className="flex justify-between text-indigo-100">
+                                                <span>Volumen de Clara Vendida:</span>
+                                                <strong className="text-white">{(calculationResult.separation_data.clara_for_sale_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs</strong>
+                                            </div>
+                                            <div className="flex justify-between text-indigo-100">
+                                                <span>Ingreso Total Obtenido:</span>
+                                                <strong className="text-emerald-300 font-black text-sm"><Money value={calculationResult.separation_data.clara_revenue || 0} /></strong>
+                                            </div>
+                                            <div className="flex justify-between text-[11px] text-indigo-200/80 pt-1 border-t border-white/10">
+                                                <span>Utilidad Neta de la Clara:</span>
+                                                <span className="text-emerald-400 font-bold">+<Money value={calculationResult.separation_data.clara_profit || 0} /></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. Huevo Entero Formulado con H2O */}
+                                    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                                        <div className="flex items-center justify-between text-amber-200 text-xs font-bold uppercase mb-2.5 pb-1 border-b border-white/10">
+                                            <span>2. Huevo Formulado (Yema + H2O)</span>
+                                            <span className="text-amber-300 font-black">
+                                                {calculationResult.separation_data.target_solids_pct}% Sólidos
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2 text-xs">
+                                            <div className="flex justify-between text-amber-100">
+                                                <span>Producción Huevo Formulado:</span>
+                                                <strong className="text-white">{(calculationResult.separation_data.final_formulated_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs</strong>
+                                            </div>
+                                            <div className="flex justify-between text-amber-100">
+                                                <span>Agua Purificada Adicionada:</span>
+                                                <strong className="text-cyan-300">{(calculationResult.separation_data.h2o_garrafones || 0).toFixed(1)} garrafones (42 lb)</strong>
+                                            </div>
+                                            <div className="flex justify-between text-[11px] text-amber-200/80 pt-1 border-t border-white/10">
+                                                <span>Ahorro en Materia Prima:</span>
+                                                <span className="text-emerald-400 font-bold">-<Money value={calculationResult.separation_data.mp_cost_reduction_per_lb || 0} /> /lb</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-emerald-950/80 border border-emerald-500/30 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                    <div className="text-emerald-200">
+                                        El ingreso de <strong className="text-emerald-400"><Money value={calculationResult.separation_data.clara_revenue || 0} /></strong> por venta de clara cubre y subsidia el lote de huevo cáscara, bajando el costo de materia prima a solo <strong className="text-white"><Money value={calculationResult.separation_data.mp_cost_per_lb_formulated || 0} />/lb</strong>.
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Tarjeta Principal de Costo por Libra */}
                         <div className="bg-gradient-to-br from-indigo-700 to-indigo-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
@@ -1029,9 +1298,11 @@ export default function EggCosteoPorLibra() {
                                         icon: Package,
                                         color: 'text-amber-600',
                                         bg: 'bg-amber-50/80',
-                                        desc: calculationResult?.formulation?.water_added_pct > 0 
-                                            ? `Base puro $${(calculationResult.formulation.pure_egg_cost_per_lb || 0).toFixed(2)} (Ahorro -$${(calculationResult.formulation.mp_cost_savings_per_lb || 0).toFixed(2)})`
-                                            : 'Huevo cáscara descontando 17% cáscara'
+                                        desc: calculationResult?.separation_data?.is_separation_mode
+                                            ? `Formulado con H2O y crédito de clara (Ahorro -$${(calculationResult.separation_data.mp_cost_reduction_per_lb || 0).toFixed(2)}/lb)`
+                                            : calculationResult?.formulation?.water_added_pct > 0 
+                                                ? `Base puro $${(calculationResult.formulation.pure_egg_cost_per_lb || 0).toFixed(2)} (Ahorro -$${(calculationResult.formulation.mp_cost_savings_per_lb || 0).toFixed(2)})`
+                                                : 'Huevo cáscara descontando 17% cáscara'
                                     },
                                     {
                                         label: 'Empaque & Etiquetas',
