@@ -7,6 +7,12 @@ import axios from 'axios'
 import { toast } from 'sonner'
 import { isAnyDirty } from './store/dirtyState'
 
+// Sincronizar versión compilada del build actual inmediatamente al arrancar
+const currentBuildVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null;
+if (currentBuildVersion && currentBuildVersion !== 'unknown') {
+    localStorage.setItem('app_version', currentBuildVersion);
+}
+
 let swRegistration = null;
 let isUpdating = false;
 let mismatchCount = 0;
@@ -26,17 +32,24 @@ const updateSW = registerSW({
     },
     onRegisteredSW(_swUrl, registration) {
         swRegistration = registration || null;
+    },
+    onNeedReload() {
+        // Interceptamos la recarga automática de Workbox para que no recargue a espaldas del usuario
+        handleUpdateDetected(pendingVersion || 'sw-update');
     }
 });
 
 const checkForUpdates = () => {
+    if (isUpdating) return;
     try {
         swRegistration?.update().catch(() => {});
     } catch (e) {}
 };
 
 const doReload = async (version) => {
-    if (version) localStorage.setItem('app_version', version);
+    if (version && version !== 'sw-update') {
+        localStorage.setItem('app_version', version);
+    }
     // Forzar activación inmediata del nuevo Service Worker (skipWaiting)
     if (swRegistration?.waiting) {
         swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -88,33 +101,44 @@ const dismissPersistentToast = () => {
     }
 };
 
-const processVersionMismatch = (version) => {
-    if (!version || version === 'unknown' || isUpdating) return;
-    const last = localStorage.getItem('app_version');
-    if (!last) {
-        localStorage.setItem('app_version', version);
+const handleUpdateDetected = (version) => {
+    if (isUpdating) return;
+
+    const currentVersion = (currentBuildVersion && currentBuildVersion !== 'unknown')
+        ? currentBuildVersion
+        : localStorage.getItem('app_version');
+
+    // Si la versión informada coincide con la que ya corre actualmente, no hacer nada
+    if (version && version !== 'unknown' && version !== 'sw-update' && currentVersion === version) {
         return;
     }
-    if (last !== version) {
-        pendingVersion = version;
 
-        if (isAnyDirty()) {
-            showPersistentUpdateToast(version);
-        } else {
-            isUpdating = true;
-            dismissPersistentToast();
-            localStorage.setItem('app_version', version);
-            toast.info('Nueva versión disponible. Actualizando...', { duration: 4000 });
-            checkForUpdates();
-            setTimeout(() => doReload(version), 4000);
-        }
+    if (version && version !== 'sw-update') {
+        pendingVersion = version;
     }
+
+    if (isAnyDirty()) {
+        showPersistentUpdateToast(pendingVersion || currentVersion);
+        return;
+    }
+
+    // No hay formularios sucios: proceder con la recarga informada
+    isUpdating = true;
+    dismissPersistentToast();
+    if (pendingVersion) {
+        localStorage.setItem('app_version', pendingVersion);
+    }
+    toast.info('Nueva versión disponible. Actualizando en 3 segundos...', { duration: 3500 });
+
+    setTimeout(() => {
+        doReload(pendingVersion);
+    }, 3000);
 };
 
 // Receptor para notificaciones en tiempo real vía WebSocket
 window.__onVersionReceived = (version) => {
     if (version && version !== 'unknown') {
-        processVersionMismatch(version);
+        handleUpdateDetected(version);
     }
 };
 
@@ -124,16 +148,19 @@ const checkVersion = async () => {
         const { data } = await axios.get('/health');
         const version = data.version || '';
         if (!version || version === 'unknown') return;
-        const last = localStorage.getItem('app_version');
-        if (last && last !== version) {
+        const currentVersion = (currentBuildVersion && currentBuildVersion !== 'unknown')
+            ? currentBuildVersion
+            : localStorage.getItem('app_version');
+
+        if (currentVersion && currentVersion !== version) {
             mismatchCount++;
             if (mismatchCount >= 2) {
-                processVersionMismatch(version);
+                handleUpdateDetected(version);
             }
             return;
         }
         mismatchCount = 0;
-        if (last !== version) localStorage.setItem('app_version', version);
+        if (!currentVersion) localStorage.setItem('app_version', version);
     } catch (e) {}
 };
 
@@ -145,11 +172,10 @@ setInterval(() => {
     if (pendingVersion && updateToastId && !isAnyDirty()) {
         isUpdating = true;
         dismissPersistentToast();
-        toast.info('Actualizando aplicación...', { duration: 3000 });
-        checkForUpdates();
+        toast.info('Actualizando aplicación en 3 segundos...', { duration: 3500 });
         setTimeout(() => doReload(pendingVersion), 3000);
     }
-}, 30000);
+}, 10000);
 
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {

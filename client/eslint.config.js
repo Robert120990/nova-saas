@@ -13,7 +13,7 @@ export default [
         files: ['src/**/*.{js,jsx}'],
         languageOptions: {
             ecmaVersion: 'latest',
-            globals: { ...globals.browser },
+            globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
             parserOptions: {
                 ecmaVersion: 'latest',
                 ecmaFeatures: { jsx: true },
