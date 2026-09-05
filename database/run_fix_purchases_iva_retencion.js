@@ -1,5 +1,6 @@
-const mysql = require('mysql2/promise');
-require('dotenv').config({ path: '../server/.env' });
+const path = require('path');
+const mysql = require(path.join(__dirname, '../server/node_modules/mysql2/promise'));
+require(path.join(__dirname, '../server/node_modules/dotenv')).config({ path: path.join(__dirname, '../server/.env') });
 
 async function fixPurchases() {
     const connection = await mysql.createConnection({
