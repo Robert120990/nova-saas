@@ -66,6 +66,7 @@ import AuditLog from './pages/AuditLog';
 import LogViewer from './pages/LogViewer';
 import ConnectedUsers from './pages/ConnectedUsers';
 import Changelog from './pages/Changelog';
+import KeyboardShortcuts from './pages/KeyboardShortcuts';
 import CashClosing from './pages/CashClosing';
 import Combos from './pages/Combos';
 import CustomerStatement from './pages/CustomerStatement';
@@ -273,6 +274,7 @@ function App() {
                         <Route path="/ventas" element={<SalesHistory />} />
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
+                        <Route path="/seguridad/atajos" element={<KeyboardShortcuts />} />
                         <Route path="/changelog" element={<Changelog />} />
                         <Route path="/notificaciones" element={<NotificacionesLista />} />
 

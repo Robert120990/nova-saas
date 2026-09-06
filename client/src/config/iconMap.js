@@ -57,7 +57,8 @@ import {
     FileMinus,
     FilePlus,
     XCircle,
-    TrendingUp
+    TrendingUp,
+    Keyboard,
 } from 'lucide-react';
 
 const iconMap = {
@@ -120,6 +121,7 @@ const iconMap = {
     FilePlus,
     XCircle,
     TrendingUp,
+    Keyboard,
 };
 
 export default iconMap;
