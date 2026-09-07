@@ -746,7 +746,8 @@ exports.updateReading = async (req, res) => {
         );
         if (current.length === 0) return res.status(404).json({ message: 'Lectura no encontrada' });
 
-        const lectura_anterior = newAnterior !== undefined ? parseFloat(newAnterior) : parseFloat(current[0].lectura_anterior);
+        const isSuperAdmin = req.user?.role === 'SuperAdmin' || req.user?.role?.toLowerCase() === 'superadmin';
+        const lectura_anterior = (newAnterior !== undefined && isSuperAdmin) ? parseFloat(newAnterior) : parseFloat(current[0].lectura_anterior);
         const precio = parseFloat(current[0].precio);
         const newLectura = lectura_actual !== undefined ? parseFloat(lectura_actual) : undefined;
         const newCalibracion = calibracion !== undefined ? parseFloat(calibracion) : undefined;

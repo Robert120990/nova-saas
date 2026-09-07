@@ -44,7 +44,7 @@ const GasCloseout = () => {
     const { user } = useAuth();
     const confirm = useConfirm();
     const editId = searchParams.get('editId');
-    const isSuperAdmin = user?.role === 'SuperAdmin';
+    const isSuperAdmin = user?.role === 'SuperAdmin' || user?.role?.toLowerCase() === 'superadmin';
 
     const toDateStr = (v) => {
         if (!v) return '';
@@ -155,14 +155,26 @@ const GasCloseout = () => {
 
     useEffect(() => {
         const handler = (e) => {
-            if (e.ctrlKey && e.altKey && e.key === 'a') {
+            if (e.ctrlKey && e.altKey && e.key?.toLowerCase() === 'a') {
                 e.preventDefault();
-                setEditAnterior(prev => !prev);
+                if (!isSuperAdmin) {
+                    toast.error('Solo los usuarios con rol SuperAdmin pueden activar la edición de lecturas anteriores');
+                    return;
+                }
+                setEditAnterior(prev => {
+                    const next = !prev;
+                    if (next) {
+                        toast.info('Modo SuperAdmin: Edición de lecturas anteriores activada');
+                    } else {
+                        toast.info('Edición de lecturas anteriores desactivada');
+                    }
+                    return next;
+                });
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, []);
+    }, [isSuperAdmin]);
 
     const handleEstadoBadgeClick = async () => {
         if (!isSuperAdmin || estado !== 'reabierto') return;
@@ -1371,6 +1383,7 @@ const GasCloseout = () => {
 
     const handleReadingChange = (nozzleId, field, value) => {
         if (estado === 'cerrado' || estado === 'reabierto') return;
+        if (field === 'lectura_anterior' && !isSuperAdmin) return;
         setReadings(prev => prev.map(r =>
             r.nozzle_id === nozzleId ? { ...r, [field]: parseFloat(value) || 0 } : r
         ));
@@ -1379,9 +1392,16 @@ const GasCloseout = () => {
     const handleReadingBlur = (readingId, nozzleId) => {
         const r = readings.find(x => x.nozzle_id === nozzleId);
         if (!r) return;
+        const payload = {
+            lectura_actual: r.lectura_actual,
+            calibracion: r.calibracion
+        };
+        if (isSuperAdmin && editAnterior) {
+            payload.lectura_anterior = r.lectura_anterior;
+        }
         updateMutation.mutate({
             readingId,
-            data: { lectura_actual: r.lectura_actual, calibracion: r.calibracion, lectura_anterior: r.lectura_anterior }
+            data: payload
         });
     };
 
@@ -1400,7 +1420,7 @@ const GasCloseout = () => {
             if (field === 'lectura_actual') {
                 const nextReading = readings[index + 1];
                 if (nextReading) {
-                    const nextKey = editAnterior ? `anterior-${nextReading.nozzle_id}` : `lectura_actual-${nextReading.nozzle_id}`;
+                    const nextKey = editAnterior && isSuperAdmin ? `anterior-${nextReading.nozzle_id}` : `lectura_actual-${nextReading.nozzle_id}`;
                     const nextEl = inputRefs.current[nextKey];
                     if (nextEl) nextEl.focus();
                 }
@@ -1410,7 +1430,7 @@ const GasCloseout = () => {
             if (field === 'calibracion') {
                 const nextReading = readings[index + 1];
                 if (nextReading) {
-                    const nextKey = editAnterior ? `anterior-${nextReading.nozzle_id}` : `lectura_actual-${nextReading.nozzle_id}`;
+                    const nextKey = editAnterior && isSuperAdmin ? `anterior-${nextReading.nozzle_id}` : `lectura_actual-${nextReading.nozzle_id}`;
                     const nextEl = inputRefs.current[nextKey];
                     if (nextEl) nextEl.focus();
                 }
@@ -2281,6 +2301,11 @@ const GasCloseout = () => {
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
+                                    {editAnterior && isSuperAdmin && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                            <ShieldCheck size={11} /> Edición inicial (SuperAdmin)
+                                        </span>
+                                    )}
                                 </h3>
                                 <div className="flex items-center gap-2">
                                     {estado !== 'cerrado' && (
@@ -2320,7 +2345,7 @@ const GasCloseout = () => {
                                             <th className="px-1.5 py-1 w-16 bg-slate-50 border-b border-slate-100">Pistola</th>
                                             <th className="px-1.5 py-1 max-w-[120px] bg-slate-50 border-b border-slate-100">Producto</th>
                                             <th className="px-1.5 py-1 text-right w-16 bg-slate-50 border-b border-slate-100">Precio</th>
-                                            <th className={`px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100 ${editAnterior ? 'text-amber-600' : ''}`}>Lect. Ant{editAnterior && '*'}</th>
+                                            <th className={`px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100 ${editAnterior && isSuperAdmin ? 'text-amber-600' : ''}`}>Lect. Ant{editAnterior && isSuperAdmin && '*'}</th>
                                             <th className="px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100">Lect. Actual</th>
                                             <th className="px-1.5 py-1 text-right w-24 bg-slate-50 border-b border-slate-100">Calibr</th>
                                             <th className="px-1.5 py-1 text-right w-16 bg-slate-50 border-b border-slate-100">Difer</th>
@@ -2340,7 +2365,7 @@ const GasCloseout = () => {
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap" data-label="Precio"><Money value={r.precio} /></td>
                                                     <td className="px-1.5 py-0.5 text-right" data-label="Lect. Ant.">
-                                                        {editAnterior ? (
+                                                        {editAnterior && isSuperAdmin ? (
                                                             <input
                                                                 ref={el => { inputRefs.current[`anterior-${r.nozzle_id}`] = el; }}
                                                                 type="number"

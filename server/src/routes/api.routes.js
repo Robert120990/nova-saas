@@ -278,6 +278,7 @@ router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
 const purchaseCheckController = require('../controllers/purchaseCheck.controller');
 router.get('/purchases/checks', purchaseCheckController.getChecks);
 router.post('/purchases/checks', purchaseCheckController.createCheck);
+router.get('/purchases/checks/verify-rrs-providers', purchaseCheckController.verifyProvidersInRrs);
 router.get('/purchases/checks/:id', purchaseCheckController.getCheckById);
 router.put('/purchases/checks/:id', purchaseCheckController.updateCheck);
 router.delete('/purchases/checks/:id', purchaseCheckController.deleteCheck);

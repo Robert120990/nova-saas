@@ -415,9 +415,123 @@ const saveChqConfig = async (req, res) => {
     }
 };
 
+const verifyProvidersInRrs = async (req, res) => {
+    try {
+        const branchId = req.query.branch_id || req.user?.branch_id;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!branchId) {
+            return res.status(400).json({ message: 'branch_id es requerido para verificar en RRS' });
+        }
+
+        const [configs] = await pool.query(
+            'SELECT * FROM branch_chq_config WHERE company_id = ? AND branch_id = ?',
+            [companyId, branchId]
+        );
+
+        if (configs.length === 0 || !configs[0].rrs_id_empresa) {
+            return res.status(400).json({
+                configured: false,
+                message: 'Configuración de Chq Contado no encontrada para esta sucursal. Configure el ID Empresa RRS primero.'
+            });
+        }
+
+        const rrsIdEmpresa = configs[0].rrs_id_empresa;
+
+        const [providers] = await pool.query(
+            'SELECT id, nombre, nombre_comercial, nit, nrc, direccion, telefono, correo FROM providers WHERE company_id = ? ORDER BY nombre ASC',
+            [companyId]
+        );
+
+        const rrs = getRrsPool();
+        const [rrsRows] = await rrs.query(
+            'SELECT id, codigo, nombre, nit, nrc FROM proveedores WHERE id_empresa = ?',
+            [rrsIdEmpresa]
+        );
+
+        const clean = (val) => (val || '').toString().replace(/[^a-zA-Z0-9]/g, '').trim();
+
+        const byNit = new Map();
+        const byNrc = new Map();
+        const byCodigo = new Map();
+        const byId = new Map();
+        const rawNit = new Map();
+        const rawNrc = new Map();
+
+        for (const r of rrsRows) {
+            const cNit = clean(r.nit);
+            const cNrc = clean(r.nrc);
+            const cCod = clean(r.codigo);
+
+            if (r.id) byId.set(r.id.trim(), r);
+            if (cNit && !byNit.has(cNit)) byNit.set(cNit, r);
+            if (cNrc && !byNrc.has(cNrc)) byNrc.set(cNrc, r);
+            if (cCod && !byCodigo.has(cCod)) byCodigo.set(cCod, r);
+
+            const rNit = (r.nit || '').trim();
+            const rNrc = (r.nrc || '').trim();
+            if (rNit && !rawNit.has(rNit)) rawNit.set(rNit, r);
+            if (rNrc && !rawNrc.has(rNrc)) rawNrc.set(rNrc, r);
+        }
+
+        let matchedCount = 0;
+        let notMatchedCount = 0;
+
+        const evaluatedProviders = providers.map(p => {
+            const cNit = clean(p.nit);
+            const cNrc = clean(p.nrc);
+            const rNit = (p.nit || '').trim();
+            const rNrc = (p.nrc || '').trim();
+            const providerId = `${rrsIdEmpresa}-${companyId}-${p.id}`.substring(0, 20);
+
+            let found = null;
+            if (byId.has(providerId)) found = byId.get(providerId);
+            else if (cNit && byNit.has(cNit)) found = byNit.get(cNit);
+            else if (rNit && rawNit.has(rNit)) found = rawNit.get(rNit);
+            else if (cNrc && byNrc.has(cNrc)) found = byNrc.get(cNrc);
+            else if (rNrc && rawNrc.has(rNrc)) found = rawNrc.get(rNrc);
+            else if (cNrc && byCodigo.has(cNrc)) found = byCodigo.get(cNrc);
+
+            const exists = Boolean(found);
+            if (exists) {
+                matchedCount++;
+            } else {
+                notMatchedCount++;
+            }
+
+            return {
+                id: p.id,
+                nombre: p.nombre,
+                nombre_comercial: p.nombre_comercial,
+                nit: p.nit,
+                nrc: p.nrc,
+                direccion: p.direccion,
+                telefono: p.telefono,
+                correo: p.correo,
+                exists_in_rrs: exists,
+                rrs_id: found ? found.id : null,
+                rrs_codigo: found ? found.codigo : null,
+                rrs_nombre: found ? found.nombre : null
+            };
+        });
+
+        res.json({
+            configured: true,
+            rrs_id_empresa: rrsIdEmpresa,
+            total: providers.length,
+            matched: matchedCount,
+            not_matched: notMatchedCount,
+            providers: evaluatedProviders
+        });
+    } catch (error) {
+        console.error('Error al verificar proveedores en RRS:', error);
+        res.status(500).json({ message: 'Error al verificar proveedores en RRS: ' + error.message });
+    }
+};
+
 const syncProviders = async (req, res) => {
     try {
-        const { branch_id } = req.body;
+        const { branch_id, provider_ids } = req.body;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!branch_id) {
@@ -429,55 +543,82 @@ const syncProviders = async (req, res) => {
             [companyId, branch_id]
         );
 
-        if (configs.length === 0) {
+        if (configs.length === 0 || !configs[0].rrs_id_empresa) {
             return res.status(400).json({
-                message: 'Configuración de Chq Contado no encontrada para esta sucursal. Primero configure el código de destino.'
+                message: 'Configuración de Chq Contado no encontrada para esta sucursal. Primero configure el código de destino e ID Empresa RRS.'
             });
         }
 
         const rrsIdEmpresa = configs[0].rrs_id_empresa;
 
-        const [providers] = await pool.query(
-            'SELECT id, nombre, nombre_comercial, nit, nrc, direccion, telefono, correo FROM providers WHERE company_id = ?',
-            [companyId]
-        );
+        let queryProviders = 'SELECT id, nombre, nombre_comercial, nit, nrc, direccion, telefono, correo FROM providers WHERE company_id = ?';
+        const params = [companyId];
+
+        const pIds = Array.isArray(provider_ids) ? provider_ids : (provider_ids ? [provider_ids] : null);
+        if (pIds && pIds.length > 0) {
+            queryProviders += ' AND id IN (?)';
+            params.push(pIds);
+        }
+
+        const [providers] = await pool.query(queryProviders, params);
+
+        if (providers.length === 0) {
+            return res.status(400).json({ message: 'No se encontraron proveedores para sincronizar' });
+        }
 
         const rrs = getRrsPool();
         let created = 0;
         let updated = 0;
         let errors = [];
 
+        const clean = (val) => (val || '').toString().replace(/[^a-zA-Z0-9]/g, '').trim();
+
         for (const p of providers) {
             try {
-                const nrc = (p.nrc || '').replace(/\s/g, '');
-                const nit = (p.nit || '').replace(/\s/g, '');
-                const codigoBusqueda = nrc;
+                const nrc = (p.nrc || '').trim();
+                const nit = (p.nit || '').trim();
+                const cNrc = clean(nrc);
+                const cNit = clean(nit);
+                const codigoBusqueda = nrc || cNrc;
+                const providerId = `${rrsIdEmpresa}-${companyId}-${p.id}`.substring(0, 20);
 
                 let existing = null;
 
-                if (nit) {
+                // 1. Match by providerId if previously generated/synced
+                const [byIdRows] = await rrs.query(
+                    'SELECT * FROM proveedores WHERE id_empresa = ? AND id = ?',
+                    [rrsIdEmpresa, providerId]
+                );
+                if (byIdRows.length > 0) existing = byIdRows[0];
+
+                // 2. Match by NIT
+                if (!existing && (nit || cNit)) {
                     const [rows] = await rrs.query(
-                        'SELECT * FROM proveedores WHERE id_empresa = ? AND nit = ?',
-                        [rrsIdEmpresa, nit]
+                        `SELECT * FROM proveedores WHERE id_empresa = ? AND (nit = ? OR REPLACE(REPLACE(nit, '-', ''), ' ', '') = ?)`,
+                        [rrsIdEmpresa, nit, cNit]
                     );
                     if (rows.length > 0) existing = rows[0];
                 }
 
-                if (!existing && nrc) {
+                // 3. Match by NRC
+                if (!existing && (nrc || cNrc)) {
                     const [rows] = await rrs.query(
-                        'SELECT * FROM proveedores WHERE id_empresa = ? AND nrc = ?',
-                        [rrsIdEmpresa, nrc]
+                        `SELECT * FROM proveedores WHERE id_empresa = ? AND (nrc = ? OR REPLACE(REPLACE(nrc, '-', ''), ' ', '') = ?)`,
+                        [rrsIdEmpresa, nrc, cNrc]
                     );
                     if (rows.length > 0) existing = rows[0];
                 }
 
-                if (!existing) {
+                // 4. Match by Codigo
+                if (!existing && (codigoBusqueda || cNrc)) {
                     const [rows] = await rrs.query(
-                        'SELECT * FROM proveedores WHERE id_empresa = ? AND codigo = ?',
-                        [rrsIdEmpresa, codigoBusqueda]
+                        `SELECT * FROM proveedores WHERE id_empresa = ? AND (codigo = ? OR REPLACE(REPLACE(codigo, '-', ''), ' ', '') = ?)`,
+                        [rrsIdEmpresa, codigoBusqueda, cNrc]
                     );
                     if (rows.length > 0) existing = rows[0];
                 }
+
+                const codigoFinal = (codigoBusqueda || cNrc || String(p.id)).substring(0, 10);
 
                 if (existing) {
                     await rrs.query(`
@@ -492,7 +633,7 @@ const syncProviders = async (req, res) => {
                             nit = ?
                         WHERE id = ? AND id_empresa = ?
                     `, [
-                        codigoBusqueda,
+                        codigoFinal || existing.codigo,
                         (p.nombre || '').substring(0, 80),
                         (p.nombre_comercial || '').substring(0, 150),
                         (p.direccion || '').substring(0, 100),
@@ -505,7 +646,6 @@ const syncProviders = async (req, res) => {
                     ]);
                     updated++;
                 } else {
-                    const providerId = `${rrsIdEmpresa}-${companyId}-${p.id}`;
                     await rrs.query(`
                         INSERT INTO proveedores
                             (id, id_empresa, codigo, nombre, nombre_comercial, direccion, telefono,
@@ -514,10 +654,19 @@ const syncProviders = async (req, res) => {
                              es_exento_fovial, dif, napa, rnpa, id_tipo_doc, id_tipo_per, id_giro,
                              es_exento_cotrans)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'P', 0, 0, 0, 0, 0, 0, '', 0, '', '', '', '', '', '', 0)
+                        ON DUPLICATE KEY UPDATE
+                            codigo = VALUES(codigo),
+                            nombre = VALUES(nombre),
+                            nombre_comercial = VALUES(nombre_comercial),
+                            direccion = VALUES(direccion),
+                            telefono = VALUES(telefono),
+                            correo = VALUES(correo),
+                            nit = VALUES(nit),
+                            nrc = VALUES(nrc)
                     `, [
                         providerId,
                         rrsIdEmpresa,
-                        codigoBusqueda,
+                        codigoFinal,
                         (p.nombre || '').substring(0, 80),
                         (p.nombre_comercial || '').substring(0, 150),
                         (p.direccion || '').substring(0, 100),
@@ -529,12 +678,24 @@ const syncProviders = async (req, res) => {
                     created++;
                 }
             } catch (e) {
+                console.error(`Error al procesar proveedor #${p.id}:`, e.message);
                 errors.push(`Proveedor #${p.id} (${p.nombre}): ${e.message}`);
             }
         }
 
+        if (providers.length === 1 && errors.length > 0) {
+            return res.status(400).json({
+                message: `Error al enviar proveedor a RRS: ${errors[0]}`,
+                errors
+            });
+        }
+
+        const msg = providers.length === 1
+            ? `Proveedor enviado a RRS con éxito (${created > 0 ? 'creado' : 'actualizado'})`
+            : `Sincronización completada. Creados: ${created}, Actualizados: ${updated}, Errores: ${errors.length}`;
+
         res.json({
-            message: `Sincronización completada. Creados: ${created}, Actualizados: ${updated}, Errores: ${errors.length}`,
+            message: msg,
             created,
             updated,
             errors
@@ -675,6 +836,7 @@ module.exports = {
     getChqConfig,
     saveChqConfig,
     syncProviders,
+    verifyProvidersInRrs,
     revertCheck,
     getRrsNumCheque
 };

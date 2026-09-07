@@ -24,14 +24,14 @@ const SHORTCUTS = [
         keys: ['Ctrl', 'Alt', 'A'],
         category: 'gas',
         isSecret: true,
-        badgeType: 'secret',
-        badgeLabel: '🔥 Truco Oculto',
-        title: 'Modo Edición de Lecturas Anteriores',
+        badgeType: 'special',
+        badgeLabel: '🔥 Modo SuperAdmin',
+        title: 'Modo Edición de Lecturas Anteriores (SuperAdmin)',
         module: 'Gasolinera > Cierre de Turno',
         path: '/gas-station/cierre-lecturas',
-        description: 'Habilita la edición directa de las lecturas anteriores/iniciales de los surtidores y mangueras en el cierre.',
-        instructions: 'Al presionar la combinación dentro del formulario de Cierre de Lecturas, la columna de lectura anterior se vuelve editable sin necesidad de reabrir o recalcular el turno.',
-        tags: ['gasolinera', 'cierre', 'lecturas', 'surtidores', 'mangueras', 'anterior']
+        description: 'Habilita para usuarios SuperAdmin la edición directa de las lecturas anteriores/iniciales de los surtidores y mangueras en el cierre.',
+        instructions: 'Solo disponible para usuarios con rol SuperAdmin. Al presionar la combinación dentro del formulario de Cierre de Lecturas, la columna de lectura anterior se vuelve editable.',
+        tags: ['gasolinera', 'cierre', 'lecturas', 'surtidores', 'mangueras', 'anterior', 'superadmin']
     },
     {
         id: 'gas-superadmin-tanks',
