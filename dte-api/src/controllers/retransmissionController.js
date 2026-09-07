@@ -54,19 +54,29 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
             : String(doc.emission_date || '').substring(0, 10)
     }));
 
-    // 4. Obtener cliente (si existe)
+    // 4. Obtener cliente (si existe) y sucursal de cliente (si aplica)
     let customer = null;
+    let customerBranch = null;
     if (sale.customer_id) {
         const [custRows] = await pool.query(
             'SELECT * FROM customers WHERE id = ? AND company_id = ?',
             [sale.customer_id, companyId]
         );
         if (custRows.length > 0) customer = custRows[0];
+
+        if (sale.customer_branch_id) {
+            const [branchRows] = await pool.query(
+                'SELECT * FROM customer_branches WHERE id = ? AND customer_id = ?',
+                [sale.customer_branch_id, sale.customer_id]
+            );
+            if (branchRows.length > 0) customerBranch = branchRows[0];
+        }
     }
 
     // Guardia: Hacienda exige distrito en receptor.direccion (codigoMsg 096)
-    if (customer && !customer.distrito) {
-        throw new Error(`El cliente "${customer.nombre}" no tiene distrito configurado. Complete el distrito en el registro del cliente antes de reintentar.`);
+    const effectiveDistrito = (customerBranch?.distrito && String(customerBranch.distrito).trim()) || customer?.distrito;
+    if (customer && !effectiveDistrito) {
+        throw new Error(`El cliente "${customer.nombre}" no tiene distrito configurado. Complete el distrito en el registro del cliente o sucursal antes de reintentar.`);
     }
 
     // Guardia: Crédito Fiscal (CCF) requiere NIT del receptor identificado
@@ -91,14 +101,19 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
     const company = companies[0];
 
     // 7. Construir receptor (con posibilidad de sobreescribir con newReceptor)
+    const deptoReceptor = (customerBranch?.departamento && String(customerBranch.departamento).trim()) || customer?.departamento || '06';
+    const muniReceptor = (customerBranch?.municipio && String(customerBranch.municipio).trim()) || customer?.municipio || '01';
+    const distReceptor = (customerBranch?.distrito && String(customerBranch.distrito).trim()) || customer?.distrito || '01';
+    const dirComplemento = (customerBranch?.direccion && String(customerBranch.direccion).trim()) || customer?.direccion || 'Direccion de entrega';
+
     const mergedRec = {
         nombre: customer?.nombre || newReceptor?.nombre || sale.cliente_nombre || 'Consumidor Final',
         nit: customer?.nit || newReceptor?.nit || null,
         nrc: customer?.nrc || newReceptor?.nrc || null,
         numDocumento: customer?.numero_documento || customer?.num_documento || newReceptor?.numDocumento || null,
         tipoDocumento: customer?.tipo_documento || newReceptor?.tipoDocumento || null,
-        correo: customer?.correo || newReceptor?.correo || null,
-        telefono: customer?.telefono || newReceptor?.telefono || null,
+        correo: customerBranch?.correo || customer?.correo || newReceptor?.correo || null,
+        telefono: customerBranch?.telefono || customer?.telefono || newReceptor?.telefono || null,
         nombreComercial: customer?.nombre_comercial || newReceptor?.nombreComercial || null,
         tipo_persona: parseInt(customer?.tipo_persona || newReceptor?.tipo_persona) || 1,
         pais_code: customer?.pais_code || newReceptor?.pais_code || null,
@@ -106,10 +121,10 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         codActividad: customer?.codigo_actividad || newReceptor?.codActividad || '10005',
         descActividad: customer?.actividad_economica || newReceptor?.descActividad || 'Otros',
         direccion: customer ? {
-            departamento: customer.departamento || '06',
-            municipio: customer.municipio || '01',
-            distrito: customer.distrito || '01',
-            complemento: customer.direccion || 'Direccion de entrega'
+            departamento: deptoReceptor,
+            municipio: muniReceptor,
+            distrito: distReceptor,
+            complemento: dirComplemento
         } : (newReceptor?.direccion || null)
     };
 
