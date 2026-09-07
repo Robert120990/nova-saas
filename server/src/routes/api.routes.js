@@ -77,6 +77,7 @@ const gasDespachadorController = require('../controllers/gasDespachador.controll
 const gasPosTypeController = require('../controllers/gasPosType.controller');
 const gasAdvanceController = require('../controllers/gasAdvance.controller');
 const gasTrupputController = require('../controllers/gasTrupput.controller');
+const gasOrderController = require('../controllers/gasOrder.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
@@ -702,6 +703,16 @@ router.post('/gas-station/trupput', gasTrupputController.createTrupput);
 router.put('/gas-station/trupput/:id', gasTrupputController.updateTrupput);
 router.delete('/gas-station/trupput/:id', gasTrupputController.deleteTrupput);
 router.get('/gas-station/trupput/available/:cliente_id', gasTrupputController.getAvailableTrupputByClient);
+
+// Gas Station - Pedidos Web (RRS)
+router.get('/gas-station/orders', gasOrderController.getGasOrders);
+router.patch('/gas-station/orders/:id/seen', gasOrderController.markOrderAsSeen);
+router.patch('/gas-station/orders/:id/receive', gasOrderController.receiveOrder);
+router.get('/gas-station/orders/:id/vouchers', gasOrderController.getOrderVouchers);
+router.get('/gas-station/orders/:id/transfer', gasOrderController.getOrderTransfer);
+router.get('/gas-station/banks', gasOrderController.getBanks);
+router.get('/gas-station/bank-accounts', gasOrderController.getBankAccounts);
+router.get('/gas-station/vouchers/validate', gasOrderController.validateVoucher);
 
 // Gas Station - Closeout Despachos Trupput
 router.get('/gas-station/closeouts/:id/trupput-desp', gasCloseoutController.getTrupputDesp);

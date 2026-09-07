@@ -60,6 +60,7 @@ import {
     TrendingUp,
     Keyboard,
     Layers,
+    ClipboardList,
 } from 'lucide-react';
 
 const iconMap = {
@@ -124,6 +125,7 @@ const iconMap = {
     TrendingUp,
     Keyboard,
     Layers,
+    ClipboardList,
 };
 
 export default iconMap;

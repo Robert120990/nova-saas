@@ -2,12 +2,13 @@ const nodemailer = require('nodemailer');
 const pool = require('../config/db');
 const { 
     generateAgingPDF,
+    generateProviderAgingPDF,
     generateRTEE,
     generateInvalidationPDF,
-      generateStatementPDF,
-      generateProviderStatementPDF,
-      generateTrupputStatementPDF,
-      generatePaymentReceiptPDF
+    generateStatementPDF,
+    generateProviderStatementPDF,
+    generateTrupputStatementPDF,
+    generatePaymentReceiptPDF
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
@@ -667,6 +668,8 @@ module.exports = {
                     hora_emision: dteJson.identificacion.horEmi,
                     condicion_operacion: dteJson.resumen.condicionOperacion,
                     total_gravado: dteJson.resumen.totalGravada,
+                    total_exento: dteJson.resumen.totalExenta || 0,
+                    total_nosujetas: dteJson.resumen.totalNoSuj || 0,
                     total_iva: dteJson.resumen.totalIva || (dteJson.resumen.tributos?.find(t => t.codigo === '20')?.valor || 0),
                     total_descuento: dteJson.resumen.descuNoExenta || 0,
                     total_pagar: dteJson.resumen.totalPagar,
@@ -682,7 +685,9 @@ module.exports = {
                     descripcion: item.descripcion,
                     precioUnitario: item.precioUni,
                     montoDescuento: item.montoDescu,
-                    totalItem: item.ventaGravada
+                    totalItem: item.ventaGravada,
+                    uniMedida: item.uniMedida || 59,
+                    tributos: item.tributos || null,
                 }))
             };
 
@@ -813,6 +818,8 @@ module.exports = {
                     hora_emision: dteJson.identificacion.horEmi,
                     condicion_operacion: dteJson.resumen.condicionOperacion,
                     total_gravado: dteJson.resumen.totalGravada,
+                    total_exento: dteJson.resumen.totalExenta || 0,
+                    total_nosujetas: dteJson.resumen.totalNoSuj || 0,
                     total_iva: dteJson.resumen.totalIva || (dteJson.resumen.tributos?.find(t => t.codigo === '20')?.valor || 0),
                     total_descuento: dteJson.resumen.descuNoExenta || 0,
                     total_pagar: dteJson.resumen.totalPagar,
@@ -829,7 +836,8 @@ module.exports = {
                     precioUnitario: item.precioUni,
                     montoDescuento: item.montoDescu,
                     totalItem: item.ventaGravada,
-                    uniMedida: item.uniMedida || 59
+                    uniMedida: item.uniMedida || 59,
+                    tributos: item.tributos || null,
                 })),
                 isVoided: true
             };

@@ -2008,6 +2008,8 @@ const exportRTEE = async (req, res) => {
                 hora_emision: dteJson.identificacion.horEmi,
                 condicion_operacion: dteJson.resumen.condicionOperacion,
                 total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
+                total_exento: dteJson.resumen.totalExenta || 0,
+                total_nosujetas: dteJson.resumen.totalNoSuj || 0,
                 total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
                 total_descuento: dteJson.resumen.descuNoExenta || 0,
                 total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIVAretenido || 0,
@@ -2030,6 +2032,7 @@ const exportRTEE = async (req, res) => {
                 tipoDte: item.tipoDte || null,
                 numDocumento: item.numDocumento || null,
                 ivaRetenido: item.ivaRetenido || 0,
+                tributos: item.tributos || null,
             }))
         };
 
@@ -2138,6 +2141,8 @@ const getPublicRTEE = async (req, res) => {
                 hora_emision: dteJson.identificacion.horEmi,
                 condicion_operacion: dteJson.resumen.condicionOperacion,
                 total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
+                total_exento: dteJson.resumen.totalExenta || 0,
+                total_nosujetas: dteJson.resumen.totalNoSuj || 0,
                 total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
                 total_descuento: dteJson.resumen.descuNoExenta || 0,
                 total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIVAretenido || 0,
@@ -2160,6 +2165,7 @@ const getPublicRTEE = async (req, res) => {
                 tipoDte: item.tipoDte || null,
                 numDocumento: item.numDocumento || null,
                 ivaRetenido: item.ivaRetenido || 0,
+                tributos: item.tributos || null,
             }))
         };
 
@@ -3124,7 +3130,9 @@ const sendPublicDTEEmail = async (req, res) => {
                 descripcion: item.descripcion || '',
                 precioUnitario: item.precioUni || 0,
                 montoDescuento: item.montoDescu || 0,
-                totalItem: item.ventaGravada || 0
+                totalItem: item.ventaGravada || 0,
+                uniMedida: item.uniMedida || 59,
+                tributos: item.tributos || null,
             })),
             isVoided: (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO'
         };

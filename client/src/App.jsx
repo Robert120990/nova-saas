@@ -100,6 +100,7 @@ import Islands from './pages/Islands';
 import Nozzles from './pages/Nozzles';
 import Tanks from './pages/Tanks';
 import GasCloseout from './pages/GasCloseout';
+import GasOrders from './pages/GasOrders';
 import GasReadingHistory from './pages/GasReadingHistory';
 import GasExpenseCategories from './pages/GasExpenseCategories';
 import GasStationConfig from './pages/GasStationConfig';
@@ -298,6 +299,7 @@ function App() {
                         <Route path="/gas-station/nozzles" element={<Nozzles />} />
                         <Route path="/gas-station/tanks" element={<Tanks />} />
                         <Route path="/gas-station/cierre-lecturas" element={<GasCloseout />} />
+                        <Route path="/gas-station/pedidos" element={<GasOrders />} />
                         <Route path="/gas-station/historial-lecturas" element={<GasReadingHistory />} />
                         <Route path="/gas-station/expense-categories" element={<GasExpenseCategories />} />
                         <Route path="/gas-station/configuracion" element={<GasStationConfig />} />

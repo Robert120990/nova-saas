@@ -1682,6 +1682,19 @@ const generateRTEE = (data) => {
             doc.text('DESC.', startX + 420, tableTop + 6, { align: 'right', width: 60 });
             doc.text('SUBTOTAL', startX + 500, tableTop + 6, { align: 'right', width: 70 });
 
+            const esConsumidorFinal = dte.tipoDte === '01' || dte.tipoDte === 1 || String(dte.tipoDteNombre || '').toUpperCase().includes('CONSUMIDOR FINAL') || String(dte.tipoDteNombre || '').toUpperCase() === 'FACTURA';
+            const fovialVenta = parseFloat(venta.fovial) || 0;
+            const cotransVenta = parseFloat(venta.cotrans) || 0;
+            const tieneImpuestosCombustible = (fovialVenta > 0 || cotransVenta > 0);
+
+            const isFuelItem = (it) => {
+                if (it.esCombustible || it.es_combustible) return true;
+                if (it.uniMedida === 55) return true;
+                if (Array.isArray(it.tributos) && it.tributos.some(t => (t && (t.codigo === 'D1' || t.codigo === 'C8' || t === 'D1' || t === 'C8')))) return true;
+                const desc = String(it.descripcion || '').toUpperCase();
+                return /(DIESEL|REGULAR|SUPER|GASOLINA|V-POWER|ION\s*DIESEL)/.test(desc);
+            };
+
             doc.font('Helvetica').fontSize(8);
             let currentY = tableTop + 25;
             items.forEach(item => {
@@ -1696,11 +1709,28 @@ const generateRTEE = (data) => {
                     item.cantidad.toString() : 
                     Number(item.cantidad).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
                 
+                let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
+                let displayTotalItem = parseFloat(item.totalItem) || 0;
+
+                // En Factura Consumidor Final (DTE 01) con combustible, los impuestos específicos (FOVIAL $0.20 y COTRANS $0.10)
+                // se desglosan en el resumen y por tanto el precio unitario y subtotal del ítem deben mostrarse netos de dichos impuestos.
+                if (esConsumidorFinal && tieneImpuestosCombustible && isFuelItem(item)) {
+                    const cant = parseFloat(item.cantidad) || 0;
+                    const fovialItem = Math.round(cant * 0.20 * 100) / 100;
+                    const cotransItem = Math.round(cant * 0.10 * 100) / 100;
+                    const fuelTaxes = fovialItem + cotransItem;
+
+                    if (displayUnitPrice > 0.30) {
+                        displayUnitPrice = Math.max(0, displayUnitPrice - 0.30);
+                    }
+                    displayTotalItem = Math.max(0, Math.round((displayTotalItem - fuelTaxes) * 100) / 100);
+                }
+
                 doc.text(formattedQty, startX + 5, currentY);
                 doc.text(item.descripcion, startX + 45, currentY, { width: 300 });
-                doc.text(`$${parseFloat(item.precioUnitario).toFixed(4)}`, startX + 350, currentY, { align: 'right', width: 60 });
+                doc.text(`$${displayUnitPrice.toFixed(4)}`, startX + 350, currentY, { align: 'right', width: 60 });
                 doc.text(`$${parseFloat(item.montoDescuento || 0).toFixed(2)}`, startX + 420, currentY, { align: 'right', width: 60 });
-                doc.text(`$${parseFloat(item.totalItem).toFixed(2)}`, startX + 500, currentY, { align: 'right', width: 70 });
+                doc.text(`$${displayTotalItem.toFixed(2)}`, startX + 500, currentY, { align: 'right', width: 70 });
                 currentY += Math.max(itemHeight, 15);
             });
 
@@ -1718,20 +1748,42 @@ const generateRTEE = (data) => {
             let currentTotalY = footerY;
             doc.fontSize(8).font('Helvetica-Bold');
             
-            const addTotalLine = (label, value, isBold = false) => {
+            const addTotalLine = (label, value, isBold = false, rawText = null) => {
                 doc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(label, totalsX, currentTotalY);
-                doc.text(`$${parseFloat(value).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });
+                if (rawText !== null) {
+                    doc.text(rawText, startX + 500, currentTotalY, { align: 'right', width: 70 });
+                } else {
+                    doc.text(`$${parseFloat(value).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });
+                }
                 currentTotalY += 12;
             };
 
-            addTotalLine('SUMA DE OPERACIONES:', venta.total_gravado, true);
+            let gravadasDisplay = parseFloat(venta.total_gravado) || 0;
+            let sumaOperacionesDisplay = gravadasDisplay;
+
+            if (esConsumidorFinal && tieneImpuestosCombustible) {
+                // En Factura Consumidor Final, el total_gravado de Hacienda incluye FOVIAL y COTRANS.
+                // Para que el resumen cuadre con los tributos específicos desglosados (y coincida con la tabla de ítems):
+                // Ventas Gravadas = Total Pagar - FOVIAL - COTRANS - Exentas - No Sujetas.
+                const totalPagarNum = parseFloat(venta.total_pagar) || 0;
+                const totalExentoNum = parseFloat(venta.total_exento) || 0;
+                const totalNoSujNum = parseFloat(venta.total_nosujetas) || 0;
+                gravadasDisplay = Math.max(0, Math.round((totalPagarNum - fovialVenta - cotransVenta - totalExentoNum - totalNoSujNum) * 100) / 100);
+                const descNum = parseFloat(venta.total_descuento) || 0;
+                sumaOperacionesDisplay = Math.round((gravadasDisplay + descNum) * 100) / 100;
+            }
+
+            addTotalLine('SUMA DE OPERACIONES:', sumaOperacionesDisplay, true);
             addTotalLine('(-) DESCUENTOS:', venta.total_descuento);
-            addTotalLine('VENTAS GRAVADAS:', venta.total_gravado, true);
+            addTotalLine('VENTAS GRAVADAS:', gravadasDisplay, true);
             
-            // Para DTE de Consumidor Final ('01'), el IVA ya está incorporado en las ventas gravadas y no se traslada en el resumen
-            const esConsumidorFinal = dte.tipoDte === '01' || dte.tipoDte === 1 || String(dte.tipoDteNombre || '').toUpperCase().includes('CONSUMIDOR FINAL') || String(dte.tipoDteNombre || '').toUpperCase() === 'FACTURA';
-            const ivaFinal = esConsumidorFinal ? 0 : venta.total_iva;
-            addTotalLine('TOTAL IVA (13%):', ivaFinal, true);
+            // Para DTE de Consumidor Final ('01'), el IVA ya está incorporado en las ventas gravadas y no se traslada en el resumen.
+            // Se muestra '$ -' tal como en el formato de referencia oficial.
+            if (esConsumidorFinal) {
+                addTotalLine('TOTAL IVA (13%):', 0, false, '$ -');
+            } else {
+                addTotalLine('TOTAL IVA (13%):', venta.total_iva, true);
+            }
 
             // Tributos adicionales (Retención 1%, FOVIAL, COTRAN, etc.)
             const processedCodes = new Set();
@@ -1749,11 +1801,11 @@ const generateRTEE = (data) => {
             
             // Fallback para FOVIAL y COTRAN si no fueron procesados arriba pero tienen valor
             // Códigos usados por el sistema: D1 (FOVIAL), C8 (COTRANS). Catálogo MH: C3 (FOVIAL), C1 (COTRANS)
-            if (!processedCodes.has('D1') && !processedCodes.has('C3') && !processedCodes.has('01') && venta.fovial > 0) {
-                addTotalLine('TOTAL FOVIAL ($0.20):', venta.fovial);
+            if (!processedCodes.has('D1') && !processedCodes.has('C3') && !processedCodes.has('01') && fovialVenta > 0) {
+                addTotalLine('TOTAL FOVIAL ($0.20):', fovialVenta);
             }
-            if (!processedCodes.has('C8') && !processedCodes.has('C1') && !processedCodes.has('02') && venta.cotrans > 0) {
-                addTotalLine('TOTAL COTRAN ($0.10):', venta.cotrans);
+            if (!processedCodes.has('C8') && !processedCodes.has('C1') && !processedCodes.has('02') && cotransVenta > 0) {
+                addTotalLine('TOTAL COTRAN ($0.10):', cotransVenta);
             }
 
             // Retención y percepción de IVA (solo si aplica)
