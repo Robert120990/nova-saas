@@ -199,4 +199,81 @@ const deleteCompany = async (req, res) => {
     }
 };
 
-module.exports = { getCompanies, createCompany, updateCompany, deleteCompany };
+const AVAILABLE_MODULES = [
+    { id: 'sales', name: 'Ventas y Facturación DTE', category: 'Core', icon: 'Receipt', description: 'Terminal punto de venta, facturación electrónica MH, cotizaciones y caja' },
+    { id: 'purchases', name: 'Compras y Proveedores', category: 'Core', icon: 'ShoppingBag', description: 'Registro de compras DTE, retenciones, gastos y cuentas por pagar' },
+    { id: 'inventory', name: 'Inventario y Kardex', category: 'Core', icon: 'Package', description: 'Control de existencias, traslados, ajustes y valoración física' },
+    { id: 'gas_station', name: 'Estación de Servicio / Gasolinera', category: 'Verticales', icon: 'Fuel', description: 'Cierre de turnos, lecturas de bombas, tanques, despachadores y trupput' },
+    { id: 'pozo', name: 'Pozo de Agua / Cisternas', category: 'Verticales', icon: 'Droplets', description: 'Despacho de pipas de agua, cortes de pozo y entregas de efectivo' },
+    { id: 'egg_industrial', name: 'Huevo Industrial (Ovoproductos)', category: 'Verticales', icon: 'Sparkles', description: 'Recepción MP, pasteurización, silos, empaque, formulación y SCADA' },
+    { id: 'crm', name: 'CRM (Acuerdos Comerciales)', category: 'Comercial', icon: 'Handshake', description: 'Gestión de precios pactados con clientes, volúmenes y contratos' },
+    { id: 'accounting', name: 'Contabilidad Formal', category: 'Finanzas', icon: 'BookOpen', description: 'Catálogo de cuentas, partidas, correlativos y reportes financieros' },
+    { id: 'human_resources', name: 'Recursos Humanos y Planillas', category: 'Gestión', icon: 'Users', description: 'Expedientes de empleados, cálculo de planillas, ISSS, AFP y renta' }
+];
+
+const getCompanyModulesMatrix = async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT id, nit, nrc, razon_social, nombre_comercial, codigo_actividad, logo_url, enabled_modules
+            FROM companies
+            ORDER BY id ASC
+        `);
+
+        const formatted = rows.map(c => {
+            let modules = [];
+            try {
+                modules = typeof c.enabled_modules === 'string' ? JSON.parse(c.enabled_modules) : (c.enabled_modules || []);
+            } catch (e) {
+                modules = [];
+            }
+            if (!Array.isArray(modules)) modules = [];
+            return {
+                ...c,
+                enabled_modules: modules
+            };
+        });
+
+        res.json({
+            available_modules: AVAILABLE_MODULES,
+            companies: formatted
+        });
+    } catch (error) {
+        console.error('Error al obtener matriz de módulos por empresa:', error);
+        res.status(500).json({ message: 'Error interno al consultar módulos de empresas' });
+    }
+};
+
+const updateCompanyModules = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { modules } = req.body;
+
+        if (!Array.isArray(modules)) {
+            return res.status(400).json({ message: 'El formato de módulos debe ser un array' });
+        }
+
+        await pool.query(
+            'UPDATE companies SET enabled_modules = ? WHERE id = ?',
+            [JSON.stringify(modules), id]
+        );
+
+        res.json({
+            message: 'Módulos actualizados exitosamente para la empresa',
+            company_id: parseInt(id, 10),
+            enabled_modules: modules
+        });
+    } catch (error) {
+        console.error('Error al actualizar módulos de empresa:', error);
+        res.status(500).json({ message: 'Error interno al actualizar módulos' });
+    }
+};
+
+module.exports = { 
+    getCompanies, 
+    createCompany, 
+    updateCompany, 
+    deleteCompany,
+    getCompanyModulesMatrix,
+    updateCompanyModules
+};
+

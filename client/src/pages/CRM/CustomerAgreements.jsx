@@ -18,6 +18,7 @@ import {
     Building2
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
+import { useAuth } from '../../context/AuthContext';
 
 const PRESENTATION_WEIGHTS = {
     'cubeta 30LB': 30,
@@ -28,6 +29,7 @@ const PRESENTATION_WEIGHTS = {
 };
 
 export default function CustomerAgreements() {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
@@ -69,7 +71,7 @@ export default function CustomerAgreements() {
 
     // Query principal de acuerdos
     const { data: agreementsResponse = { data: [], kpis: {} }, isLoading } = useQuery({
-        queryKey: ['crm-customer-agreements', searchTerm, statusFilter],
+        queryKey: ['crm-customer-agreements', user?.company_id, searchTerm, statusFilter],
         queryFn: async () => {
             const res = await axios.get('/api/crm/customer-agreements', {
                 params: {

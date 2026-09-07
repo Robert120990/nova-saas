@@ -59,6 +59,7 @@ import {
     XCircle,
     TrendingUp,
     Keyboard,
+    Layers,
 } from 'lucide-react';
 
 const iconMap = {
@@ -122,6 +123,7 @@ const iconMap = {
     XCircle,
     TrendingUp,
     Keyboard,
+    Layers,
 };
 
 export default iconMap;

@@ -3,6 +3,18 @@ import axios from 'axios';
 import { useMemo } from 'react';
 import iconMap from '../config/iconMap';
 
+export const GROUP_MODULE_MAP = {
+    'Huevo Industrial': 'egg_industrial',
+    'Gasolinera': 'gas_station',
+    'Control de Pozo': 'pozo',
+    'CRM': 'crm',
+    'Contabilidad': 'accounting',
+    'Recursos Humanos': 'human_resources',
+    'Ventas': 'sales',
+    'Compras': 'purchases',
+    'Inventario': 'inventory',
+};
+
 function normalize(item) {
     return {
         ...item,
@@ -40,7 +52,7 @@ export function useMenuItems() {
             const res = await axios.get('/api/menu-items?active_only=true');
             return res.data;
         },
-        staleTime: 30 * 60 * 1000,
+        staleTime: 2 * 60 * 1000,
     });
 
     const tree = useMemo(() => buildTree(flatItems), [flatItems]);

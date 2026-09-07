@@ -76,7 +76,7 @@ const EggCostsMaintenance = () => {
     });
 
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [profitMarginPercent, setProfitMarginPercent] = useState(35);
+    const [profitMarginPercent, _setProfitMarginPercent] = useState(35);
     const [dateStart, setDateStart] = useState(new Date(new Date().setDate(1)).toISOString().split('T')[0]);
     const [dateEnd, setDateEnd] = useState(new Date().toISOString().split('T')[0]);
     const [costConcepts, setCostConcepts] = useState([]);

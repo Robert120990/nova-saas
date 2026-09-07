@@ -4,11 +4,9 @@ import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
-    Activity,
     Search,
     Flame,
     Barcode,
-    Snowflake,
     ClipboardList,
     ShieldCheck,
     Building2,
@@ -16,10 +14,7 @@ import {
     Calculator,
     FileCheck,
     Plus,
-    CheckCircle2,
     XCircle,
-    AlertTriangle,
-    Printer,
     Download
 } from 'lucide-react';
 
@@ -60,8 +55,7 @@ const EggTraceability = () => {
     const [calcResult, setCalcResult] = useState(null);
 
     // COA Generator States
-    const [selectedLabForCoa, setSelectedLabForCoa] = useState(null);
-    const [coaCustomerName, setCoaCustomerName] = useState('PriceSmart El Salvador');
+    const [coaCustomerName, _setCoaCustomerName] = useState('PriceSmart El Salvador');
 
     const fetchBatchesAndLab = async () => {
         setLoadingLab(true);

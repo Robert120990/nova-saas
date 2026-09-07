@@ -9,7 +9,6 @@ import {
     User,
     Calendar,
     Thermometer,
-    Award,
     AlertTriangle,
     CheckCircle2,
     XCircle,
@@ -111,7 +110,6 @@ const EggReception = () => {
 
     const updateTarima = (index, field, value) => {
         const updated = [...tarimas];
-        const val = field === 'boxes_count' ? (parseInt(value) || 0) : (parseFloat(value) || 0);
         updated[index][field] = value;
         
         const gross = parseFloat(updated[index].gross_weight_lbs) || 0;

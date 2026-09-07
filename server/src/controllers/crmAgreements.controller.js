@@ -9,7 +9,10 @@ const pool = require('../config/db');
 // 1. Obtener listado con métricas/KPIs y filtros
 const getAgreements = async (req, res) => {
     try {
-        const companyId = req.company_id || req.companyId || req.user?.company_id || 1;
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa faltante' });
+        }
         const { search = '', status = '', page = 1, limit = 50 } = req.query;
 
         let query = `
@@ -86,7 +89,10 @@ const getAgreements = async (req, res) => {
 // 2. Consulta ultrarrápida para Punto de Venta / Facturación
 const getActiveAgreementsByCustomer = async (req, res) => {
     try {
-        const companyId = req.company_id || req.companyId || req.user?.company_id || 1;
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa faltante' });
+        }
         const { customerId } = req.params;
 
         if (!customerId) {
@@ -158,7 +164,10 @@ const getActiveAgreementsByCustomer = async (req, res) => {
 // 3. Crear o actualizar acuerdo comercial
 const saveAgreement = async (req, res) => {
     try {
-        const companyId = req.company_id || req.companyId || req.user?.company_id || 1;
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa faltante' });
+        }
         const {
             id,
             customer_id,
@@ -279,7 +288,10 @@ const saveAgreement = async (req, res) => {
 const deleteAgreement = async (req, res) => {
     try {
         const { id } = req.params;
-        const companyId = req.company_id || req.companyId || req.user?.company_id || 1;
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa faltante' });
+        }
 
         const [result] = await pool.query(
             'DELETE FROM egg_costing_customer_agreements WHERE id = ? AND company_id = ?',

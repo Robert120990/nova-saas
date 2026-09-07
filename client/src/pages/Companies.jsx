@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Building2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Building2, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 
 const Companies = () => {
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -158,32 +160,41 @@ const Companies = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Gestión de Empresas</h2>
                     <p className="text-slate-500 mt-1 font-medium">Administra las identidades legales en tu plataforma</p>
                 </div>
-                <button 
-                    onClick={() => { 
-                        setSelectedCompany(null); 
-                        setSelectedDept(''); 
-                        setSelectedMun('');
-                        setSelectedDistrito('');
-                        setSelectedActivity('');
-                        setSelectedType('');
-                        setSelectedContribuyente('');
-                        setSelectedEnv('');
-                        setPreviewUrl(null);
-                        setRemoveLogo(false);
-                        setActiveTab('general');
-                        setNitValue('');
-                        setIsModalOpen(true); 
-                    }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
-                >
-                    <Plus size={20} />
-                    <span>Nueva Empresa</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => navigate('/configuracion/modulos-empresa')}
+                        className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl font-bold transition-all shadow-sm border border-slate-200 active:scale-95 text-xs"
+                    >
+                        <Layers size={16} className="text-indigo-600" />
+                        <span>Módulos por Empresa</span>
+                    </button>
+                    <button 
+                        onClick={() => { 
+                            setSelectedCompany(null); 
+                            setSelectedDept(''); 
+                            setSelectedMun('');
+                            setSelectedDistrito('');
+                            setSelectedActivity('');
+                            setSelectedType('');
+                            setSelectedContribuyente('');
+                            setSelectedEnv('');
+                            setPreviewUrl(null);
+                            setRemoveLogo(false);
+                            setActiveTab('general');
+                            setNitValue('');
+                            setIsModalOpen(true); 
+                        }}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 text-xs"
+                    >
+                        <Plus size={18} />
+                        <span>Nueva Empresa</span>
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -229,7 +240,14 @@ const Companies = () => {
                                     { company.tipo_persona_nombre}
                                 </div>
                             </td>
-                            <td className="px-6 py-4 flex gap-2">
+                            <td className="px-6 py-4 flex gap-1">
+                                <button 
+                                    onClick={() => navigate(`/configuracion/modulos-empresa?company_id=${company.id}`)} 
+                                    title="Configurar módulos de esta empresa"
+                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                >
+                                    <Layers size={18}/>
+                                </button>
                                 <button onClick={() => handleEdit(company)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
                                 <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>

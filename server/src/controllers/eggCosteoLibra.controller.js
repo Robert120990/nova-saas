@@ -1,8 +1,17 @@
 const pool = require('../config/db');
 
-// Helper para auto-sembrar parámetros iniciales si la empresa no tiene registros aún
+// Helper para auto-sembrar parámetros iniciales solo si la empresa tiene habilitado el módulo de huevo
 const ensureSeedData = async (companyId) => {
     try {
+        if (!companyId) return;
+        const [comp] = await pool.query('SELECT enabled_modules FROM companies WHERE id = ?', [companyId]);
+        if (comp.length === 0) return;
+        let mods = [];
+        try { mods = typeof comp[0].enabled_modules === 'string' ? JSON.parse(comp[0].enabled_modules) : (comp[0].enabled_modules || []); } catch (e) { mods = []; }
+        if (!Array.isArray(mods) || !mods.includes('egg_industrial')) {
+            return; // No sembrar datos de huevo si la empresa no maneja este módulo
+        }
+
         const [cRows] = await pool.query('SELECT COUNT(*) as c FROM egg_costing_configurations WHERE company_id = ?', [companyId]);
         if (cRows[0].c === 0) {
             await pool.query(`
@@ -46,20 +55,6 @@ const ensureSeedData = async (companyId) => {
                     (?, 'GALON-8LB', 'Envase Plástico Galón 8 LBS con Asa', 0.8500, 'recipiente'),
                     (?, 'TAPA-GALON', 'Tapa con Sello de Seguridad para Galón', 0.1500, 'tapadera')
             `, [companyId, companyId, companyId, companyId, companyId, companyId, companyId]);
-        }
-
-        const [aRows] = await pool.query('SELECT COUNT(*) as c FROM egg_costing_customer_agreements WHERE company_id = ?', [companyId]);
-        if (aRows[0].c === 0) {
-            await pool.query(`
-                INSERT IGNORE INTO egg_costing_customer_agreements (company_id, customer_name, product_type, presentation, agreed_price_per_lb, monthly_volume_lbs, target_margin_pct, notes)
-                VALUES
-                    (?, 'PriceSmart El Salvador', 'Huevo Entero Pasteurizado', 'cubeta 30LB', 1.1900, 35000.00, 22.00, 'Contrato corporativo, entrega refrigerada en centros de distribución'),
-                    (?, 'Panadería y Pastelería Lorena', 'Huevo Entero Plus', 'cubeta 30LB', 1.0500, 20000.00, 18.00, 'Despacho semanal, devolución de cubetas'),
-                    (?, 'Cocina de Vuelos (Gate Gourmet)', 'Huevo con Leche Pasteurizado', 'galón 8LB', 1.2000, 15000.00, 25.00, 'Especificación de vuelo, empaque galón con sello'),
-                    (?, 'Denny\\'s El Salvador', 'Clara de Huevo Pasteurizada', 'galón 8LB', 1.5000, 10000.00, 28.00, 'Menú fit / desayunos proteicos'),
-                    (?, 'Denny\\'s El Salvador', 'Huevo Entero Pasteurizado', 'cubeta 30LB', 1.3500, 12000.00, 24.00, 'Consumo cocina central'),
-                    (?, 'Panadería La Francesa', 'Yema Azucarada', 'cubeta 30LB', 1.1500, 8000.00, 20.00, 'Uso repostería fina')
-            `, [companyId, companyId, companyId, companyId, companyId, companyId]);
         }
     } catch (err) {
         console.warn('Advertencia en ensureSeedData:', err.message);

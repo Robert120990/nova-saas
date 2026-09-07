@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CornerDownLeft } from 'lucide-react';
-import { useMenuItems } from '../../hooks/useMenuItems';
+import { useMenuItems, GROUP_MODULE_MAP } from '../../hooks/useMenuItems';
 import { useAuth } from '../../context/AuthContext';
 
 const CommandPalette = ({ isOpen, onClose }) => {
@@ -30,6 +30,9 @@ const CommandPalette = ({ isOpen, onClose }) => {
     const hasPermission = (item) => {
         if (isSuperAdmin) return true;
         if (!item.permission_key) return true;
+        if (item.permission_key === 'manage_company_modules') {
+            return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
+        }
         return permissions.includes(item.permission_key);
     };
 
@@ -52,6 +55,13 @@ const CommandPalette = ({ isOpen, onClose }) => {
                 groupLabel = parentMap[item.parent_id];
             }
 
+            if (groupLabel && GROUP_MODULE_MAP[groupLabel]) {
+                const reqModule = GROUP_MODULE_MAP[groupLabel];
+                if (user?.enabled_modules && Array.isArray(user.enabled_modules) && !user.enabled_modules.includes(reqModule)) {
+                    return;
+                }
+            }
+
             results.push({
                 id: item.id,
                 label: item.label,
@@ -62,7 +72,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         });
 
         return results;
-    }, [flatItems, permissions, isSuperAdmin]);
+    }, [flatItems, permissions, isSuperAdmin, user?.enabled_modules]);
 
     const filteredItems = useMemo(() => {
         if (!search.trim()) return [];

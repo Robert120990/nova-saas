@@ -124,6 +124,8 @@ router.get('/all-users', userController.getAllUsers);
 router.get('/users/access-summary', userController.getAccessSummary);
 router.post('/users/assign-access', userController.assignCompanyAccess);
 router.delete('/users/access/:userId/:companyId', userController.deleteCompanyAccess);
+router.get('/companies/modules-matrix', companyController.getCompanyModulesMatrix);
+router.put('/companies/:id/modules', companyController.updateCompanyModules);
 router.get('/companies', companyController.getCompanies);
 router.post('/companies', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.createCompany);
 router.put('/companies/:id', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.updateCompany);

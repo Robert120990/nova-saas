@@ -50,7 +50,7 @@ const createRawMaterial = async (req, res) => {
             ) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                req.company_id, req.body.branch_id || 1, provider_id, egg_type, 
+                req.company_id, req.body.branch_id || req.user?.branch_id || null, provider_id, egg_type, 
                 egg_color || 'blanco', egg_size || 'L', fecha || new Date().toISOString().split('T')[0], 
                 finalWeightLbs, finalBoxes, finalWeightLbs, temperature_c || null, 
                 truck_temperature_c || null, truck_plate || null, driver_name || null, 
@@ -344,8 +344,8 @@ const createProductionBatch = async (req, res) => {
                 [batchId, rm.raw_material_id, parseFloat(rm.quantity_lbs)]
             );
             await connection.query(
-                'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ? WHERE id = ?',
-                [parseFloat(rm.quantity_lbs), rm.raw_material_id]
+                'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ? WHERE id = ? AND company_id = ?',
+                [parseFloat(rm.quantity_lbs), rm.raw_material_id, req.company_id]
             );
         }
 
@@ -477,8 +477,8 @@ const createPasteurizationLog = async (req, res) => {
         if (!haccp_compliant) {
             // --- BLOQUEO AUTOMÁTICO DE LOTE ---
             await pool.query(
-                `UPDATE egg_production_batches SET status = 'bloqueado_haccp' WHERE id = ?`,
-                [batch_id]
+                `UPDATE egg_production_batches SET status = 'bloqueado_haccp' WHERE id = ? AND company_id = ?`,
+                [batch_id, company_id]
             );
 
             // Crear evento crítico
@@ -498,8 +498,8 @@ const createPasteurizationLog = async (req, res) => {
             // Actualizar lote si todo va bien y estaba en proceso
             if (batch.status === 'en_proceso') {
                 await pool.query(
-                    `UPDATE egg_production_batches SET status = 'pasteurizado' WHERE id = ?`,
-                    [batch_id]
+                    `UPDATE egg_production_batches SET status = 'pasteurizado' WHERE id = ? AND company_id = ?`,
+                    [batch_id, company_id]
                 );
             }
         }
@@ -649,8 +649,8 @@ const createPackagingRecord = async (req, res) => {
         // Actualizar estado de lote
         const newBatchStatus = warehouse_zone === 'BLAST' || product_state === 'congelado' ? 'congelado' : 'empaquetado';
         await pool.query(
-            `UPDATE egg_production_batches SET status = ? WHERE id = ?`,
-            [newBatchStatus, batch_id]
+            `UPDATE egg_production_batches SET status = ? WHERE id = ? AND company_id = ?`,
+            [newBatchStatus, batch_id, company_id]
         );
 
         // Crear evento
@@ -779,11 +779,11 @@ const createBlastFreezerLog = async (req, res) => {
 
         // Si ya está completado el congelado, actualizar el lote general
         if (status === 'congelado_ok') {
-            const [pkgs] = await pool.query('SELECT batch_id FROM egg_packaging_records WHERE id = ?', [packaging_id]);
+            const [pkgs] = await pool.query('SELECT batch_id FROM egg_packaging_records WHERE id = ? AND company_id = ?', [packaging_id, company_id]);
             if (pkgs.length > 0) {
                 await pool.query(
-                    `UPDATE egg_production_batches SET status = 'congelado' WHERE id = ?`,
-                    [pkgs[0].batch_id]
+                    `UPDATE egg_production_batches SET status = 'congelado' WHERE id = ? AND company_id = ?`,
+                    [pkgs[0].batch_id, company_id]
                 );
             }
         }
@@ -1169,7 +1169,7 @@ const createLabLog = async (req, res) => {
 
         // Si el estado es rechazado, bloquear el lote en producción
         if (evaluatedStatus === 'rechazado') {
-            await pool.query('UPDATE egg_production_batches SET status = "bloqueado_haccp" WHERE id = ?', [batch_id]);
+            await pool.query('UPDATE egg_production_batches SET status = "bloqueado_haccp" WHERE id = ? AND company_id = ?', [batch_id, req.company_id]);
             await pool.query(
                 `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
                  VALUES (?, 'quality.rejection', 'critical', ?, ?, ?)`,
@@ -1177,7 +1177,7 @@ const createLabLog = async (req, res) => {
             );
         } else {
             // Actualizar a aprobado_calidad
-            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND (status = "congelado" OR status = "empaquetado")', [batch_id]);
+            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND company_id = ? AND (status = "congelado" OR status = "empaquetado")', [batch_id, req.company_id]);
         }
 
         res.status(201).json({ id: result.insertId, status: evaluatedStatus, ...req.body });
@@ -1285,15 +1285,15 @@ const registerReturnableMovement = async (req, res) => {
             await pool.query(
                 `UPDATE egg_returnable_packaging 
                  SET delivered_qty = delivered_qty + ?, last_movement_date = CURDATE() 
-                 WHERE id = ?`,
-                [qty, returnable_id]
+                 WHERE id = ? AND company_id = ?`,
+                [qty, returnable_id, req.company_id]
             );
         } else if (movement_type === 'devolucion') {
             await pool.query(
                 `UPDATE egg_returnable_packaging 
                  SET returned_qty = returned_qty + ?, last_movement_date = CURDATE() 
-                 WHERE id = ?`,
-                [qty, returnable_id]
+                 WHERE id = ? AND company_id = ?`,
+                [qty, returnable_id, req.company_id]
             );
         }
 

@@ -4,7 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
-import { useMenuItems } from "../../hooks/useMenuItems";
+import { useMenuItems, GROUP_MODULE_MAP } from "../../hooks/useMenuItems";
 
 const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const { user } = useAuth();
@@ -62,7 +62,17 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const hasPermission = (item) => {
         if (isSuperAdmin) return true;
         if (!item.permission) return true;
+        if (item.permission === 'manage_company_modules') {
+            return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
+        }
         return permissions.includes(item.permission);
+    };
+
+    const isGroupEnabled = (group) => {
+        if (!user?.enabled_modules || !Array.isArray(user.enabled_modules)) return true;
+        const reqModule = GROUP_MODULE_MAP[group.label];
+        if (!reqModule) return true;
+        return user.enabled_modules.includes(reqModule);
     };
 
     const { data: settings } = useQuery({
@@ -76,6 +86,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     useEffect(() => {
         if (!menuConfig) return;
         menuConfig.forEach(group => {
+            if (!isGroupEnabled(group)) return;
             const hasActive = group.children?.some(child => 
                 child.path && (location.pathname === child.path || (child.path !== '/' && location.pathname.startsWith(child.path)))
             );
@@ -83,7 +94,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 setExpandedGroups(prev => ({ ...prev, [group.id]: true }));
             }
         });
-    }, [location.pathname, menuConfig]);
+    }, [location.pathname, menuConfig, user?.enabled_modules]);
 
     const [hoveredItem, setHoveredItem] = useState(null);
     const [hoveredPos, setHoveredPos] = useState({ top: 0, left: 0 });
@@ -286,7 +297,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 </div>
 
                 {menuConfig.map((group) => {
-                    if (group.hideInMenu) return null;
+                    if (group.hideInMenu || !isGroupEnabled(group)) return null;
                     const children = group.children.filter(hasPermission);
                     if (children.length === 0) return null;
                     const isExpanded = expandedGroups[group.id];

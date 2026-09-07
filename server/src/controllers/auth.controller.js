@@ -24,6 +24,17 @@ function parsePermissions(permissions) {
     }
 }
 
+function parseModules(modules) {
+    if (!modules) return null;
+    if (Array.isArray(modules)) return modules;
+    try {
+        const parsed = JSON.parse(modules);
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
 const login = async (req, res) => {
     const { username, password } = req.body;
 
@@ -78,12 +89,12 @@ const login = async (req, res) => {
         let companies;
         if (isSuperAdmin) {
             [companies] = await pool.query(
-                `SELECT c.id, c.razon_social, c.nombre_comercial, 1 as role_id, 'SuperAdmin' as role_name, '[]' as permissions 
+                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, 1 as role_id, 'SuperAdmin' as role_name, '[]' as permissions 
                  FROM companies c`
             );
         } else {
             [companies] = await pool.query(
-                `SELECT c.id, c.razon_social, c.nombre_comercial, ue.role_id, r.name as role_name, r.permissions 
+                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, ue.role_id, r.name as role_name, r.permissions 
                  FROM usuario_empresa ue 
                  JOIN companies c ON ue.empresa_id = c.id 
                  JOIN roles r ON ue.role_id = r.id 
@@ -142,6 +153,7 @@ const login = async (req, res) => {
                 email: user.email,
                 role: company.role_name,
                 permissions: parsePermissions(company.permissions),
+                enabled_modules: parseModules(company.enabled_modules),
                 company_id: company.id,
                 branch_id: branch.id,
                 company_name: company.razon_social,
@@ -216,7 +228,7 @@ const selectContext = async (req, res) => {
 
             // Get detailed company and branch info for non-SuperAdmin
             const [emp] = await pool.query(
-                `SELECT ue.role_id, r.name as role_name, r.permissions, c.razon_social 
+                `SELECT ue.role_id, r.name as role_name, r.permissions, c.razon_social, c.enabled_modules 
                  FROM usuario_empresa ue 
                  JOIN roles r ON ue.role_id = r.id 
                  JOIN companies c ON ue.empresa_id = c.id
@@ -236,7 +248,7 @@ const selectContext = async (req, res) => {
         } else {
             // For SuperAdmin, just get the company and branch names/roles
             const [companyInfo] = await pool.query(
-                `SELECT razon_social FROM companies WHERE id = ?`,
+                `SELECT razon_social, enabled_modules FROM companies WHERE id = ?`,
                 [company_id]
             );
             const [branchInfo] = await pool.query(
@@ -248,7 +260,12 @@ const selectContext = async (req, res) => {
                 return res.status(404).json({ message: 'Empresa o sucursal no encontrada' });
             }
 
-            empData = { role_name: 'SuperAdmin', permissions: '[]', razon_social: companyInfo[0].razon_social };
+            empData = { 
+                role_name: 'SuperAdmin', 
+                permissions: '[]', 
+                razon_social: companyInfo[0].razon_social,
+                enabled_modules: companyInfo[0].enabled_modules
+            };
             sucData = { nombre: branchInfo[0].nombre };
         }
 
@@ -277,6 +294,7 @@ const selectContext = async (req, res) => {
             email: user.email,
             role: empData.role_name,
             permissions: parsePermissions(empData.permissions),
+            enabled_modules: parseModules(empData.enabled_modules),
             company_id,
             branch_id,
             company_name: empData.razon_social,
@@ -307,13 +325,13 @@ const getAccess = async (req, res) => {
         if (isSuperAdmin) {
             // Un SuperAdmin tiene acceso a TODAS las empresas
             [companies] = await pool.query(
-                `SELECT c.id, c.razon_social, c.nombre_comercial, 1 as role_id, 'SuperAdmin' as role_name 
+                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, 1 as role_id, 'SuperAdmin' as role_name 
                  FROM companies c`
             );
         } else {
             // Usuarios normales solo empresas vinculadas
             [companies] = await pool.query(
-                `SELECT c.id, c.razon_social, c.nombre_comercial, ue.role_id, r.name as role_name 
+                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, ue.role_id, r.name as role_name 
                  FROM usuario_empresa ue 
                  JOIN companies c ON ue.empresa_id = c.id 
                  JOIN roles r ON ue.role_id = r.id 

@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import PublicDTE from './pages/PublicDTE';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
+import CompanyModules from './pages/CompanyModules';
 import Branches from './pages/Branches';
 import POS from './pages/POS';
 import Customers from './pages/Customers';
@@ -230,6 +231,7 @@ function App() {
                         <Route path="/configuracion/logs" element={<LogViewer />} />
                         <Route path="/configuracion/notificaciones" element={<NotificacionesConfig />} />
                         <Route path="/configuracion/whatsapp" element={<WhatsAppConfig />} />
+                        <Route path="/configuracion/modulos-empresa" element={<CompanyModules />} />
                         <Route path="/admin/menu-items" element={<MenuItems />} />
                         <Route path="/inventario/traslados" element={<Transfers />} />
                         <Route path="/inventario/movimientos" element={<InventoryAdjustments />} />
