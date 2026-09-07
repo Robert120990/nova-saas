@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import axios from 'axios';
 import {
-    Calendar
+    Calendar,
+    Filter
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 
 const Retenciones = () => {
-
     const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
     const [filters, setFilters] = useState({
         year: currentYear,
-        month: ''
+        month: currentMonth,
+        retention_type: 'all'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -31,7 +34,8 @@ const Retenciones = () => {
         try {
             const params = {
                 year: filters.year,
-                month: filters.month || undefined
+                month: filters.month,
+                retention_type: filters.retention_type
             };
 
             const response = await axios.get('/api/accounting/reports/retenciones', {
@@ -55,7 +59,7 @@ const Retenciones = () => {
 
     const handleDownload = () => {
         if (!pdfUrl) return;
-        const fileSuffix = filters.year + (filters.month ? `_${filters.month}` : '');
+        const fileSuffix = `${filters.year}_Mes_${filters.month}_${filters.retention_type}`;
         const link = document.createElement('a');
         link.href = pdfUrl;
         link.setAttribute('download', `Retenciones_${fileSuffix}.pdf`);
@@ -68,7 +72,8 @@ const Retenciones = () => {
         try {
             const params = {
                 year: filters.year,
-                month: filters.month || undefined,
+                month: filters.month,
+                retention_type: filters.retention_type,
                 format: 'excel'
             };
 
@@ -83,7 +88,7 @@ const Retenciones = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Retenciones.xlsx`);
+            link.setAttribute('download', `Retenciones_${filters.year}_Mes_${filters.month}_${filters.retention_type}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -97,8 +102,8 @@ const Retenciones = () => {
 
     return (
         <ReportLayout
-            title="Reporte de Retenciones (IVA/ISR)"
-            subtitle="Retenciones de IVA e ISR registradas en el período contable."
+            title="Reporte Oficial de Retenciones (IVA / ISR)"
+            subtitle="Detalle analítico de retenciones y percepciones tributarias registradas en el período contable."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -107,13 +112,16 @@ const Retenciones = () => {
             onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.year)}
         >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-4">
                 <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Año
+                        <Calendar size={12} className="text-indigo-500" /> Ejercicio (Año)
                     </label>
-                    <select value={filters.year} onChange={e => handleFilterChange('year', e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all">
+                    <select 
+                        value={filters.year} 
+                        onChange={e => handleFilterChange('year', e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    >
                         {Array.from({length: 10}, (_, i) => currentYear - 5 + i).map(y =>
                             <option key={y} value={y}>{y}</option>
                         )}
@@ -121,11 +129,13 @@ const Retenciones = () => {
                 </div>
                 <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Mes
+                        <Calendar size={12} className="text-indigo-500" /> Al Mes de
                     </label>
-                    <select value={filters.month} onChange={e => handleFilterChange('month', e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all">
-                        <option value="">Todos</option>
+                    <select 
+                        value={filters.month} 
+                        onChange={e => handleFilterChange('month', e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    >
                         <option value="1">Enero</option>
                         <option value="2">Febrero</option>
                         <option value="3">Marzo</option>
@@ -138,6 +148,20 @@ const Retenciones = () => {
                         <option value="10">Octubre</option>
                         <option value="11">Noviembre</option>
                         <option value="12">Diciembre</option>
+                    </select>
+                </div>
+                <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Filter size={12} className="text-indigo-500" /> Tipo de Retención
+                    </label>
+                    <select 
+                        value={filters.retention_type} 
+                        onChange={e => handleFilterChange('retention_type', e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    >
+                        <option value="all">Todas las retenciones</option>
+                        <option value="iva">IVA Retenido / Percepción (1%)</option>
+                        <option value="isr">Impuesto sobre la Renta (ISR / 10%)</option>
                     </select>
                 </div>
             </div>

@@ -139,3 +139,15 @@ Toda modificación de pantallas existentes y toda nueva opción/pantalla en `cli
 - All UI text in Spanish
 - **Todos los montos monetarios deben usar el componente `<Money>` de `components/ui/Money.jsx`**. No renderizar `$X.XX` directamente con `parseFloat().toFixed(2)`. Esto asegura que el permiso `view_amounts` funcione globalmente para ocultar montos según el rol del usuario.
 - **Para inputs de montos usar `<MoneyInput>`** (named export de `components/ui/Money.jsx`). Reemplaza `<input type="number" value={...}>` con `<MoneyInput value={...} onChange={...}>` para que el valor también se oculte si el usuario no tiene permiso `view_amounts`.
+
+## Git Workflow & Commit Rules — OBLIGATORIO
+
+- **Idioma de los Commits**:
+  - TODOS los mensajes de commit DEBEN redactarse en **español** (por ejemplo: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...` con descripción clara en español).
+  - Queda estrictamente prohibido redactar mensajes de commit en inglés.
+- **Verificación Previa Obligatoria antes de `git push`**:
+  - Antes de realizar cualquier `git push` hacia el repositorio remoto (GitHub / origin):
+    1. Ejecutar obligatoriamente `git fetch origin` (o la rama remota correspondiente) para comprobar el estado actualizado en GitHub.
+    2. Verificar con `git status` o inspeccionar diferencias (`git log HEAD..origin/<rama>`) para comprobar si la rama local está al día o retrasada.
+    3. Si existen cambios remotos en GitHub (`Your branch is behind...`), se DEBE ejecutar `git pull --rebase origin <rama>` (o `git pull`) y resolver cualquier posible conflicto antes de publicar cambios.
+    4. Solo proceder con `git push` una vez que la rama local esté completamente sincronizada, limpia y sin conflictos con el repositorio remoto en GitHub.

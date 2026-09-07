@@ -1,23 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import {
-    Calendar,
-    Search
-} from 'lucide-react';
+import { Calendar, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 
 const LibroMayor = () => {
-
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
     const [filters, setFilters] = useState({
         start_date: firstDayOfMonth,
         end_date: today,
-        account_id: ''
+        account_id: 'all'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -39,17 +35,13 @@ const LibroMayor = () => {
             toast.error('Debe seleccionar un rango de fechas');
             return;
         }
-        if (!filters.account_id || filters.account_id === 'all') {
-            toast.error('Debe seleccionar una cuenta contable');
-            return;
-        }
 
         setIsGenerating(true);
         try {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
-                account_id: filters.account_id
+                account_id: filters.account_id !== 'all' ? filters.account_id : undefined
             };
 
             const response = await axios.get('/api/accounting/reports/libro-mayor', {
@@ -86,7 +78,7 @@ const LibroMayor = () => {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
-                account_id: filters.account_id,
+                account_id: filters.account_id !== 'all' ? filters.account_id : undefined,
                 format: 'excel'
             };
 
@@ -101,7 +93,7 @@ const LibroMayor = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Libro_Mayor.xlsx`);
+            link.setAttribute('download', 'Libro_Mayor.xlsx');
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -113,17 +105,22 @@ const LibroMayor = () => {
         }
     };
 
+    const accountOptions = [
+        { id: 'all', nombre: 'TODAS LAS CUENTAS CON MOVIMIENTO' },
+        ...accounts.map(a => ({ id: a.id, nombre: `${a.code} - ${a.name}` }))
+    ];
+
     return (
         <ReportLayout
             title="Libro Mayor"
-            subtitle="Movimientos por cuenta contable con saldos iniciales y finales."
+            subtitle="Movimientos por cuenta contable con saldos iniciales, débitos, créditos y saldos finales."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
             onExportExcel={handleExportExcel}
-            canGenerate={Boolean(filters.start_date && filters.end_date && filters.account_id && filters.account_id !== 'all')}
+            canGenerate={Boolean(filters.start_date && filters.end_date)}
         >
             {/* Fecha Inicio */}
             <div className="space-y-2">
@@ -161,10 +158,10 @@ const LibroMayor = () => {
                 <SearchableSelect
                     valueKey="id"
                     labelKey="nombre"
-                    options={accounts.map(a => ({ id: a.id, nombre: `${a.code} - ${a.name}` }))}
+                    options={accountOptions}
                     value={filters.account_id}
                     onChange={(val) => handleFilterChange('account_id', val)}
-                    placeholder="Seleccionar cuenta..."
+                    placeholder="Todas las cuentas o busque una cuenta..."
                 />
             </div>
         </ReportLayout>

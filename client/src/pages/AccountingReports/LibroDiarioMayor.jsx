@@ -1,19 +1,31 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import {
-    Calendar
-} from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 
-const LibroDiarioMayor = () => {
+const MONTHS = [
+    { val: 1, name: 'Enero' },
+    { val: 2, name: 'Febrero' },
+    { val: 3, name: 'Marzo' },
+    { val: 4, name: 'Abril' },
+    { val: 5, name: 'Mayo' },
+    { val: 6, name: 'Junio' },
+    { val: 7, name: 'Julio' },
+    { val: 8, name: 'Agosto' },
+    { val: 9, name: 'Septiembre' },
+    { val: 10, name: 'Octubre' },
+    { val: 11, name: 'Noviembre' },
+    { val: 12, name: 'Diciembre' }
+];
 
-    const today = new Date().toISOString().split('T')[0];
-    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+const LibroDiarioMayor = () => {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
 
     const [filters, setFilters] = useState({
-        start_date: firstDayOfMonth,
-        end_date: today
+        year: currentYear,
+        month: currentMonth
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -26,16 +38,16 @@ const LibroDiarioMayor = () => {
     };
 
     const handleGenerateReport = async () => {
-        if (!filters.start_date || !filters.end_date) {
-            toast.error('Debe seleccionar un rango de fechas');
+        if (!filters.year || !filters.month) {
+            toast.error('Debe seleccionar el año y el mes');
             return;
         }
 
         setIsGenerating(true);
         try {
             const params = {
-                start_date: filters.start_date,
-                end_date: filters.end_date
+                year: filters.year,
+                month: filters.month
             };
 
             const response = await axios.get('/api/accounting/reports/libro-diario-mayor', {
@@ -61,7 +73,7 @@ const LibroDiarioMayor = () => {
         if (!pdfUrl) return;
         const link = document.createElement('a');
         link.href = pdfUrl;
-        link.setAttribute('download', `Libro_Diario_Mayor_${filters.start_date}_al_${filters.end_date}.pdf`);
+        link.setAttribute('download', `Libro_Diario_Mayor_${filters.year}_Mes_${filters.month}.pdf`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -70,8 +82,8 @@ const LibroDiarioMayor = () => {
     const handleExportExcel = async () => {
         try {
             const params = {
-                start_date: filters.start_date,
-                end_date: filters.end_date,
+                year: filters.year,
+                month: filters.month,
                 format: 'excel'
             };
 
@@ -86,7 +98,7 @@ const LibroDiarioMayor = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Libro_Diario_Mayor.xlsx`);
+            link.setAttribute('download', `Libro_Diario_Mayor_${filters.year}_Mes_${filters.month}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -101,41 +113,46 @@ const LibroDiarioMayor = () => {
     return (
         <ReportLayout
             title="Libro Diario Mayor"
-            subtitle="Movimientos agrupados por cuenta dentro de cada día."
+            subtitle="Registro cronológico y mayorizado de transacciones mensuales por cuenta."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
             onGenerate={handleGenerateReport}
             onDownload={handleDownload}
             onExportExcel={handleExportExcel}
-            canGenerate={Boolean(filters.start_date && filters.end_date)}
+            canGenerate={Boolean(filters.year && filters.month)}
         >
-            {/* Fecha Inicio */}
+            {/* Año Fiscal */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
+                    <Calendar size={12} className="text-indigo-500" /> Año Fiscal
                 </label>
                 <input 
-                    type="date"
-                    name="start_date"
-                    value={filters.start_date}
-                    onChange={(e) => handleFilterChange('start_date', e.target.value)}
+                    type="number"
+                    name="year"
+                    value={filters.year}
+                    onChange={(e) => handleFilterChange('year', parseInt(e.target.value) || '')}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    min={2000}
+                    max={2099}
                 />
             </div>
 
-            {/* Fecha Fin */}
+            {/* Mes */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Calendar size={12} className="text-indigo-500" /> Fecha Fin
+                    <Calendar size={12} className="text-indigo-500" /> Mes
                 </label>
-                <input 
-                    type="date"
-                    name="end_date"
-                    value={filters.end_date}
-                    onChange={(e) => handleFilterChange('end_date', e.target.value)}
+                <select
+                    name="month"
+                    value={filters.month}
+                    onChange={(e) => handleFilterChange('month', parseInt(e.target.value))}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
-                />
+                >
+                    {MONTHS.map(m => (
+                        <option key={m.val} value={m.val}>{m.name}</option>
+                    ))}
+                </select>
             </div>
         </ReportLayout>
     );

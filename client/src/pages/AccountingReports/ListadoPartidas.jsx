@@ -3,20 +3,21 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import {
     Calendar,
-    ListChecks
+    ListChecks,
+    Filter
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 
 const ListadoPartidas = () => {
-
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
     const [filters, setFilters] = useState({
         start_date: firstDayOfMonth,
         end_date: today,
-        entry_type_id: 'all'
+        entry_type_id: 'all',
+        status: 'all'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -44,7 +45,8 @@ const ListadoPartidas = () => {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
-                entry_type_id: filters.entry_type_id
+                entry_type_id: filters.entry_type_id,
+                status: filters.status
             };
 
             const response = await axios.get('/api/accounting/reports/listado-partidas', {
@@ -82,6 +84,7 @@ const ListadoPartidas = () => {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
                 entry_type_id: filters.entry_type_id,
+                status: filters.status,
                 format: 'excel'
             };
 
@@ -96,7 +99,7 @@ const ListadoPartidas = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Listado_Partidas.xlsx`);
+            link.setAttribute('download', `Listado_Partidas_${filters.start_date}_al_${filters.end_date}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -110,8 +113,8 @@ const ListadoPartidas = () => {
 
     return (
         <ReportLayout
-            title="Listado de Partidas"
-            subtitle="Relación de asientos contables del período."
+            title="Listado de Partidas Contables"
+            subtitle="Relación cronológica de asientos contables registrados en el período."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -159,10 +162,28 @@ const ListadoPartidas = () => {
                     value={filters.entry_type_id}
                     onChange={(e) => handleFilterChange('entry_type_id', e.target.value)}
                 >
-                    <option value="all">Todos</option>
+                    <option value="all">Todos los tipos</option>
                     {entryTypes.map(et => (
                         <option key={et.id} value={et.id}>{et.nombre || et.name || et.description}</option>
                     ))}
+                </select>
+            </div>
+
+            {/* Estado de Partida */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Filter size={12} className="text-indigo-500" /> Estado
+                </label>
+                <select
+                    name="status"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={filters.status}
+                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                >
+                    <option value="all">Todos los estados</option>
+                    <option value="posted">Contabilizadas / Mayorizadas</option>
+                    <option value="draft">Borrador</option>
+                    <option value="voided">Anuladas</option>
                 </select>
             </div>
         </ReportLayout>

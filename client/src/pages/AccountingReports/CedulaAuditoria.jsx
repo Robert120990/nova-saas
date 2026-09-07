@@ -10,7 +10,6 @@ import ReportLayout from '../../components/ui/ReportLayout';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 
 const CedulaAuditoria = () => {
-
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
@@ -101,7 +100,7 @@ const CedulaAuditoria = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Cedula_Auditoria.xlsx`);
+            link.setAttribute('download', `Cedula_Auditoria_${filters.start_date}_al_${filters.end_date}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -116,7 +115,7 @@ const CedulaAuditoria = () => {
     return (
         <ReportLayout
             title="Cédula de Auditoría por Cuenta"
-            subtitle="Desglose completo de transacciones de una cuenta específica."
+            subtitle="Desglose analítico de transacciones y saldos de una cuenta específica para fines de auditoría."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}

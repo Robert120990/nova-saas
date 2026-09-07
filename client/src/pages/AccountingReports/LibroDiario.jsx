@@ -1,25 +1,29 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import {
-    Calendar
-} from 'lucide-react';
+import { Calendar, Filter } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 
 const LibroDiario = () => {
-
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
     const [filters, setFilters] = useState({
         start_date: firstDayOfMonth,
-        end_date: today
+        end_date: today,
+        entry_type_id: 'all'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
 
     useEffect(() => () => pdfUrl && URL.revokeObjectURL(pdfUrl), [pdfUrl]);
+
+    const { data: entryTypes = [] } = useQuery({
+        queryKey: ['entry-types'],
+        queryFn: async () => (await axios.get('/api/accounting/entry-types')).data,
+    });
 
     const handleFilterChange = (name, value) => {
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -35,7 +39,8 @@ const LibroDiario = () => {
         try {
             const params = {
                 start_date: filters.start_date,
-                end_date: filters.end_date
+                end_date: filters.end_date,
+                entry_type_id: filters.entry_type_id !== 'all' ? filters.entry_type_id : undefined
             };
 
             const response = await axios.get('/api/accounting/reports/libro-diario', {
@@ -72,6 +77,7 @@ const LibroDiario = () => {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
+                entry_type_id: filters.entry_type_id !== 'all' ? filters.entry_type_id : undefined,
                 format: 'excel'
             };
 
@@ -86,7 +92,7 @@ const LibroDiario = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Libro_Diario.xlsx`);
+            link.setAttribute('download', 'Libro_Diario.xlsx');
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -101,7 +107,7 @@ const LibroDiario = () => {
     return (
         <ReportLayout
             title="Libro Diario"
-            subtitle="Registro cronológico de todas las operaciones contables del período."
+            subtitle="Registro cronológico de todas las operaciones contables del período clasificado por partida."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -136,6 +142,24 @@ const LibroDiario = () => {
                     onChange={(e) => handleFilterChange('end_date', e.target.value)}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
                 />
+            </div>
+
+            {/* Tipo de Partida */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Filter size={12} className="text-indigo-500" /> Tipo de Partida
+                </label>
+                <select 
+                    name="entry_type_id"
+                    value={filters.entry_type_id}
+                    onChange={(e) => handleFilterChange('entry_type_id', e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                >
+                    <option value="all">TODAS LAS PARTIDAS</option>
+                    {entryTypes.map(t => (
+                        <option key={t.id} value={t.id}>{t.code} - {t.name}</option>
+                    ))}
+                </select>
             </div>
         </ReportLayout>
     );

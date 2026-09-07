@@ -7,11 +7,12 @@ import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 
 const CambiosPatrimonio = () => {
-
     const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
     const [filters, setFilters] = useState({
         year: currentYear,
-        month: ''
+        month: currentMonth
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -31,7 +32,7 @@ const CambiosPatrimonio = () => {
         try {
             const params = {
                 year: filters.year,
-                month: filters.month || undefined
+                month: filters.month
             };
 
             const response = await axios.get('/api/accounting/reports/cambios-patrimonio', {
@@ -55,7 +56,7 @@ const CambiosPatrimonio = () => {
 
     const handleDownload = () => {
         if (!pdfUrl) return;
-        const fileSuffix = filters.year + (filters.month ? `_${filters.month}` : '');
+        const fileSuffix = `${filters.year}_Mes_${filters.month}`;
         const link = document.createElement('a');
         link.href = pdfUrl;
         link.setAttribute('download', `Cambios_Patrimonio_${fileSuffix}.pdf`);
@@ -68,7 +69,7 @@ const CambiosPatrimonio = () => {
         try {
             const params = {
                 year: filters.year,
-                month: filters.month || undefined,
+                month: filters.month,
                 format: 'excel'
             };
             const response = await axios.get('/api/accounting/reports/cambios-patrimonio', {
@@ -81,7 +82,7 @@ const CambiosPatrimonio = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Cambios_Patrimonio.xlsx`);
+            link.setAttribute('download', `Cambios_Patrimonio_${filters.year}_Mes_${filters.month}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -96,7 +97,7 @@ const CambiosPatrimonio = () => {
     return (
         <ReportLayout
             title="Estado de Cambios en el Patrimonio Neto"
-            subtitle="Movimientos en cuentas patrimoniales del período."
+            subtitle="Variaciones y movimientos en las cuentas patrimoniales durante el ejercicio."
             category="Contabilidad"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -105,13 +106,16 @@ const CambiosPatrimonio = () => {
             onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.year)}
         >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-4">
                 <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Año
+                        <Calendar size={12} className="text-indigo-500" /> Ejercicio (Año)
                     </label>
-                    <select value={filters.year} onChange={e => handleFilterChange('year', e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all">
+                    <select 
+                        value={filters.year} 
+                        onChange={e => handleFilterChange('year', e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    >
                         {Array.from({length: 10}, (_, i) => currentYear - 5 + i).map(y =>
                             <option key={y} value={y}>{y}</option>
                         )}
@@ -119,11 +123,13 @@ const CambiosPatrimonio = () => {
                 </div>
                 <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Mes
+                        <Calendar size={12} className="text-indigo-500" /> Al Mes de Corte
                     </label>
-                    <select value={filters.month} onChange={e => handleFilterChange('month', e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all">
-                        <option value="">Todos</option>
+                    <select 
+                        value={filters.month} 
+                        onChange={e => handleFilterChange('month', e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    >
                         <option value="1">Enero</option>
                         <option value="2">Febrero</option>
                         <option value="3">Marzo</option>
@@ -135,7 +141,7 @@ const CambiosPatrimonio = () => {
                         <option value="9">Septiembre</option>
                         <option value="10">Octubre</option>
                         <option value="11">Noviembre</option>
-                        <option value="12">Diciembre</option>
+                        <option value="12">Diciembre (Cierre)</option>
                     </select>
                 </div>
             </div>
