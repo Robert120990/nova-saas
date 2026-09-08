@@ -1206,11 +1206,674 @@ const getVatBookAnexosIVAExcel = async (req, res) => {
     }
 };
 
+/**
+ * Motor de cálculo de Liquidación de IVA y Pago a Cuenta (Art. 151 Código Tributario)
+ */
+const calculateVatLiquidation = async (companyId, year, month, branch_id, options = {}) => {
+    const company = await reportPdfHelper.getCompanyInfo(companyId);
+    const isPersonaNatural = String(company?.tipo_persona) === '2';
+    const defaultFuelRate = isPersonaNatural ? 0.00 : 0.75;
+    const defaultGeneralRate = 1.75;
+
+    const fuelRate = (options.fuel_rate !== undefined && options.fuel_rate !== null && options.fuel_rate !== '')
+        ? Math.max(0, parseFloat(options.fuel_rate))
+        : defaultFuelRate;
+    const generalRate = (options.general_rate !== undefined && options.general_rate !== null && options.general_rate !== '')
+        ? Math.max(0, parseFloat(options.general_rate))
+        : defaultGeneralRate;
+    const remanenteAnterior = Math.max(0, n(options.remanente_anterior));
+    const retencionesRentaSufridas = Math.max(0, n(options.retenciones_renta_sufridas));
+
+    let branchName = 'TODAS / CONSOLIDADO';
+    if (branch_id && branch_id !== 'all') {
+        const [branches] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+        branchName = branches[0]?.nombre || '---';
+    }
+
+    // 1. Débito Fiscal (Ventas del período)
+    let salesWhere = [
+        'sh.company_id = ?',
+        'YEAR(sh.fecha_emision) = ?',
+        'MONTH(sh.fecha_emision) = ?',
+        "sh.estado != 'ANULADO'",
+        "sh.estado != 'invalidado'",
+        DTE_VALIDO_SQL
+    ];
+    let salesParams = [companyId, year, month];
+    if (branch_id && branch_id !== 'all') {
+        salesWhere.push('sh.branch_id = ?');
+        salesParams.push(branch_id);
+    }
+
+    const [salesByTypeRows] = await pool.query(`
+        SELECT 
+            sh.tipo_documento,
+            cat.description as tipo_doc_nombre,
+            COUNT(*) as count,
+            COALESCE(SUM(sh.total_gravado), 0) as total_gravado,
+            COALESCE(SUM(sh.total_exento), 0) as total_exento,
+            COALESCE(SUM(sh.total_nosujetas), 0) as total_nosujetas,
+            COALESCE(SUM(sh.total_iva), 0) as total_iva,
+            COALESCE(SUM(sh.iva_retenido), 0) as total_iva_retenido,
+            COALESCE(SUM(sh.iva_percibido), 0) as total_iva_percibido,
+            COALESCE(SUM(sh.fovial), 0) as total_fovial,
+            COALESCE(SUM(sh.cotrans), 0) as total_cotrans,
+            COALESCE(SUM(sh.total_pagar), 0) as total_pagar
+        FROM sales_headers sh
+        LEFT JOIN cat_002_tipo_dte cat ON sh.tipo_documento COLLATE utf8mb4_unicode_ci = cat.code
+        ${DTE_JOIN_SQL}
+        WHERE ${salesWhere.join(' AND ')}
+        GROUP BY sh.tipo_documento, cat.description
+    `, salesParams);
+
+    let ccfSales = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retenido: 0, percibido: 0, total: 0 };
+    let fcfSales = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retenido: 0, percibido: 0, total: 0 };
+    let ncSales = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retenido: 0, percibido: 0, total: 0 };
+    let otrosSales = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retenido: 0, percibido: 0, total: 0 };
+
+    salesByTypeRows.forEach(row => {
+        const t = String(row.tipo_documento || '').trim();
+        const item = {
+            count: parseInt(row.count, 10) || 0,
+            gravado: n(row.total_gravado),
+            exento: n(row.total_exento),
+            nosujeta: n(row.total_nosujetas),
+            iva: n(row.total_iva),
+            retenido: n(row.total_iva_retenido),
+            percibido: n(row.total_iva_percibido),
+            total: n(row.total_pagar)
+        };
+        if (t === '03') {
+            ccfSales = item;
+        } else if (t === '01') {
+            fcfSales = item;
+        } else if (t === '05') {
+            ncSales = item;
+        } else {
+            otrosSales.count += item.count;
+            otrosSales.gravado += item.gravado;
+            otrosSales.exento += item.exento;
+            otrosSales.nosujeta += item.nosujeta;
+            otrosSales.iva += item.iva;
+            otrosSales.retenido += item.retenido;
+            otrosSales.percibido += item.percibido;
+            otrosSales.total += item.total;
+        }
+    });
+
+    const debitoFiscalBruto = ccfSales.iva + fcfSales.iva + otrosSales.iva;
+    const debitoFiscalNc = ncSales.iva;
+    const debitoFiscalNeto = Math.max(0, debitoFiscalBruto - debitoFiscalNc);
+
+    const ventasGravadasNetas = Math.max(0, (ccfSales.gravado + fcfSales.gravado + otrosSales.gravado) - ncSales.gravado);
+    const ventasExentasNetas = Math.max(0, (ccfSales.exento + fcfSales.exento + otrosSales.exento) - ncSales.exento);
+    const ventasNosujetasNetas = Math.max(0, (ccfSales.nosujeta + fcfSales.nosujeta + otrosSales.nosujeta) - ncSales.nosujeta);
+    const retencionesIvaSufridas = Math.max(0, (ccfSales.retenido + fcfSales.retenido) - ncSales.retenido);
+    const percepcionesIvaEfectuadas = ccfSales.percibido + fcfSales.percibido;
+
+    // 2. Crédito Fiscal (Compras del período)
+    let purchasesWhere = [
+        'ph.company_id = ?',
+        'ph.period_year = ?',
+        'ph.period_month = ?',
+        "ph.status != 'ANULADO'"
+    ];
+    let purchasesParams = [companyId, year, month];
+    if (branch_id && branch_id !== 'all') {
+        purchasesWhere.push('ph.branch_id = ?');
+        purchasesParams.push(branch_id);
+    }
+
+    const [purchasesByTypeRows] = await pool.query(`
+        SELECT 
+            ph.tipo_documento_id,
+            cat.description as tipo_doc_nombre,
+            COUNT(*) as count,
+            COALESCE(SUM(ph.total_gravada), 0) as total_gravada,
+            COALESCE(SUM(ph.total_exenta), 0) as total_exenta,
+            COALESCE(SUM(ph.total_nosujeta), 0) as total_nosujeta,
+            COALESCE(SUM(ph.iva), 0) as total_iva,
+            COALESCE(SUM(ph.retencion), 0) as total_retencion,
+            COALESCE(SUM(ph.percepcion), 0) as total_percepcion,
+            COALESCE(SUM(ph.monto_total), 0) as total_monto
+        FROM purchase_headers ph
+        LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code
+        WHERE ${purchasesWhere.join(' AND ')}
+        GROUP BY ph.tipo_documento_id, cat.description
+    `, purchasesParams);
+
+    let ccfPurchases = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
+    let ncPurchases = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
+    let sujetosExcluidos = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
+    let otrosPurchases = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
+
+    purchasesByTypeRows.forEach(row => {
+        const t = String(row.tipo_documento_id || '').trim();
+        const item = {
+            count: parseInt(row.count, 10) || 0,
+            gravado: n(row.total_gravada),
+            exento: n(row.total_exenta),
+            nosujeta: n(row.total_nosujeta),
+            iva: n(row.total_iva),
+            retencion: n(row.total_retencion),
+            percepcion: n(row.total_percepcion),
+            total: n(row.total_monto)
+        };
+        if (t === '03') {
+            ccfPurchases = item;
+        } else if (t === '05' || t === '06') {
+            ncPurchases.count += item.count;
+            ncPurchases.gravado += item.gravado;
+            ncPurchases.exento += item.exento;
+            ncPurchases.nosujeta += item.nosujeta;
+            ncPurchases.iva += item.iva;
+            ncPurchases.retencion += item.retencion;
+            ncPurchases.percepcion += item.percepcion;
+            ncPurchases.total += item.total;
+        } else if (t === '14') {
+            sujetosExcluidos = item;
+        } else {
+            otrosPurchases.count += item.count;
+            otrosPurchases.gravado += item.gravado;
+            otrosPurchases.exento += item.exento;
+            otrosPurchases.nosujeta += item.nosujeta;
+            otrosPurchases.iva += item.iva;
+            otrosPurchases.retencion += item.retencion;
+            otrosPurchases.percepcion += item.percepcion;
+            otrosPurchases.total += item.total;
+        }
+    });
+
+    const creditoFiscalBruto = ccfPurchases.iva + otrosPurchases.iva;
+    const creditoFiscalNc = ncPurchases.iva;
+    const creditoFiscalNeto = Math.max(0, creditoFiscalBruto - creditoFiscalNc);
+
+    const comprasGravadasNetas = Math.max(0, (ccfPurchases.gravado + otrosPurchases.gravado) - ncPurchases.gravado);
+    const comprasExentasNetas = Math.max(0, (ccfPurchases.exento + otrosPurchases.exento) - ncPurchases.exento);
+    const comprasNosujetasNetas = Math.max(0, (ccfPurchases.nosujeta + otrosPurchases.nosujeta) - ncPurchases.nosujeta);
+    const percepcionesIvaSoportadas = ccfPurchases.percepcion + otrosPurchases.percepcion;
+    const retencionesSujetosExcluidos = sujetosExcluidos.retencion; // 13% retención IVA en compras a sujetos excluidos
+
+    // 3. Liquidación de IVA (F-07)
+    const diferenciaIva = debitoFiscalNeto - creditoFiscalNeto;
+    let impuestoDeterminado = 0;
+    let remanenteCreditoMes = 0;
+
+    if (diferenciaIva > 0) {
+        impuestoDeterminado = Math.round(diferenciaIva * 100) / 100;
+    } else {
+        remanenteCreditoMes = Math.round(Math.abs(diferenciaIva) * 100) / 100;
+    }
+
+    const totalAcreditaciones = remanenteAnterior + retencionesIvaSufridas + percepcionesIvaSoportadas;
+    let ivaPagarOperaciones = 0;
+    let nuevoRemanenteCredito = 0;
+
+    if (impuestoDeterminado >= totalAcreditaciones) {
+        ivaPagarOperaciones = Math.round((impuestoDeterminado - totalAcreditaciones) * 100) / 100;
+        nuevoRemanenteCredito = remanenteCreditoMes; // 0
+    } else {
+        ivaPagarOperaciones = 0;
+        nuevoRemanenteCredito = Math.round((remanenteCreditoMes + (totalAcreditaciones - impuestoDeterminado)) * 100) / 100;
+    }
+
+    const totalIvaEnterar = Math.round((ivaPagarOperaciones + retencionesSujetosExcluidos) * 100) / 100;
+
+    // 4. Pago a Cuenta Segregado (Art. 151 Código Tributario)
+    const [itemsByRubroRows] = await pool.query(`
+        SELECT 
+            CASE 
+                WHEN p.tipo_combustible IS NOT NULL AND p.tipo_combustible > 0 THEN 'combustible' 
+                ELSE 'otros' 
+            END AS rubro,
+            COUNT(DISTINCT sh.id) as sales_count,
+            COALESCE(SUM(CASE WHEN sh.tipo_documento = '05' THEN -si.venta_gravada ELSE si.venta_gravada END), 0) AS gravada_neta,
+            COALESCE(SUM(CASE WHEN sh.tipo_documento = '05' THEN -si.venta_exenta ELSE si.venta_exenta END), 0) AS exenta_neta,
+            COALESCE(SUM(CASE WHEN sh.tipo_documento = '05' THEN -(si.venta_gravada + si.venta_exenta) ELSE (si.venta_gravada + si.venta_exenta) END), 0) AS ingreso_bruto_neto
+        FROM sales_items si
+        JOIN sales_headers sh ON si.sale_id = sh.id
+        LEFT JOIN products p ON si.product_id = p.id
+        ${DTE_JOIN_SQL}
+        WHERE ${salesWhere.join(' AND ')}
+        GROUP BY rubro
+    `, salesParams);
+
+    const fuelRow = itemsByRubroRows.find(r => r.rubro === 'combustible') || { sales_count: 0, gravada_neta: 0, exenta_neta: 0, ingreso_bruto_neto: 0 };
+    const otherRow = itemsByRubroRows.find(r => r.rubro === 'otros') || { sales_count: 0, gravada_neta: 0, exenta_neta: 0, ingreso_bruto_neto: 0 };
+
+    const ingresoBrutoCombustible = Math.max(0, n(fuelRow.ingreso_bruto_neto));
+    const ingresoBrutoOtros = Math.max(0, n(otherRow.ingreso_bruto_neto));
+    const totalIngresosBrutos = ingresoBrutoCombustible + ingresoBrutoOtros;
+
+    const pagoCuentaCombustible = Math.round(ingresoBrutoCombustible * (fuelRate / 100) * 100) / 100;
+    const pagoCuentaOtros = Math.round(ingresoBrutoOtros * (generalRate / 100) * 100) / 100;
+    const subtotalPagoCuenta = Math.round((pagoCuentaCombustible + pagoCuentaOtros) * 100) / 100;
+
+    let pagoCuentaPagar = 0;
+    let remanentePagoCuenta = 0;
+
+    if (subtotalPagoCuenta >= retencionesRentaSufridas) {
+        pagoCuentaPagar = Math.round((subtotalPagoCuenta - retencionesRentaSufridas) * 100) / 100;
+        remanentePagoCuenta = 0;
+    } else {
+        pagoCuentaPagar = 0;
+        remanentePagoCuenta = Math.round((retencionesRentaSufridas - subtotalPagoCuenta) * 100) / 100;
+    }
+
+    // 5. Consolidado F-07
+    const totalF07 = Math.round((totalIvaEnterar + pagoCuentaPagar) * 100) / 100;
+
+    return {
+        meta: {
+            company,
+            periodText: getPeriodText(month, year),
+            year: parseInt(year, 10),
+            month: parseInt(month, 10),
+            branch_id,
+            branchName,
+            isPersonaNatural,
+            fuelRate,
+            generalRate,
+            defaultFuelRate,
+            defaultGeneralRate,
+            remanenteAnterior,
+            retencionesRentaSufridas
+        },
+        debito_fiscal: {
+            ccf: ccfSales,
+            fcf: fcfSales,
+            nc: ncSales,
+            otros: otrosSales,
+            totales: {
+                bruto: debitoFiscalBruto,
+                nc: debitoFiscalNc,
+                neto: debitoFiscalNeto,
+                ventas_gravadas_netas: ventasGravadasNetas,
+                ventas_exentas_netas: ventasExentasNetas,
+                ventas_nosujetas_netas: ventasNosujetasNetas,
+                retenciones_sufridas_1pct: retencionesIvaSufridas,
+                percepciones_efectuadas_1pct: percepcionesIvaEfectuadas
+            }
+        },
+        credito_fiscal: {
+            ccf: ccfPurchases,
+            nc: ncPurchases,
+            sujetos_excluidos: sujetosExcluidos,
+            otros: otrosPurchases,
+            totales: {
+                bruto: creditoFiscalBruto,
+                nc: creditoFiscalNc,
+                neto: creditoFiscalNeto,
+                compras_gravadas_netas: comprasGravadasNetas,
+                compras_exentas_netas: comprasExentasNetas,
+                compras_nosujetas_netas: comprasNosujetasNetas,
+                percepciones_soportadas_1pct: percepcionesIvaSoportadas,
+                retenciones_sujetos_excluidos: retencionesSujetosExcluidos
+            }
+        },
+        liquidacion_iva: {
+            debito_fiscal_neto: debitoFiscalNeto,
+            credito_fiscal_neto: creditoFiscalNeto,
+            diferencia_impuesto: diferenciaIva,
+            impuesto_determinado: impuestoDeterminado,
+            remanente_credito_mes: remanenteCreditoMes,
+            remanente_anterior: remanenteAnterior,
+            retenciones_iva_sufridas: retencionesIvaSufridas,
+            percepciones_iva_soportadas: percepcionesIvaSoportadas,
+            total_acreditaciones: totalAcreditaciones,
+            iva_pagar_operaciones: ivaPagarOperaciones,
+            retenciones_sujetos_excluidos: retencionesSujetosExcluidos,
+            total_iva_a_enterar: totalIvaEnterar,
+            nuevo_remanente_credito: nuevoRemanenteCredito
+        },
+        pago_cuenta: {
+            combustibles: {
+                rubro: 'Combustibles (Gasolina y Diésel)',
+                ingreso_bruto_neto: ingresoBrutoCombustible,
+                tasa: fuelRate,
+                cuota_calculada: pagoCuentaCombustible,
+                nota: isPersonaNatural ? 'Persona Natural (Exenta 0.00% según Art. 151 inc. 3 CT)' : 'Persona Jurídica (Tasa especial 0.75% Art. 151 CT)'
+            },
+            otros: {
+                rubro: 'Otros Productos y Servicios (General)',
+                ingreso_bruto_neto: ingresoBrutoOtros,
+                tasa: generalRate,
+                cuota_calculada: pagoCuentaOtros,
+                nota: 'Tasa general aplicable (1.75% Art. 151 CT)'
+            },
+            totales: {
+                total_ingresos_brutos: totalIngresosBrutos,
+                subtotal_pago_cuenta: subtotalPagoCuenta,
+                retenciones_renta_sufridas: retencionesRentaSufridas,
+                pago_cuenta_a_pagar: pagoCuentaPagar,
+                remanente_pago_cuenta: remanentePagoCuenta
+            }
+        },
+        resumen_f07: {
+            total_iva_a_enterar: totalIvaEnterar,
+            pago_cuenta_a_pagar: pagoCuentaPagar,
+            total_f07: totalF07
+        }
+    };
+};
+
+/**
+ * Endpoint JSON: Consulta de Liquidación de IVA y Pago a Cuenta
+ */
+const getVatLiquidationData = async (req, res) => {
+    try {
+        const { year, month, branch_id = 'all', remanente_anterior = 0, retenciones_renta_sufridas = 0, fuel_rate, general_rate } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+        if (!year || !month) return res.status(400).json({ message: 'Año y mes requeridos' });
+
+        const data = await calculateVatLiquidation(companyId, year, month, branch_id, {
+            remanente_anterior,
+            retenciones_renta_sufridas,
+            fuel_rate,
+            general_rate
+        });
+
+        return res.json({ success: true, data });
+    } catch (e) {
+        console.error('[VAT Books] Error en Liquidacion IVA:', e);
+        return res.status(500).json({ message: 'Error calculando liquidación de IVA', error: e.message });
+    }
+};
+
+/**
+ * Endpoint PDF: Reporte Oficial de Liquidación de IVA y Pago a Cuenta (F-07)
+ */
+const getVatLiquidationPDF = async (req, res) => {
+    try {
+        const { year, month, branch_id = 'all', remanente_anterior = 0, retenciones_renta_sufridas = 0, fuel_rate, general_rate } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+        if (!year || !month) return res.status(400).json({ message: 'Año y mes requeridos' });
+
+        const data = await calculateVatLiquidation(companyId, year, month, branch_id, {
+            remanente_anterior,
+            retenciones_renta_sufridas,
+            fuel_rate,
+            general_rate
+        });
+
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+        // Encabezado institucional unificado
+        reportPdfHelper.renderHeader(
+            doc,
+            data.meta.company,
+            'LIQUIDACIÓN DE IVA Y PAGO A CUENTA (MANDAMIENTO F-07)',
+            data.meta.periodText,
+            'landscape',
+            data.meta.branchName !== 'TODAS / CONSOLIDADO' ? `SUCURSAL: ${data.meta.branchName}` : null
+        );
+
+        let curY = doc.y + 4;
+        const colWidth = 356;
+        const col1X = 30;
+        const col2X = 406;
+
+        // Función auxiliar para dibujar cajas contables con encabezado
+        const drawSectionBox = (x, y, width, height, title) => {
+            doc.save();
+            doc.roundedRect(x, y, width, height, 4).fillAndStroke('#ffffff', '#cbd5e1');
+            doc.roundedRect(x, y, width, 16, 4).fill('#f1f5f9');
+            doc.fillColor('#0f172a').fontSize(7.5).font('Helvetica-Bold').text(title.toUpperCase(), x + 8, y + 4.5);
+            doc.restore();
+        };
+
+        const drawRow = (x, y, width, label, val, isBold = false, isNegative = false, isIndent = false) => {
+            doc.fillColor(isBold ? '#0f172a' : '#475569')
+                .fontSize(7)
+                .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
+                .text((isIndent ? '   ' : '') + String(label), x + 8, y, { width: width - 100 });
+
+            const formattedVal = reportPdfHelper.fmt(isNegative ? -Math.abs(n(val)) : n(val));
+            doc.fillColor(isBold ? '#0f172a' : '#1e293b')
+                .fontSize(7)
+                .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
+                .text(formattedVal, x + width - 90, y, { width: 82, align: 'right' });
+        };
+
+        // ==========================================
+        // FILA 1: DÉBITO FISCAL (IZQ) Y CRÉDITO FISCAL (DER)
+        // ==========================================
+        const row1Height = 112;
+        drawSectionBox(col1X, curY, colWidth, row1Height, '1. Débito Fiscal (Ventas del Período)');
+        drawSectionBox(col2X, curY, colWidth, row1Height, '2. Crédito Fiscal (Compras del Período)');
+
+        // Contenido Débito Fiscal
+        let r1Y = curY + 20;
+        drawRow(col1X, r1Y, colWidth, 'Comprobantes de Crédito Fiscal (03):', data.debito_fiscal.ccf.iva);
+        r1Y += 12;
+        drawRow(col1X, r1Y, colWidth, 'Facturas a Consumidor Final (01):', data.debito_fiscal.fcf.iva);
+        r1Y += 12;
+        drawRow(col1X, r1Y, colWidth, 'Otros Documentos de Débito:', data.debito_fiscal.otros.iva);
+        r1Y += 12;
+        drawRow(col1X, r1Y, colWidth, '(-) Notas de Crédito emitidas (05):', data.debito_fiscal.nc.iva, false, true);
+        r1Y += 12;
+        doc.moveTo(col1X + 8, r1Y + 1).lineTo(col1X + colWidth - 8, r1Y + 1).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+        r1Y += 4;
+        drawRow(col1X, r1Y, colWidth, 'TOTAL DÉBITO FISCAL NETO:', data.debito_fiscal.totales.neto, true);
+        r1Y += 12;
+        drawRow(col1X, r1Y, colWidth, 'Retenciones IVA 1% Sufridas:', data.debito_fiscal.totales.retenciones_sufridas_1pct, false, false, true);
+        r1Y += 12;
+        drawRow(col1X, r1Y, colWidth, 'Ventas Gravadas Netas:', data.debito_fiscal.totales.ventas_gravadas_netas, false, false, true);
+
+        // Contenido Crédito Fiscal
+        let r2Y = curY + 20;
+        drawRow(col2X, r2Y, colWidth, 'Comprobantes de Crédito Fiscal (03):', data.credito_fiscal.ccf.iva);
+        r2Y += 12;
+        drawRow(col2X, r2Y, colWidth, 'Compras a Sujetos Excluidos (14):', data.credito_fiscal.sujetos_excluidos.retencion);
+        r2Y += 12;
+        drawRow(col2X, r2Y, colWidth, 'Otras Compras y Servicios:', data.credito_fiscal.otros.iva);
+        r2Y += 12;
+        drawRow(col2X, r2Y, colWidth, '(-) Notas de Crédito recibidas (05/06):', data.credito_fiscal.nc.iva, false, true);
+        r2Y += 12;
+        doc.moveTo(col2X + 8, r2Y + 1).lineTo(col2X + colWidth - 8, r2Y + 1).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+        r2Y += 4;
+        drawRow(col2X, r2Y, colWidth, 'TOTAL CRÉDITO FISCAL NETO:', data.credito_fiscal.totales.neto, true);
+        r2Y += 12;
+        drawRow(col2X, r2Y, colWidth, 'Percepciones IVA 1% Soportadas:', data.credito_fiscal.totales.percepciones_soportadas_1pct, false, false, true);
+        r2Y += 12;
+        drawRow(col2X, r2Y, colWidth, 'Compras Gravadas Netas:', data.credito_fiscal.totales.compras_gravadas_netas, false, false, true);
+
+        curY += row1Height + 8;
+
+        // ==========================================
+        // FILA 2: LIQUIDACIÓN DE IVA (IZQ) Y PAGO A CUENTA (DER)
+        // ==========================================
+        const row2Height = 145;
+        drawSectionBox(col1X, curY, colWidth, row2Height, '3. Liquidación Mensual de IVA (F-07)');
+        drawSectionBox(col2X, curY, colWidth, row2Height, '4. Pago a Cuenta del Impuesto sobre la Renta (Art. 151 CT)');
+
+        // Contenido Liquidación IVA
+        let lY = curY + 20;
+        drawRow(col1X, lY, colWidth, 'Total Débito Fiscal Neto:', data.liquidacion_iva.debito_fiscal_neto);
+        lY += 11;
+        drawRow(col1X, lY, colWidth, '(-) Total Crédito Fiscal Neto:', data.liquidacion_iva.credito_fiscal_neto, false, true);
+        lY += 11;
+        if (data.liquidacion_iva.impuesto_determinado > 0) {
+            drawRow(col1X, lY, colWidth, 'Impuesto Determinado del Mes:', data.liquidacion_iva.impuesto_determinado, true);
+        } else {
+            drawRow(col1X, lY, colWidth, 'Remanente de Crédito del Mes:', -data.liquidacion_iva.remanente_credito_mes, true, true);
+        }
+        lY += 11;
+        drawRow(col1X, lY, colWidth, '(-) Remanente de Crédito Mes Anterior:', data.liquidacion_iva.remanente_anterior, false, true);
+        lY += 11;
+        drawRow(col1X, lY, colWidth, '(-) Retenciones IVA 1% Sufridas:', data.liquidacion_iva.retenciones_iva_sufridas, false, true);
+        lY += 11;
+        drawRow(col1X, lY, colWidth, '(-) Percepciones IVA 1% Soportadas:', data.liquidacion_iva.percepciones_iva_soportadas, false, true);
+        lY += 11;
+        doc.moveTo(col1X + 8, lY + 1).lineTo(col1X + colWidth - 8, lY + 1).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+        lY += 4;
+        drawRow(col1X, lY, colWidth, 'IVA a Pagar por Operaciones Propias:', data.liquidacion_iva.iva_pagar_operaciones, true);
+        lY += 11;
+        drawRow(col1X, lY, colWidth, '(+) Retención 13% Sujetos Excluidos a Enterar:', data.liquidacion_iva.retenciones_sujetos_excluidos);
+        lY += 11;
+        doc.moveTo(col1X + 8, lY + 1).lineTo(col1X + colWidth - 8, lY + 1).lineWidth(0.75).strokeColor('#0f172a').stroke();
+        lY += 4;
+        drawRow(col1X, lY, colWidth, 'TOTAL IVA A PAGAR (F-07):', data.liquidacion_iva.total_iva_a_enterar, true);
+        lY += 11;
+        if (data.liquidacion_iva.nuevo_remanente_credito > 0) {
+            drawRow(col1X, lY, colWidth, 'Remanente a Favor para el Próximo Mes:', data.liquidacion_iva.nuevo_remanente_credito, true);
+        }
+
+        // Contenido Pago a Cuenta Segregado
+        let pY = curY + 20;
+        const fuelNote = `Combustibles (${data.pago_cuenta.combustibles.tasa.toFixed(2)}%):`;
+        drawRow(col2X, pY, colWidth, fuelNote, data.pago_cuenta.combustibles.cuota_calculada);
+        pY += 9;
+        doc.fontSize(6).font('Helvetica-Oblique').fillColor('#64748b')
+            .text(`Base: ${reportPdfHelper.fmt(data.pago_cuenta.combustibles.ingreso_bruto_neto)} (${data.pago_cuenta.combustibles.nota})`, col2X + 16, pY);
+        pY += 12;
+
+        const otherNote = `Otros Rubros / General (${data.pago_cuenta.otros.tasa.toFixed(2)}%):`;
+        drawRow(col2X, pY, colWidth, otherNote, data.pago_cuenta.otros.cuota_calculada);
+        pY += 9;
+        doc.fontSize(6).font('Helvetica-Oblique').fillColor('#64748b')
+            .text(`Base: ${reportPdfHelper.fmt(data.pago_cuenta.otros.ingreso_bruto_neto)} (${data.pago_cuenta.otros.nota})`, col2X + 16, pY);
+        pY += 13;
+
+        drawRow(col2X, pY, colWidth, 'Subtotal Pago a Cuenta Determinado:', data.pago_cuenta.totales.subtotal_pago_cuenta, true);
+        pY += 12;
+        drawRow(col2X, pY, colWidth, '(-) Retenciones Renta Sufridas en el Mes:', data.pago_cuenta.totales.retenciones_renta_sufridas, false, true);
+        pY += 12;
+        doc.moveTo(col2X + 8, pY + 1).lineTo(col2X + colWidth - 8, pY + 1).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+        pY += 4;
+        drawRow(col2X, pY, colWidth, 'TOTAL PAGO A CUENTA A PAGAR:', data.pago_cuenta.totales.pago_cuenta_a_pagar, true);
+        pY += 12;
+        if (data.pago_cuenta.totales.remanente_pago_cuenta > 0) {
+            drawRow(col2X, pY, colWidth, 'Remanente Pago a Cuenta a Favor:', data.pago_cuenta.totales.remanente_pago_cuenta, true);
+        }
+
+        curY += row2Height + 10;
+
+        // ==========================================
+        // FILA 3: CUADRO CONSOLIDADO TOTAL MANDAMIENTO F-07
+        // ==========================================
+        const summaryWidth = 732;
+        const summaryHeight = 36;
+        doc.save();
+        doc.roundedRect(30, curY, summaryWidth, summaryHeight, 4).fillAndStroke('#0f172a', '#0f172a');
+        
+        doc.fillColor('#94a3b8').fontSize(7).font('Helvetica').text('RESUMEN DE OBLIGACIONES TRIBUTARIAS', 42, curY + 6);
+        doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold').text('MANDAMIENTO CONSOLIDADO F-07 (MINISTERIO DE HACIENDA)', 42, curY + 17);
+
+        doc.fillColor('#cbd5e1').fontSize(7.5).font('Helvetica').text('TOTAL IVA A PAGAR:', 410, curY + 7);
+        doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold').text(reportPdfHelper.fmt(data.resumen_f07.total_iva_a_enterar), 410, curY + 18);
+
+        doc.fillColor('#cbd5e1').fontSize(7.5).font('Helvetica').text('PAGO A CUENTA:', 520, curY + 7);
+        doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold').text(reportPdfHelper.fmt(data.resumen_f07.pago_cuenta_a_pagar), 520, curY + 18);
+
+        doc.fillColor('#38bdf8').fontSize(7.5).font('Helvetica-Bold').text('TOTAL A ENTERAR F-07:', 630, curY + 7);
+        doc.fillColor('#38bdf8').fontSize(11).font('Helvetica-Bold').text(reportPdfHelper.fmt(data.resumen_f07.total_f07), 630, curY + 17);
+        doc.restore();
+
+        curY += summaryHeight + 12;
+
+        // Cierre estandarizado sin firmas
+        reportPdfHelper.renderClosingFooter(doc, 30, curY, 2, 'Obligaciones Fiscales');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const buffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Liquidacion_IVA_F07_${year}_${month}.pdf"`);
+        return res.send(buffer);
+    } catch (e) {
+        console.error('[VAT Books] Error Liquidacion IVA PDF:', e);
+        res.status(500).json({ message: 'Error generando PDF de liquidación', error: e.message });
+    }
+};
+
+/**
+ * Endpoint Excel: Liquidación de IVA y Pago a Cuenta (F-07)
+ */
+const getVatLiquidationExcel = async (req, res) => {
+    try {
+        const { year, month, branch_id = 'all', remanente_anterior = 0, retenciones_renta_sufridas = 0, fuel_rate, general_rate } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+        if (!year || !month) return res.status(400).json({ message: 'Año y mes requeridos' });
+
+        const data = await calculateVatLiquidation(companyId, year, month, branch_id, {
+            remanente_anterior,
+            retenciones_renta_sufridas,
+            fuel_rate,
+            general_rate
+        });
+
+        const rows = [
+            { Concepto: '--- 1. DÉBITO FISCAL (VENTAS) ---', Base: '', IVA: '', Total: '' },
+            { Concepto: 'Comprobantes de Crédito Fiscal (03)', Base: data.debito_fiscal.ccf.gravado.toFixed(2), IVA: data.debito_fiscal.ccf.iva.toFixed(2), Total: data.debito_fiscal.ccf.total.toFixed(2) },
+            { Concepto: 'Facturas a Consumidor Final (01)', Base: data.debito_fiscal.fcf.gravado.toFixed(2), IVA: data.debito_fiscal.fcf.iva.toFixed(2), Total: data.debito_fiscal.fcf.total.toFixed(2) },
+            { Concepto: 'Otros Documentos de Débito', Base: data.debito_fiscal.otros.gravado.toFixed(2), IVA: data.debito_fiscal.otros.iva.toFixed(2), Total: data.debito_fiscal.otros.total.toFixed(2) },
+            { Concepto: '(-) Notas de Crédito emitidas (05)', Base: (-data.debito_fiscal.nc.gravado).toFixed(2), IVA: (-data.debito_fiscal.nc.iva).toFixed(2), Total: (-data.debito_fiscal.nc.total).toFixed(2) },
+            { Concepto: 'TOTAL DÉBITO FISCAL NETO', Base: data.debito_fiscal.totales.ventas_gravadas_netas.toFixed(2), IVA: data.debito_fiscal.totales.neto.toFixed(2), Total: '' },
+            { Concepto: '', Base: '', IVA: '', Total: '' },
+            { Concepto: '--- 2. CRÉDITO FISCAL (COMPRAS) ---', Base: '', IVA: '', Total: '' },
+            { Concepto: 'Comprobantes de Crédito Fiscal (03)', Base: data.credito_fiscal.ccf.gravado.toFixed(2), IVA: data.credito_fiscal.ccf.iva.toFixed(2), Total: data.credito_fiscal.ccf.total.toFixed(2) },
+            { Concepto: 'Compras Sujetos Excluidos (14) - Retención 13%', Base: data.credito_fiscal.sujetos_excluidos.gravado.toFixed(2), IVA: data.credito_fiscal.sujetos_excluidos.retencion.toFixed(2), Total: data.credito_fiscal.sujetos_excluidos.total.toFixed(2) },
+            { Concepto: 'Otras Compras y Servicios', Base: data.credito_fiscal.otros.gravado.toFixed(2), IVA: data.credito_fiscal.otros.iva.toFixed(2), Total: data.credito_fiscal.otros.total.toFixed(2) },
+            { Concepto: '(-) Notas de Crédito recibidas (05/06)', Base: (-data.credito_fiscal.nc.gravado).toFixed(2), IVA: (-data.credito_fiscal.nc.iva).toFixed(2), Total: (-data.credito_fiscal.nc.total).toFixed(2) },
+            { Concepto: 'TOTAL CRÉDITO FISCAL NETO', Base: data.credito_fiscal.totales.compras_gravadas_netas.toFixed(2), IVA: data.credito_fiscal.totales.neto.toFixed(2), Total: '' },
+            { Concepto: '', Base: '', IVA: '', Total: '' },
+            { Concepto: '--- 3. LIQUIDACIÓN DE IVA (F-07) ---', Base: '', IVA: '', Total: '' },
+            { Concepto: 'Total Débito Fiscal Neto', Base: '', IVA: data.liquidacion_iva.debito_fiscal_neto.toFixed(2), Total: '' },
+            { Concepto: '(-) Total Crédito Fiscal Neto', Base: '', IVA: (-data.liquidacion_iva.credito_fiscal_neto).toFixed(2), Total: '' },
+            { Concepto: 'Impuesto Determinado del Mes', Base: '', IVA: data.liquidacion_iva.impuesto_determinado.toFixed(2), Total: '' },
+            { Concepto: '(-) Remanente Crédito Mes Anterior', Base: '', IVA: (-data.liquidacion_iva.remanente_anterior).toFixed(2), Total: '' },
+            { Concepto: '(-) Retenciones IVA 1% Sufridas', Base: '', IVA: (-data.liquidacion_iva.retenciones_iva_sufridas).toFixed(2), Total: '' },
+            { Concepto: '(-) Percepciones IVA 1% Soportadas', Base: '', IVA: (-data.liquidacion_iva.percepciones_iva_soportadas).toFixed(2), Total: '' },
+            { Concepto: 'IVA a Pagar Operaciones Propias', Base: '', IVA: data.liquidacion_iva.iva_pagar_operaciones.toFixed(2), Total: '' },
+            { Concepto: '(+) Retención 13% Sujetos Excluidos a Enterar', Base: '', IVA: data.liquidacion_iva.retenciones_sujetos_excluidos.toFixed(2), Total: '' },
+            { Concepto: 'TOTAL IVA A PAGAR (F-07)', Base: '', IVA: data.liquidacion_iva.total_iva_a_enterar.toFixed(2), Total: '' },
+            { Concepto: 'Remanente a Favor para Próximo Mes', Base: '', IVA: data.liquidacion_iva.nuevo_remanente_credito.toFixed(2), Total: '' },
+            { Concepto: '', Base: '', IVA: '', Total: '' },
+            { Concepto: '--- 4. PAGO A CUENTA (ART. 151 CT) ---', Base: '', IVA: '', Total: '' },
+            { Concepto: `Combustibles (${data.pago_cuenta.combustibles.tasa.toFixed(2)}%) - ${data.pago_cuenta.combustibles.nota}`, Base: data.pago_cuenta.combustibles.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.combustibles.cuota_calculada.toFixed(2) },
+            { Concepto: `Otros Rubros / General (${data.pago_cuenta.otros.tasa.toFixed(2)}%)`, Base: data.pago_cuenta.otros.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.otros.cuota_calculada.toFixed(2) },
+            { Concepto: 'Subtotal Pago a Cuenta Determinado', Base: data.pago_cuenta.totales.total_ingresos_brutos.toFixed(2), IVA: '', Total: data.pago_cuenta.totales.subtotal_pago_cuenta.toFixed(2) },
+            { Concepto: '(-) Retenciones Renta Sufridas', Base: '', IVA: '', Total: (-data.pago_cuenta.totales.retenciones_renta_sufridas).toFixed(2) },
+            { Concepto: 'TOTAL PAGO A CUENTA A PAGAR', Base: '', IVA: '', Total: data.pago_cuenta.totales.pago_cuenta_a_pagar.toFixed(2) },
+            { Concepto: '', Base: '', IVA: '', Total: '' },
+            { Concepto: '--- TOTAL CONSOLIDADO MANDAMIENTO F-07 ---', Base: '', IVA: '', Total: data.resumen_f07.total_f07.toFixed(2) }
+        ];
+
+        const buffer = await excelService.createExcelBuffer({
+            sheets: [{
+                name: 'Liquidacion F-07',
+                columns: [
+                    { header: 'Concepto / Rubro', key: 'Concepto', width: 45 },
+                    { header: 'Base Imponible / Ingreso', key: 'Base', width: 25 },
+                    { header: 'Débito / Crédito IVA', key: 'IVA', width: 22 },
+                    { header: 'Cuota / Total a Pagar', key: 'Total', width: 25 }
+                ],
+                data: rows
+            }]
+        });
+
+        return excelService.sendExcelResponse(res, buffer, `Liquidacion_IVA_F07_${year}_${month}.xlsx`);
+    } catch (e) {
+        console.error('[VAT Books] Error Liquidacion IVA Excel:', e);
+        res.status(500).json({ message: 'Error exportando liquidación a Excel', error: e.message });
+    }
+};
+
 module.exports = {
     getVatBookPurchasesPDF,
     getVatBookSalesTaxpayersPDF,
     getVatBookSalesConsumersPDF,
     getVatBookAnexosIVA,
     getVatBookAnexosIVAPDF,
-    getVatBookAnexosIVAExcel
+    getVatBookAnexosIVAExcel,
+    getVatLiquidationData,
+    getVatLiquidationPDF,
+    getVatLiquidationExcel
 };

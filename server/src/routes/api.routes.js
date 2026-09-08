@@ -473,6 +473,9 @@ router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesC
 router.get('/vat-books/anexos-iva', vatBooksController.getVatBookAnexosIVA);
 router.get('/vat-books/anexos-iva-pdf', vatBooksController.getVatBookAnexosIVAPDF);
 router.get('/vat-books/anexos-iva-excel', vatBooksController.getVatBookAnexosIVAExcel);
+router.get('/vat-books/liquidation', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationData);
+router.get('/vat-books/liquidation/pdf', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationPDF);
+router.get('/vat-books/liquidation/excel', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationExcel);
 
 // Accounting Module
 router.get('/accounting/account-types', accountingController.getAccountTypes);
