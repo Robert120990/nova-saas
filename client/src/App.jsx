@@ -393,7 +393,7 @@ function App() {
 
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
-                <Toaster richColors position="top-right" expand visibleToasts={5} duration={4000} />
+                <Toaster richColors position="top-right" offset={{ top: 76, right: 24 }} expand visibleToasts={5} duration={4000} />
             </AuthProvider>
         </BrowserRouter>
         </ConfirmProvider>

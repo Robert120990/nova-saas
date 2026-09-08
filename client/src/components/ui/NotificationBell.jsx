@@ -118,11 +118,16 @@ const NotificationBell = () => {
         onClick={() => setIsOpen(!isOpen)}
         className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white bg-slate-800/30 hover:bg-slate-800/60 rounded-xl relative transition-all group"
       >
-        <span key={shakeKey} className={shakeKey > 0 ? 'animate-bell-ring' : ''}>
+        <span key={shakeKey} className={`inline-block origin-top ${shakeKey > 0 ? 'animate-bell-ring' : ''}`}>
           {unreadCount > 0 ? <BellRing size={20} /> : <Bell size={20} />}
         </span>
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-indigo-500 text-white text-[10px] font-bold rounded-full border-2 border-[#0c1524] px-1 animate-in zoom-in duration-200">
+          <span
+            key={`badge-${shakeKey}`}
+            className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-indigo-500 text-white text-[10px] font-bold rounded-full border-2 border-[#0c1524] px-1 ${
+              shakeKey > 0 ? 'animate-badge-pop' : 'animate-in zoom-in duration-200'
+            }`}
+          >
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

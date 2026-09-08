@@ -297,19 +297,30 @@ const getAccessSummary = async (req, res) => {
              JOIN users u ON ue.usuario_id = u.id
              JOIN companies c ON ue.empresa_id = c.id
              JOIN roles r ON ue.role_id = r.id
-             WHERE ue.has_access = 1`
+             WHERE ue.has_access = 1
+             ORDER BY u.nombre ASC, c.razon_social ASC`
         );
 
-        const summary = await Promise.all(accesses.map(async (acc) => {
-            const [branches] = await pool.query(
-                `SELECT b.id, b.nombre 
-                 FROM usuario_sucursal us
-                 JOIN branches b ON us.sucursal_id = b.id
-                 WHERE us.usuario_id = ? AND b.company_id = ?`,
-                [acc.user_id, acc.company_id]
-            );
-            return { ...acc, branches: branches.map(b => ({ id: b.id, nombre: b.nombre })) };
-        }));
+        const [allUserBranches] = await pool.query(
+            `SELECT us.usuario_id, b.company_id, b.id, b.nombre 
+             FROM usuario_sucursal us
+             JOIN branches b ON us.sucursal_id = b.id`
+        );
+
+        const branchesMap = {};
+        allUserBranches.forEach(b => {
+            const key = `${b.usuario_id}-${b.company_id}`;
+            if (!branchesMap[key]) branchesMap[key] = [];
+            branchesMap[key].push({ id: b.id, nombre: b.nombre });
+        });
+
+        const summary = accesses.map(acc => {
+            const key = `${acc.user_id}-${acc.company_id}`;
+            return {
+                ...acc,
+                branches: branchesMap[key] || []
+            };
+        });
 
         res.json(summary);
     } catch (error) {
@@ -344,6 +355,261 @@ const deleteCompanyAccess = async (req, res) => {
         if (connection) await connection.rollback();
         console.error(error);
         res.status(500).json({ message: 'Error al eliminar acceso' });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+const getCompaniesWithBranchesTree = async (req, res) => {
+    try {
+        const [companies] = await pool.query(
+            `SELECT id, razon_social, nombre_comercial, nit FROM companies ORDER BY razon_social ASC`
+        );
+        const [branches] = await pool.query(
+            `SELECT id, company_id, codigo, nombre, direccion FROM branches ORDER BY company_id, nombre ASC`
+        );
+
+        const branchesByCompany = {};
+        branches.forEach(b => {
+            if (!branchesByCompany[b.company_id]) {
+                branchesByCompany[b.company_id] = [];
+            }
+            branchesByCompany[b.company_id].push({
+                id: b.id,
+                codigo: b.codigo,
+                nombre: b.nombre,
+                direccion: b.direccion
+            });
+        });
+
+        const tree = companies.map(c => ({
+            id: c.id,
+            razon_social: c.razon_social,
+            nombre_comercial: c.nombre_comercial,
+            nit: c.nit,
+            branches: branchesByCompany[c.id] || []
+        }));
+
+        res.json(tree);
+    } catch (error) {
+        console.error('Error getting companies with branches tree:', error);
+        res.status(500).json({ message: 'Error al obtener empresas y sucursales' });
+    }
+};
+
+const assignBulkAccess = async (req, res) => {
+    const { userIds, assignments } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: 'Debe seleccionar al menos un usuario' });
+    }
+    if (!Array.isArray(assignments) || assignments.length === 0) {
+        return res.status(400).json({ message: 'Debe especificar al menos una empresa con rol' });
+    }
+
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        for (const userId of userIds) {
+            for (const assignment of assignments) {
+                const { companyId, roleId, branches } = assignment;
+                if (!companyId || !roleId) continue;
+
+                // 1. usuario_empresa
+                await connection.query(
+                    `INSERT INTO usuario_empresa (usuario_id, empresa_id, role_id, has_access)
+                     VALUES (?, ?, ?, 1)
+                     ON DUPLICATE KEY UPDATE role_id = VALUES(role_id), has_access = 1`,
+                    [userId, companyId, roleId]
+                );
+
+                // 2. Limpiar sucursales previas en esta empresa
+                await connection.query(
+                    `DELETE us FROM usuario_sucursal us
+                     JOIN branches b ON us.sucursal_id = b.id
+                     WHERE us.usuario_id = ? AND b.company_id = ?`,
+                    [userId, companyId]
+                );
+
+                // 3. Insertar nuevas sucursales
+                if (Array.isArray(branches) && branches.length > 0) {
+                    const branchValues = branches.map(branchId => [userId, branchId]);
+                    await connection.query(
+                        `INSERT IGNORE INTO usuario_sucursal (usuario_id, sucursal_id) VALUES ?`,
+                        [branchValues]
+                    );
+                }
+            }
+        }
+
+        await connection.commit();
+        res.json({
+            message: `Accesos asignados exitosamente a ${userIds.length} usuario(s) en ${assignments.length} empresa(s)`
+        });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('Error in assignBulkAccess:', error);
+        res.status(500).json({ message: 'Error al procesar asignación masiva: ' + (error.message || '') });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+const cloneUserAccess = async (req, res) => {
+    const { sourceUserId, targetUserIds, mode = 'merge' } = req.body;
+
+    if (!sourceUserId) {
+        return res.status(400).json({ message: 'Debe especificar el usuario origen' });
+    }
+    if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+        return res.status(400).json({ message: 'Debe seleccionar al menos un usuario destino' });
+    }
+
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        // Obtener accesos de empresa del usuario origen
+        const [sourceCompanies] = await connection.query(
+            `SELECT empresa_id, role_id FROM usuario_empresa WHERE usuario_id = ? AND has_access = 1`,
+            [sourceUserId]
+        );
+
+        if (sourceCompanies.length === 0) {
+            await connection.rollback();
+            return res.status(400).json({ message: 'El usuario origen no tiene accesos configurados para clonar' });
+        }
+
+        // Obtener sucursales del usuario origen con su company_id
+        const [sourceBranches] = await connection.query(
+            `SELECT us.sucursal_id, b.company_id
+             FROM usuario_sucursal us
+             JOIN branches b ON us.sucursal_id = b.id
+             WHERE us.usuario_id = ?`,
+            [sourceUserId]
+        );
+
+        for (const targetId of targetUserIds) {
+            if (parseInt(targetId) === parseInt(sourceUserId)) continue;
+
+            if (mode === 'replace') {
+                // Limpiar todo lo anterior del destino
+                await connection.query(`DELETE FROM usuario_sucursal WHERE usuario_id = ?`, [targetId]);
+                await connection.query(`DELETE FROM usuario_empresa WHERE usuario_id = ?`, [targetId]);
+            }
+
+            // Asignar empresas
+            for (const sc of sourceCompanies) {
+                await connection.query(
+                    `INSERT INTO usuario_empresa (usuario_id, empresa_id, role_id, has_access)
+                     VALUES (?, ?, ?, 1)
+                     ON DUPLICATE KEY UPDATE role_id = VALUES(role_id), has_access = 1`,
+                    [targetId, sc.empresa_id, sc.role_id]
+                );
+
+                if (mode === 'merge') {
+                    // Limpiar sucursales de esta empresa para el destino antes de reinsertar las del origen
+                    await connection.query(
+                        `DELETE us FROM usuario_sucursal us
+                         JOIN branches b ON us.sucursal_id = b.id
+                         WHERE us.usuario_id = ? AND b.company_id = ?`,
+                        [targetId, sc.empresa_id]
+                    );
+                }
+            }
+
+            // Insertar sucursales clonadas
+            if (sourceBranches.length > 0) {
+                const branchValues = sourceBranches.map(sb => [targetId, sb.sucursal_id]);
+                await connection.query(
+                    `INSERT IGNORE INTO usuario_sucursal (usuario_id, sucursal_id) VALUES ?`,
+                    [branchValues]
+                );
+            }
+        }
+
+        await connection.commit();
+        res.json({ message: `Accesos clonados exitosamente a ${targetUserIds.length} usuario(s)` });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('Error in cloneUserAccess:', error);
+        res.status(500).json({ message: 'Error al clonar accesos: ' + (error.message || '') });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+const bulkUpdateRole = async (req, res) => {
+    const { items, newRoleId } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: 'Debe seleccionar al menos un registro' });
+    }
+    if (!newRoleId) {
+        return res.status(400).json({ message: 'Debe seleccionar el nuevo rol' });
+    }
+
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        for (const item of items) {
+            const { userId, companyId } = item;
+            if (userId && companyId) {
+                await connection.query(
+                    `UPDATE usuario_empresa SET role_id = ? WHERE usuario_id = ? AND empresa_id = ?`,
+                    [newRoleId, userId, companyId]
+                );
+            }
+        }
+
+        await connection.commit();
+        res.json({ message: `Rol actualizado en ${items.length} acceso(s)` });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('Error in bulkUpdateRole:', error);
+        res.status(500).json({ message: 'Error al actualizar roles masivamente' });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+const bulkDeleteAccess = async (req, res) => {
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: 'Debe seleccionar al menos un registro' });
+    }
+
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        for (const item of items) {
+            const { userId, companyId } = item;
+            if (userId && companyId) {
+                // 1. Eliminar sucursales de esa empresa
+                await connection.query(
+                    `DELETE us FROM usuario_sucursal us
+                     JOIN branches b ON us.sucursal_id = b.id
+                     WHERE us.usuario_id = ? AND b.company_id = ?`,
+                    [userId, companyId]
+                );
+                // 2. Eliminar vínculo de empresa
+                await connection.query(
+                    `DELETE FROM usuario_empresa WHERE usuario_id = ? AND empresa_id = ?`,
+                    [userId, companyId]
+                );
+            }
+        }
+
+        await connection.commit();
+        res.json({ message: `${items.length} acceso(s) eliminado(s) correctamente` });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('Error in bulkDeleteAccess:', error);
+        res.status(500).json({ message: 'Error al eliminar accesos masivamente' });
     } finally {
         if (connection) connection.release();
     }
@@ -447,5 +713,10 @@ module.exports = {
     deleteCompanyAccess,
     deleteUser,
     getConnectedSessions,
-    terminateSession
+    terminateSession,
+    getCompaniesWithBranchesTree,
+    assignBulkAccess,
+    cloneUserAccess,
+    bulkUpdateRole,
+    bulkDeleteAccess
 };

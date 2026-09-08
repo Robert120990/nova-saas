@@ -152,13 +152,6 @@ const GasCloseout = () => {
     });
     const isAutoSavingRef = useRef(false);
 
-    const isAnySectionDirty = () => {
-        if (!modalSnapshotsRef.current) return false;
-        return ['gastos', 'remesas', 'cupones', 'descuentos', 'adelantos', 'tarjetas', 'creditos', 'vales', 'anticipos', 'trupput'].some(k => isSectionDirty(k));
-    };
-
-    useDirtyTracker('cierre', readings.some(r => r.valor) || isAnySectionDirty());
-
     const getDefaultDespachador = () => {
         if (lastDespachadorRef.current) return lastDespachadorRef.current;
         if (closeoutDespachadores.length > 0) return closeoutDespachadores[0].despachador_id;
@@ -1009,6 +1002,13 @@ const GasCloseout = () => {
         const snap = modalSnapshotsRef.current[key] || '[]';
         return JSON.stringify(current) !== snap;
     };
+
+    const isAnySectionDirty = () => {
+        if (!modalSnapshotsRef.current) return false;
+        return ['gastos', 'remesas', 'cupones', 'descuentos', 'adelantos', 'tarjetas', 'creditos', 'vales', 'anticipos', 'trupput'].some(k => isSectionDirty(k));
+    };
+
+    useDirtyTracker('cierre', readings.some(r => r.valor) || isAnySectionDirty());
 
     const handleSaveSection = (key) => {
         const cfg = sectionConfig[key];

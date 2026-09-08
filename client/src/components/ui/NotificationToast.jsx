@@ -86,31 +86,56 @@ const NotificationToast = ({ notification, toastId, onClick }) => {
 
   return (
     <div
-      className="flex items-start gap-3 w-full cursor-pointer group"
+      className="relative flex items-start gap-3 w-full sm:w-[380px] max-w-[calc(100vw-32px)] bg-white rounded-2xl p-3.5 shadow-xl shadow-slate-900/10 border border-slate-200/90 cursor-pointer group hover:border-slate-300 hover:shadow-2xl transition-all duration-200 overflow-hidden"
       onClick={onClick}
     >
+      {/* Accent left indicator */}
       <div
-        className="rounded-lg p-2 flex-shrink-0 mt-0.5 animate-slide-in-right"
+        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
+        style={{ backgroundColor: color }}
+      />
+
+      {/* Icon */}
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105 duration-200"
         style={{ backgroundColor: color + '18' }}
       >
-        <Icon size={16} style={{ color }} />
+        <Icon size={18} style={{ color }} />
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-bold text-slate-800 leading-tight">
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 pr-1">
+        <div className="flex items-center justify-between gap-2 mb-0.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Notificación
+          </span>
+          <span className="text-[10px] text-slate-400 font-medium">
+            Ahora
+          </span>
+        </div>
+        <p className="text-[13px] font-bold text-slate-800 leading-snug">
           {notification.title || 'Nueva notificación'}
         </p>
         {notification.message && (
-          <p className="text-[12px] text-slate-500 mt-0.5 line-clamp-2 leading-snug">
+          <p className="text-[12px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
             {notification.message}
           </p>
         )}
+        {notification.link && (
+          <span className="inline-flex items-center text-[11px] font-bold text-indigo-600 group-hover:text-indigo-700 mt-1.5 transition-colors">
+            Ver detalle &rarr;
+          </span>
+        )}
       </div>
+
+      {/* Close button */}
       <button
         onClick={(e) => {
           e.stopPropagation();
           toast.dismiss(toastId);
         }}
-        className="p-1 rounded-lg hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+        className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0 -mr-1 -mt-1"
+        title="Cerrar"
       >
         <X size={14} />
       </button>

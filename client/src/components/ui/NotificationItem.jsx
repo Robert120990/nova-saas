@@ -97,7 +97,7 @@ const NotificationItem = ({ notification, onClick, onMarkRead, compact = false }
   return (
     <button
       onClick={() => onClick?.(notification)}
-      className={`w-full text-left transition-all hover:bg-slate-50 animate-slide-in-right ${
+      className={`w-full text-left transition-all hover:bg-slate-50 ${
         !notification.is_read ? 'bg-indigo-50/50' : ''
       } ${compact ? 'px-3 py-2.5' : 'px-4 py-3'}`}
     >
