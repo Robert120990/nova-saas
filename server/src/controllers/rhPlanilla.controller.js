@@ -1387,6 +1387,17 @@ function formatCurrency(val, showDashWhenZero = true) {
     return `$ ${formatted}`;
 }
 
+function fitText(doc, text, maxWidth) {
+    if (!text) return '';
+    const s = String(text).trim();
+    if (doc.widthOfString(s) <= maxWidth) return s;
+    let truncated = s;
+    while (truncated.length > 0 && doc.widthOfString(truncated + '…') > maxWidth) {
+        truncated = truncated.slice(0, -1).trimEnd();
+    }
+    return truncated ? truncated + '…' : '';
+}
+
 function renderHeader(doc, company, title, periodText, orientation = 'landscape') {
     const pageWidth = orientation === 'landscape' ? 792 : 612;
     const contentWidth = pageWidth - 60;
@@ -1516,40 +1527,40 @@ const exportPlanillaReportePDF = async (req, res) => {
         renderHeader(doc, company, title, periodText, 'landscape');
 
         const colW = {
-            num: 16,
-            code: 34,
-            name: 135,
-            cargo: 80,
-            dias: 22,
-            sueldoQuincenal: 51,
-            ingresosAdic: 51,
-            devengado: 53,
-            isss: 42,
-            afp: 42,
-            renta: 44,
+            num: 14,
+            code: 32,
+            name: 154,
+            cargo: 96,
+            dias: 20,
+            sueldoQuincenal: 48,
+            ingresosAdic: 48,
+            devengado: 50,
+            isss: 38,
+            afp: 38,
+            renta: 40,
             otrasDed: 46,
-            totalDed: 52,
-            neto: 64
+            totalDed: 50,
+            neto: 58
         };
 
         const drawTableHeader = (yPos) => {
             doc.rect(startX, yPos, contentWidth, 14).fill('#f1f5f9');
             doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
             let x = startX + 2;
-            doc.text('Nº', x, yPos + 3.5, { width: colW.num, align: 'center' }); x += colW.num;
-            doc.text('CÓDIGO', x, yPos + 3.5, { width: colW.code }); x += colW.code;
-            doc.text('EMPLEADO', x, yPos + 3.5, { width: colW.name }); x += colW.name;
-            doc.text('CARGO / DEPTO', x, yPos + 3.5, { width: colW.cargo }); x += colW.cargo;
-            doc.text('DÍAS', x, yPos + 3.5, { width: colW.dias, align: 'center' }); x += colW.dias;
-            doc.text('S. QUINC.', x, yPos + 3.5, { width: colW.sueldoQuincenal - 3, align: 'right' }); x += colW.sueldoQuincenal;
-            doc.text('ING. ADIC.', x, yPos + 3.5, { width: colW.ingresosAdic - 3, align: 'right' }); x += colW.ingresosAdic;
-            doc.text('TOTAL DEV.', x, yPos + 3.5, { width: colW.devengado - 3, align: 'right' }); x += colW.devengado;
-            doc.text('ISSS', x, yPos + 3.5, { width: colW.isss - 3, align: 'right' }); x += colW.isss;
-            doc.text('AFP', x, yPos + 3.5, { width: colW.afp - 3, align: 'right' }); x += colW.afp;
-            doc.text('RENTA', x, yPos + 3.5, { width: colW.renta - 3, align: 'right' }); x += colW.renta;
-            doc.text('OTRAS DED.', x, yPos + 3.5, { width: colW.otrasDed - 3, align: 'right' }); x += colW.otrasDed;
-            doc.text('TOTAL DED.', x, yPos + 3.5, { width: colW.totalDed - 3, align: 'right' }); x += colW.totalDed;
-            doc.text('NETO A PAGAR', x, yPos + 3.5, { width: colW.neto - 3, align: 'right' });
+            doc.text('Nº', x, yPos + 3.5, { width: colW.num, align: 'center', lineBreak: false }); x += colW.num;
+            doc.text('CÓDIGO', x, yPos + 3.5, { width: colW.code, lineBreak: false }); x += colW.code;
+            doc.text('EMPLEADO', x, yPos + 3.5, { width: colW.name, lineBreak: false }); x += colW.name;
+            doc.text('CARGO / DEPTO', x, yPos + 3.5, { width: colW.cargo, lineBreak: false }); x += colW.cargo;
+            doc.text('DÍAS', x, yPos + 3.5, { width: colW.dias, align: 'center', lineBreak: false }); x += colW.dias;
+            doc.text('S. QUINC.', x, yPos + 3.5, { width: colW.sueldoQuincenal - 3, align: 'right', lineBreak: false }); x += colW.sueldoQuincenal;
+            doc.text('ING. ADIC.', x, yPos + 3.5, { width: colW.ingresosAdic - 3, align: 'right', lineBreak: false }); x += colW.ingresosAdic;
+            doc.text('TOTAL DEV.', x, yPos + 3.5, { width: colW.devengado - 3, align: 'right', lineBreak: false }); x += colW.devengado;
+            doc.text('ISSS', x, yPos + 3.5, { width: colW.isss - 3, align: 'right', lineBreak: false }); x += colW.isss;
+            doc.text('AFP', x, yPos + 3.5, { width: colW.afp - 3, align: 'right', lineBreak: false }); x += colW.afp;
+            doc.text('RENTA', x, yPos + 3.5, { width: colW.renta - 3, align: 'right', lineBreak: false }); x += colW.renta;
+            doc.text('OTRAS DED.', x, yPos + 3.5, { width: colW.otrasDed - 3, align: 'right', lineBreak: false }); x += colW.otrasDed;
+            doc.text('TOTAL DED.', x, yPos + 3.5, { width: colW.totalDed - 3, align: 'right', lineBreak: false }); x += colW.totalDed;
+            doc.text('NETO A PAGAR', x, yPos + 3.5, { width: colW.neto - 3, align: 'right', lineBreak: false });
             return yPos + 17;
         };
 
@@ -1557,7 +1568,7 @@ const exportPlanillaReportePDF = async (req, res) => {
 
         if (planillas.length === 0) {
             doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
-            doc.text('No se encontraron registros de planilla para el período seleccionado.', startX, y + 10);
+            doc.text('No se encontraron registros de planilla para el período seleccionado.', startX, y + 10, { lineBreak: false });
             y += 30;
         } else {
             let totalSueldoQuincenal = 0;
@@ -1608,22 +1619,22 @@ const exportPlanillaReportePDF = async (req, res) => {
 
                 doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
                 let rx = startX + 2;
-                doc.text(String(idx + 1), rx, y, { width: colW.num, align: 'center' }); rx += colW.num;
-                doc.text(p.empleado_codigo || '', rx, y, { width: colW.code }); rx += colW.code;
+                doc.text(String(idx + 1), rx, y, { width: colW.num, align: 'center', lineBreak: false }); rx += colW.num;
+                doc.text(p.empleado_codigo || '', rx, y, { width: colW.code, lineBreak: false }); rx += colW.code;
                 const empNombre = `${p.empleado_nombres || ''} ${p.empleado_apellidos || ''}`.trim();
-                doc.text(empNombre.substring(0, 32), rx, y, { width: colW.name - 3, ellipsis: true }); rx += colW.name;
+                doc.text(fitText(doc, empNombre, colW.name - 4), rx, y, { width: colW.name - 3, lineBreak: false }); rx += colW.name;
                 const cargoDepto = p.cargo_nombre || p.departamento_nombre || 'GENERAL';
-                doc.text(cargoDepto.substring(0, 20), rx, y, { width: colW.cargo - 3, ellipsis: true }); rx += colW.cargo;
-                doc.text(String(diasTrab), rx, y, { width: colW.dias, align: 'center' }); rx += colW.dias;
-                doc.text(formatCurrency(sueldoQuincenal), rx, y, { width: colW.sueldoQuincenal - 3, align: 'right' }); rx += colW.sueldoQuincenal;
-                doc.text(formatCurrency(ingresosAdic), rx, y, { width: colW.ingresosAdic - 3, align: 'right' }); rx += colW.ingresosAdic;
-                doc.text(formatCurrency(devengado), rx, y, { width: colW.devengado - 3, align: 'right' }); rx += colW.devengado;
-                doc.text(formatCurrency(isss), rx, y, { width: colW.isss - 3, align: 'right' }); rx += colW.isss;
-                doc.text(formatCurrency(afp), rx, y, { width: colW.afp - 3, align: 'right' }); rx += colW.afp;
-                doc.text(formatCurrency(renta), rx, y, { width: colW.renta - 3, align: 'right' }); rx += colW.renta;
-                doc.text(formatCurrency(otrasDed), rx, y, { width: colW.otrasDed - 3, align: 'right' }); rx += colW.otrasDed;
-                doc.text(formatCurrency(totalDed), rx, y, { width: colW.totalDed - 3, align: 'right' }); rx += colW.totalDed;
-                doc.font('Helvetica-Bold').text(formatCurrency(neto), rx, y, { width: colW.neto - 3, align: 'right' });
+                doc.text(fitText(doc, cargoDepto, colW.cargo - 4), rx, y, { width: colW.cargo - 3, lineBreak: false }); rx += colW.cargo;
+                doc.text(String(diasTrab), rx, y, { width: colW.dias, align: 'center', lineBreak: false }); rx += colW.dias;
+                doc.text(formatCurrency(sueldoQuincenal), rx, y, { width: colW.sueldoQuincenal - 3, align: 'right', lineBreak: false }); rx += colW.sueldoQuincenal;
+                doc.text(formatCurrency(ingresosAdic), rx, y, { width: colW.ingresosAdic - 3, align: 'right', lineBreak: false }); rx += colW.ingresosAdic;
+                doc.text(formatCurrency(devengado), rx, y, { width: colW.devengado - 3, align: 'right', lineBreak: false }); rx += colW.devengado;
+                doc.text(formatCurrency(isss), rx, y, { width: colW.isss - 3, align: 'right', lineBreak: false }); rx += colW.isss;
+                doc.text(formatCurrency(afp), rx, y, { width: colW.afp - 3, align: 'right', lineBreak: false }); rx += colW.afp;
+                doc.text(formatCurrency(renta), rx, y, { width: colW.renta - 3, align: 'right', lineBreak: false }); rx += colW.renta;
+                doc.text(formatCurrency(otrasDed), rx, y, { width: colW.otrasDed - 3, align: 'right', lineBreak: false }); rx += colW.otrasDed;
+                doc.text(formatCurrency(totalDed), rx, y, { width: colW.totalDed - 3, align: 'right', lineBreak: false }); rx += colW.totalDed;
+                doc.font('Helvetica-Bold').text(formatCurrency(neto), rx, y, { width: colW.neto - 3, align: 'right', lineBreak: false });
                 y += 12;
             }
 
@@ -1637,18 +1648,18 @@ const exportPlanillaReportePDF = async (req, res) => {
             doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
             y += 4;
             doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('TOTALES:', startX + 2, y);
+            doc.text('TOTALES:', startX + 2, y, { lineBreak: false });
 
             let tx = startX + colW.num + colW.code + colW.name + colW.cargo + colW.dias;
-            doc.text(formatCurrency(totalSueldoQuincenal), tx, y, { width: colW.sueldoQuincenal - 3, align: 'right' }); tx += colW.sueldoQuincenal;
-            doc.text(formatCurrency(totalIngresosAdic), tx, y, { width: colW.ingresosAdic - 3, align: 'right' }); tx += colW.ingresosAdic;
-            doc.text(formatCurrency(totalDevengado), tx, y, { width: colW.devengado - 3, align: 'right' }); tx += colW.devengado;
-            doc.text(formatCurrency(totalISSS), tx, y, { width: colW.isss - 3, align: 'right' }); tx += colW.isss;
-            doc.text(formatCurrency(totalAFP), tx, y, { width: colW.afp - 3, align: 'right' }); tx += colW.afp;
-            doc.text(formatCurrency(totalRenta), tx, y, { width: colW.renta - 3, align: 'right' }); tx += colW.renta;
-            doc.text(formatCurrency(totalOtrasDed), tx, y, { width: colW.otrasDed - 3, align: 'right' }); tx += colW.otrasDed;
-            doc.text(formatCurrency(totalDeducciones), tx, y, { width: colW.totalDed - 3, align: 'right' }); tx += colW.totalDed;
-            doc.text(formatCurrency(totalNeto), tx, y, { width: colW.neto - 3, align: 'right' });
+            doc.text(formatCurrency(totalSueldoQuincenal), tx, y, { width: colW.sueldoQuincenal - 3, align: 'right', lineBreak: false }); tx += colW.sueldoQuincenal;
+            doc.text(formatCurrency(totalIngresosAdic), tx, y, { width: colW.ingresosAdic - 3, align: 'right', lineBreak: false }); tx += colW.ingresosAdic;
+            doc.text(formatCurrency(totalDevengado), tx, y, { width: colW.devengado - 3, align: 'right', lineBreak: false }); tx += colW.devengado;
+            doc.text(formatCurrency(totalISSS), tx, y, { width: colW.isss - 3, align: 'right', lineBreak: false }); tx += colW.isss;
+            doc.text(formatCurrency(totalAFP), tx, y, { width: colW.afp - 3, align: 'right', lineBreak: false }); tx += colW.afp;
+            doc.text(formatCurrency(totalRenta), tx, y, { width: colW.renta - 3, align: 'right', lineBreak: false }); tx += colW.renta;
+            doc.text(formatCurrency(totalOtrasDed), tx, y, { width: colW.otrasDed - 3, align: 'right', lineBreak: false }); tx += colW.otrasDed;
+            doc.text(formatCurrency(totalDeducciones), tx, y, { width: colW.totalDed - 3, align: 'right', lineBreak: false }); tx += colW.totalDed;
+            doc.text(formatCurrency(totalNeto), tx, y, { width: colW.neto - 3, align: 'right', lineBreak: false });
 
             y += 11;
             doc.strokeColor('#0f172a').lineWidth(0.5).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();

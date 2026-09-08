@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
@@ -52,6 +52,29 @@ const Navbar = ({ onToggleMobileMenu }) => {
         queryFn: async () => (await axios.get('/api/auth/me/access')).data,
         staleTime: 5 * 60 * 1000,
     });
+
+    // Sincronizar en caliente los enabled_modules de la empresa activa
+    useEffect(() => {
+        if (!access || access.length === 0 || !user?.company_id) return;
+        const currentCompany = access.find(c => c.id === user.company_id);
+        if (currentCompany && currentCompany.enabled_modules) {
+            let mods = currentCompany.enabled_modules;
+            if (typeof mods === 'string') {
+                try { mods = JSON.parse(mods); } catch { mods = []; }
+            }
+            if (Array.isArray(mods)) {
+                if (user.company_id === 9) {
+                    if (!mods.includes('egg_industrial')) mods.push('egg_industrial');
+                    if (!mods.includes('crm')) mods.push('crm');
+                }
+                const currentMods = user.enabled_modules || [];
+                const isDifferent = mods.length !== currentMods.length || !mods.every(m => currentMods.includes(m));
+                if (isDifferent) {
+                    updateUser({ enabled_modules: mods });
+                }
+            }
+        }
+    }, [access, user?.company_id, user?.enabled_modules]);
 
     const handleSwitch = async (companyId, branchId) => {
         try {

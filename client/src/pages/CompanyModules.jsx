@@ -93,6 +93,7 @@ export default function CompanyModules() {
         onSuccess: (data, variables) => {
             toast.success('Módulos actualizados correctamente');
             queryClient.invalidateQueries({ queryKey: ['company-modules-matrix'] });
+            queryClient.invalidateQueries({ queryKey: ['my-access'] });
 
             // Si se actualizó la empresa en la que está el usuario conectado actualmente, refrescar su sesión
             if (user?.company_id === parseInt(variables.companyId, 10)) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CornerDownLeft } from 'lucide-react';
-import { useMenuItems, GROUP_MODULE_MAP } from '../../hooks/useMenuItems';
+import { useMenuItems, GROUP_MODULE_MAP, ITEM_MODULE_MAP } from '../../hooks/useMenuItems';
 import { useAuth } from '../../context/AuthContext';
 
 const CommandPalette = ({ isOpen, onClose }) => {
@@ -75,10 +75,17 @@ const CommandPalette = ({ isOpen, onClose }) => {
                 groupLabel = 'CRM';
             }
 
-            if (!isSuperAdmin && groupLabel && GROUP_MODULE_MAP[groupLabel]) {
+            if (groupLabel && GROUP_MODULE_MAP[groupLabel]) {
                 const reqModule = GROUP_MODULE_MAP[groupLabel];
                 const isAndelsaExempt = isAndelsaContext && (reqModule === 'egg_industrial' || reqModule === 'crm');
                 if (!isAndelsaExempt && user?.enabled_modules && Array.isArray(user.enabled_modules) && !user.enabled_modules.includes(reqModule)) {
+                    return;
+                }
+            }
+
+            if (item.path && ITEM_MODULE_MAP[item.path]) {
+                const reqMod = ITEM_MODULE_MAP[item.path];
+                if (user?.enabled_modules && Array.isArray(user.enabled_modules) && !user.enabled_modules.includes(reqMod)) {
                     return;
                 }
             }

@@ -4,7 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
-import { useMenuItems, GROUP_MODULE_MAP } from "../../hooks/useMenuItems";
+import { useMenuItems, GROUP_MODULE_MAP, ITEM_MODULE_MAP } from "../../hooks/useMenuItems";
 
 const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const { user } = useAuth();
@@ -83,7 +83,6 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     };
 
     const isGroupEnabled = (group) => {
-        if (isSuperAdmin) return true;
         const reqModule = GROUP_MODULE_MAP[group.label];
         if (!reqModule) return true;
 
@@ -95,8 +94,15 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
             return true;
         }
 
-        if (!user?.enabled_modules || !Array.isArray(user.enabled_modules)) return true;
-        return user.enabled_modules.includes(reqModule);
+        if (Array.isArray(user?.enabled_modules)) {
+            return user.enabled_modules.includes(reqModule);
+        }
+
+        // Fallback seguro por contexto si la sesión aún no tiene enabled_modules cargados
+        if (isAndelsaContext) {
+            return ['sales', 'purchases', 'inventory', 'accounting', 'human_resources', 'egg_industrial', 'crm'].includes(reqModule);
+        }
+        return ['sales', 'purchases', 'inventory', 'accounting', 'human_resources', 'gas_station', 'pozo'].includes(reqModule);
     };
 
     const { data: settings } = useQuery({
@@ -203,10 +209,20 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         }
     };
 
-    const renderMenuItem = (item, depth = 0) => {
-        if (!hasPermission(item) || item.hideInMenu) return null;
+    const isItemEnabled = (item) => {
+        if (!item?.path) return true;
+        const reqMod = ITEM_MODULE_MAP[item.path];
+        if (!reqMod) return true;
+        if (Array.isArray(user?.enabled_modules)) {
+            return user.enabled_modules.includes(reqMod);
+        }
+        return true;
+    };
 
-        const visibleChildren = item.children?.filter(c => !c.hideInMenu) || [];
+    const renderMenuItem = (item, depth = 0) => {
+        if (!hasPermission(item) || item.hideInMenu || !isItemEnabled(item)) return null;
+
+        const visibleChildren = item.children?.filter(c => !c.hideInMenu && isItemEnabled(c)) || [];
         const hasChildren = visibleChildren.length > 0;
         const paddingLeft = effectiveCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
 
@@ -448,14 +464,14 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                             <span className="text-[11px] font-bold text-white uppercase tracking-wider">{hoveredItem.label}</span>
                         </div>
                         <span className="text-[10px] font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded-full">
-                            {hoveredItem.children.filter(c => c.path && !c.hideInMenu).length}
+                            {hoveredItem.children.filter(c => c.path && !c.hideInMenu && isItemEnabled(c)).length}
                         </span>
                     </div>
                     <div 
                         className="space-y-0.5 overflow-y-auto custom-scrollbar pr-1"
                         style={{ maxHeight: `calc(${hoveredPos.maxHeight}px - 54px)` }}
                     >
-                        {hoveredItem.children.filter(child => child.path && !child.hideInMenu).map(child => (
+                        {hoveredItem.children.filter(child => child.path && !child.hideInMenu && isItemEnabled(child)).map(child => (
                             <NavLink
                                 key={child.path}
                                 to={child.path}

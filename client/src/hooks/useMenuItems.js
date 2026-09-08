@@ -13,8 +13,16 @@ export const GROUP_MODULE_MAP = {
     'Contabilidad': 'accounting',
     'Recursos Humanos': 'human_resources',
     'Ventas': 'sales',
+    'Cuentas por Cobrar': 'sales',
     'Compras': 'purchases',
+    'Cuentas por Pagar': 'purchases',
     'Inventario': 'inventory',
+};
+
+export const ITEM_MODULE_MAP = {
+    '/ventas/combustibles': 'gas_station',
+    '/ventas/dtes-turno': 'gas_station',
+    '/ventas/entrega-remesas': 'gas_station',
 };
 
 function normalize(item) {
