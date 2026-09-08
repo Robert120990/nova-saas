@@ -105,9 +105,17 @@ async function logSectionChange(req, closeoutId, section, before, after) {
     await logCloseoutChange(req, closeoutId, section, 'update', summarizeDiff(cfg.label, diff), { before, after, added: diff.added, removed: diff.removed, modified: diff.modified });
 }
 
+const toDateStr = (val) => {
+    if (!val) return null;
+    if (val instanceof Date) return val.toISOString().slice(0, 10);
+    const s = String(val);
+    const m = s.match(/^\d{4}-\d{2}-\d{2}/);
+    return m ? m[0] : s.slice(0, 10);
+};
+
 async function recalcularTanquesPosteriores(req, closeout, tankReading, prevLecturaActual) {
     try {
-        const fechaStr = closeout.fecha_turno ? String(closeout.fecha_turno).slice(0, 10) : '';
+        const fechaStr = toDateStr(closeout.fecha_turno) || '';
         const [posteriores] = await pool.query(
             `SELECT * FROM gas_station_closeouts
              WHERE company_id = ? AND branch_id <=> ? AND id <> ?
@@ -145,6 +153,94 @@ async function recalcularTanquesPosteriores(req, closeout, tankReading, prevLect
         }
     } catch (error) {
         console.error('Error recalcularTanquesPosteriores:', error);
+    }
+}
+
+async function recalcularLubricantesPosteriores(req, closeout, updatedReadings) {
+    try {
+        const fechaStr = toDateStr(closeout.fecha_turno);
+        if (!fechaStr) return;
+
+        const [posteriores] = await pool.query(
+            `SELECT * FROM gas_station_closeouts
+             WHERE company_id = ? AND branch_id <=> ? AND id <> ?
+               AND (fecha_turno > ? OR (fecha_turno = ? AND CAST(numero_turno AS UNSIGNED) > CAST(? AS UNSIGNED)))
+             ORDER BY fecha_turno ASC, CAST(numero_turno AS UNSIGNED) ASC`,
+            [req.company_id, closeout.branch_id ?? null, closeout.id, fechaStr, fechaStr, closeout.numero_turno]
+        );
+
+        if (posteriores.length === 0) return;
+
+        const runningFinalMap = {};
+        for (const r of updatedReadings) {
+            if (r.producto_id) {
+                runningFinalMap[r.producto_id] = parseFloat(r.lectura_final) || 0;
+            }
+        }
+
+        for (const nextCloseout of posteriores) {
+            const [rows] = await pool.query(
+                `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`,
+                [nextCloseout.id]
+            );
+            if (rows.length === 0) continue;
+
+            const changes = [];
+            for (const row of rows) {
+                if (runningFinalMap[row.producto_id] !== undefined) {
+                    const prevFinal = runningFinalMap[row.producto_id];
+                    const currentInicial = parseFloat(row.lectura_inicial) || 0;
+                    const recarga = parseFloat(row.recarga) || 0;
+                    const currentFinal = parseFloat(row.lectura_final) || 0;
+                    const currentVentas = parseFloat(row.ventas) || 0;
+
+                    if (Math.abs(currentInicial - prevFinal) > 0.0001) {
+                        let newFinal = currentFinal;
+                        let newVentas = currentVentas;
+                        const precio = parseFloat(row.precio) || 0;
+
+                        if (currentVentas === 0 && recarga === 0) {
+                            newFinal = prevFinal;
+                            newVentas = 0;
+                        } else {
+                            newVentas = Math.max(0, prevFinal + recarga - newFinal);
+                        }
+                        const newTotal = parseFloat((newVentas * precio).toFixed(2));
+
+                        await pool.query(
+                            `UPDATE gas_station_closeout_lubricant_readings
+                             SET lectura_inicial = ?, lectura_final = ?, ventas = ?, total = ?
+                             WHERE id = ?`,
+                            [prevFinal, newFinal, newVentas, newTotal, row.id]
+                        );
+
+                        changes.push({
+                            field: 'lectura_inicial',
+                            producto_codigo: row.producto_codigo,
+                            old: currentInicial,
+                            new: prevFinal
+                        });
+
+                        runningFinalMap[row.producto_id] = newFinal;
+                    } else {
+                        runningFinalMap[row.producto_id] = currentFinal;
+                    }
+                }
+            }
+
+            if (changes.length > 0) {
+                await logCloseoutChange(
+                    req,
+                    nextCloseout.id,
+                    'lubricantes',
+                    'edit',
+                    `Recálculo por corrección en turno #${closeout.numero_turno} (${fechaStr}): ${changes.length} lubricantes`,
+                    { modified: changes }
+                );
+            }
+        }
+    } catch (error) {
+        console.error('Error recalcularLubricantesPosteriores:', error);
     }
 }
 
@@ -368,16 +464,29 @@ exports.initCloseout = async (req, res) => {
                 `, [branchId, branchId, req.company_id, lubricantCategoryId]);
 
                 if (lubProducts.length > 0) {
-                    const [lastLubReadings] = await pool.query(`
-                        SELECT lr.producto_id, lr.lectura_final
-                        FROM gas_station_closeout_lubricant_readings lr
-                        WHERE lr.closeout_id = (
-                            SELECT MAX(c2.id) FROM gas_station_closeouts c2
-                            WHERE c2.company_id = ? AND c2.estado = 'cerrado'
-                            AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
-                            AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
-                        )
-                    `, [req.company_id, branchId, branchId]);
+                    const initFechaStr = toDateStr(fecha_turno);
+                    const [prevCloseout] = await pool.query(`
+                        SELECT c2.id FROM gas_station_closeouts c2
+                        WHERE c2.company_id = ?
+                          AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
+                          AND (
+                              c2.fecha_turno < ?
+                              OR (c2.fecha_turno = ? AND CAST(c2.numero_turno AS UNSIGNED) < CAST(? AS UNSIGNED))
+                          )
+                          AND c2.estado IN ('cerrado', 'reabierto')
+                          AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
+                        ORDER BY c2.fecha_turno DESC, CAST(c2.numero_turno AS UNSIGNED) DESC, c2.id DESC
+                        LIMIT 1
+                    `, [req.company_id, branchId, branchId, initFechaStr, initFechaStr, numero_turno]);
+
+                    let lastLubReadings = [];
+                    if (prevCloseout.length > 0) {
+                        [lastLubReadings] = await pool.query(`
+                            SELECT lr.producto_id, lr.lectura_final
+                            FROM gas_station_closeout_lubricant_readings lr
+                            WHERE lr.closeout_id = ?
+                        `, [prevCloseout[0].id]);
+                    }
 
                     const lastMap = {};
                     lastLubReadings.forEach(r => {
@@ -1975,7 +2084,7 @@ exports.saveLubricantReadings = async (req, res) => {
         const { readings } = req.body;
 
         const [closeouts] = await pool.query(
-            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT id, estado, branch_id, fecha_turno, numero_turno FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
@@ -2021,6 +2130,8 @@ exports.saveLubricantReadings = async (req, res) => {
             const afterRows = await getSectionRows(id, 'lubricantes');
             await logSectionChange(req, id, 'lubricantes', beforeRows, afterRows);
         }
+
+        await recalcularLubricantesPosteriores(req, closeouts[0], readings || []);
 
         res.json(remaining);
     } catch (error) {

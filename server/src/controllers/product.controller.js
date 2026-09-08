@@ -319,9 +319,33 @@ const updateFuelPrices = async (req, res) => {
     }
 };
 
+const toDateStr = (val) => {
+    if (!val) return null;
+    if (val instanceof Date) return val.toISOString().slice(0, 10);
+    const s = String(val);
+    const m = s.match(/^\d{4}-\d{2}-\d{2}/);
+    return m ? m[0] : s.slice(0, 10);
+};
+
 const getLubricantProducts = async (req, res) => {
     try {
-        const branchId = req.query.branch_id || req.user?.branch_id || null;
+        let branchId = req.query.branch_id || req.user?.branch_id || null;
+        const closeoutId = req.query.closeout_id ? parseInt(req.query.closeout_id) : null;
+        let queryFecha = toDateStr(req.query.fecha_turno);
+        let queryTurno = req.query.numero_turno || null;
+
+        if (closeoutId) {
+            const [cRows] = await pool.query(
+                `SELECT id, fecha_turno, numero_turno, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+                [closeoutId, req.company_id]
+            );
+            if (cRows.length > 0) {
+                const c = cRows[0];
+                if (!branchId && c.branch_id) branchId = c.branch_id;
+                queryFecha = toDateStr(c.fecha_turno);
+                queryTurno = c.numero_turno;
+            }
+        }
 
         const [settings] = await pool.query(
             `SELECT setting_value FROM gas_station_settings WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL)) AND setting_key = 'lubricant_category_id'`,
@@ -343,16 +367,51 @@ const getLubricantProducts = async (req, res) => {
 
         if (products.length === 0) return res.json([]);
 
-        const [lastReadings] = await pool.query(`
-            SELECT lr.producto_id, lr.lectura_final
-            FROM gas_station_closeout_lubricant_readings lr
-            WHERE lr.closeout_id = (
-                SELECT MAX(c2.id) FROM gas_station_closeouts c2
-                WHERE c2.company_id = ? AND c2.estado = 'cerrado'
-                AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
-                AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
-            )
-        `, [req.company_id, branchId, branchId]);
+        let prevCloseoutId = null;
+        if (queryFecha && queryTurno) {
+            const [prev] = await pool.query(`
+                SELECT c2.id FROM gas_station_closeouts c2
+                WHERE c2.company_id = ?
+                  AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
+                  AND (c2.id <> ? OR ? IS NULL)
+                  AND (
+                      c2.fecha_turno < ?
+                      OR (c2.fecha_turno = ? AND CAST(c2.numero_turno AS UNSIGNED) < CAST(? AS UNSIGNED))
+                  )
+                  AND c2.estado IN ('cerrado', 'reabierto')
+                  AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
+                ORDER BY c2.fecha_turno DESC, CAST(c2.numero_turno AS UNSIGNED) DESC, c2.id DESC
+                LIMIT 1
+            `, [req.company_id, branchId, branchId, closeoutId, closeoutId, queryFecha, queryFecha, queryTurno]);
+            if (prev.length > 0) {
+                prevCloseoutId = prev[0].id;
+            }
+        }
+
+        // Fallback if no specific date/turn or if no prior closeout found with condition
+        if (!prevCloseoutId && !closeoutId && !queryFecha) {
+            const [latest] = await pool.query(`
+                SELECT c2.id FROM gas_station_closeouts c2
+                WHERE c2.company_id = ?
+                  AND (c2.branch_id = ? OR (? IS NULL AND c2.branch_id IS NULL))
+                  AND c2.estado IN ('cerrado', 'reabierto')
+                  AND EXISTS (SELECT 1 FROM gas_station_closeout_lubricant_readings l WHERE l.closeout_id = c2.id)
+                ORDER BY c2.fecha_turno DESC, CAST(c2.numero_turno AS UNSIGNED) DESC, c2.id DESC
+                LIMIT 1
+            `, [req.company_id, branchId, branchId]);
+            if (latest.length > 0) {
+                prevCloseoutId = latest[0].id;
+            }
+        }
+
+        let lastReadings = [];
+        if (prevCloseoutId) {
+            [lastReadings] = await pool.query(`
+                SELECT lr.producto_id, lr.lectura_final
+                FROM gas_station_closeout_lubricant_readings lr
+                WHERE lr.closeout_id = ?
+            `, [prevCloseoutId]);
+        }
 
         const lastReadingMap = {};
         lastReadings.forEach(r => {

@@ -138,7 +138,26 @@ const GasCloseout = () => {
     const lubricantInputRefs = useRef({});
     const lastDespachadorRef = useRef(null);
 
-    useDirtyTracker('cierre', readings.some(r => r.valor) || gastos.length > 0 || remesas.length > 0);
+    const modalSnapshotsRef = useRef({
+        gastos: '[]',
+        remesas: '[]',
+        cupones: '[]',
+        descuentos: '[]',
+        adelantos: '[]',
+        tarjetas: '[]',
+        creditos: '[]',
+        vales: '[]',
+        anticipos: '[]',
+        trupput: '[]'
+    });
+    const isAutoSavingRef = useRef(false);
+
+    const isAnySectionDirty = () => {
+        if (!modalSnapshotsRef.current) return false;
+        return ['gastos', 'remesas', 'cupones', 'descuentos', 'adelantos', 'tarjetas', 'creditos', 'vales', 'anticipos', 'trupput'].some(k => isSectionDirty(k));
+    };
+
+    useDirtyTracker('cierre', readings.some(r => r.valor) || isAnySectionDirty());
 
     const getDefaultDespachador = () => {
         if (lastDespachadorRef.current) return lastDespachadorRef.current;
@@ -175,6 +194,35 @@ const GasCloseout = () => {
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
     }, [isSuperAdmin]);
+
+    useEffect(() => {
+        const onModalEscape = (e) => {
+            if (e.key === 'Escape') {
+                const openKey = ['gastos', 'remesas', 'cupones', 'descuentos', 'adelantos', 'tarjetas', 'creditos', 'vales', 'anticipos', 'trupput']
+                    .find(k => {
+                        switch (k) {
+                            case 'gastos': return showGastosModal;
+                            case 'remesas': return showRemesasModal;
+                            case 'cupones': return showCuponesModal;
+                            case 'descuentos': return showDescuentosModal;
+                            case 'adelantos': return showAdelantosModal;
+                            case 'tarjetas': return showTarjetasModal;
+                            case 'creditos': return showCreditosModal;
+                            case 'vales': return showValesModal;
+                            case 'anticipos': return showAnticiposModal;
+                            case 'trupput': return showTrupputModal;
+                            default: return false;
+                        }
+                    });
+                if (openKey) {
+                    e.preventDefault();
+                    handleSafeCloseModal(openKey);
+                }
+            }
+        };
+        window.addEventListener('keydown', onModalEscape);
+        return () => window.removeEventListener('keydown', onModalEscape);
+    }, [showGastosModal, showRemesasModal, showCuponesModal, showDescuentosModal, showAdelantosModal, showTarjetasModal, showCreditosModal, showValesModal, showAnticiposModal, showTrupputModal, gastos, remesas, cupones, descuentos, adelantos, tarjetas, creditos, vales, anticiposDesp, trupputDesp, estado, closeoutId]);
 
     const handleEstadoBadgeClick = async () => {
         if (!isSuperAdmin || estado !== 'reabierto') return;
@@ -225,7 +273,8 @@ const GasCloseout = () => {
             setLubricantReadings(editData.lubricantReadings || []);
             setCloseoutDespachadores(editData.despachadores || []);
             setDespachadorNozzleAssignments(editData.despachadorNozzleAssignments || []);
-            setGastos((editData.gastos || []).map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
+            const cleanLoadedGastos = (editData.gastos || []).map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
+            setGastos(cleanLoadedGastos);
             setRemesas(editData.remesas || []);
             setCupones(editData.cupones || []);
             setDescuentos(editData.descuentos || []);
@@ -235,6 +284,18 @@ const GasCloseout = () => {
             setVales(editData.vales || []);
             setAnticiposDesp(editData.anticipos_despachadores || []);
             setTrupputDesp(editData.trupput_despachos || []);
+            modalSnapshotsRef.current = {
+                gastos: JSON.stringify(cleanLoadedGastos),
+                remesas: JSON.stringify(editData.remesas || []),
+                cupones: JSON.stringify(editData.cupones || []),
+                descuentos: JSON.stringify(editData.descuentos || []),
+                adelantos: JSON.stringify(editData.adelantos || []),
+                tarjetas: JSON.stringify(editData.tarjetas || []),
+                creditos: JSON.stringify(editData.creditos || []),
+                vales: JSON.stringify(editData.vales || []),
+                anticipos: JSON.stringify(editData.anticipos_despachadores || []),
+                trupput: JSON.stringify(editData.trupput_despachos || [])
+            };
             const firstWithDesp = [editData.gastos, editData.remesas, editData.cupones, editData.descuentos, editData.adelantos, editData.tarjetas, editData.creditos, editData.vales, editData.anticipos_despachadores, editData.trupput_despachos]
                 .flat()
                 .find(r => r && r.despachador_id);
@@ -263,6 +324,18 @@ const GasCloseout = () => {
             setVales([]);
             setAnticiposDesp([]);
             setTrupputDesp([]);
+            modalSnapshotsRef.current = {
+                gastos: '[]',
+                remesas: '[]',
+                cupones: '[]',
+                descuentos: '[]',
+                adelantos: '[]',
+                tarjetas: '[]',
+                creditos: '[]',
+                vales: '[]',
+                anticipos: '[]',
+                trupput: '[]'
+            };
             lastDespachadorRef.current = null;
         }
     }, [editId]);
@@ -520,10 +593,17 @@ const GasCloseout = () => {
             }))
         }),
         onSuccess: (res) => {
-            setGastos(res.data.map(e => ({ ...e, fecha: toDateStr(e.fecha) })));
+            const clean = res.data.map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
+            setGastos(clean);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.gastos = JSON.stringify(clean);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-expenses', closeoutId] });
             setShowGastosModal(false);
-            toast.success('Gastos guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Gastos guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Gastos guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar gastos')
     });
@@ -532,9 +612,15 @@ const GasCloseout = () => {
         mutationFn: (remesas) => axios.post(`/api/gas-station/closeouts/${closeoutId}/remesas`, { remesas }),
         onSuccess: (res) => {
             setRemesas(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.remesas = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-remesas', closeoutId] });
             setShowRemesasModal(false);
-            toast.success('Remesas guardadas');
+            if (isAutoSavingRef.current) {
+                toast.success('Remesas guardadas automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Remesas guardadas');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar remesas')
     });
@@ -551,9 +637,15 @@ const GasCloseout = () => {
         mutationFn: (cupones) => axios.post(`/api/gas-station/closeouts/${closeoutId}/cupones`, { cupones }),
         onSuccess: (res) => {
             setCupones(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.cupones = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-cupones', closeoutId] });
             setShowCuponesModal(false);
-            toast.success('Cupones guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Cupones guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Cupones guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar cupones')
     });
@@ -566,9 +658,15 @@ const GasCloseout = () => {
         mutationFn: (descuentos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/descuentos`, { descuentos }),
         onSuccess: (res) => {
             setDescuentos(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.descuentos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-descuentos', closeoutId] });
             setShowDescuentosModal(false);
-            toast.success('Descuentos guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Descuentos guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Descuentos guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar descuentos')
     });
@@ -581,9 +679,15 @@ const GasCloseout = () => {
         mutationFn: (adelantos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/adelantos`, { adelantos }),
         onSuccess: (res) => {
             setAdelantos(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.adelantos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-adelantos', closeoutId] });
             setShowAdelantosModal(false);
-            toast.success('Adelantos guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Adelantos guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Adelantos guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar adelantos')
     });
@@ -657,9 +761,15 @@ const GasCloseout = () => {
         mutationFn: (tarjetas) => axios.post(`/api/gas-station/closeouts/${closeoutId}/tarjetas`, { tarjetas }),
         onSuccess: (res) => {
             setTarjetas(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.tarjetas = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-tarjetas', closeoutId] });
             setShowTarjetasModal(false);
-            toast.success('Tarjetas guardadas');
+            if (isAutoSavingRef.current) {
+                toast.success('Tarjetas guardadas automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Tarjetas guardadas');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar tarjetas')
     });
@@ -668,9 +778,15 @@ const GasCloseout = () => {
         mutationFn: (creditos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/creditos`, { creditos }),
         onSuccess: (res) => {
             setCreditos(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.creditos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-creditos', closeoutId] });
             setShowCreditosModal(false);
-            toast.success('Créditos guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Créditos guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Créditos guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar créditos')
     });
@@ -679,9 +795,15 @@ const GasCloseout = () => {
         mutationFn: (vales) => axios.post(`/api/gas-station/closeouts/${closeoutId}/vales`, { vales }),
         onSuccess: (res) => {
             setVales(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.vales = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-vales', closeoutId] });
             setShowValesModal(false);
-            toast.success('Vales guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Vales guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Vales guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar vales')
     });
@@ -690,9 +812,15 @@ const GasCloseout = () => {
         mutationFn: (anticipos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/anticipos-desp`, { anticipos }),
         onSuccess: (res) => {
             setAnticiposDesp(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.anticipos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-anticipos-desp', closeoutId] });
             setShowAnticiposModal(false);
-            toast.success('Anticipos despachados guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Anticipos despachados guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Anticipos despachados guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar anticipos despachados')
     });
@@ -701,12 +829,283 @@ const GasCloseout = () => {
         mutationFn: (despachos) => axios.post(`/api/gas-station/closeouts/${closeoutId}/trupput-desp`, { despachos }),
         onSuccess: (res) => {
             setTrupputDesp(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.trupput = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-trupput-desp', closeoutId] });
             setShowTrupputModal(false);
-            toast.success('Despachos Trupput guardados');
+            if (isAutoSavingRef.current) {
+                toast.success('Despachos Trupput guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Despachos Trupput guardados');
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachos Trupput')
     });
+
+    const sectionConfig = {
+        gastos: {
+            name: 'Gastos',
+            getData: () => gastos,
+            setData: setGastos,
+            setShow: setShowGastosModal,
+            mutate: (data) => saveExpensesMutation.mutate(data),
+            mutateAsync: (data) => saveExpensesMutation.mutateAsync(data),
+            isPending: () => saveExpensesMutation.isPending,
+            cleanForSave: (data) => data.map(e => ({ ...e, provider_id: e.provider_id || null })),
+            isEmptyRow: (r) => (!r.rubro || r.rubro.trim() === '') && (!r.proveedor || r.proveedor.trim() === '') && (!r.documento || r.documento.trim() === '') && (!r.comentario || r.comentario.trim() === '') && (parseFloat(r.valor) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if (!r.rubro || r.rubro.trim() === '') return 'Falta seleccionar el rubro';
+                if ((parseFloat(r.valor) || 0) <= 0) return 'El valor debe ser mayor a 0';
+                return null;
+            }
+        },
+        remesas: {
+            name: 'Remesas',
+            getData: () => remesas,
+            setData: setRemesas,
+            setShow: setShowRemesasModal,
+            mutate: (data) => saveRemesasMutation.mutate(data),
+            mutateAsync: (data) => saveRemesasMutation.mutateAsync(data),
+            isPending: () => saveRemesasMutation.isPending,
+            isEmptyRow: (r) => (!r.descripcion || r.descripcion.trim() === '') && (parseFloat(r.monto) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        cupones: {
+            name: 'Cupones',
+            getData: () => cupones,
+            setData: setCupones,
+            setShow: setShowCuponesModal,
+            mutate: (data) => saveCuponesMutation.mutate(data),
+            mutateAsync: (data) => saveCuponesMutation.mutateAsync(data),
+            isPending: () => saveCuponesMutation.isPending,
+            isEmptyRow: (r) => (!r.cupon || r.cupon.trim() === '') && !r.distribuidora_id && (parseFloat(r.monto) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        descuentos: {
+            name: 'Descuentos',
+            getData: () => descuentos,
+            setData: setDescuentos,
+            setShow: setShowDescuentosModal,
+            mutate: (data) => saveDescuentosMutation.mutate(data),
+            mutateAsync: (data) => saveDescuentosMutation.mutateAsync(data),
+            isPending: () => saveDescuentosMutation.isPending,
+            isEmptyRow: (r) => (!r.documento || r.documento.trim() === '') && !r.cliente_id && (parseFloat(r.total) || 0) === 0 && (parseFloat(r.cantidad) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if ((parseFloat(r.total) || 0) <= 0 && (parseFloat(r.cantidad) || 0) <= 0) return 'Debe ingresar total o galonaje mayor a 0';
+                return null;
+            }
+        },
+        adelantos: {
+            name: 'Adelantos',
+            getData: () => adelantos,
+            setData: setAdelantos,
+            setShow: setShowAdelantosModal,
+            mutate: (data) => saveAdelantosMutation.mutate(data),
+            mutateAsync: (data) => saveAdelantosMutation.mutateAsync(data),
+            isPending: () => saveAdelantosMutation.isPending,
+            isEmptyRow: (r) => (!r.empleado || r.empleado.trim() === '') && (parseFloat(r.monto) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if (!r.empleado || r.empleado.trim() === '') return 'Falta ingresar el empleado';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        tarjetas: {
+            name: 'Tarjetas',
+            getData: () => tarjetas,
+            setData: setTarjetas,
+            setShow: setShowTarjetasModal,
+            mutate: (data) => saveTarjetasMutation.mutate(data),
+            mutateAsync: (data) => saveTarjetasMutation.mutateAsync(data),
+            isPending: () => saveTarjetasMutation.isPending,
+            isEmptyRow: (r) => (!r.num_tarjeta || r.num_tarjeta.trim() === '') && (!r.num_autorizacion || r.num_autorizacion.trim() === '') && !r.pos_type_id && (parseFloat(r.monto) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        creditos: {
+            name: 'Créditos',
+            getData: () => creditos,
+            setData: setCreditos,
+            setShow: setShowCreditosModal,
+            mutate: (data) => saveCreditosMutation.mutate(data),
+            mutateAsync: (data) => saveCreditosMutation.mutateAsync(data),
+            isPending: () => saveCreditosMutation.isPending,
+            isEmptyRow: (r) => !r.cliente_id && (!r.documento || r.documento.trim() === '') && (parseFloat(r.monto) || 0) === 0 && (parseFloat(r.cantidad) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if (!r.cliente_id) return 'Falta seleccionar el cliente';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        vales: {
+            name: 'Vales',
+            getData: () => vales,
+            setData: setVales,
+            setShow: setShowValesModal,
+            mutate: (data) => saveValesMutation.mutate(data),
+            mutateAsync: (data) => saveValesMutation.mutateAsync(data),
+            isPending: () => saveValesMutation.isPending,
+            isEmptyRow: (r) => !r.cliente_id && (!r.documento || r.documento.trim() === '') && (parseFloat(r.monto) || 0) === 0 && (parseFloat(r.cantidad) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if (!r.cliente_id) return 'Falta seleccionar el cliente';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        anticipos: {
+            name: 'Anticipos Despachados',
+            getData: () => anticiposDesp,
+            setData: setAnticiposDesp,
+            setShow: setShowAnticiposModal,
+            mutate: (data) => saveAnticiposDespMutation.mutate(data),
+            mutateAsync: (data) => saveAnticiposDespMutation.mutateAsync(data),
+            isPending: () => saveAnticiposDespMutation.isPending,
+            isEmptyRow: (r) => !r.cliente_id && (!r.documento || r.documento.trim() === '') && (parseFloat(r.monto) || 0) === 0 && (parseFloat(r.cantidad) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if (!r.cliente_id) return 'Falta seleccionar el cliente';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
+        trupput: {
+            name: 'Trupput Despachos',
+            getData: () => trupputDesp,
+            setData: setTrupputDesp,
+            setShow: setShowTrupputModal,
+            mutate: (data) => saveTrupputDespMutation.mutate(data),
+            mutateAsync: (data) => saveTrupputDespMutation.mutateAsync(data),
+            isPending: () => saveTrupputDespMutation.isPending,
+            isEmptyRow: (r) => !r.cliente_id && (!r.documento || r.documento.trim() === '') && (parseFloat(r.galones) || 0) === 0 && (parseFloat(r.monto) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if (!r.cliente_id) return 'Falta seleccionar el cliente';
+                if ((parseFloat(r.monto) || 0) <= 0 && (parseFloat(r.galones) || 0) <= 0) return 'Debe ingresar monto o galonaje mayor a 0';
+                return null;
+            }
+        }
+    };
+
+    const isSectionDirty = (key) => {
+        const cfg = sectionConfig[key];
+        if (!cfg || !modalSnapshotsRef.current) return false;
+        const current = cfg.getData();
+        const snap = modalSnapshotsRef.current[key] || '[]';
+        return JSON.stringify(current) !== snap;
+    };
+
+    const handleSaveSection = (key) => {
+        const cfg = sectionConfig[key];
+        if (!cfg) return;
+        const current = cfg.getData();
+        const nonEmptyRows = current.filter(r => !cfg.isEmptyRow(r));
+        for (const row of nonEmptyRows) {
+            const err = cfg.validateRow(row);
+            if (err) {
+                toast.error(`En ${cfg.name}: ${err}`);
+                return;
+            }
+        }
+        cfg.setData(nonEmptyRows);
+        const dataToSave = cfg.cleanForSave ? cfg.cleanForSave(nonEmptyRows) : nonEmptyRows;
+        isAutoSavingRef.current = false;
+        cfg.mutate(dataToSave);
+    };
+
+    const handleSafeCloseModal = async (key) => {
+        const cfg = sectionConfig[key];
+        if (!cfg) return;
+
+        if (estado === 'cerrado' || !closeoutId) {
+            cfg.setShow(false);
+            return;
+        }
+
+        if (!isSectionDirty(key)) {
+            cfg.setShow(false);
+            return;
+        }
+
+        const current = cfg.getData();
+        const nonEmptyRows = current.filter(r => !cfg.isEmptyRow(r));
+        const snap = modalSnapshotsRef.current[key] || '[]';
+        const isStillDirty = JSON.stringify(nonEmptyRows) !== snap;
+
+        if (!isStillDirty) {
+            cfg.setData(nonEmptyRows);
+            cfg.setShow(false);
+            return;
+        }
+
+        let validationError = null;
+        for (const row of nonEmptyRows) {
+            const err = cfg.validateRow(row);
+            if (err) {
+                validationError = err;
+                break;
+            }
+        }
+
+        if (validationError) {
+            const ok = await confirm({
+                title: `Cambios sin guardar en ${cfg.name}`,
+                message: `Hay filas con información incompleta (${validationError}). Si sales ahora, los cambios no guardados se perderán. ¿Deseas continuar editando o descartar los cambios?`,
+                confirmLabel: 'Descartar cambios y salir',
+                cancelLabel: 'Continuar editando',
+                variant: 'warning',
+            });
+            if (ok) {
+                try {
+                    const initialData = JSON.parse(snap);
+                    cfg.setData(initialData);
+                } catch { }
+                cfg.setShow(false);
+            }
+            return;
+        }
+
+        try {
+            cfg.setData(nonEmptyRows);
+            const dataToSave = cfg.cleanForSave ? cfg.cleanForSave(nonEmptyRows) : nonEmptyRows;
+            isAutoSavingRef.current = true;
+            await cfg.mutateAsync(dataToSave);
+            cfg.setShow(false);
+        } catch (err) {
+            console.error(`Error al auto-guardar ${cfg.name}:`, err);
+            isAutoSavingRef.current = false;
+            const ok = await confirm({
+                title: `Error al auto-guardar ${cfg.name}`,
+                message: `Hubo un problema al guardar automáticamente: ${err?.response?.data?.message || err.message || 'Error del servidor'}. ¿Deseas descartar los cambios o continuar editando?`,
+                confirmLabel: 'Descartar cambios y salir',
+                cancelLabel: 'Continuar editando',
+                variant: 'danger',
+            });
+            if (ok) {
+                try {
+                    const initialData = JSON.parse(snap);
+                    cfg.setData(initialData);
+                } catch { }
+                cfg.setShow(false);
+            }
+        }
+    };
+
 
     const generarComplementariaMutation = useMutation({
         mutationFn: ({ shift_id }) => axios.post(`/api/gas-station/closeouts/${closeoutId}/generar-complementaria`, { shift_id }),
@@ -1542,7 +1941,8 @@ const GasCloseout = () => {
         if (!closeoutId) return [];
         setLubricantLoading(true);
         try {
-            const res = await axios.get(`/api/products/lubricants?branch_id=${user?.branch_id || ''}`);
+            const branch = closeoutBranchId || user?.branch_id || '';
+            const res = await axios.get(`/api/products/lubricants?branch_id=${branch}&closeout_id=${closeoutId || ''}`);
             const products = res.data;
             if (products.length > 0) {
                 const mapped = products.map(p => {
@@ -1870,6 +2270,19 @@ const GasCloseout = () => {
                                                 return;
                                             }
                                         }
+                                        const dirtySections = Object.keys(sectionConfig).filter(k => isSectionDirty(k));
+                                        if (dirtySections.length > 0) {
+                                            const dirtyNames = dirtySections.map(k => sectionConfig[k].name).join(', ');
+                                            const proceed = await confirm({
+                                                title: 'Hay cambios pendientes sin guardar',
+                                                message: `Las siguientes secciones tienen modificaciones que no han sido guardadas en el servidor: ${dirtyNames}. Si continúa, estos cambios se descartarán. ¿Desea cerrar el turno de todos modos?`,
+                                                confirmLabel: 'Ignorar y cerrar turno',
+                                                cancelLabel: 'Revisar y guardar',
+                                                variant: 'danger',
+                                            });
+                                            if (!proceed) return;
+                                        }
+
                                         const ok = await confirm({
                                             title: estado === 'reabierto' ? '¿Recerrar Turno?' : '¿Cerrar Turno?',
                                             message: estado === 'reabierto'
@@ -2253,6 +2666,7 @@ const GasCloseout = () => {
                                         const isDiferencias = btn.key === 'diferencias';
                                         const isBlockedReabierto = estado === 'reabierto' && (isLectura || (isTanques && !superAdminTankEdit));
                                         const canClick = !isBlockedReabierto && (isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTrupput || isTanques || isDiferencias || (btn.enabled && estado === 'abierto'));
+                                        const isBtnDirty = isSectionDirty(btn.key) && estado !== 'cerrado';
                                         return (
                                             <button
                                                 key={btn.key}
@@ -2273,12 +2687,15 @@ const GasCloseout = () => {
                                                     if (isDiferencias) handleOpenDiferencias();
                                                 }}
                                                 disabled={!canClick}
-                                                className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
+                                                className={`relative flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all text-[9px] font-bold uppercase leading-tight ${
                                                     canClick
                                                     ? 'bg-white border-slate-200 text-slate-600 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 cursor-pointer shadow-sm'
                                                     : 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
                                                 }`}
                                             >
+                                                {isBtnDirty && (
+                                                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white animate-pulse" title="Cambios sin guardar" />
+                                                )}
                                                 <Icon size={18} className={canClick ? 'text-slate-500' : 'text-slate-200'} />
                                                 {btn.label}
                                             </button>
@@ -2521,18 +2938,23 @@ const GasCloseout = () => {
 
                 {showGastosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowGastosModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('gastos')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[65vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Receipt size={16} className="text-indigo-600" />
                                     Gastos del Turno
+                                    {isSectionDirty('gastos') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowGastosModal(false)}
+                                    onClick={() => handleSafeCloseModal('gastos')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -2714,19 +3136,16 @@ const GasCloseout = () => {
                                                 Total Gastos: <strong className="text-red-600 font-mono text-sm"><Money value={gastosTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => {
-                                                    const sinDesp = gastos.filter(g => !g.despachador_id);
-                                                    if (sinDesp.length > 0) {
-                                                        toast.error('Todos los gastos deben tener un despachador asignado');
-                                                        return;
-                                                    }
-                                                    saveExpensesMutation.mutate(gastos);
-                                                }}
+                                                onClick={() => handleSaveSection('gastos')}
                                                 disabled={saveExpensesMutation.isPending}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                    isSectionDirty('gastos')
+                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                }`}
                                             >
                                                 {saveExpensesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveExpensesMutation.isPending ? 'Guardando...' : 'Guardar Gastos'}
+                                                {saveExpensesMutation.isPending ? 'Guardando...' : (isSectionDirty('gastos') ? 'Guardar Gastos (Pendiente)' : 'Guardar Gastos')}
                                             </button>
                                         </div>
                                     </div>
@@ -2738,18 +3157,23 @@ const GasCloseout = () => {
 
                 {showRemesasModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowRemesasModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('remesas')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-3xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Banknote size={16} className="text-indigo-600" />
                                     Remesas del Turno
+                                    {isSectionDirty('remesas') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowRemesasModal(false)}
+                                    onClick={() => handleSafeCloseModal('remesas')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -2863,19 +3287,16 @@ const GasCloseout = () => {
                                                 Total Remesas: <strong className="text-red-600 font-mono text-sm"><Money value={remesasTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => {
-                                                    const sinDesp = remesas.filter(r => !r.despachador_id);
-                                                    if (sinDesp.length > 0) {
-                                                        toast.error('Todas las remesas deben tener un despachador asignado');
-                                                        return;
-                                                    }
-                                                    saveRemesasMutation.mutate(remesas);
-                                                }}
+                                                onClick={() => handleSaveSection('remesas')}
                                                 disabled={saveRemesasMutation.isPending}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                    isSectionDirty('remesas')
+                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                }`}
                                             >
                                                 {saveRemesasMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveRemesasMutation.isPending ? 'Guardando...' : 'Guardar Remesas'}
+                                                {saveRemesasMutation.isPending ? 'Guardando...' : (isSectionDirty('remesas') ? 'Guardar Remesas (Pendiente)' : 'Guardar Remesas')}
                                             </button>
                                         </div>
                                     </div>
@@ -2887,18 +3308,23 @@ const GasCloseout = () => {
 
                 {showCuponesModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowCuponesModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('cupones')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <CreditCard size={16} className="text-indigo-600" />
                                     Cupones del Turno
+                                    {isSectionDirty('cupones') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowCuponesModal(false)}
+                                    onClick={() => handleSafeCloseModal('cupones')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -3024,19 +3450,16 @@ const GasCloseout = () => {
                                                 Total Cupones: <strong className="text-red-600 font-mono text-sm"><Money value={cuponesTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => {
-                                                    const sinDesp = cupones.filter(c => !c.despachador_id);
-                                                    if (sinDesp.length > 0) {
-                                                        toast.error('Todos los cupones deben tener un despachador asignado');
-                                                        return;
-                                                    }
-                                                    saveCuponesMutation.mutate(cupones);
-                                                }}
+                                                onClick={() => handleSaveSection('cupones')}
                                                 disabled={saveCuponesMutation.isPending}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                    isSectionDirty('cupones')
+                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                }`}
                                             >
                                                 {saveCuponesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveCuponesMutation.isPending ? 'Guardando...' : 'Guardar Cupones'}
+                                                {saveCuponesMutation.isPending ? 'Guardando...' : (isSectionDirty('cupones') ? 'Guardar Cupones (Pendiente)' : 'Guardar Cupones')}
                                             </button>
                                         </div>
                                     </div>
@@ -3048,18 +3471,23 @@ const GasCloseout = () => {
 
                 {showDescuentosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowDescuentosModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('descuentos')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Percent size={16} className="text-indigo-600" />
                                     Descuentos del Turno
+                                    {isSectionDirty('descuentos') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowDescuentosModal(false)}
+                                    onClick={() => handleSafeCloseModal('descuentos')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -3203,19 +3631,16 @@ const GasCloseout = () => {
                                                 Total Descuentos: <strong className="text-red-600 font-mono text-sm"><Money value={descuentosTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => {
-                                                    const sinDesp = descuentos.filter(d => !d.despachador_id);
-                                                    if (sinDesp.length > 0) {
-                                                        toast.error('Todos los descuentos deben tener un despachador asignado');
-                                                        return;
-                                                    }
-                                                    saveDescuentosMutation.mutate(descuentos);
-                                                }}
+                                                onClick={() => handleSaveSection('descuentos')}
                                                 disabled={saveDescuentosMutation.isPending}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                    isSectionDirty('descuentos')
+                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                }`}
                                             >
                                                 {saveDescuentosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveDescuentosMutation.isPending ? 'Guardando...' : 'Guardar Descuentos'}
+                                                {saveDescuentosMutation.isPending ? 'Guardando...' : (isSectionDirty('descuentos') ? 'Guardar Descuentos (Pendiente)' : 'Guardar Descuentos')}
                                             </button>
                                         </div>
                                     </div>
@@ -3227,18 +3652,23 @@ const GasCloseout = () => {
 
                 {showAdelantosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowAdelantosModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('adelantos')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl min-h-[40vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Banknote size={16} className="text-indigo-600" />
                                     Adelantos del Turno
+                                    {isSectionDirty('adelantos') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowAdelantosModal(false)}
+                                    onClick={() => handleSafeCloseModal('adelantos')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -3326,19 +3756,16 @@ const GasCloseout = () => {
                                                 Total Adelantos: <strong className="text-red-600 font-mono text-sm"><Money value={adelantosTotal} /></strong>
                                             </span>
                                             <button
-                                                onClick={() => {
-                                                    const sinDesp = adelantos.filter(a => !a.despachador_id);
-                                                    if (sinDesp.length > 0) {
-                                                        toast.error('Todos los adelantos deben tener un despachador asignado');
-                                                        return;
-                                                    }
-                                                    saveAdelantosMutation.mutate(adelantos);
-                                                }}
+                                                onClick={() => handleSaveSection('adelantos')}
                                                 disabled={saveAdelantosMutation.isPending}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                    isSectionDirty('adelantos')
+                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                }`}
                                             >
                                                 {saveAdelantosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveAdelantosMutation.isPending ? 'Guardando...' : 'Guardar Adelantos'}
+                                                {saveAdelantosMutation.isPending ? 'Guardando...' : (isSectionDirty('adelantos') ? 'Guardar Adelantos (Pendiente)' : 'Guardar Adelantos')}
                                             </button>
                                         </div>
                                     </div>
@@ -3350,18 +3777,23 @@ const GasCloseout = () => {
 
                 {showTarjetasModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowTarjetasModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('tarjetas')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <CreditCard size={16} className="text-indigo-600" />
                                     Tarjetas del Turno
+                                    {isSectionDirty('tarjetas') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowTarjetasModal(false)}
+                                    onClick={() => handleSafeCloseModal('tarjetas')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -3500,19 +3932,16 @@ const GasCloseout = () => {
                                                                 Total Tarjetas: <strong className="text-red-600 font-mono text-sm"><Money value={tarjetasTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => {
-                                                                    const sinDesp = tarjetas.filter(t => !t.despachador_id);
-                                                                    if (sinDesp.length > 0) {
-                                                                        toast.error('Todas las tarjetas deben tener un despachador asignado');
-                                                                        return;
-                                                                    }
-                                                                    saveTarjetasMutation.mutate(tarjetas);
-                                                                }}
+                                                                onClick={() => handleSaveSection('tarjetas')}
                                                                 disabled={saveTarjetasMutation.isPending}
-                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                                    isSectionDirty('tarjetas')
+                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                                }`}
                                                             >
                                                                 {saveTarjetasMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveTarjetasMutation.isPending ? 'Guardando...' : 'Guardar Tarjetas'}
+                                                                {saveTarjetasMutation.isPending ? 'Guardando...' : (isSectionDirty('tarjetas') ? 'Guardar Tarjetas (Pendiente)' : 'Guardar Tarjetas')}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -3565,6 +3994,20 @@ const GasCloseout = () => {
                                     Lecturas de Lubricantes
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
+                                    )}
+                                    {estado !== 'cerrado' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditAnterior(prev => !prev)}
+                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                                                editAnterior
+                                                ? 'text-amber-700 bg-amber-100 border-amber-300'
+                                                : 'text-slate-500 bg-slate-50 border-slate-200'
+                                            }`}
+                                        >
+                                            <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
+                                            {editAnterior ? 'Lect. inicial editable' : 'Editar lect. inicial'}
+                                        </button>
                                     )}
                                 </h3>
                                 <div className="flex items-center gap-1">
@@ -3825,18 +4268,23 @@ const GasCloseout = () => {
 
                 {showCreditosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowCreditosModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('creditos')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <CreditCard size={16} className="text-indigo-600" />
                                     Créditos del Turno
+                                    {isSectionDirty('creditos') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowCreditosModal(false)}
+                                    onClick={() => handleSafeCloseModal('creditos')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -4028,19 +4476,16 @@ const GasCloseout = () => {
                                                                 Total Créditos: <strong className="text-red-600 font-mono text-sm"><Money value={creditosTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => {
-                                                                    const sinDesp = creditos.filter(c => !c.despachador_id);
-                                                                    if (sinDesp.length > 0) {
-                                                                        toast.error('Todos los créditos deben tener un despachador asignado');
-                                                                        return;
-                                                                    }
-                                                                    saveCreditosMutation.mutate(creditos);
-                                                                }}
+                                                                onClick={() => handleSaveSection('creditos')}
                                                                 disabled={saveCreditosMutation.isPending}
-                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                                    isSectionDirty('creditos')
+                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                                }`}
                                                             >
                                                                 {saveCreditosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveCreditosMutation.isPending ? 'Guardando...' : 'Guardar Créditos'}
+                                                                {saveCreditosMutation.isPending ? 'Guardando...' : (isSectionDirty('creditos') ? 'Guardar Créditos (Pendiente)' : 'Guardar Créditos')}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -4056,18 +4501,23 @@ const GasCloseout = () => {
 
                 {showValesModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowValesModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('vales')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Gift size={16} className="text-indigo-600" />
                                     Vales del Turno
+                                    {isSectionDirty('vales') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowValesModal(false)}
+                                    onClick={() => handleSafeCloseModal('vales')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -4259,19 +4709,16 @@ const GasCloseout = () => {
                                                                 Total Vales: <strong className="text-red-600 font-mono text-sm"><Money value={valesTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => {
-                                                                    const sinDesp = vales.filter(v => !v.despachador_id);
-                                                                    if (sinDesp.length > 0) {
-                                                                        toast.error('Todos los vales deben tener un despachador asignado');
-                                                                        return;
-                                                                    }
-                                                                    saveValesMutation.mutate(vales);
-                                                                }}
+                                                                onClick={() => handleSaveSection('vales')}
                                                                 disabled={saveValesMutation.isPending}
-                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                                    isSectionDirty('vales')
+                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                                }`}
                                                             >
                                                                 {saveValesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveValesMutation.isPending ? 'Guardando...' : 'Guardar Vales'}
+                                                                {saveValesMutation.isPending ? 'Guardando...' : (isSectionDirty('vales') ? 'Guardar Vales (Pendiente)' : 'Guardar Vales')}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -4526,18 +4973,23 @@ const GasCloseout = () => {
 
                 {showAnticiposModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowAnticiposModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('anticipos')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Truck size={16} className="text-indigo-600" />
                                     Anticipos Despachados del Turno
+                                    {isSectionDirty('anticipos') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowAnticiposModal(false)}
+                                    onClick={() => handleSafeCloseModal('anticipos')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -4743,19 +5195,16 @@ const GasCloseout = () => {
                                                                 Total Anticipos: <strong className="text-red-600 font-mono text-sm"><Money value={anticiposDespTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => {
-                                                                    const sinDesp = anticiposDesp.filter(a => !a.despachador_id);
-                                                                    if (sinDesp.length > 0) {
-                                                                        toast.error('Todos los anticipos deben tener un despachador asignado');
-                                                                        return;
-                                                                    }
-                                                                    saveAnticiposDespMutation.mutate(anticiposDesp);
-                                                                }}
+                                                                onClick={() => handleSaveSection('anticipos')}
                                                                 disabled={saveAnticiposDespMutation.isPending}
-                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                                    isSectionDirty('anticipos')
+                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                                }`}
                                                             >
                                                                 {saveAnticiposDespMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveAnticiposDespMutation.isPending ? 'Guardando...' : 'Guardar Anticipos'}
+                                                                {saveAnticiposDespMutation.isPending ? 'Guardando...' : (isSectionDirty('anticipos') ? 'Guardar Anticipos (Pendiente)' : 'Guardar Anticipos')}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -4770,18 +5219,23 @@ const GasCloseout = () => {
                 )}
                 {showTrupputModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowTrupputModal(false)} />
+                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('trupput')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                     <Fuel size={16} className="text-indigo-600" />
                                     Despachos Trupput del Turno
+                                    {isSectionDirty('trupput') && estado !== 'cerrado' && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                            ● Cambios sin guardar
+                                        </span>
+                                    )}
                                     {estado === 'cerrado' && (
                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
                                     )}
                                 </h3>
                                 <button
-                                    onClick={() => setShowTrupputModal(false)}
+                                    onClick={() => handleSafeCloseModal('trupput')}
                                     className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                                 >
                                     <X size={16} className="text-slate-400" />
@@ -4976,19 +5430,16 @@ const GasCloseout = () => {
                                                                 Total Trupput: <strong className="text-emerald-600 font-mono text-sm"><Money value={trupputDespTotal} /></strong>
                                                             </span>
                                                             <button
-                                                                onClick={() => {
-                                                                    const sinDesp = trupputDesp.filter(t => !t.despachador_id);
-                                                                    if (sinDesp.length > 0) {
-                                                                        toast.error('Todos los despachos deben tener un despachador asignado');
-                                                                        return;
-                                                                    }
-                                                                    saveTrupputDespMutation.mutate(trupputDesp);
-                                                                }}
+                                                                onClick={() => handleSaveSection('trupput')}
                                                                 disabled={saveTrupputDespMutation.isPending}
-                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50"
+                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
+                                                                    isSectionDirty('trupput')
+                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
+                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
+                                                                }`}
                                                             >
                                                                 {saveTrupputDespMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveTrupputDespMutation.isPending ? 'Guardando...' : 'Guardar Trupput'}
+                                                                {saveTrupputDespMutation.isPending ? 'Guardando...' : (isSectionDirty('trupput') ? 'Guardar Trupput (Pendiente)' : 'Guardar Trupput')}
                                                             </button>
                                                         </div>
                                                     </div>
