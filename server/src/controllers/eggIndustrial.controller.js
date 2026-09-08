@@ -2,6 +2,33 @@ const pool = require('../config/db');
 const { broadcastToCompany } = require('../services/websocket.service');
 const notificationService = require('../services/notification.service');
 
+// Helper oficial para cálculo de código de lote en Calendario Juliano: LOTE-[Año 2d][Día Juliano 3d]-[Corrida 2d] (ej. LOTE-26252-01)
+const computeJulianLotCode = (productionDate, runNumber = 1) => {
+    let d;
+    if (!productionDate) {
+        d = new Date();
+    } else if (typeof productionDate === 'string') {
+        const parts = productionDate.split('T')[0].split('-');
+        if (parts.length === 3) {
+            d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        } else {
+            d = new Date(productionDate);
+        }
+    } else {
+        d = new Date(productionDate);
+    }
+    if (isNaN(d.getTime())) d = new Date();
+
+    const yearFull = d.getFullYear();
+    const year2Digit = String(yearFull).slice(-2);
+    const startOfYear = new Date(yearFull, 0, 1);
+    const diffMs = d.getTime() - startOfYear.getTime();
+    const dayOfYear = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    const dayOfYearStr = String(dayOfYear).padStart(3, '0');
+    const runStr = String(runNumber || 1).padStart(2, '0');
+    return `LOTE-${year2Digit}${dayOfYearStr}-${runStr}`;
+};
+
 // 1. RECEPCIÓN DE MATERIA PRIMA
 const getRawMaterials = async (req, res) => {
     try {
@@ -1396,16 +1423,15 @@ const createScheduledProduction = async (req, res) => {
         const company_id = req.company_id;
         const branch_id = req.body.branch_id || null;
 
-        // Generar lote correlativo automático si no viene
+        // Generar lote correlativo automático en formato Juliano si no viene
         let finalLotCode = lot_code;
         if (!finalLotCode || finalLotCode.trim() === '') {
-            const dateStr = (production_date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
             const [countRows] = await connection.query(
                 'SELECT COUNT(*) as cnt FROM egg_scheduled_productions WHERE company_id = ? AND production_date = ?',
                 [company_id, production_date]
             );
-            const nextNum = String((countRows[0]?.cnt || 0) + 1).padStart(2, '0');
-            finalLotCode = `LOTE-${dateStr}-${nextNum}`;
+            const nextNum = (countRows[0]?.cnt || 0) + 1;
+            finalLotCode = computeJulianLotCode(production_date, nextNum);
         }
 
         const [result] = await connection.query(
@@ -1940,7 +1966,7 @@ const getProductionSuggestions = async (req, res) => {
                         production_date: recDateStr,
                         start_time: '06:00:00',
                         end_time: '14:30:00',
-                        lot_code: `LOTE-${recDateStr.replace(/-/g, '')}-01`,
+                        lot_code: computeJulianLotCode(recDateStr, 1),
                         product_profile: 'Huevo Formulado por Separación',
                         presentation: 'cubeta 30LB',
                         target_quantity_lbs: Math.round(formulatedYieldLbs),
@@ -1997,7 +2023,7 @@ const getProductionSuggestions = async (req, res) => {
                 production_date: wedStr,
                 start_time: '06:00:00',
                 end_time: '13:00:00',
-                lot_code: `LOTE-${wedStr.replace(/-/g, '')}-01`,
+                lot_code: computeJulianLotCode(wedStr, 1),
                 product_profile: 'Huevo Entero Pasteurizado',
                 presentation: 'cubeta 30LB',
                 target_quantity_lbs: 12000,
@@ -2047,7 +2073,7 @@ const getProductionSuggestions = async (req, res) => {
                     production_date: orderDateStr,
                     start_time: '05:30:00',
                     end_time: '12:00:00',
-                    lot_code: `LOTE-${orderDateStr.replace(/-/g, '')}-ORD01`,
+                    lot_code: computeJulianLotCode(orderDateStr, 1),
                     product_profile: firstOrder.product_type,
                     presentation: firstOrder.presentation || 'cubeta 30LB',
                     target_quantity_lbs: targetLbs,
@@ -2083,6 +2109,563 @@ const getProductionSuggestions = async (req, res) => {
         });
     } catch (error) {
         console.error('Error al generar sugerencias de producción:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.8.1 Sugerencia Mensual Completa de Producción por IA (Demanda + Histórico + Ventas Promedio + Balance Coproductos)
+const getMonthlyProductionSuggestions = async (req, res) => {
+    try {
+        const company_id = req.company_id;
+        const now = new Date();
+        const targetYear = parseInt(req.query.year) || now.getFullYear();
+        const targetMonth = parseInt(req.query.month) || (now.getMonth() + 1); // 1-12
+
+        // 1. Obtener pedidos de clientes
+        const [orders] = await pool.query(
+            `SELECT * FROM egg_customer_orders
+             WHERE company_id = ? 
+               AND ((MONTH(required_delivery_date) = ? AND YEAR(required_delivery_date) = ?) OR status = 'pendiente')
+             ORDER BY required_delivery_date ASC`,
+            [company_id, targetMonth, targetYear]
+        );
+
+        // 2. Acuerdos comerciales mensuales
+        const [agreements] = await pool.query(
+            `SELECT * FROM egg_costing_customer_agreements 
+             WHERE company_id = ? AND status = 'activo'`,
+            [company_id]
+        );
+
+        // 3. Ventas de ovoproductos de los últimos 6 meses (para calcular promedios reales)
+        const [salesRows] = await pool.query(
+            `SELECT p.nombre as product_name, SUM(si.cantidad) as total_lbs, COUNT(DISTINCT sh.id) as trans_count,
+                    COUNT(DISTINCT DATE_FORMAT(sh.fecha_emision, '%Y-%m')) as months_count
+             FROM sales_items si
+             JOIN sales_headers sh ON si.sale_id = sh.id
+             JOIN products p ON si.product_id = p.id
+             WHERE sh.company_id = ? AND sh.estado != 'ANULADO'
+               AND sh.fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+               AND (p.nombre LIKE '%huevo%' OR p.nombre LIKE '%clara%' OR p.nombre LIKE '%yema%')
+             GROUP BY p.nombre`,
+            [company_id]
+        );
+
+        // 4. Stock disponible en bodega
+        const [rmRows] = await pool.query(
+            `SELECT SUM(stock_lbs) as total_stock_lbs, SUM(total_boxes) as total_boxes
+             FROM egg_raw_materials 
+             WHERE company_id = ? AND status = 'aprobado' AND stock_lbs > 0`,
+            [company_id]
+        );
+        const availableStockLbs = parseFloat(rmRows[0]?.total_stock_lbs || 0);
+        const availableStockBoxes = parseInt(rmRows[0]?.total_boxes || 0);
+
+        // 5. Producciones ya programadas en el mes
+        const [existingSchedule] = await pool.query(
+            `SELECT id, production_date, lot_code, product_profile, target_quantity_lbs, status
+             FROM egg_scheduled_productions
+             WHERE company_id = ? AND MONTH(production_date) = ? AND YEAR(production_date) = ?
+               AND status != 'cancelado'`,
+            [company_id, targetMonth, targetYear]
+        );
+        const scheduledDatesSet = new Set(
+            existingSchedule.map(p => new Date(p.production_date).toISOString().split('T')[0])
+        );
+
+        // Agregación de demanda
+        let demandClara = 0;
+        let demandYema = 0;
+        let demandEntero = 0;
+        let demandFormulado = 0;
+        let demandLeche = 0;
+
+        orders.forEach(o => {
+            const qty = parseFloat(o.quantity_lbs || 0);
+            const p = (o.product_type || '').toLowerCase();
+            if (p.includes('clara')) demandClara += qty;
+            else if (p.includes('yema')) demandYema += qty;
+            else if (p.includes('formulado') || p.includes('separaci')) demandFormulado += qty;
+            else if (p.includes('leche')) demandLeche += qty;
+            else demandEntero += qty;
+        });
+
+        agreements.forEach(a => {
+            const vol = parseFloat(a.monthly_volume_lbs || 0);
+            const p = (a.product_type || '').toLowerCase();
+            if (p.includes('clara')) demandClara += vol;
+            else if (p.includes('yema')) demandYema += vol;
+            else if (p.includes('formulado') || p.includes('separaci')) demandFormulado += vol;
+            else if (p.includes('leche')) demandLeche += vol;
+            else demandEntero += vol;
+        });
+
+        // Promedio de ventas históricas mensuales
+        let historyMonthlyAvgLbs = 0;
+        if (salesRows.length > 0) {
+            const sumLbs = salesRows.reduce((acc, r) => acc + (parseFloat(r.total_lbs) || 0), 0);
+            const maxMonths = Math.max(1, Math.max(...salesRows.map(r => r.months_count || 1)));
+            historyMonthlyAvgLbs = sumLbs / maxMonths;
+        }
+
+        // Si la demanda puntual de pedidos es modesta, complementar con el promedio de ventas para dar cobertura mensual completa
+        const baseDemandTotal = demandClara + demandYema + demandEntero + demandFormulado + demandLeche;
+        const targetMonthlyVolumeLbs = Math.max(baseDemandTotal, historyMonthlyAvgLbs > 10000 ? historyMonthlyAvgLbs : 54000);
+
+        if (demandEntero === 0 && demandClara === 0) {
+            demandEntero = targetMonthlyVolumeLbs * 0.60;
+            demandClara = targetMonthlyVolumeLbs * 0.25;
+            demandFormulado = targetMonthlyVolumeLbs * 0.15;
+        }
+
+        // Calcular días del mes y generar corridas distribuidas (Lunes, Miércoles, Viernes)
+        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+        const monthlyRuns = [];
+        let totalProjectedLbs = 0;
+        let totalBoxesNeeded = 0;
+        let totalCoproductSavingsUsd = 0;
+
+        // Distribución inteligente por semanas
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateObj = new Date(targetYear, targetMonth - 1, day);
+            const dayOfWeek = dateObj.getDay(); // 0: Dom, 1: Lun, 2: Mar, 3: Mié, 4: Jue, 5: Vie, 6: Sáb
+            const dateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+            // Programar corridas operativas en Lunes (1), Miércoles (3) y Viernes (5)
+            if (dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5) {
+                let profile = 'Huevo Entero Pasteurizado';
+                let targetLbs = 12000;
+                let targetSolids = 23.5;
+                let reason = 'Reposición de stock comercial según promedio histórico de ventas';
+                let priority = 'media';
+                let mixFormula = {};
+
+                if (dayOfWeek === 1) {
+                    // Lunes: Corrida de Separación / Clara de alta demanda
+                    profile = 'Clara de Huevo Pasteurizada';
+                    targetLbs = Math.min(8000, Math.max(5000, Math.round(demandClara / 4)));
+                    targetSolids = 11.5;
+                    const rawNeeded = Math.round(targetLbs / 0.5395);
+                    const coprodYolk = Math.round(rawNeeded * 0.308);
+                    const boxes = Math.round(rawNeeded / 36.1);
+                    reason = `Cubrir demanda semanal de Clara. Genera ${coprodYolk.toLocaleString()} Lbs de yema coproducto para formular el miércoles.`;
+                    priority = 'alta';
+                    mixFormula = {
+                        raw_egg_boxes: boxes,
+                        raw_liquid_lbs: rawNeeded,
+                        clara_produced_lbs: targetLbs,
+                        yema_coproduct_lbs: coprodYolk,
+                        water_h2o_lbs: 0,
+                        notes: 'Separación centrífuga de alta pureza. Enfriar y almacenar yema en tanque HOLDING-2.'
+                    };
+                } else if (dayOfWeek === 3) {
+                    // Miércoles: Corrida de Huevo Formulado (Yema coproducto + H2O Purificada) -> Arbitraje
+                    profile = 'Huevo Formulado por Separación';
+                    const surplusYolk = Math.round(Math.min(8000, Math.max(5000, Math.round(demandClara / 4))) * (0.308 / 0.5395));
+                    const waterAdded = Math.round(surplusYolk * 1.22);
+                    targetLbs = surplusYolk + waterAdded;
+                    targetSolids = 22.5;
+                    const citricAcid = (targetLbs * 0.0015).toFixed(2);
+                    const boxesSaved = Math.round(targetLbs / 36.1);
+                    const moneySaved = boxesSaved * 38.00;
+                    totalCoproductSavingsUsd += moneySaved;
+                    reason = `Arbitraje Coproducto: Reincorporar ${surplusYolk.toLocaleString()} Lbs de yema del lunes con ${waterAdded.toLocaleString()} Lbs H2O y ácido cítrico. Ahorro de $${moneySaved.toLocaleString()}`;
+                    priority = 'alta';
+                    mixFormula = {
+                        raw_egg_boxes: 0,
+                        raw_liquid_lbs: surplusYolk,
+                        yema_reutilized_lbs: surplusYolk,
+                        water_h2o_lbs: waterAdded,
+                        water_bottles: Math.ceil(waterAdded / 41.8),
+                        citric_acid_lbs: citricAcid,
+                        notes: 'Balance yema + H2O a 22.5% Brix. Validación LAB-004 obligatoria.'
+                    };
+                } else {
+                    // Viernes: Huevo Entero Pasteurizado Puro
+                    profile = 'Huevo Entero Pasteurizado';
+                    targetLbs = 12000;
+                    targetSolids = 23.5;
+                    const boxes = Math.round(targetLbs / 36.1);
+                    reason = 'Corrida estándar de huevo entero para entrega de fin de semana e inventario de rotación.';
+                    priority = 'media';
+                    mixFormula = {
+                        raw_egg_boxes: boxes,
+                        raw_liquid_lbs: targetLbs,
+                        clara_separated_pct: 0,
+                        water_h2o_lbs: 0,
+                        notes: 'Pasteurización directa 64.5°C por 210s CCP-1.'
+                    };
+                }
+
+                const julianLot = computeJulianLotCode(dateStr, 1);
+                const boxesRun = mixFormula.raw_egg_boxes || Math.round(targetLbs / 36.1);
+
+                totalProjectedLbs += targetLbs;
+                totalBoxesNeeded += boxesRun;
+
+                monthlyRuns.push({
+                    production_date: dateStr,
+                    start_time: '06:00:00',
+                    end_time: '14:00:00',
+                    lot_code: julianLot,
+                    product_profile: profile,
+                    presentation: 'cubeta 30LB',
+                    target_quantity_lbs: targetLbs,
+                    target_solids_pct: targetSolids,
+                    priority,
+                    suggestion_source: 'ai_plan_mensual',
+                    reason,
+                    mix_formula_json: mixFormula,
+                    already_scheduled: scheduledDatesSet.has(dateStr),
+                    tasks: [
+                        { factory_role: 'Sanitización CIP', task_description: 'CIP térmico/químico a 78°C antes de encendido' },
+                        { factory_role: 'Quebrado y Carga', task_description: `Alinear y quebrar ${boxesRun > 0 ? boxesRun + ' cajas de huevo' : 'cargar yema de tanque'}` },
+                        { factory_role: 'Pasteurización HACCP', task_description: 'Monitorear CCP-1 a 64.5°C y flujo 12.5 GPM' },
+                        { factory_role: 'Control de Calidad LAB-004', task_description: `Verificar Brix ${targetSolids}% y ausencia coliformes` },
+                        { factory_role: 'Empaque y Cuarto Frío', task_description: `Envasar ${Math.ceil(targetLbs / 30)} cubetas de 30 Lb sanitizadas` }
+                    ]
+                });
+            }
+        }
+
+        res.json({
+            month: targetMonth,
+            year: targetYear,
+            kpis: {
+                total_projected_lbs: totalProjectedLbs,
+                total_boxes_needed: totalBoxesNeeded,
+                available_stock_lbs: availableStockLbs,
+                available_stock_boxes: availableStockBoxes,
+                stock_balance_boxes: availableStockBoxes - totalBoxesNeeded,
+                total_coproduct_savings_usd: Math.round(totalCoproductSavingsUsd),
+                batches_count: monthlyRuns.length,
+                pending_orders_count: orders.length,
+                active_agreements_count: agreements.length,
+                sales_history_monthly_avg_lbs: Math.round(historyMonthlyAvgLbs),
+                already_scheduled_count: existingSchedule.length
+            },
+            monthly_plan: monthlyRuns
+        });
+    } catch (error) {
+        console.error('Error al generar sugerencia mensual de producción:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.8.2 Aplicar Plan Mensual Completo en Lote al Calendario
+const applyMonthlyPlan = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const company_id = req.company_id;
+        const { productions, overwrite_existing } = req.body;
+
+        if (!Array.isArray(productions) || productions.length === 0) {
+            connection.release();
+            return res.status(400).json({ message: 'No se enviaron producciones para programar.' });
+        }
+
+        let insertedCount = 0;
+
+        for (const prod of productions) {
+            const {
+                production_date,
+                start_time,
+                end_time,
+                lot_code,
+                product_profile,
+                presentation,
+                target_quantity_lbs,
+                target_solids_pct,
+                priority,
+                mix_formula_json,
+                reason,
+                tasks
+            } = prod;
+
+            // Verificar si ya existe una producción en esa fecha
+            const [existRows] = await connection.query(
+                'SELECT id FROM egg_scheduled_productions WHERE company_id = ? AND production_date = ? AND status != "cancelado"',
+                [company_id, production_date]
+            );
+
+            if (existRows.length > 0 && !overwrite_existing) {
+                // Saltar para no duplicar si el usuario no pidió sobreescribir
+                continue;
+            }
+
+            const finalLotCode = lot_code || computeJulianLotCode(production_date, 1);
+
+            const [result] = await connection.query(
+                `INSERT INTO egg_scheduled_productions (
+                    company_id, production_date, start_time, end_time,
+                    lot_code, product_profile, presentation, target_quantity_lbs,
+                    target_solids_pct, status, priority, mix_formula_json,
+                    suggestion_source, notes, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'programado', ?, ?, 'ai_plan_mensual', ?, ?)`,
+                [
+                    company_id,
+                    production_date,
+                    start_time || '06:00:00',
+                    end_time || '14:00:00',
+                    finalLotCode,
+                    product_profile || 'Huevo Entero Pasteurizado',
+                    presentation || 'cubeta 30LB',
+                    parseFloat(target_quantity_lbs) || 12000,
+                    parseFloat(target_solids_pct) || 23.5,
+                    priority || 'media',
+                    JSON.stringify(mix_formula_json || {}),
+                    reason || 'Plan Mensual Sugerido por IA',
+                    req.user?.nombre || req.user?.username || 'IA Sugerencia Mensual'
+                ]
+            );
+
+            const scheduledId = result.insertId;
+
+            // Insertar tareas operativas
+            const taskList = Array.isArray(tasks) && tasks.length > 0 ? tasks : [
+                { factory_role: 'Sanitización CIP', task_description: 'CIP térmico/químico a 78°C antes de iniciar' },
+                { factory_role: 'Quebrado y Carga', task_description: 'Carga de tolva y quebrado' },
+                { factory_role: 'Pasteurización HACCP', task_description: 'Pasteurizar a 64.5°C por 210s CCP-1' },
+                { factory_role: 'Control de Calidad LAB-004', task_description: 'Control brix y análisis microbiológico' },
+                { factory_role: 'Empaque y Cuarto Frío', task_description: 'Envasado con liner alimentario y etiquetas julianas' }
+            ];
+
+            for (const t of taskList) {
+                await connection.query(
+                    `INSERT INTO egg_scheduled_tasks (
+                        scheduled_production_id, factory_role, user_name, task_description, checklist_status
+                    ) VALUES (?, ?, ?, ?, 'pendiente')`,
+                    [scheduledId, t.factory_role || 'General', 'Operario de Planta', t.task_description || '']
+                );
+            }
+
+            insertedCount++;
+        }
+
+        await connection.commit();
+        connection.release();
+
+        res.json({
+            success: true,
+            inserted_count: insertedCount,
+            message: `Se programaron exitosamente ${insertedCount} lotes con numeración juliana en el calendario.`
+        });
+    } catch (error) {
+        await connection.rollback();
+        connection.release();
+        console.error('Error al aplicar plan mensual:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.8.3 Planificador de Materia Prima e Insumos (MRP)
+const getRawMaterialPlanning = async (req, res) => {
+    try {
+        const company_id = req.company_id;
+        const now = new Date();
+        const targetYear = parseInt(req.query.year) || now.getFullYear();
+        const targetMonth = parseInt(req.query.month) || (now.getMonth() + 1);
+
+        // 1. Obtener todas las producciones programadas del mes
+        const [scheduledProds] = await pool.query(
+            `SELECT * FROM egg_scheduled_productions 
+             WHERE company_id = ? AND MONTH(production_date) = ? AND YEAR(production_date) = ?
+               AND status != 'cancelado'
+             ORDER BY production_date ASC`,
+            [company_id, targetMonth, targetYear]
+        );
+
+        // 2. Obtener inventario actual de materia prima aprobado
+        const [rmRows] = await pool.query(
+            `SELECT SUM(stock_lbs) as total_stock_lbs, SUM(total_boxes) as total_boxes
+             FROM egg_raw_materials 
+             WHERE company_id = ? AND status = 'aprobado' AND stock_lbs > 0`,
+            [company_id]
+        );
+        const currentStockLbs = parseFloat(rmRows[0]?.total_stock_lbs || 0);
+        const currentStockBoxes = parseInt(rmRows[0]?.total_boxes || 0);
+
+        // 3. Obtener lista de proveedores principales para recomendaciones
+        const [providers] = await pool.query(
+            `SELECT id, nombre, contacto, telefono FROM providers 
+             WHERE company_id = ? AND (nombre LIKE '%avicol%' OR nombre LIKE '%granja%' OR nombre LIKE '%huevo%' OR nombre LIKE '%agro%')
+             LIMIT 5`,
+            [company_id]
+        );
+
+        // 4. Calcular consumos consolidados
+        let totalLiquidLbsNeeded = 0;
+        let totalRawEggBoxesNeeded = 0;
+        let totalWaterH2oLbs = 0;
+        let totalCitricAcidLbs = 0;
+        let totalSugarLbs = 0;
+        let totalSaltLbs = 0;
+        let totalMilkLbs = 0;
+        let totalBuckets30Lb = 0;
+
+        scheduledProds.forEach(p => {
+            const qty = parseFloat(p.target_quantity_lbs || 0);
+            let formula = {};
+            try {
+                formula = typeof p.mix_formula_json === 'string' ? JSON.parse(p.mix_formula_json) : (p.mix_formula_json || {});
+            } catch (e) {
+                formula = {};
+            }
+
+            const pBoxes = parseInt(formula.raw_egg_boxes) || Math.round(qty / 36.1);
+            const pLiquid = parseFloat(formula.raw_liquid_lbs) || qty;
+            const pWater = parseFloat(formula.water_h2o_lbs || 0);
+            const pCitric = parseFloat(formula.citric_acid_lbs || 0);
+            const pSugar = parseFloat(formula.sugar_lbs || 0);
+            const pSalt = parseFloat(formula.salt_lbs || 0);
+            const pMilk = parseFloat(formula.milk_powder_lbs || 0);
+
+            totalLiquidLbsNeeded += pLiquid;
+            totalRawEggBoxesNeeded += pBoxes;
+            totalWaterH2oLbs += pWater;
+            totalCitricAcidLbs += pCitric;
+            totalSugarLbs += pSugar;
+            totalSaltLbs += pSalt;
+            totalMilkLbs += pMilk;
+            totalBuckets30Lb += Math.ceil(qty / 30);
+        });
+
+        // Si no hay producciones programadas aún, proyectar una base estándar mensual para que el planificador sea útil de inmediato
+        const isProjectedSimulation = scheduledProds.length === 0;
+        if (isProjectedSimulation) {
+            totalLiquidLbsNeeded = 54000;
+            totalRawEggBoxesNeeded = Math.round(54000 / 36.1); // ~1496 cajas
+            totalWaterH2oLbs = 4200;
+            totalCitricAcidLbs = 8.1;
+            totalSugarLbs = 480;
+            totalSaltLbs = 600;
+            totalBuckets30Lb = Math.ceil(54000 / 30); // ~1800 cubetas
+        }
+
+        const netBalanceBoxes = currentStockBoxes - totalRawEggBoxesNeeded;
+        const netBalanceLbs = currentStockLbs - totalLiquidLbsNeeded;
+        const boxesToPurchase = Math.max(0, -netBalanceBoxes);
+
+        // Cronograma semanal de camiones sugerido (para evitar saturar cámaras de frío)
+        // Capacidad típica de camión refrigerado: 350 a 500 cajas
+        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+        const trucksSchedule = [];
+        const truckBatches = 4; // 1 por semana
+        const boxesPerTruck = Math.ceil((boxesToPurchase > 0 ? boxesToPurchase : totalRawEggBoxesNeeded) / truckBatches);
+
+        const supplierName = providers[0]?.nombre || 'Avícola La Granja / Agropecuaria Central';
+
+        for (let w = 1; w <= truckBatches; w++) {
+            const dayNum = Math.min(daysInMonth, (w - 1) * 7 + 3); // Martes o Miércoles de cada semana
+            const deliveryDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+            trucksSchedule.push({
+                delivery_number: `CAMION-${targetYear}${String(targetMonth).padStart(2, '0')}-0${w}`,
+                week_label: `Semana ${w}`,
+                suggested_delivery_date: deliveryDate,
+                boxes_count: boxesPerTruck,
+                weight_lbs: Math.round(boxesPerTruck * 36.1),
+                suggested_provider: supplierName,
+                egg_type: 'Huevo Blanco Cáscara Grado A',
+                cold_chain_requirements: '4.0°C a 8.0°C en termógrafo de furgón',
+                haccp_status: 'Muestreo LAB-004 de recepción obligatorio'
+            });
+        }
+
+        res.json({
+            month: targetMonth,
+            year: targetYear,
+            is_simulation: isProjectedSimulation,
+            scheduled_productions_count: scheduledProds.length,
+            raw_egg_balance: {
+                total_liquid_lbs_needed: Math.round(totalLiquidLbsNeeded),
+                total_boxes_needed: totalRawEggBoxesNeeded,
+                current_stock_lbs: currentStockLbs,
+                current_stock_boxes: currentStockBoxes,
+                net_balance_boxes: netBalanceBoxes,
+                net_balance_lbs: Math.round(netBalanceLbs),
+                status: netBalanceBoxes >= 0 ? 'suficiente' : 'deficit_critico',
+                boxes_to_purchase: boxesToPurchase,
+                estimated_purchase_cost_usd: boxesToPurchase * 38.00 // ~$38/caja costo estándar
+            },
+            ingredients_balance: {
+                purified_water: {
+                    lbs: Math.round(totalWaterH2oLbs),
+                    bottles_5gal: Math.ceil(totalWaterH2oLbs / 41.8),
+                    description: 'Agua purificada desmineralizada para balance de yema coproducto'
+                },
+                citric_acid: {
+                    lbs: parseFloat(totalCitricAcidLbs.toFixed(2)),
+                    kg: parseFloat((totalCitricAcidLbs * 0.453592).toFixed(2)),
+                    description: 'Ácido cítrico anhidro grado alimentario para estabilización de pH'
+                },
+                sugar: {
+                    lbs: Math.round(totalSugarLbs),
+                    sacks_50kg: Math.ceil(totalSugarLbs / 110.23),
+                    description: 'Azúcar estándar para Yema Azucarada (4% - 10%)'
+                },
+                salt: {
+                    lbs: Math.round(totalSaltLbs),
+                    sacks_50kg: Math.ceil(totalSaltLbs / 110.23),
+                    description: 'Sal fina desyodada para Yema Salada (10%)'
+                },
+                milk_powder: {
+                    lbs: Math.round(totalMilkLbs),
+                    sacks_25kg: Math.ceil(totalMilkLbs / 55.11),
+                    description: 'Leche entera en polvo para fórmulas institucionales'
+                },
+                cip_chemicals: {
+                    peracetic_acid_liters: scheduledProds.length * 1.5 || 18,
+                    caustic_soda_liters: scheduledProds.length * 2.0 || 24,
+                    description: 'Químicos sanitizantes para lavado CIP diario del pasteurizador'
+                }
+            },
+            packaging_balance: {
+                buckets_30lb: totalBuckets30Lb,
+                lids: totalBuckets30Lb,
+                food_grade_liners: Math.ceil(totalBuckets30Lb * 1.02), // 2% margen
+                julian_traceability_labels: Math.ceil(totalBuckets30Lb * 1.05) // 5% margen
+            },
+            trucks_schedule: trucksSchedule
+        });
+    } catch (error) {
+        console.error('Error en planificador de materia prima:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 19.8.4 Convertir Lote a Formato Juliano
+const convertLotToJulian = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [rows] = await pool.query(
+            'SELECT id, production_date, lot_code FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Producción no encontrada.' });
+        }
+
+        const prod = rows[0];
+        const newJulianLot = computeJulianLotCode(prod.production_date, 1);
+
+        await pool.query(
+            'UPDATE egg_scheduled_productions SET lot_code = ? WHERE id = ? AND company_id = ?',
+            [newJulianLot, id, company_id]
+        );
+
+        res.json({
+            success: true,
+            id: prod.id,
+            previous_lot: prod.lot_code,
+            new_lot_code: newJulianLot,
+            message: `Lote actualizado a formato juliano: ${newJulianLot}`
+        });
+    } catch (error) {
+        console.error('Error al convertir lote a juliano:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -2253,6 +2836,11 @@ module.exports = {
     startBatchFromSchedule,
     toggleTaskStatus,
     getProductionSuggestions,
+    getMonthlyProductionSuggestions,
+    applyMonthlyPlan,
+    getRawMaterialPlanning,
+    convertLotToJulian,
+    computeJulianLotCode,
     getEggCustomerOrders,
     saveEggCustomerOrder,
     deleteEggCustomerOrder,

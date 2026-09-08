@@ -56,6 +56,9 @@ export default function CustomerAgreements() {
         target_margin_pct: '22',
         freight_cost_per_lb: '0.0000',
         payment_terms_days: '30',
+        valid_from: '',
+        valid_to: '',
+        change_reason: '',
         notes: '',
         status: 'activo'
     };
@@ -182,6 +185,9 @@ export default function CustomerAgreements() {
             target_margin_pct: agreement.target_margin_pct ? String(agreement.target_margin_pct) : '20',
             freight_cost_per_lb: agreement.freight_cost_per_lb ? String(agreement.freight_cost_per_lb) : '0.0000',
             payment_terms_days: agreement.payment_terms_days ? String(agreement.payment_terms_days) : '30',
+            valid_from: agreement.valid_from ? agreement.valid_from.split('T')[0] : '',
+            valid_to: agreement.valid_to ? agreement.valid_to.split('T')[0] : '',
+            change_reason: '',
             notes: agreement.notes || '',
             status: agreement.status || 'activo'
         });
@@ -465,6 +471,7 @@ export default function CustomerAgreements() {
                                 <th className="py-3.5 px-3 text-right">Volumen Mes</th>
                                 <th className="py-3.5 px-3 text-center">Margen Obj.</th>
                                 <th className="py-3.5 px-3 text-center">Términos</th>
+                                <th className="py-3.5 px-3 text-center">Vigencia</th>
                                 <th className="py-3.5 px-3 text-center">Estado</th>
                                 <th className="py-3.5 px-4 text-center">Acciones</th>
                             </tr>
@@ -578,6 +585,62 @@ export default function CustomerAgreements() {
                                                 <span className="text-slate-600 font-semibold text-[11px]">
                                                     {agr.payment_terms_days ? `${agr.payment_terms_days} días` : 'Contado'}
                                                 </span>
+                                            </td>
+
+                                            {/* VIGENCIA */}
+                                            <td className="py-3.5 px-3 text-center">
+                                                {(() => {
+                                                    const nowStr = new Date().toISOString().split('T')[0];
+                                                    const validFrom = agr.valid_from ? agr.valid_from.split('T')[0] : null;
+                                                    const validTo = agr.valid_to ? agr.valid_to.split('T')[0] : null;
+
+                                                    if (validFrom && validFrom > nowStr) {
+                                                        return (
+                                                            <div>
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                                    Programado
+                                                                </span>
+                                                                <span className="block text-[9px] text-slate-400 font-mono mt-0.5">Desde {new Date(validFrom + 'T00:00:00').toLocaleDateString()}</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (validTo && validTo < nowStr) {
+                                                        return (
+                                                            <div>
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                                                    Vencido
+                                                                </span>
+                                                                <span className="block text-[9px] text-rose-400 font-mono mt-0.5">Hasta {new Date(validTo + 'T00:00:00').toLocaleDateString()}</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (validTo) {
+                                                        const diffDays = Math.ceil((new Date(validTo) - new Date()) / (1000 * 60 * 60 * 24));
+                                                        if (diffDays <= 30 && diffDays >= 0) {
+                                                            return (
+                                                                <div>
+                                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                        Vence en {diffDays}d
+                                                                    </span>
+                                                                    <span className="block text-[9px] text-amber-600 font-mono mt-0.5">{new Date(validTo + 'T00:00:00').toLocaleDateString()}</span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div>
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                    Vigente
+                                                                </span>
+                                                                <span className="block text-[9px] text-slate-400 font-mono mt-0.5">{new Date(validTo + 'T00:00:00').toLocaleDateString()}</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                                            Permanente
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
 
                                             {/* ESTADO */}
@@ -866,6 +929,49 @@ export default function CustomerAgreements() {
                                         className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-[13px] font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
                                     />
                                 </div>
+                            </div>
+
+                            {/* RANGO DE VIGENCIA DE LA TARIFA */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                        Vigente Desde (Inicio)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={formData.valid_from}
+                                        onChange={(e) => setFormData({ ...formData, valid_from: e.target.value })}
+                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                        Vigente Hasta (Vencimiento)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={formData.valid_to}
+                                        onChange={(e) => setFormData({ ...formData, valid_to: e.target.value })}
+                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800"
+                                    />
+                                </div>
+                                <span className="sm:col-span-2 text-[10px] text-slate-400 font-medium">
+                                    Opcional: Si se deja en blanco, la tarifa se considera permanente.
+                                </span>
+                            </div>
+
+                            {/* MOTIVO DEL CAMBIO / AJUSTE (AUDITORÍA) */}
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                    Motivo de Ajuste / Nota de Revisión
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Renegociación anual, volumen adicional pactado..."
+                                    value={formData.change_reason}
+                                    onChange={(e) => setFormData({ ...formData, change_reason: e.target.value })}
+                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
+                                />
                             </div>
 
                             {/* NOTAS Y ESTADO */}

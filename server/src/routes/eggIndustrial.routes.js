@@ -85,6 +85,8 @@ router.delete('/costeo-libra/packaging-items/:id', eggCosteoController.deletePac
 router.delete('/costeo-libra/packaging/:id', eggCosteoController.deletePackagingItem);
 
 router.get('/costeo-libra/customer-agreements', eggCosteoController.getCustomerAgreements);
+router.get('/costeo-libra/customer-agreements/history', eggCosteoController.getAgreementHistory);
+router.get('/costeo-libra/customer-agreements/:id/history', eggCosteoController.getAgreementHistory);
 router.post('/costeo-libra/customer-agreements', eggCosteoController.saveCustomerAgreement);
 router.delete('/costeo-libra/customer-agreements/:id', eggCosteoController.deleteCustomerAgreement);
 
@@ -115,6 +117,12 @@ router.delete('/calendar/:id', eggController.deleteScheduledProduction);
 router.post('/calendar/:id/start-batch', eggController.startBatchFromSchedule);
 router.patch('/calendar/tasks/:taskId/toggle', eggController.toggleTaskStatus);
 router.get('/calendar/suggestions', eggController.getProductionSuggestions);
+router.get('/calendar/monthly-suggestions', eggController.getMonthlyProductionSuggestions);
+router.post('/calendar/apply-monthly-plan', eggController.applyMonthlyPlan);
+router.post('/calendar/:id/convert-julian', eggController.convertLotToJulian);
+
+// 19.1 Planificador de Materia Prima e Insumos (MRP)
+router.get('/raw-materials/planner', eggController.getRawMaterialPlanning);
 
 // 20. Pedidos de Clientes de Ovoproductos
 router.get('/orders', eggController.getEggCustomerOrders);

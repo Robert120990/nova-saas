@@ -25,8 +25,20 @@ import {
     ShieldCheck,
     List,
     CalendarDays,
-    X
+    X,
+    Boxes,
+    Wand2,
+    CalendarCheck,
+    ArrowRightLeft,
+    CheckSquare
 } from 'lucide-react';
+import {
+    getJulianDayInfo,
+    generateJulianLotCode,
+    convertGregorianLotToJulian,
+    isJulianLotCode
+} from '../../utils/julianDate';
+import RawMaterialPlannerModal from '../../components/egg/RawMaterialPlannerModal';
 
 const PRODUCT_PROFILES = [
     { id: 'Huevo Entero Pasteurizado', name: 'Huevo Entero Pasteurizado', defaultSolids: 23.5, color: 'indigo', desc: '83% rendimiento estándar' },
@@ -92,7 +104,16 @@ const ProductionCalendar = () => {
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isSuggestionsDrawerOpen, setIsSuggestionsDrawerOpen] = useState(false);
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
+    const [isPlannerModalOpen, setIsPlannerModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Sugerencia Mensual IA & Planificador MP
+    const [suggestionsTab, setSuggestionsTab] = useState('monthly'); // 'monthly' | 'tactical'
+    const [monthlyPlanData, setMonthlyPlanData] = useState(null);
+    const [loadingMonthlyPlan, setLoadingMonthlyPlan] = useState(false);
+    const [applyingPlan, setApplyingPlan] = useState(false);
+    const [selectedPlanRuns, setSelectedPlanRuns] = useState([]);
+    const [julianFormat, setJulianFormat] = useState('standard'); // 'standard' (LOTE-YYJJJ-NN) | 'andelsa' (NN - JJJ - YY)
 
     // Drag and Drop state
     const [draggedItem, setDraggedItem] = useState(null);
@@ -193,12 +214,66 @@ const ProductionCalendar = () => {
         }
     };
 
+    const fetchMonthlyPlan = async (targetD = currentDate) => {
+        setLoadingMonthlyPlan(true);
+        try {
+            const targetYear = targetD.getFullYear();
+            const targetMonth = targetD.getMonth() + 1;
+            const res = await axios.get('/api/egg-industrial/calendar/monthly-suggestions', {
+                params: { year: targetYear, month: targetMonth }
+            });
+            setMonthlyPlanData(res.data || null);
+            // Pre-seleccionar todos los que no estén ya programados
+            const unscheduled = (res.data?.monthly_plan || []).filter(p => !p.already_scheduled);
+            setSelectedPlanRuns(unscheduled);
+        } catch (error) {
+            console.error('Error cargando plan mensual de producción:', error);
+        } finally {
+            setLoadingMonthlyPlan(false);
+        }
+    };
+
+    const handleConvertLotToJulian = async (prodId) => {
+        try {
+            const res = await axios.post(`/api/egg-industrial/calendar/${prodId}/convert-julian`);
+            toast.success(`Lote actualizado a formato juliano: ${res.data.new_lot_code}`);
+            fetchProductions();
+        } catch (error) {
+            console.error('Error convirtiendo lote a juliano:', error);
+            toast.error('Error al convertir lote a formato juliano.');
+        }
+    };
+
+    const handleApplyMonthlyPlan = async () => {
+        if (!selectedPlanRuns || selectedPlanRuns.length === 0) {
+            toast.warning('No hay producciones seleccionadas para programar.');
+            return;
+        }
+        setApplyingPlan(true);
+        try {
+            const res = await axios.post('/api/egg-industrial/calendar/apply-monthly-plan', {
+                productions: selectedPlanRuns
+            });
+            toast.success(res.data.message || 'Plan mensual aplicado exitosamente al calendario.');
+            setIsSuggestionsDrawerOpen(false);
+            fetchProductions();
+            fetchSuggestions();
+            fetchMonthlyPlan(currentDate);
+        } catch (error) {
+            console.error('Error aplicando plan mensual:', error);
+            toast.error(error.response?.data?.message || 'Error al aplicar plan mensual.');
+        } finally {
+            setApplyingPlan(false);
+        }
+    };
+
     useEffect(() => {
         fetchProductions();
         fetchFactoryUsers();
         fetchSuggestions();
         fetchOrders();
-    }, [companyId]);
+        fetchMonthlyPlan(currentDate);
+    }, [companyId, currentDate.getMonth(), currentDate.getFullYear()]);
 
     // Recalculate BOM mix formula based on product profile and target lbs
     const recalculateMixFormula = (profileName, targetLbs) => {
@@ -298,7 +373,7 @@ const ProductionCalendar = () => {
     // Open modal to create new production
     const handleOpenCreateModal = (suggestedDate = null, defaultRunData = null) => {
         const targetDate = suggestedDate || new Date().toISOString().split('T')[0];
-        const dateCode = targetDate.replace(/-/g, '');
+        const julianLot = generateJulianLotCode(targetDate, 1, julianFormat);
 
         if (defaultRunData) {
             setFormData({
@@ -306,7 +381,7 @@ const ProductionCalendar = () => {
                 production_date: defaultRunData.production_date || targetDate,
                 start_time: defaultRunData.start_time || '06:00',
                 end_time: defaultRunData.end_time || '14:00',
-                lot_code: defaultRunData.lot_code || `LOTE-${dateCode}-01`,
+                lot_code: defaultRunData.lot_code || julianLot,
                 product_profile: defaultRunData.product_profile || 'Huevo Entero Pasteurizado',
                 presentation: defaultRunData.presentation || 'cubeta 30LB',
                 target_quantity_lbs: defaultRunData.target_quantity_lbs || 12000,
@@ -331,7 +406,7 @@ const ProductionCalendar = () => {
                 production_date: targetDate,
                 start_time: '06:00',
                 end_time: '14:00',
-                lot_code: `LOTE-${dateCode}-01`,
+                lot_code: julianLot,
                 product_profile: 'Huevo Entero Pasteurizado',
                 presentation: 'cubeta 30LB',
                 target_quantity_lbs: 12000,
@@ -779,6 +854,17 @@ const ProductionCalendar = () => {
                             )}
                         </button>
 
+                        {/* Botón Planificador de Materia Prima (MRP) */}
+                        <button
+                            type="button"
+                            onClick={() => setIsPlannerModalOpen(true)}
+                            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-bold shadow-md shadow-amber-200 hover:brightness-105 active:scale-95 transition-all"
+                        >
+                            <Boxes className="w-4 h-4 text-amber-100" />
+                            <span className="hidden sm:inline">Planificador Materia Prima</span>
+                            <span className="sm:hidden">Planificador MP</span>
+                        </button>
+
                         {/* Botón Nueva Producción */}
                         <button
                             type="button"
@@ -1023,12 +1109,35 @@ const ProductionCalendar = () => {
                                                     }`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1">
-                                                        <span className="font-bold text-[11px] text-slate-900 truncate">
-                                                            {prod.lot_code}
-                                                        </span>
-                                                        {prod.priority === 'urgente' && (
-                                                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Prioridad Urgente" />
-                                                        )}
+                                                        <div className="flex items-center gap-1 min-w-0">
+                                                            <span className="font-bold text-[11px] text-slate-900 truncate">
+                                                                {prod.lot_code}
+                                                            </span>
+                                                            <span
+                                                                className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0"
+                                                                title={`Día Juliano: ${getJulianDayInfo(prod.production_date).dayOfYearStr} / 365`}
+                                                            >
+                                                                J-{getJulianDayInfo(prod.production_date).dayOfYearStr}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            {!isJulianLotCode(prod.lot_code) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleConvertLotToJulian(prod.id);
+                                                                    }}
+                                                                    className="p-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 text-[8px] font-bold transition-all flex items-center"
+                                                                    title="Convertir a Lote Juliano"
+                                                                >
+                                                                    <Wand2 className="w-2.5 h-2.5" />
+                                                                </button>
+                                                            )}
+                                                            {prod.priority === 'urgente' && (
+                                                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Prioridad Urgente" />
+                                                            )}
+                                                        </div>
                                                     </div>
 
                                                     <div className="text-[10px] font-semibold text-slate-600 truncate mt-0.5">
@@ -1112,12 +1221,31 @@ const ProductionCalendar = () => {
                                                 </td>
 
                                                 <td className="px-4 py-3">
-                                                    <span className="font-bold text-slate-900">{prod.lot_code}</span>
-                                                    {prod.priority === 'urgente' && (
-                                                        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">
-                                                            Urgente
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="font-bold text-slate-900">{prod.lot_code}</span>
+                                                        <span
+                                                            className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60"
+                                                            title={`Día Juliano: ${getJulianDayInfo(prod.production_date).dayOfYearStr}`}
+                                                        >
+                                                            J-{getJulianDayInfo(prod.production_date).dayOfYearStr}
                                                         </span>
-                                                    )}
+                                                        {!isJulianLotCode(prod.lot_code) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleConvertLotToJulian(prod.id)}
+                                                                className="px-1.5 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 text-[9px] font-bold flex items-center gap-1 transition-all"
+                                                                title="Convertir a Lote Juliano"
+                                                            >
+                                                                <Wand2 className="w-2.5 h-2.5" />
+                                                                <span>Juliano</span>
+                                                            </button>
+                                                        )}
+                                                        {prod.priority === 'urgente' && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">
+                                                                Urgente
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
 
                                                 <td className="px-4 py-3">
@@ -1224,23 +1352,84 @@ const ProductionCalendar = () => {
                                 type="date"
                                 required
                                 value={formData.production_date}
-                                onChange={(e) => setFormData({ ...formData, production_date: e.target.value })}
+                                onChange={(e) => {
+                                    const newDate = e.target.value;
+                                    const newJulianLot = generateJulianLotCode(newDate, 1, julianFormat);
+                                    setFormData({
+                                        ...formData,
+                                        production_date: newDate,
+                                        lot_code: formData.id ? formData.lot_code : newJulianLot
+                                    });
+                                }}
                                 className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                             />
                         </div>
 
                         <div>
-                            <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                                Código de Lote *
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                value={formData.lot_code}
-                                onChange={(e) => setFormData({ ...formData, lot_code: e.target.value })}
-                                placeholder="ej. LOTE-20260905-01"
-                                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-[11px] font-bold text-slate-600 uppercase">
+                                    Lote (Calendario Juliano) *
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const nextFmt = julianFormat === 'standard' ? 'andelsa' : 'standard';
+                                            setJulianFormat(nextFmt);
+                                            const updatedLot = generateJulianLotCode(formData.production_date, 1, nextFmt);
+                                            setFormData({ ...formData, lot_code: updatedLot });
+                                            toast.info(`Formato cambiado a: ${nextFmt === 'standard' ? 'Estándar (LOTE-YYJJJ-NN)' : 'ANDELSA (NN - JJJ - YY)'}`);
+                                        }}
+                                        className="text-[10px] text-slate-500 hover:text-indigo-600 flex items-center gap-1 font-semibold px-1 py-0.5 rounded hover:bg-slate-100 transition-colors"
+                                        title="Alternar formato: Estándar vs ANDELSA"
+                                    >
+                                        <ArrowRightLeft className="w-2.5 h-2.5" />
+                                        <span>{julianFormat === 'standard' ? 'Std' : 'Andelsa'}</span>
+                                    </button>
+                                    <span
+                                        className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                        title="Día del año según calendario juliano (1..365)"
+                                    >
+                                        Día {getJulianDayInfo(formData.production_date).dayOfYearStr}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.lot_code}
+                                    onChange={(e) => setFormData({ ...formData, lot_code: e.target.value })}
+                                    placeholder="ej. LOTE-26252-01"
+                                    className="w-full bg-white border border-slate-300 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const refreshed = generateJulianLotCode(formData.production_date, 1, julianFormat);
+                                        setFormData({ ...formData, lot_code: refreshed });
+                                        toast.info(`Lote juliano generado: ${refreshed}`);
+                                    }}
+                                    className="absolute right-2 top-2.5 text-slate-400 hover:text-indigo-600 transition-colors"
+                                    title="Regenerar Lote Juliano"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                            {!isJulianLotCode(formData.lot_code) && formData.lot_code && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const converted = convertGregorianLotToJulian(formData.lot_code, formData.production_date);
+                                        setFormData({ ...formData, lot_code: converted });
+                                        toast.success(`Lote convertido a Juliano: ${converted}`);
+                                    }}
+                                    className="mt-1 text-[10px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1"
+                                >
+                                    <Wand2 className="w-3 h-3" />
+                                    <span>Convertir a Juliano ({convertGregorianLotToJulian(formData.lot_code, formData.production_date)})</span>
+                                </button>
+                            )}
                         </div>
 
                         <div>
@@ -1594,84 +1783,335 @@ const ProductionCalendar = () => {
                 isOpen={isSuggestionsDrawerOpen}
                 onClose={() => setIsSuggestionsDrawerOpen(false)}
                 title="Sugerencias Inteligentes de Producción por IA"
-                maxWidth="max-w-3xl"
+                maxWidth="max-w-5xl"
             >
                 <div className="space-y-4">
-                    <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex items-start gap-3">
-                        <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                        <div className="text-xs text-emerald-950 leading-relaxed">
-                            <strong>Motor de Optimización Activo:</strong> El algoritmo analiza pedidos pendientes, acuerdos comerciales de volumen, histórico de ventas y rendimiento de quebrado para balancear coproductos y reducir paros de limpieza CIP.
+                    {/* Header Tabs */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                            <button
+                                type="button"
+                                onClick={() => setSuggestionsTab('monthly')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    suggestionsTab === 'monthly'
+                                        ? 'bg-white text-indigo-700 shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>Plan Mensual Completo (IA)</span>
+                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                                    {monthlyPlanData?.monthly_plan?.length || 0}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSuggestionsTab('tactical')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    suggestionsTab === 'tactical'
+                                        ? 'bg-white text-emerald-700 shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <CalendarCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Sugerencias Tácticas</span>
+                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                    {suggestionsData?.suggestions?.length || 0}
+                                </span>
+                            </button>
                         </div>
+
+                        {suggestionsTab === 'monthly' && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => fetchMonthlyPlan(currentDate)}
+                                    disabled={loadingMonthlyPlan}
+                                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                    title="Recalcular sugerencias del mes"
+                                >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${loadingMonthlyPlan ? 'animate-spin text-indigo-600' : ''}`} />
+                                    <span>Recalcular</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleApplyMonthlyPlan}
+                                    disabled={applyingPlan || selectedPlanRuns.length === 0}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-indigo-200 transition-all disabled:opacity-50"
+                                >
+                                    <CheckSquare className="w-3.5 h-3.5" />
+                                    <span>
+                                        {applyingPlan
+                                            ? 'Programando...'
+                                            : `Aplicar ${selectedPlanRuns.length} al Calendario`}
+                                    </span>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {loadingSuggestions ? (
-                        <div className="py-8 text-center text-slate-400 font-medium text-xs">
-                            Analizando balance de masas y pedidos de clientes...
-                        </div>
-                    ) : suggestionsData?.suggestions?.length === 0 ? (
-                        <div className="py-8 text-center text-slate-500 text-xs font-medium">
-                            No hay sugerencias críticas pendientes en este momento. La línea está balanceada.
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {suggestionsData?.suggestions?.map((sug) => (
-                                <div
-                                    key={sug.id}
-                                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-emerald-300 transition-all shadow-sm space-y-3"
-                                >
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                            <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 uppercase">
-                                                {sug.badge}
-                                            </span>
-                                            <h3 className="text-sm font-bold text-slate-900 mt-1">
-                                                {sug.title}
-                                            </h3>
+                    {/* Contenido Pestaña 1: Plan Mensual Completo */}
+                    {suggestionsTab === 'monthly' && (
+                        <div className="space-y-4">
+                            {/* Banner Informativo */}
+                            <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-sky-50 to-emerald-50 border border-indigo-200 rounded-xl flex items-start gap-3">
+                                <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                                <div className="text-xs text-slate-700 leading-relaxed">
+                                    <strong className="text-indigo-900 font-bold">Proyección Mensual Inteligente:</strong> Este plan mensual se genera analizando la <strong>demanda confirmada</strong> en pedidos de clientes, los <strong>acuerdos de suministro recurrentes</strong> y el <strong>histórico de ventas</strong>. Cada corrida incluye su <strong>Lote con Calendario Juliano</strong> pre-asignado y balancea los coproductos (Clara vs Formulado Yema + H2O) para minimizar desperdicios.
+                                </div>
+                            </div>
+
+                            {loadingMonthlyPlan ? (
+                                <div className="py-12 text-center text-slate-400 font-medium text-xs space-y-2">
+                                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
+                                    <p>Generando plan mensual optimizado con calendario juliano...</p>
+                                </div>
+                            ) : !monthlyPlanData ? (
+                                <div className="py-8 text-center text-slate-500 text-xs font-medium">
+                                    No se pudo cargar la sugerencia mensual. Presiona Recalcular.
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Resumen KPIs del Mes */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Corridas Sugeridas</span>
+                                            <div className="flex items-baseline gap-1.5 mt-1">
+                                                <span className="text-lg font-black text-slate-900">
+                                                    {monthlyPlanData.summary?.total_runs_suggested || 0}
+                                                </span>
+                                                <span className="text-[10px] font-semibold text-slate-500">lotes julianos</span>
+                                            </div>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsSuggestionsDrawerOpen(false);
-                                                handleOpenCreateModal(sug.suggested_production?.production_date, sug.suggested_production);
-                                            }}
-                                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-200 transition-all shrink-0"
-                                        >
-                                            <Plus className="w-3.5 h-3.5" />
-                                            <span>Aplicar al Calendario</span>
-                                        </button>
+                                        <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
+                                            <span className="text-[10px] font-bold text-amber-800 uppercase block">Huevo Cáscara Total</span>
+                                            <div className="flex items-baseline gap-1.5 mt-1">
+                                                <span className="text-lg font-black text-amber-900">
+                                                    {(monthlyPlanData.summary?.total_egg_boxes_needed || 0).toLocaleString()}
+                                                </span>
+                                                <span className="text-[10px] font-semibold text-amber-700">cajas req.</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-3 rounded-xl bg-teal-50/70 border border-teal-200">
+                                            <span className="text-[10px] font-bold text-teal-800 uppercase block">Clara Pasteurizada</span>
+                                            <div className="flex items-baseline gap-1.5 mt-1">
+                                                <span className="text-lg font-black text-teal-900">
+                                                    {(monthlyPlanData.summary?.projected_production_lbs?.clara || 0).toLocaleString()}
+                                                </span>
+                                                <span className="text-[10px] font-semibold text-teal-700">Lbs</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                                            <span className="text-[10px] font-bold text-emerald-800 uppercase block">Formulado (Yema+H2O)</span>
+                                            <div className="flex items-baseline gap-1.5 mt-1">
+                                                <span className="text-lg font-black text-emerald-900">
+                                                    {(monthlyPlanData.summary?.projected_production_lbs?.formulado_yema_h2o || 0).toLocaleString()}
+                                                </span>
+                                                <span className="text-[10px] font-semibold text-emerald-700">Lbs</span>
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <p className="text-xs text-slate-600 leading-relaxed">
-                                        {sug.summary}
-                                    </p>
+                                    {/* Barra de Selección Masiva */}
+                                    <div className="flex items-center justify-between px-1 py-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const unscheduled = (monthlyPlanData.monthly_plan || []).filter(p => !p.already_scheduled);
+                                                    if (selectedPlanRuns.length === unscheduled.length) {
+                                                        setSelectedPlanRuns([]);
+                                                    } else {
+                                                        setSelectedPlanRuns(unscheduled);
+                                                    }
+                                                }}
+                                                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5"
+                                            >
+                                                <CheckSquare className="w-3.5 h-3.5" />
+                                                <span>
+                                                    {selectedPlanRuns.length === (monthlyPlanData.monthly_plan || []).filter(p => !p.already_scheduled).length
+                                                        ? 'Deseleccionar Todas'
+                                                        : 'Seleccionar Todas las Pendientes'}
+                                                </span>
+                                            </button>
+                                            <span className="text-[11px] text-slate-400">|</span>
+                                            <span className="text-[11px] font-medium text-slate-500">
+                                                {selectedPlanRuns.length} de {(monthlyPlanData.monthly_plan || []).filter(p => !p.already_scheduled).length} seleccionadas para programar
+                                            </span>
+                                        </div>
+                                    </div>
 
-                                    {sug.economic_impact && (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-[11px]">
-                                            {sug.economic_impact.boxes_saved && (
-                                                <div>
-                                                    <span className="text-slate-500 block text-[10px]">Ahorro en Cajas:</span>
-                                                    <strong className="text-emerald-700 font-bold">{sug.economic_impact.boxes_saved} cajas</strong>
+                                    {/* Lista de Corridas Planificadas */}
+                                    <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
+                                        {monthlyPlanData.monthly_plan?.map((run) => {
+                                            const isSelected = selectedPlanRuns.some(r => r.id === run.id);
+                                            return (
+                                                <div
+                                                    key={run.id}
+                                                    className={`p-3 rounded-xl border transition-all ${
+                                                        run.already_scheduled
+                                                            ? 'bg-slate-50/60 border-slate-200 opacity-60'
+                                                            : isSelected
+                                                            ? 'bg-indigo-50/40 border-indigo-300 shadow-sm'
+                                                            : 'bg-white border-slate-200 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled={run.already_scheduled}
+                                                            checked={isSelected || run.already_scheduled}
+                                                            onChange={() => {
+                                                                if (run.already_scheduled) return;
+                                                                if (isSelected) {
+                                                                    setSelectedPlanRuns(selectedPlanRuns.filter(r => r.id !== run.id));
+                                                                } else {
+                                                                    setSelectedPlanRuns([...selectedPlanRuns, run]);
+                                                                }
+                                                            }}
+                                                            className="mt-1 rounded text-indigo-600 focus:ring-indigo-500"
+                                                        />
+
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span className="text-xs font-bold text-slate-900">
+                                                                    {new Date(run.production_date + 'T12:00:00Z').toLocaleDateString('es-SV', {
+                                                                        weekday: 'short',
+                                                                        day: '2-digit',
+                                                                        month: 'short'
+                                                                    })}
+                                                                </span>
+
+                                                                <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px] font-black border border-indigo-200">
+                                                                    J-{run.julian_day}
+                                                                </span>
+
+                                                                <span className="font-mono text-[11px] font-bold text-slate-700">
+                                                                    {run.lot_code}
+                                                                </span>
+
+                                                                <span className="text-xs font-semibold text-slate-800">
+                                                                    • {run.product_type}
+                                                                </span>
+
+                                                                {run.already_scheduled ? (
+                                                                    <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold ml-auto">
+                                                                        Ya en Calendario
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold ml-auto">
+                                                                        Sugerido IA
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-[11px] text-slate-600">
+                                                                <span><strong>Meta:</strong> {run.target_quantity_lbs?.toLocaleString()} Lbs ({run.presentation})</span>
+                                                                <span><strong>Materia Prima:</strong> {run.mix_formula_json?.raw_egg_boxes} cajas</span>
+                                                                {run.mix_formula_json?.water_bottles > 0 && (
+                                                                    <span className="text-cyan-700 font-semibold">
+                                                                        + {run.mix_formula_json.water_bottles} garrafas H2O
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <p className="text-[11px] text-slate-500 mt-1 italic">
+                                                                {run.rationale}
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            )}
-                                            {sug.economic_impact.cost_savings_usd && (
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Contenido Pestaña 2: Sugerencias Tácticas */}
+                    {suggestionsTab === 'tactical' && (
+                        <div className="space-y-3">
+                            <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex items-start gap-3">
+                                <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                                <div className="text-xs text-emerald-950 leading-relaxed">
+                                    <strong>Motor de Arbitraje Táctico:</strong> Analiza balances inmediatos de masa para sugerir reformulaciones de coproducto (evitando que la yema quede rezagada), secuencias óptimas de lavado CIP y priorización de pedidos críticos.
+                                </div>
+                            </div>
+
+                            {loadingSuggestions ? (
+                                <div className="py-8 text-center text-slate-400 font-medium text-xs">
+                                    Analizando balance de masas y pedidos de clientes...
+                                </div>
+                            ) : suggestionsData?.suggestions?.length === 0 ? (
+                                <div className="py-8 text-center text-slate-500 text-xs font-medium">
+                                    No hay sugerencias tácticas pendientes en este momento. La línea está balanceada.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {suggestionsData?.suggestions?.map((sug) => (
+                                        <div
+                                            key={sug.id}
+                                            className="p-4 rounded-xl border border-slate-200 bg-white hover:border-emerald-300 transition-all shadow-sm space-y-3"
+                                        >
+                                            <div className="flex items-start justify-between gap-2">
                                                 <div>
-                                                    <span className="text-slate-500 block text-[10px]">Ahorro Económico:</span>
-                                                    <strong className="text-emerald-700 font-bold">
-                                                        <Money value={sug.economic_impact.cost_savings_usd} />
-                                                    </strong>
+                                                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 uppercase">
+                                                        {sug.badge}
+                                                    </span>
+                                                    <h3 className="text-sm font-bold text-slate-900 mt-1">
+                                                        {sug.title}
+                                                    </h3>
                                                 </div>
-                                            )}
-                                            {sug.economic_impact.cost_per_lb_formulated && (
-                                                <div>
-                                                    <span className="text-slate-500 block text-[10px]">Costo Formulado:</span>
-                                                    <strong className="text-slate-800 font-bold">{sug.economic_impact.cost_per_lb_formulated}</strong>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsSuggestionsDrawerOpen(false);
+                                                        handleOpenCreateModal(sug.suggested_production?.production_date, sug.suggested_production);
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-200 transition-all shrink-0"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    <span>Aplicar al Calendario</span>
+                                                </button>
+                                            </div>
+
+                                            <p className="text-xs text-slate-600 leading-relaxed">
+                                                {sug.summary}
+                                            </p>
+
+                                            {sug.economic_impact && (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-[11px]">
+                                                    {sug.economic_impact.boxes_saved && (
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[10px]">Ahorro en Cajas:</span>
+                                                            <strong className="text-emerald-700 font-bold">{sug.economic_impact.boxes_saved} cajas</strong>
+                                                        </div>
+                                                    )}
+                                                    {sug.economic_impact.cost_savings_usd && (
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[10px]">Ahorro Económico:</span>
+                                                            <strong className="text-emerald-700 font-bold">
+                                                                <Money value={sug.economic_impact.cost_savings_usd} />
+                                                            </strong>
+                                                        </div>
+                                                    )}
+                                                    {sug.economic_impact.cost_per_lb_formulated && (
+                                                        <div>
+                                                            <span className="text-slate-500 block text-[10px]">Costo Formulado:</span>
+                                                            <strong className="text-slate-800 font-bold">{sug.economic_impact.cost_per_lb_formulated}</strong>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
-                            ))}
+                            )}
                         </div>
                     )}
                 </div>
@@ -1818,6 +2258,15 @@ const ProductionCalendar = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* ========================================================================= */}
+            {/* MODAL 4: PLANIFICADOR DE MATERIA PRIMA E INSUMOS (MRP) */}
+            {/* ========================================================================= */}
+            <RawMaterialPlannerModal
+                isOpen={isPlannerModalOpen}
+                onClose={() => setIsPlannerModalOpen(false)}
+                initialDate={currentDate}
+            />
         </div>
     );
 };

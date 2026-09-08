@@ -25,7 +25,12 @@ import {
     Trash2,
     ArrowDownRight,
     Split,
-    Handshake
+    Handshake,
+    Calendar,
+    Clock,
+    AlertTriangle,
+    CheckCircle2,
+    FileText
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
 
@@ -33,6 +38,17 @@ export default function EggCosteoPorLibra() {
     const navigate = useNavigate();
     // Tab actual
     const [activeTab, setActiveTab] = useState('calculator'); // 'calculator', 'simulator', 'clients', 'catalog', 'history'
+
+    // Rango de fechas global para monitoreo operacional y acuerdos
+    const [dateRange, setDateRange] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return {
+            preset: '30d',
+            startDate: d.toISOString().split('T')[0],
+            endDate: new Date().toISOString().split('T')[0]
+        };
+    });
 
     // Parámetros de simulación (guardados como texto/número para edición natural sin snap a 0)
     const [calcParams, setCalcParams] = useState({
@@ -73,8 +89,21 @@ export default function EggCosteoPorLibra() {
     const [scenarios, setScenarios] = useState([]);
     const [configs, setConfigs] = useState({});
 
+    // Histórico de costos operacionales reales
+    const [costingHistoryList, setCostingHistoryList] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+
+    // Historial global de revisiones de acuerdos
+    const [globalAgreementHistory, setGlobalAgreementHistory] = useState([]);
+    const [loadingGlobalHistory, setLoadingGlobalHistory] = useState(false);
+    const [historySubTab, setHistorySubTab] = useState('real_production'); // 'real_production', 'scenarios', 'agreements_history'
+
+    // Filtro de vigencia para acuerdos
+    const [validityFilter, setValidityFilter] = useState('todos'); // 'todos', 'vigente', 'por_vencer', 'vencido', 'programado'
+
     // Modales
     const [agreementModal, setAgreementModal] = useState({ open: false, data: null });
+    const [agreementHistoryModal, setAgreementHistoryModal] = useState({ open: false, agreement: null, history: [], loading: false });
     const [saveScenarioModal, setSaveScenarioModal] = useState(false);
     const [scenarioNameInput, setScenarioNameInput] = useState('');
 
@@ -88,17 +117,20 @@ export default function EggCosteoPorLibra() {
 
     // Carga inicial
     useEffect(() => {
-        loadData();
-        loadOperationalCost();
+        loadData(dateRange.startDate, dateRange.endDate);
+        loadOperationalCost(dateRange.startDate, dateRange.endDate);
+        loadCostingHistory(dateRange.startDate, dateRange.endDate);
     }, []);
 
-    const loadData = async () => {
+    const loadData = async (sDate = dateRange.startDate, eDate = dateRange.endDate) => {
         try {
             const [confRes, cipRes, packRes, agrRes, scenRes] = await Promise.all([
                 axios.get('/api/egg-industrial/costeo-libra/config'),
                 axios.get('/api/egg-industrial/costeo-libra/cip-items'),
                 axios.get('/api/egg-industrial/costeo-libra/packaging-items'),
-                axios.get('/api/egg-industrial/costeo-libra/customer-agreements'),
+                axios.get('/api/egg-industrial/costeo-libra/customer-agreements', {
+                    params: { start_date: sDate || undefined, end_date: eDate || undefined }
+                }),
                 axios.get('/api/egg-industrial/costeo-libra/scenarios')
             ]);
             
@@ -112,18 +144,23 @@ export default function EggCosteoPorLibra() {
             setAgreements(Array.isArray(agrRes.data) ? agrRes.data : []);
             setScenarios(Array.isArray(scenRes.data) ? scenRes.data : []);
 
-            // Ejecutar primer cálculo
-            runCalculation(calcParams, false);
+            // Ejecutar primer cálculo pasando rango de fecha
+            runCalculation(calcParams, false, sDate, eDate);
         } catch (error) {
             console.error('Error cargando datos de costeo:', error);
             toast.error('Error al inicializar datos del módulo de costeo.');
         }
     };
 
-    const loadOperationalCost = async () => {
+    const loadOperationalCost = async (sDate = dateRange.startDate, eDate = dateRange.endDate) => {
         setLoadingOperational(true);
         try {
-            const res = await axios.get('/api/egg-industrial/costeo-libra/actual-operational-cost');
+            const res = await axios.get('/api/egg-industrial/costeo-libra/actual-operational-cost', {
+                params: {
+                    start_date: sDate || undefined,
+                    end_date: eDate || undefined
+                }
+            });
             setOperationalStats(res.data);
         } catch (error) {
             console.error('Error cargando costo operacional:', error);
@@ -132,12 +169,118 @@ export default function EggCosteoPorLibra() {
         }
     };
 
+    const loadCostingHistory = async (sDate = dateRange.startDate, eDate = dateRange.endDate) => {
+        setLoadingHistory(true);
+        try {
+            const res = await axios.get('/api/egg-industrial/costeo-libra/history', {
+                params: {
+                    start_date: sDate || undefined,
+                    end_date: eDate || undefined
+                }
+            });
+            setCostingHistoryList(Array.isArray(res.data) ? res.data : []);
+        } catch (error) {
+            console.error('Error cargando histórico de costos:', error);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    const loadGlobalAgreementHistory = async () => {
+        setLoadingGlobalHistory(true);
+        try {
+            const res = await axios.get('/api/egg-industrial/costeo-libra/customer-agreements/history');
+            setGlobalAgreementHistory(Array.isArray(res.data) ? res.data : []);
+        } catch (error) {
+            console.error('Error cargando historial global de acuerdos:', error);
+        } finally {
+            setLoadingGlobalHistory(false);
+        }
+    };
+
+    const handlePresetChange = (preset) => {
+        const now = new Date();
+        let start = '';
+        let end = now.toISOString().split('T')[0];
+
+        if (preset === 'month') {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            start = firstDay.toISOString().split('T')[0];
+            end = lastDay.toISOString().split('T')[0];
+        } else if (preset === '30d') {
+            const d = new Date();
+            d.setDate(d.getDate() - 30);
+            start = d.toISOString().split('T')[0];
+        } else if (preset === '3m') {
+            const d = new Date();
+            d.setMonth(d.getMonth() - 3);
+            start = d.toISOString().split('T')[0];
+        } else if (preset === 'year') {
+            start = `${now.getFullYear()}-01-01`;
+        } else if (preset === 'all') {
+            start = '';
+            end = '';
+        }
+
+        const newRange = { preset, startDate: start, endDate: end };
+        setDateRange(newRange);
+        loadOperationalCost(start, end);
+        loadData(start, end);
+        loadCostingHistory(start, end);
+        toast.success(`Filtro de período actualizado: ${getPresetLabel(preset)}`);
+    };
+
+    const handleCustomDateApply = () => {
+        setDateRange(prev => ({ ...prev, preset: 'custom' }));
+        loadOperationalCost(dateRange.startDate, dateRange.endDate);
+        loadData(dateRange.startDate, dateRange.endDate);
+        loadCostingHistory(dateRange.startDate, dateRange.endDate);
+        toast.success('Rango de fechas personalizado aplicado.');
+    };
+
+    const getPresetLabel = (preset) => {
+        switch (preset) {
+            case 'month': return 'Mes Actual';
+            case '30d': return 'Últimos 30 Días';
+            case '3m': return 'Últimos 3 Meses';
+            case 'year': return 'Año Actual';
+            case 'all': return 'Todo el Histórico';
+            default: return 'Personalizado';
+        }
+    };
+
+    const handleOpenAgreementHistory = async (agreement) => {
+        setAgreementHistoryModal({
+            open: true,
+            agreement,
+            history: [],
+            loading: true
+        });
+        try {
+            const res = await axios.get(`/api/egg-industrial/costeo-libra/customer-agreements/${agreement.id}/history`, {
+                params: { customer_name: agreement.customer_name }
+            });
+            setAgreementHistoryModal(prev => ({
+                ...prev,
+                history: Array.isArray(res.data) ? res.data : [],
+                loading: false
+            }));
+        } catch (error) {
+            console.error('Error cargando historial del acuerdo:', error);
+            toast.error('Error al cargar historial del acuerdo.');
+            setAgreementHistoryModal(prev => ({ ...prev, loading: false }));
+        }
+    };
+
     // Motor de cálculo con debounce opcional
-    const runCalculation = async (params = calcParams, isManual = false) => {
+    const runCalculation = async (params = calcParams, isManual = false, sDate = dateRange.startDate, eDate = dateRange.endDate) => {
         setCalculating(true);
         try {
             const payload = {
                 ...params,
+                start_date: sDate || undefined,
+                end_date: eDate || undefined,
                 raw_egg_box_cost: parseFloat(params.raw_egg_box_cost) || 0,
                 raw_egg_lbs_per_box: parseFloat(params.raw_egg_lbs_per_box) || 43.5,
                 batch_size_lbs: parseFloat(params.batch_size_lbs) || 12000,
@@ -297,10 +440,8 @@ export default function EggCosteoPorLibra() {
             await axios.post('/api/egg-industrial/costeo-libra/customer-agreements', agreementModal.data);
             toast.success('Acuerdo comercial guardado con éxito.');
             setAgreementModal({ open: false, data: null });
-            const agrRes = await axios.get('/api/egg-industrial/costeo-libra/customer-agreements');
-            setAgreements(agrRes.data);
-            runCalculation(calcParams, false);
-            loadOperationalCost();
+            await loadData(dateRange.startDate, dateRange.endDate);
+            await loadOperationalCost(dateRange.startDate, dateRange.endDate);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al guardar acuerdo.');
         }
@@ -311,10 +452,8 @@ export default function EggCosteoPorLibra() {
         try {
             await axios.delete(`/api/egg-industrial/costeo-libra/customer-agreements/${id}`);
             toast.success('Acuerdo eliminado.');
-            const agrRes = await axios.get('/api/egg-industrial/costeo-libra/customer-agreements');
-            setAgreements(agrRes.data);
-            runCalculation(calcParams, false);
-            loadOperationalCost();
+            await loadData(dateRange.startDate, dateRange.endDate);
+            await loadOperationalCost(dateRange.startDate, dateRange.endDate);
         } catch (error) {
             toast.error('Error al eliminar acuerdo.');
         }
@@ -433,6 +572,79 @@ export default function EggCosteoPorLibra() {
                         <Save className="w-3.5 h-3.5" />
                         <span>Guardar Escenario</span>
                     </button>
+                </div>
+            </div>
+
+            {/* BARRA GLOBAL DE RANGO DE FECHAS & FILTRO HISTÓRICO */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100 flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-900">Período de Análisis & Vigencia</span>
+                            <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[10px] font-black uppercase">
+                                {getPresetLabel(dateRange.preset)}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            {dateRange.startDate && dateRange.endDate
+                                ? `Desde ${new Date(dateRange.startDate + 'T00:00:00').toLocaleDateString()} hasta ${new Date(dateRange.endDate + 'T00:00:00').toLocaleDateString()}`
+                                : 'Mostrando todo el histórico operacional'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Presets Rápidos */}
+                    <div className="bg-slate-100 p-1 rounded-xl border border-slate-200 flex flex-wrap gap-1">
+                        {[
+                            { id: 'month', label: 'Mes Actual' },
+                            { id: '30d', label: '30 Días' },
+                            { id: '3m', label: '3 Meses' },
+                            { id: 'year', label: 'Año Actual' },
+                            { id: 'all', label: 'Todo' }
+                        ].map((btn) => (
+                            <button
+                                key={btn.id}
+                                type="button"
+                                onClick={() => handlePresetChange(btn.id)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                    dateRange.preset === btn.id
+                                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                                }`}
+                            >
+                                {btn.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Selector Manual de Fechas */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                        <span className="text-[10px] font-bold uppercase text-slate-400">Desde</span>
+                        <input
+                            type="date"
+                            value={dateRange.startDate}
+                            onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value, preset: 'custom' }))}
+                            className="bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <span className="text-[10px] font-bold uppercase text-slate-400">Hasta</span>
+                        <input
+                            type="date"
+                            value={dateRange.endDate}
+                            onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value, preset: 'custom' }))}
+                            className="bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <button
+                            type="button"
+                            onClick={handleCustomDateApply}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-sm transition-all ml-1"
+                        >
+                            Filtrar
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1518,7 +1730,7 @@ export default function EggCosteoPorLibra() {
                                 <span>Acuerdos Comerciales & Semáforo de Margen por Cliente</span>
                             </h2>
                             <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                Compara precios pactados contra el costo actual de absorción para evaluar la rentabilidad de cada contrato.
+                                Compara precios pactados contra el costo actual de absorción para evaluar la rentabilidad y vigencia de cada contrato.
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1540,6 +1752,31 @@ export default function EggCosteoPorLibra() {
                         </div>
                     </div>
 
+                    {/* Filtros de Vigencia */}
+                    <div className="flex flex-wrap items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-sm">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase mr-1">Filtrar por Vigencia:</span>
+                        {[
+                            { id: 'todos', label: 'Todos los Acuerdos' },
+                            { id: 'vigente', label: 'Vigentes' },
+                            { id: 'por_vencer', label: 'Por Vencer (≤30 días)' },
+                            { id: 'vencido', label: 'Vencidos' },
+                            { id: 'programado', label: 'Programados' }
+                        ].map(f => (
+                            <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => setValidityFilter(f.id)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                    validityFilter === f.id
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs border-collapse">
@@ -1547,6 +1784,7 @@ export default function EggCosteoPorLibra() {
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                         <th className="py-3 px-4">Cliente</th>
                                         <th className="py-3 px-3">Producto / Presentación</th>
+                                        <th className="py-3 px-3">Vigencia del Acuerdo</th>
                                         <th className="py-3 px-3 text-right">Precio Pactado</th>
                                         <th className="py-3 px-3 text-right">Costo + Flete</th>
                                         <th className="py-3 px-3 text-right">Margen $/Lb</th>
@@ -1557,64 +1795,114 @@ export default function EggCosteoPorLibra() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                    {(calculationResult?.clients_comparison || []).map((client) => {
-                                        const badgeClass =
-                                            client.status === 'green'
-                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                : client.status === 'yellow'
-                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                : 'bg-rose-50 text-rose-700 border border-rose-200';
+                                    {(calculationResult?.clients_comparison || [])
+                                        .filter(client => {
+                                            if (validityFilter === 'todos') return true;
+                                            return client.validity_status === validityFilter;
+                                        })
+                                        .map((client) => {
+                                            const badgeClass =
+                                                client.status === 'green'
+                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    : client.status === 'yellow'
+                                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    : 'bg-rose-50 text-rose-700 border border-rose-200';
 
-                                        return (
-                                            <tr key={client.id} className="hover:bg-slate-50/80 transition-colors">
-                                                <td className="py-3 px-4 font-bold text-slate-900">
-                                                    {client.customer_name}
-                                                </td>
-                                                <td className="py-3 px-3">
-                                                    <span className="block text-slate-800">{client.product_type}</span>
-                                                    <span className="text-[10px] text-slate-500">{client.presentation}</span>
-                                                </td>
-                                                <td className="py-3 px-3 text-right font-black text-slate-900">
-                                                    <Money value={client.agreed_price} />
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-slate-600 font-medium">
-                                                    <Money value={client.effective_cost} />
-                                                </td>
-                                                <td className="py-3 px-3 text-right font-bold text-emerald-600">
-                                                    <Money value={client.margin_per_lb} />
-                                                </td>
-                                                <td className="py-3 px-3 text-center">
-                                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}`}>
-                                                        {client.margin_pct ? client.margin_pct.toFixed(1) : 0}%
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-slate-600 font-medium">
-                                                    {(client.monthly_volume_lbs || 0).toLocaleString()} Lbs
-                                                </td>
-                                                <td className="py-3 px-3 text-right font-black text-indigo-700">
-                                                    <Money value={client.monthly_profit} />
-                                                </td>
-                                                <td className="py-3 px-4 text-center">
-                                                    <div className="flex items-center justify-center gap-1.5">
-                                                        <button
-                                                            onClick={() => setAgreementModal({ open: true, data: client })}
-                                                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-bold"
-                                                            title="Editar Acuerdo"
-                                                        >
-                                                            <Edit2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteAgreement(client.id)}
-                                                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-bold"
-                                                            title="Eliminar Acuerdo"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                            return (
+                                                <tr key={client.id} className="hover:bg-slate-50/80 transition-colors">
+                                                    <td className="py-3 px-4 font-bold text-slate-900">
+                                                        {client.customer_name}
+                                                    </td>
+                                                    <td className="py-3 px-3">
+                                                        <span className="block text-slate-800">{client.product_type}</span>
+                                                        <span className="text-[10px] text-slate-500">{client.presentation}</span>
+                                                    </td>
+                                                    <td className="py-3 px-3">
+                                                        <div className="space-y-1">
+                                                            {client.validity_status === 'vigente' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                    Vigente
+                                                                </span>
+                                                            )}
+                                                            {client.validity_status === 'por_vencer' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                    <Clock className="w-3 h-3 text-amber-600" />
+                                                                    Vence en {client.days_remaining}d
+                                                                </span>
+                                                            )}
+                                                            {client.validity_status === 'vencido' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                                                    <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                                                    Vencido
+                                                                </span>
+                                                            )}
+                                                            {client.validity_status === 'programado' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                                    <Calendar className="w-3 h-3 text-indigo-600" />
+                                                                    Programado
+                                                                </span>
+                                                            )}
+                                                            {!client.validity_status && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                                                    Indefinido
+                                                                </span>
+                                                            )}
+                                                            <div className="text-[10px] text-slate-400 font-mono">
+                                                                {client.valid_from ? new Date(client.valid_from).toLocaleDateString() : 'Sin inicio'}
+                                                                {' → '}
+                                                                {client.valid_to ? new Date(client.valid_to).toLocaleDateString() : 'Permanente'}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-black text-slate-900">
+                                                        <Money value={client.agreed_price} />
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-slate-600 font-medium">
+                                                        <Money value={client.effective_cost} />
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-bold text-emerald-600">
+                                                        <Money value={client.margin_per_lb} />
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center">
+                                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}`}>
+                                                            {client.margin_pct ? client.margin_pct.toFixed(1) : 0}%
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-slate-600 font-medium">
+                                                        {(client.monthly_volume_lbs || 0).toLocaleString()} Lbs
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-black text-indigo-700">
+                                                        <Money value={client.monthly_profit} />
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                onClick={() => handleOpenAgreementHistory(client)}
+                                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-bold"
+                                                                title="Ver Historial de Precios y Revisiones"
+                                                            >
+                                                                <History className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setAgreementModal({ open: true, data: client })}
+                                                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-bold"
+                                                                title="Editar Acuerdo"
+                                                            >
+                                                                <Edit2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteAgreement(client.id)}
+                                                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-bold"
+                                                                title="Eliminar Acuerdo"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                 </tbody>
                             </table>
                         </div>
@@ -1834,54 +2122,267 @@ export default function EggCosteoPorLibra() {
                 </div>
             )}
 
-            {/* TAB 5: ESCENARIOS GUARDADOS */}
+            {/* TAB 5: HISTÓRICO Y ESCENARIOS */}
             {activeTab === 'history' && (
                 <div className="space-y-4">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 mb-1 flex items-center gap-2">
-                            <History className="w-4 h-4 text-indigo-600" />
-                            <span>Historial de Escenarios Guardados</span>
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium">
-                            Modelos de simulación guardados para comparativas financieras y presupuestos de producción.
-                        </p>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                <History className="w-4 h-4 text-indigo-600" />
+                                <span>Historial Operacional, Escenarios y Auditoría de Precios</span>
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                Analiza el rendimiento real acumulado de planta, compara escenarios guardados o audita las revisiones de acuerdos de clientes.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setHistorySubTab('real_production')}
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                                    historySubTab === 'real_production'
+                                        ? 'bg-white text-indigo-700 shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                Producción Real & Costo/Lb
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setHistorySubTab('scenarios')}
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                                    historySubTab === 'scenarios'
+                                        ? 'bg-white text-indigo-700 shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                Escenarios Simulados ({scenarios.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setHistorySubTab('agreements_history');
+                                    loadGlobalAgreementHistory();
+                                }}
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                                    historySubTab === 'agreements_history'
+                                        ? 'bg-white text-indigo-700 shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                Historial de Tarifas Clientes
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {scenarios.map((scen) => (
-                            <div key={scen.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                                <div className="flex items-start justify-between gap-2">
-                                    <h4 className="text-sm font-bold text-slate-900">{scen.scenario_name}</h4>
-                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold shrink-0">
-                                        {new Date(scen.created_at).toLocaleDateString()}
+                    {/* SUB-VISTA 1: HISTÓRICO REAL DE PRODUCCIÓN Y COSTOS */}
+                    {historySubTab === 'real_production' && (
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                <div>
+                                    <h4 className="text-xs font-bold uppercase text-slate-800 tracking-wider">
+                                        Rendimiento y Costo Real de Planta por Período
+                                    </h4>
+                                    <span className="text-[11px] text-slate-500">
+                                        Consolidado mensual de lotes procesados, rendimientos líquidos y costo promedio por libra.
                                     </span>
                                 </div>
-                                <div className="text-xs text-slate-600 space-y-1">
-                                    <div>Producto: <strong className="text-slate-900">{scen.product_type}</strong></div>
-                                    <div>Presentación: <strong className="text-slate-900">{scen.presentation}</strong></div>
-                                    <div>Lote: <strong className="text-slate-900">{scen.batch_size_lbs?.toLocaleString()} Lbs</strong></div>
-                                </div>
-                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                                    <div>
-                                        <span className="text-[10px] text-slate-500 block">Costo / Lb</span>
-                                        <strong className="text-slate-900 font-black">
-                                            <Money value={scen.calculated_cost_per_lb} />
-                                        </strong>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="text-[10px] text-slate-500 block">Precio Sug. / Lb</span>
-                                        <strong className="text-emerald-600 font-black">
-                                            <Money value={scen.target_sale_price_per_lb} />
-                                        </strong>
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    {loadingHistory && <RefreshCcw className="w-3.5 h-3.5 animate-spin text-indigo-600" />}
+                                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl">
+                                        {costingHistoryList.length} períodos registrados
+                                    </span>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+
+                            {costingHistoryList.length === 0 ? (
+                                <div className="text-center py-12 text-slate-400">
+                                    <Factory className="w-10 h-10 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
+                                    <p className="text-xs font-medium">No hay lotes con costos calculados en el rango de fechas seleccionado.</p>
+                                    <button
+                                        onClick={() => handlePresetChange('all')}
+                                        className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-lg text-xs font-bold transition-all"
+                                    >
+                                        Ver Todo el Histórico
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                <th className="py-3 px-4">Período</th>
+                                                <th className="py-3 px-3">Producto</th>
+                                                <th className="py-3 px-3 text-right">Lotes</th>
+                                                <th className="py-3 px-3 text-right">Entrada MP (Lbs)</th>
+                                                <th className="py-3 px-3 text-right">Líquido Obtenido</th>
+                                                <th className="py-3 px-3 text-center">Rendimiento Real</th>
+                                                <th className="py-3 px-3 text-right">Costo Total</th>
+                                                <th className="py-3 px-4 text-right font-black">Costo Promedio / Lb</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                            {costingHistoryList.map((row, idx) => {
+                                                const yieldPct = row.total_input_lbs > 0
+                                                    ? ((row.total_yield_lbs / row.total_input_lbs) * 100).toFixed(1)
+                                                    : '0.0';
+                                                return (
+                                                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                                                            {row.period}
+                                                        </td>
+                                                        <td className="py-3 px-3 text-slate-800">
+                                                            {row.product_type}
+                                                        </td>
+                                                        <td className="py-3 px-3 text-right text-slate-600">
+                                                            {row.batches_count}
+                                                        </td>
+                                                        <td className="py-3 px-3 text-right text-slate-600">
+                                                            {parseFloat(row.total_input_lbs || 0).toLocaleString()} lbs
+                                                        </td>
+                                                        <td className="py-3 px-3 text-right text-slate-900 font-bold">
+                                                            {parseFloat(row.total_yield_lbs || 0).toLocaleString()} lbs
+                                                        </td>
+                                                        <td className="py-3 px-3 text-center">
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                {yieldPct}%
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-3 text-right text-slate-700">
+                                                            <Money value={row.total_cost} />
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right font-black text-indigo-700">
+                                                            <Money value={row.avg_cost_per_lb} />
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* SUB-VISTA 2: ESCENARIOS GUARDADOS */}
+                    {historySubTab === 'scenarios' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {scenarios.map((scen) => (
+                                <div key={scen.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <h4 className="text-sm font-bold text-slate-900">{scen.scenario_name}</h4>
+                                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold shrink-0">
+                                            {new Date(scen.created_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-slate-600 space-y-1">
+                                        <div>Producto: <strong className="text-slate-900">{scen.product_type}</strong></div>
+                                        <div>Presentación: <strong className="text-slate-900">{scen.presentation}</strong></div>
+                                        <div>Lote: <strong className="text-slate-900">{scen.batch_size_lbs?.toLocaleString()} Lbs</strong></div>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                                        <div>
+                                            <span className="text-[10px] text-slate-500 block">Costo / Lb</span>
+                                            <strong className="text-slate-900 font-black">
+                                                <Money value={scen.calculated_cost_per_lb} />
+                                            </strong>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[10px] text-slate-500 block">Precio Sug. / Lb</span>
+                                            <strong className="text-emerald-600 font-black">
+                                                <Money value={scen.target_sale_price_per_lb} />
+                                            </strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* SUB-VISTA 3: AUDITORÍA GLOBAL DE TARIFAS DE CLIENTES */}
+                    {historySubTab === 'agreements_history' && (
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                                <div>
+                                    <h4 className="text-xs font-bold uppercase text-slate-800 tracking-wider">
+                                        Auditoría Cronológica de Precios Pactados con Clientes
+                                    </h4>
+                                    <span className="text-[11px] text-slate-500">
+                                        Registro histórico de cada cambio de tarifa, vigencia estipulada y motivo de ajuste.
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={loadGlobalAgreementHistory}
+                                    disabled={loadingGlobalHistory}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+                                >
+                                    <RefreshCcw className={`w-3.5 h-3.5 ${loadingGlobalHistory ? 'animate-spin' : ''}`} />
+                                    <span>Actualizar Historial</span>
+                                </button>
+                            </div>
+
+                            {globalAgreementHistory.length === 0 ? (
+                                <div className="text-center py-12 text-slate-400">
+                                    <Clock className="w-10 h-10 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
+                                    <p className="text-xs font-medium">Aún no hay cambios o revisiones de tarifas archivadas en el historial.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                <th className="py-3 px-4">Fecha de Ajuste</th>
+                                                <th className="py-3 px-3">Cliente</th>
+                                                <th className="py-3 px-3">Producto / Pres.</th>
+                                                <th className="py-3 px-3 text-right">Tarifa Anterior</th>
+                                                <th className="py-3 px-3 text-right">Nueva Tarifa</th>
+                                                <th className="py-3 px-3">Vigencia Pactada</th>
+                                                <th className="py-3 px-3">Motivo del Ajuste</th>
+                                                <th className="py-3 px-4">Auditor / Usuario</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                            {globalAgreementHistory.map((h) => (
+                                                <tr key={h.id} className="hover:bg-slate-50/80 transition-colors">
+                                                    <td className="py-3 px-4 font-mono text-slate-600">
+                                                        {new Date(h.created_at).toLocaleString()}
+                                                    </td>
+                                                    <td className="py-3 px-3 font-bold text-slate-900">
+                                                        {h.customer_name}
+                                                    </td>
+                                                    <td className="py-3 px-3">
+                                                        <span className="block text-slate-800">{h.product_type}</span>
+                                                        <span className="text-[10px] text-slate-500">{h.presentation}</span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-slate-400 font-mono line-through">
+                                                        {h.previous_price_per_lb ? <Money value={h.previous_price_per_lb} /> : '-'}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-black text-emerald-600">
+                                                        <Money value={h.agreed_price_per_lb} />
+                                                    </td>
+                                                    <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
+                                                        {h.valid_from ? new Date(h.valid_from).toLocaleDateString() : 'Sin inicio'}
+                                                        {' → '}
+                                                        {h.valid_to ? new Date(h.valid_to).toLocaleDateString() : 'Permanente'}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-slate-700 italic max-w-xs truncate" title={h.change_reason}>
+                                                        {h.change_reason || 'Sin motivo especificado'}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-slate-600 font-medium">
+                                                        {h.changed_by || 'Sistema'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* MODAL: NUEVO ACUERDO DE PRECIO CON CLIENTE */}
+            {/* MODAL: NUEVO / EDITAR ACUERDO DE PRECIO CON CLIENTE */}
             {agreementModal.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
                     <form onSubmit={handleSaveAgreement} className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
@@ -1991,6 +2492,49 @@ export default function EggCosteoPorLibra() {
                                 </div>
                             </div>
 
+                            {/* RANGO DE VIGENCIA DE LA TARIFA */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                        Vigente Desde (Inicio)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={agreementModal.data?.valid_from ? agreementModal.data.valid_from.split('T')[0] : ''}
+                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, valid_from: e.target.value } })}
+                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                        Vigente Hasta (Vencimiento)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={agreementModal.data?.valid_to ? agreementModal.data.valid_to.split('T')[0] : ''}
+                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, valid_to: e.target.value } })}
+                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800"
+                                    />
+                                </div>
+                                <span className="sm:col-span-2 text-[10px] text-slate-400 font-medium">
+                                    Opcional: Si se deja en blanco, la tarifa se considera permanente sin expiración automática.
+                                </span>
+                            </div>
+
+                            {/* MOTIVO DEL CAMBIO / AJUSTE (AUDITORÍA) */}
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
+                                    Motivo de Ajuste / Revisión de Tarifa
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Negociación semestral, incremento por alza en costo de huevo..."
+                                    value={agreementModal.data?.change_reason || ''}
+                                    onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, change_reason: e.target.value } })}
+                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
+                                />
+                            </div>
+
                             <div>
                                 <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
                                     Notas y Condiciones Especiales
@@ -2021,6 +2565,100 @@ export default function EggCosteoPorLibra() {
                             </button>
                         </div>
                     </form>
+                </div>
+            )}
+
+            {/* MODAL: HISTORIAL DE PRECIOS Y REVISIONES DE ACUERDO */}
+            {agreementHistoryModal.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <div>
+                                <div className="flex items-center gap-2 text-indigo-600 text-[10px] font-bold uppercase tracking-wider mb-0.5">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>Línea de Tiempo • Auditoría de Precios</span>
+                                </div>
+                                <h3 className="text-base font-bold text-slate-900">
+                                    Historial de Tarifas: {agreementHistoryModal.agreement?.customer_name}
+                                </h3>
+                                <p className="text-[11px] text-slate-500">
+                                    {agreementHistoryModal.agreement?.product_type} ({agreementHistoryModal.agreement?.presentation})
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setAgreementHistoryModal({ open: false, agreement: null, history: [], loading: false })}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {agreementHistoryModal.loading ? (
+                            <div className="py-12 text-center text-slate-400">
+                                <RefreshCcw className="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500" />
+                                <span>Cargando historial de revisiones...</span>
+                            </div>
+                        ) : agreementHistoryModal.history.length === 0 ? (
+                            <div className="py-12 text-center text-slate-400">
+                                <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                                <span>No hay revisiones previas archivadas para este cliente todavía.</span>
+                            </div>
+                        ) : (
+                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                                {agreementHistoryModal.history.map((item, index) => (
+                                    <div key={item.id || index} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-black text-slate-900">
+                                                    <Money value={item.agreed_price_per_lb} /> / Lb
+                                                </span>
+                                                {item.previous_price_per_lb && (
+                                                    <span className="text-[11px] text-slate-400 font-medium line-through">
+                                                        anterior: <Money value={item.previous_price_per_lb} />
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                                {new Date(item.created_at).toLocaleString()}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                                            <div>
+                                                <span className="font-bold text-slate-500">Vigencia: </span>
+                                                <span className="font-mono">
+                                                    {item.valid_from ? new Date(item.valid_from).toLocaleDateString() : 'Sin inicio'}
+                                                    {' → '}
+                                                    {item.valid_to ? new Date(item.valid_to).toLocaleDateString() : 'Permanente'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="font-bold text-slate-500">Registrado por: </span>
+                                                <span>{item.changed_by || 'Sistema'}</span>
+                                            </div>
+                                        </div>
+
+                                        {item.change_reason && (
+                                            <div className="text-[11px] text-slate-700 bg-white p-2 rounded-lg border border-slate-100 italic">
+                                                "{item.change_reason}"
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="flex justify-end pt-3 border-t border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setAgreementHistoryModal({ open: false, agreement: null, history: [], loading: false })}
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

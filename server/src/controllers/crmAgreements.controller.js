@@ -181,6 +181,9 @@ const saveAgreement = async (req, res) => {
             target_margin_pct,
             freight_cost_per_lb,
             payment_terms_days,
+            valid_from,
+            valid_to,
+            change_reason,
             notes,
             status
         } = req.body;
@@ -207,7 +210,40 @@ const saveAgreement = async (req, res) => {
             unitPrice = pricePerLb * lbs;
         }
 
+        const validFromVal = valid_from ? valid_from : null;
+        const validToVal = valid_to ? valid_to : null;
+
         if (id) {
+            // Guardar versión previa en historial
+            try {
+                const [previous] = await pool.query('SELECT * FROM egg_costing_customer_agreements WHERE id = ? AND company_id = ?', [id, companyId]);
+                if (previous && previous.length > 0) {
+                    const prev = previous[0];
+                    await pool.query(
+                        `INSERT INTO egg_costing_agreement_history 
+                         (agreement_id, company_id, customer_id, customer_name, product_type, presentation, agreed_price_per_lb, previous_price_per_lb, monthly_volume_lbs, valid_from, valid_to, change_reason, changed_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            id,
+                            companyId,
+                            prev.customer_id,
+                            prev.customer_name,
+                            prev.product_type,
+                            prev.presentation,
+                            pricePerLb,
+                            prev.agreed_price_per_lb,
+                            parseFloat(monthly_volume_lbs) || prev.monthly_volume_lbs,
+                            prev.valid_from,
+                            prev.valid_to,
+                            change_reason || 'Actualización de acuerdo desde CRM',
+                            req.user?.nombre || 'Usuario CRM'
+                        ]
+                    );
+                }
+            } catch (histErr) {
+                console.warn('Advertencia registrando historial de acuerdo CRM:', histErr.message);
+            }
+
             await pool.query(`
                 UPDATE egg_costing_customer_agreements
                 SET customer_id = ?,
@@ -221,6 +257,8 @@ const saveAgreement = async (req, res) => {
                     target_margin_pct = ?,
                     freight_cost_per_lb = ?,
                     payment_terms_days = ?,
+                    valid_from = ?,
+                    valid_to = ?,
                     notes = ?,
                     status = ?
                 WHERE id = ? AND company_id = ?
@@ -236,6 +274,8 @@ const saveAgreement = async (req, res) => {
                 parseFloat(target_margin_pct) || 20,
                 parseFloat(freight_cost_per_lb) || 0,
                 parseInt(payment_terms_days, 10) || 30,
+                validFromVal,
+                validToVal,
                 notes ? notes.trim() : null,
                 status || 'activo',
                 id,
@@ -257,9 +297,11 @@ const saveAgreement = async (req, res) => {
                     target_margin_pct,
                     freight_cost_per_lb,
                     payment_terms_days,
+                    valid_from,
+                    valid_to,
                     notes,
                     status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 companyId,
                 customer_id || null,
@@ -273,9 +315,38 @@ const saveAgreement = async (req, res) => {
                 parseFloat(target_margin_pct) || 20,
                 parseFloat(freight_cost_per_lb) || 0,
                 parseInt(payment_terms_days, 10) || 30,
+                validFromVal,
+                validToVal,
                 notes ? notes.trim() : null,
                 status || 'activo'
             ]);
+
+            // Registrar creación inicial en historial
+            try {
+                await pool.query(
+                    `INSERT INTO egg_costing_agreement_history 
+                     (agreement_id, company_id, customer_id, customer_name, product_type, presentation, agreed_price_per_lb, previous_price_per_lb, monthly_volume_lbs, valid_from, valid_to, change_reason, changed_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        result.insertId,
+                        companyId,
+                        customer_id || null,
+                        customer_name.trim(),
+                        product_type || 'Huevo Entero Pasteurizado',
+                        presentation || 'cubeta 30LB',
+                        pricePerLb,
+                        null,
+                        parseFloat(monthly_volume_lbs) || 0,
+                        validFromVal,
+                        validToVal,
+                        change_reason || 'Pacto inicial de precio de cliente',
+                        req.user?.nombre || 'Usuario CRM'
+                    ]
+                );
+            } catch (hErr) {
+                console.warn('Advertencia historial inicial CRM:', hErr.message);
+            }
+
             return res.status(201).json({ message: 'Acuerdo comercial registrado con éxito.', id: result.insertId });
         }
     } catch (error) {

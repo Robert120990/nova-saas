@@ -56,6 +56,45 @@ const ensureSeedData = async (companyId) => {
                     (?, 'TAPA-GALON', 'Tapa con Sello de Seguridad para Galón', 0.1500, 'tapadera')
             `, [companyId, companyId, companyId, companyId, companyId, companyId, companyId]);
         }
+
+        // Asegurar columnas de vigencia en egg_costing_customer_agreements
+        const [agrCols] = await pool.query("SHOW COLUMNS FROM egg_costing_customer_agreements LIKE 'valid_from'");
+        if (agrCols.length === 0) {
+            await pool.query('ALTER TABLE egg_costing_customer_agreements ADD COLUMN valid_from DATE NULL DEFAULT NULL AFTER target_margin_pct');
+        }
+        const [agrColsTo] = await pool.query("SHOW COLUMNS FROM egg_costing_customer_agreements LIKE 'valid_to'");
+        if (agrColsTo.length === 0) {
+            await pool.query('ALTER TABLE egg_costing_customer_agreements ADD COLUMN valid_to DATE NULL DEFAULT NULL AFTER valid_from');
+        }
+
+        // Asegurar tabla de auditoría e historial de acuerdos de clientes
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS egg_costing_agreement_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                agreement_id INT NOT NULL,
+                company_id INT NOT NULL,
+                customer_id INT NULL,
+                customer_name VARCHAR(150) NOT NULL,
+                product_id INT NULL,
+                product_type VARCHAR(100) NOT NULL,
+                presentation VARCHAR(100) NOT NULL DEFAULT 'cubeta 30LB',
+                agreed_price_per_lb DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
+                agreed_unit_price DECIMAL(10,4) NULL,
+                monthly_volume_lbs DECIMAL(12,2) DEFAULT 0.00,
+                target_margin_pct DECIMAL(5,2) DEFAULT 20.00,
+                freight_cost_per_lb DECIMAL(8,4) DEFAULT 0.0000,
+                payment_terms_days INT DEFAULT 30,
+                valid_from DATE NULL,
+                valid_to DATE NULL,
+                change_reason VARCHAR(255) NULL,
+                recorded_by VARCHAR(100) NULL,
+                notes TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ecah_agr (agreement_id),
+                INDEX idx_ecah_comp (company_id),
+                INDEX idx_ecah_cust (customer_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
     } catch (err) {
         console.warn('Advertencia en ensureSeedData:', err.message);
     }
@@ -202,17 +241,76 @@ const deletePackagingItem = async (req, res) => {
 const getCustomerAgreements = async (req, res) => {
     try {
         await ensureSeedData(req.company_id);
-        const [rows] = await pool.query(
-            `SELECT a.*, c.nombre as customer_registered_name, c.telefono, c.correo as email,
+        const { start_date, end_date, validity_status, search } = req.query;
+
+        let query = `
+            SELECT a.*, c.nombre as customer_registered_name, c.telefono, c.correo as email,
                     p.nombre as catalog_product_name, p.codigo as product_code
              FROM egg_costing_customer_agreements a
              LEFT JOIN customers c ON a.customer_id = c.id
              LEFT JOIN products p ON a.product_id = p.id
              WHERE a.company_id = ?
-             ORDER BY a.agreed_price_per_lb DESC`,
-            [req.company_id]
-        );
-        res.json(rows);
+        `;
+        const params = [req.company_id];
+
+        if (search && search.trim()) {
+            query += ` AND (a.customer_name LIKE ? OR c.nombre LIKE ? OR a.product_type LIKE ? OR a.presentation LIKE ?)`;
+            const s = `%${search.trim()}%`;
+            params.push(s, s, s, s);
+        }
+
+        // Filtro por rango de fechas de vigencia
+        if (start_date && end_date) {
+            query += ` AND (
+                (a.valid_from IS NULL AND a.valid_to IS NULL) OR
+                (a.valid_from <= ? AND (a.valid_to IS NULL OR a.valid_to >= ?))
+            )`;
+            params.push(end_date, start_date);
+        } else if (start_date) {
+            query += ` AND (a.valid_to IS NULL OR a.valid_to >= ?)`;
+            params.push(start_date);
+        } else if (end_date) {
+            query += ` AND (a.valid_from IS NULL OR a.valid_from <= ?)`;
+            params.push(end_date);
+        }
+
+        query += ` ORDER BY a.agreed_price_per_lb DESC`;
+
+        const [rows] = await pool.query(query, params);
+
+        // Computar validity_status y días restantes para cada acuerdo
+        const todayStr = new Date().toISOString().split('T')[0];
+        const processed = rows.map(r => {
+            let validity = 'vigente';
+            let daysRemaining = null;
+
+            const fromStr = r.valid_from ? new Date(r.valid_from).toISOString().split('T')[0] : null;
+            const toStr = r.valid_to ? new Date(r.valid_to).toISOString().split('T')[0] : null;
+
+            if (toStr && toStr < todayStr) {
+                validity = 'vencido';
+            } else if (fromStr && fromStr > todayStr) {
+                validity = 'programado';
+            } else if (toStr) {
+                const diffTime = new Date(toStr) - new Date(todayStr);
+                daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                validity = daysRemaining <= 30 ? 'por_vencer' : 'vigente';
+            } else {
+                validity = 'vigente'; // sin vencimiento
+            }
+
+            return {
+                ...r,
+                validity_status: validity,
+                days_remaining: daysRemaining
+            };
+        });
+
+        const finalRows = validity_status && validity_status !== 'todos'
+            ? processed.filter(p => p.validity_status === validity_status)
+            : processed;
+
+        res.json(finalRows);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -220,7 +318,25 @@ const getCustomerAgreements = async (req, res) => {
 
 const saveCustomerAgreement = async (req, res) => {
     try {
-        const { id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status } = req.body;
+        const {
+            id,
+            customer_id,
+            customer_name,
+            product_id,
+            product_type,
+            presentation,
+            agreed_price_per_lb,
+            agreed_unit_price,
+            monthly_volume_lbs,
+            target_margin_pct,
+            freight_cost_per_lb,
+            payment_terms_days,
+            valid_from,
+            valid_to,
+            change_reason,
+            notes,
+            status
+        } = req.body;
         
         const pricePerLb = parseFloat(agreed_price_per_lb) || 0;
         let unitPrice = parseFloat(agreed_unit_price);
@@ -238,21 +354,94 @@ const saveCustomerAgreement = async (req, res) => {
             unitPrice = pricePerLb * lbs;
         }
 
+        const validFromDate = valid_from ? valid_from.split('T')[0] : null;
+        const validToDate = valid_to ? valid_to.split('T')[0] : null;
+        const userName = req.user?.nombre || 'Usuario Sistema';
+
         if (id) {
+            // Guardar versión previa en historial si hay cambio de precio, volumen, fechas o motivo
+            const [priorRows] = await pool.query(
+                'SELECT * FROM egg_costing_customer_agreements WHERE id = ? AND company_id = ?',
+                [id, req.company_id]
+            );
+
+            if (priorRows.length > 0) {
+                const prior = priorRows[0];
+                const priceChanged = Math.abs(parseFloat(prior.agreed_price_per_lb) - pricePerLb) > 0.0001;
+                const volumeChanged = Math.abs(parseFloat(prior.monthly_volume_lbs || 0) - parseFloat(monthly_volume_lbs || 0)) > 0.01;
+                const datesChanged = prior.valid_from !== validFromDate || prior.valid_to !== validToDate;
+
+                if (priceChanged || volumeChanged || datesChanged || change_reason) {
+                    await pool.query(
+                        `INSERT INTO egg_costing_agreement_history 
+                         (agreement_id, company_id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, valid_from, valid_to, change_reason, recorded_by, notes)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            id,
+                            req.company_id,
+                            prior.customer_id,
+                            prior.customer_name,
+                            prior.product_id,
+                            prior.product_type,
+                            prior.presentation,
+                            prior.agreed_price_per_lb,
+                            prior.agreed_unit_price,
+                            prior.monthly_volume_lbs,
+                            prior.target_margin_pct,
+                            prior.freight_cost_per_lb,
+                            prior.payment_terms_days,
+                            prior.valid_from,
+                            prior.valid_to,
+                            change_reason || (priceChanged ? `Actualización de precio de $${parseFloat(prior.agreed_price_per_lb).toFixed(4)} a $${pricePerLb.toFixed(4)}` : 'Modificación de condiciones de acuerdo'),
+                            userName,
+                            prior.notes
+                        ]
+                    );
+                }
+            }
+
             await pool.query(
                 `UPDATE egg_costing_customer_agreements 
-                 SET customer_id = ?, customer_name = ?, product_id = ?, product_type = ?, presentation = ?, agreed_price_per_lb = ?, agreed_unit_price = ?, monthly_volume_lbs = ?, target_margin_pct = ?, freight_cost_per_lb = ?, payment_terms_days = ?, notes = ?, status = ?
+                 SET customer_id = ?, customer_name = ?, product_id = ?, product_type = ?, presentation = ?, agreed_price_per_lb = ?, agreed_unit_price = ?, monthly_volume_lbs = ?, target_margin_pct = ?, freight_cost_per_lb = ?, payment_terms_days = ?, valid_from = ?, valid_to = ?, notes = ?, status = ?
                  WHERE id = ? AND company_id = ?`,
-                [customer_id || null, customer_name, product_id || null, product_type, presentation || 'cubeta 30LB', pricePerLb, unitPrice, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, notes || null, status || 'activo', id, req.company_id]
+                [customer_id || null, customer_name, product_id || null, product_type, presentation || 'cubeta 30LB', pricePerLb, unitPrice, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, validFromDate, validToDate, notes || null, status || 'activo', id, req.company_id]
             );
-            res.json({ message: 'Acuerdo comercial actualizado.', id });
+            res.json({ message: 'Acuerdo comercial actualizado y registrado en historial.', id });
         } else {
             const [result] = await pool.query(
-                `INSERT INTO egg_costing_customer_agreements (company_id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, notes, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.company_id, customer_id || null, customer_name, product_id || null, product_type, presentation || 'cubeta 30LB', pricePerLb, unitPrice, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, notes || null, status || 'activo']
+                `INSERT INTO egg_costing_customer_agreements (company_id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, valid_from, valid_to, notes, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.company_id, customer_id || null, customer_name, product_id || null, product_type, presentation || 'cubeta 30LB', pricePerLb, unitPrice, monthly_volume_lbs || 0, target_margin_pct || 20, freight_cost_per_lb || 0, payment_terms_days || 30, validFromDate, validToDate, notes || null, status || 'activo']
             );
-            res.status(201).json({ message: 'Acuerdo comercial registrado.', id: result.insertId });
+
+            // Registrar versión inicial en historial
+            await pool.query(
+                `INSERT INTO egg_costing_agreement_history 
+                 (agreement_id, company_id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, valid_from, valid_to, change_reason, recorded_by, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    result.insertId,
+                    req.company_id,
+                    customer_id || null,
+                    customer_name,
+                    product_id || null,
+                    product_type,
+                    presentation || 'cubeta 30LB',
+                    pricePerLb,
+                    unitPrice,
+                    monthly_volume_lbs || 0,
+                    target_margin_pct || 20,
+                    freight_cost_per_lb || 0,
+                    payment_terms_days || 30,
+                    validFromDate,
+                    validToDate,
+                    change_reason || 'Creación inicial del acuerdo comercial',
+                    userName,
+                    notes || null
+                ]
+            );
+
+            res.status(201).json({ message: 'Acuerdo comercial registrado con trazabilidad histórica.', id: result.insertId });
         }
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -264,6 +453,46 @@ const deleteCustomerAgreement = async (req, res) => {
         const { id } = req.params;
         await pool.query('DELETE FROM egg_costing_customer_agreements WHERE id = ? AND company_id = ?', [id, req.company_id]);
         res.json({ message: 'Acuerdo comercial eliminado.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Obtener Historial de Precios y Revisiones de Acuerdos de Clientes
+const getAgreementHistory = async (req, res) => {
+    try {
+        await ensureSeedData(req.company_id);
+        const { id } = req.params;
+        const { customer_id, product_type } = req.query;
+
+        let query = `
+            SELECT h.*, 
+                   c.nombre as customer_registered_name,
+                   p.nombre as catalog_product_name
+            FROM egg_costing_agreement_history h
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN products p ON h.product_id = p.id
+            WHERE h.company_id = ?
+        `;
+        const params = [req.company_id];
+
+        if (id && id !== 'all') {
+            query += ' AND h.agreement_id = ?';
+            params.push(id);
+        }
+        if (customer_id) {
+            query += ' AND h.customer_id = ?';
+            params.push(customer_id);
+        }
+        if (product_type) {
+            query += ' AND h.product_type = ?';
+            params.push(product_type);
+        }
+
+        query += ' ORDER BY h.created_at DESC, h.id DESC';
+
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -292,7 +521,9 @@ const calculateDynamicCost = async (req, res) => {
             yema_solids_pct = 50.0, // Sólidos de la yema pura (%)
             custom_gif_monthly = null,
             custom_monthly_volume_lbs = null,
-            target_sale_price_per_lb = null
+            target_sale_price_per_lb = null,
+            start_date = null,
+            end_date = null
         } = req.body;
 
         // Cargar configuraciones del sistema
@@ -535,6 +766,7 @@ const calculateDynamicCost = async (req, res) => {
         const totalCostPerLb = mpCostPerLb + packagingCostPerLb + cipCostPerLb + boilerEnergyCostPerLb + modCostPerLb + gifCostPerLb;
 
         // H. ANÁLISIS DE RENTABILIDAD CON CLIENTES
+        const todayStr = new Date().toISOString().split('T')[0];
         const clientsComparison = agreements.map(agr => {
             const clientPrice = parseFloat(agr.agreed_price_per_lb) || 0;
             const freight = parseFloat(agr.freight_cost_per_lb) || 0;
@@ -559,6 +791,25 @@ const calculateDynamicCost = async (req, res) => {
             const monthlyProfit = monthlyVol * marginPerLb;
             const simulatedBonus = monthlyRevenue * bonoRate;
 
+            const fromStr = agr.valid_from ? new Date(agr.valid_from).toISOString().split('T')[0] : null;
+            const toStr = agr.valid_to ? new Date(agr.valid_to).toISOString().split('T')[0] : null;
+            let validityStatus = 'vigente';
+            let daysRemaining = null;
+
+            if (toStr && toStr < todayStr) {
+                validityStatus = 'vencido';
+            } else if (fromStr && fromStr > todayStr) {
+                validityStatus = 'programado';
+            } else if (toStr) {
+                const diffTime = new Date(toStr) - new Date(todayStr);
+                daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                validityStatus = daysRemaining <= 30 ? 'por_vencer' : 'vigente';
+            }
+
+            let isValidInPeriod = true;
+            if (start_date && toStr && toStr < start_date) isValidInPeriod = false;
+            if (end_date && fromStr && fromStr > end_date) isValidInPeriod = false;
+
             return {
                 id: agr.id,
                 customer_name: agr.customer_name,
@@ -571,6 +822,11 @@ const calculateDynamicCost = async (req, res) => {
                 margin_pct: marginPct,
                 target_margin_pct: parseFloat(agr.target_margin_pct) || 20,
                 status,
+                valid_from: fromStr,
+                valid_to: toStr,
+                validity_status: validityStatus,
+                days_remaining: daysRemaining,
+                is_valid_in_period: isValidInPeriod,
                 monthly_volume_lbs: monthlyVol,
                 monthly_revenue: monthlyRevenue,
                 monthly_profit: monthlyProfit,
@@ -689,9 +945,9 @@ const deleteScenario = async (req, res) => {
 // 8. HISTÓRICO DE COSTOS Y MIX DE PRODUCTO
 const getCostingHistory = async (req, res) => {
     try {
-        // Datos agregados por mes desde egg_production_batches y egg_industrial_costs
-        const [history] = await pool.query(
-            `SELECT 
+        const { start_date, end_date } = req.query;
+        let query = `
+            SELECT 
                 DATE_FORMAT(b.started_at, '%Y-%m') as period,
                 b.product_type,
                 COUNT(b.id) as batches_count,
@@ -704,11 +960,26 @@ const getCostingHistory = async (req, res) => {
              FROM egg_production_batches b
              LEFT JOIN egg_industrial_costs c ON b.id = c.batch_id
              WHERE b.company_id = ?
+        `;
+        const params = [req.company_id];
+
+        if (start_date && end_date) {
+            query += ' AND DATE(b.started_at) BETWEEN ? AND ?';
+            params.push(start_date, end_date);
+        } else if (start_date) {
+            query += ' AND DATE(b.started_at) >= ?';
+            params.push(start_date);
+        } else if (end_date) {
+            query += ' AND DATE(b.started_at) <= ?';
+            params.push(end_date);
+        }
+
+        query += `
              GROUP BY period, b.product_type
              ORDER BY period DESC, b.product_type ASC
-             LIMIT 24`,
-            [req.company_id]
-        );
+             LIMIT 36
+        `;
+        const [history] = await pool.query(query, params);
         res.json(history);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -719,18 +990,34 @@ const getCostingHistory = async (req, res) => {
 const getActualOperationalCost = async (req, res) => {
     try {
         await ensureSeedData(req.company_id);
+        const { start_date, end_date } = req.query;
 
         // 1. Recepciones de Materia Prima (Huevo Cáscara)
-        const [rawStats] = await pool.query(
-            `SELECT 
+        let rawSql = `
+            SELECT 
                 COUNT(*) as total_receptions,
                 COALESCE(SUM(weight_lbs), 0) as total_lbs_received,
                 COALESCE(SUM(total_boxes), 0) as total_boxes_received,
                 AVG(CASE WHEN total_boxes > 0 THEN weight_lbs / total_boxes ELSE 43.5 END) as avg_lbs_per_box
-             FROM egg_raw_materials
-             WHERE company_id = ? AND status = 'aprobado'`,
-            [req.company_id]
-        );
+            FROM egg_raw_materials
+            WHERE company_id = ? AND status = 'aprobado'
+        `;
+        const rawParams = [req.company_id];
+        if (start_date && end_date) {
+            rawSql += ` AND (
+                (reception_date BETWEEN ? AND ?) OR 
+                (reception_date IS NULL AND DATE(created_at) BETWEEN ? AND ?)
+            )`;
+            rawParams.push(start_date, end_date, start_date, end_date);
+        } else if (start_date) {
+            rawSql += ` AND (reception_date >= ? OR (reception_date IS NULL AND DATE(created_at) >= ?))`;
+            rawParams.push(start_date, start_date);
+        } else if (end_date) {
+            rawSql += ` AND (reception_date <= ? OR (reception_date IS NULL AND DATE(created_at) <= ?))`;
+            rawParams.push(end_date, end_date);
+        }
+
+        const [rawStats] = await pool.query(rawSql, rawParams);
 
         // Buscar si hay costo promedio registrado en producto 'huevo cáscara' o default $38.00
         const [productCost] = await pool.query(
@@ -744,16 +1031,28 @@ const getActualOperationalCost = async (req, res) => {
             : 38.00;
 
         // 2. Lotes de Producción y Rendimiento Real de Quebrado
-        const [batchStats] = await pool.query(
-            `SELECT 
+        let batchSql = `
+            SELECT 
                 COUNT(*) as total_batches,
                 COALESCE(SUM(input_weight_lbs), 0) as total_input_lbs,
                 COALESCE(SUM(yield_liquid_lbs), 0) as total_liquid_lbs,
                 COALESCE(SUM(waste_shell_lbs), 0) as total_shell_lbs
-             FROM egg_production_batches
-             WHERE company_id = ? AND status != 'cancelado'`,
-            [req.company_id]
-        );
+            FROM egg_production_batches
+            WHERE company_id = ? AND status != 'cancelado'
+        `;
+        const batchParams = [req.company_id];
+        if (start_date && end_date) {
+            batchSql += ` AND DATE(started_at) BETWEEN ? AND ?`;
+            batchParams.push(start_date, end_date);
+        } else if (start_date) {
+            batchSql += ` AND DATE(started_at) >= ?`;
+            batchParams.push(start_date);
+        } else if (end_date) {
+            batchSql += ` AND DATE(started_at) <= ?`;
+            batchParams.push(end_date);
+        }
+
+        const [batchStats] = await pool.query(batchSql, batchParams);
 
         const totalInput = parseFloat(batchStats[0].total_input_lbs) || 0;
         const totalLiquid = parseFloat(batchStats[0].total_liquid_lbs) || 0;
@@ -766,17 +1065,26 @@ const getActualOperationalCost = async (req, res) => {
             ? (totalShell / totalInput) * 100 
             : 17.00;
 
-        // 3. Precios de Venta Pactados / Facturados
-        const [agreements] = await pool.query(
-            `SELECT 
+        // 3. Precios de Venta Pactados / Facturados vigentes en el rango
+        let agrSql = `
+            SELECT 
                 COUNT(*) as count_agreements,
                 COALESCE(AVG(agreed_price_per_lb), 0) as avg_contract_price,
                 COALESCE(SUM(monthly_volume_lbs), 0) as total_contract_volume,
                 COALESCE(SUM(agreed_price_per_lb * monthly_volume_lbs), 0) as total_contract_revenue
-             FROM egg_costing_customer_agreements
-             WHERE company_id = ? AND status = 'activo'`,
-            [req.company_id]
-        );
+            FROM egg_costing_customer_agreements
+            WHERE company_id = ? AND status = 'activo'
+        `;
+        const agrParams = [req.company_id];
+        if (start_date && end_date) {
+            agrSql += ` AND (
+                (valid_from IS NULL AND valid_to IS NULL) OR
+                (valid_from <= ? AND (valid_to IS NULL OR valid_to >= ?))
+            )`;
+            agrParams.push(end_date, start_date);
+        }
+
+        const [agreements] = await pool.query(agrSql, agrParams);
 
         const totalVolume = parseFloat(agreements[0].total_contract_volume) || 0;
         const avgSalePrice = totalVolume > 0 
@@ -806,6 +1114,11 @@ const getActualOperationalCost = async (req, res) => {
         const actualMarginPct = avgSalePrice > 0 ? (actualMarginPerLb / avgSalePrice) * 100 : 0;
 
         res.json({
+            date_range: {
+                start_date: start_date || null,
+                end_date: end_date || null,
+                is_filtered: !!(start_date || end_date)
+            },
             operational_summary: {
                 total_receptions: rawStats[0].total_receptions,
                 total_lbs_received: parseFloat(rawStats[0].total_lbs_received),
@@ -852,6 +1165,7 @@ module.exports = {
     getCustomerAgreements,
     saveCustomerAgreement,
     deleteCustomerAgreement,
+    getAgreementHistory,
     calculateDynamicCost,
     getScenarios,
     saveScenario,
