@@ -707,7 +707,10 @@ exports.getCloseoutDetailPDF = async (req, res) => {
             case 'descuentos': {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno, d.cliente_nombre as cliente,
-                           COALESCE(desp.descripcion, '—') as despachador, d.total
+                           COALESCE(desp.descripcion, '—') as despachador,
+                           COALESCE(d.cantidad, 0) as cantidad,
+                           COALESCE(d.valor, 0) as valor,
+                           COALESCE(d.total, 0) as total
                     FROM gas_station_closeout_descuentos d
                     JOIN gas_station_closeouts g ON d.closeout_id = g.id
                     LEFT JOIN gas_station_despachadores desp ON d.despachador_id = desp.id
@@ -716,11 +719,13 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Cliente', w: 280, accessor: 'cliente' },
-                    { label: 'Despachador', w: 200, accessor: 'despachador' },
-                    { label: 'Total', w: 100, accessor: 'total', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Cliente', w: 210, accessor: 'cliente' },
+                    { label: 'Despachador', w: 145, accessor: 'despachador' },
+                    { label: 'Galonaje', w: 80, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Desc. x Galón', w: 85, accessor: 'valor', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 90, accessor: 'total', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -787,8 +792,8 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                     { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
                     { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
                     { label: 'Producto', w: 260, accessor: 'producto' },
-                    { label: 'Cantidad', w: 90, accessor: 'cantidad', align: 'right' },
-                    { label: 'Precio', w: 90, accessor: 'precio', format: 'money', align: 'right' },
+                    { label: 'Cantidad', w: 90, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 90, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
                     { label: 'Total', w: 90, accessor: 'total', format: 'money', align: 'right' }
                 ];
                 break;
@@ -845,6 +850,8 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                             : new Date(val).toLocaleDateString('es-SV');
                     } else if (c.format === 'money') {
                         rowData[c.accessor] = parseFloat(val || 0).toFixed(2);
+                    } else if (c.format === 'qty') {
+                        rowData[c.accessor] = parseFloat(val || 0).toFixed(2);
                     } else {
                         rowData[c.accessor] = val ?? '';
                     }
@@ -859,7 +866,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
 
             let excelData = rows.map(mapRow);
             if (groups) {
-                const moneyCol = columns.find(c => c.format === 'money');
+                const moneyCol = columns.find(c => c.format === 'money' && !c.noTotal);
                 excelData = [];
                 groups.forEach(g => {
                     const sub = emptyRow();
@@ -869,12 +876,27 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                     g.rows.forEach(r => excelData.push(mapRow(r)));
                 });
                 const totalRow = emptyRow();
-                totalRow[columns[0].accessor] = 'TOTAL';
+                totalRow[columns[0].accessor] = 'TOTALES GENERALES';
                 if (moneyCol) {
                     totalRow[moneyCol.accessor] = rows
                         .reduce((s, r) => s + (parseFloat(r[moneyCol.accessor]) || 0), 0)
                         .toFixed(2);
                 }
+                excelData.push(totalRow);
+            } else if (rows.length > 0) {
+                const totalRow = emptyRow();
+                totalRow[columns[0].accessor] = 'TOTALES GENERALES';
+                columns.forEach(c => {
+                    if (c.format === 'money' && !c.noTotal) {
+                        totalRow[c.accessor] = rows
+                            .reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0)
+                            .toFixed(2);
+                    } else if ((c.format === 'qty' || c.accessor === 'cantidad') && !c.noTotal) {
+                        totalRow[c.accessor] = rows
+                            .reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0)
+                            .toFixed(2);
+                    }
+                });
                 excelData.push(totalRow);
             }
 

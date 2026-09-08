@@ -133,87 +133,48 @@ const CustomerStatement = () => {
     };
 
     const handleExportExcel = async () => {
-        if (activeTab === 'movimientos') {
-            if (!statementData?.movements?.length) return toast.error('No hay datos para exportar');
-            try {
-                const { utils, writeFile } = await import('xlsx');
-                const exportData = statementData.movements.map(m => ({
-                    'Fecha': fmtFecha(m.fecha),
-                    'Tipo': m.tipo,
-                    'Número/Referencia': m.numero,
-                    'Concepto': m.concepto,
-                    'Cargo (+)': parseFloat(m.cargo),
-                    'Abono (-)': parseFloat(m.abono),
-                    'Saldo': parseFloat(m.balance)
-                }));
-                const ws = utils.json_to_sheet(exportData);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "Estado de Cuenta");
-                writeFile(wb, `Estado_Cuenta_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
-                toast.success('Excel generado');
-            } catch (error) { toast.error('Error al generar Excel'); }
-        } else if (activeTab === 'antiguedad') {
-            if (!agingData?.documents?.length) return toast.error('No hay datos para exportar');
-            try {
-                const { utils, writeFile } = await import('xlsx');
-                const exportData = agingData.documents.map(d => ({
-                    'Fecha': fmtFecha(d.fecha),
-                    'Documento': d.documento,
-                    'Tipo': d.tipo,
-                    '0-30': d.d0_30,
-                    '31-60': d.d31_60,
-                    '61-90': d.d61_90,
-                    '91-180': d.d91_180,
-                    '181-365': d.d181_365,
-                    '+365': d.d365_plus
-                }));
-                const ws = utils.json_to_sheet(exportData);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "Antigüedad de Saldos");
-                writeFile(wb, `Antiguedad_Saldos_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
-                toast.success('Excel generado');
-            } catch (error) { toast.error('Error al generar Excel'); }
-        } else if (activeTab === 'anticipos') {
-            if (!anticiposData?.movements?.length) return toast.error('No hay datos para exportar');
-            try {
-                const { utils, writeFile } = await import('xlsx');
-                const exportData = anticiposData.movements.map(m => ({
-                    'Fecha': fmtFecha(m.fecha),
-                    'Tipo': m.tipo,
-                    'Número/Referencia': m.numero,
-                    'Concepto': m.concepto,
-                    'Cargo (+)': parseFloat(m.cargo),
-                    'Abono (-)': parseFloat(m.abono),
-                    'Saldo': parseFloat(m.balance)
-                }));
-                const ws = utils.json_to_sheet(exportData);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "Estado de Cuenta de Anticipos");
-                writeFile(wb, `Estado_Cuenta_Anticipos_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
-                toast.success('Excel generado');
-            } catch (error) { toast.error('Error al generar Excel'); }
-        } else {
-            if (!trupputData?.movements?.length) return toast.error('No hay datos para exportar');
-            try {
-                const { utils, writeFile } = await import('xlsx');
-                const exportData = trupputData.movements.map(m => ({
-                    'Fecha': fmtFecha(m.fecha),
-                    'Tipo': m.tipo,
-                    'Número/Referencia': m.numero,
-                    'Concepto': m.concepto,
-                    'Galones': parseFloat(m.galones),
-                    'Galones Cargo (+)': parseFloat(m.galones_cargo),
-                    'Galones Abono (-)': parseFloat(m.galones_abono),
-                    'Saldo Galones': parseFloat(m.balance_galones),
-                    'Monto Cargo (+)': parseFloat(m.cargo),
-                    'Monto Abono (-)': parseFloat(m.abono)
-                }));
-                const ws = utils.json_to_sheet(exportData);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "Estado de Cuenta Trupput");
-                writeFile(wb, `Estado_Cuenta_Trupput_${selectedCustomerId}_${new Date().getTime()}.xlsx`);
-                toast.success('Excel generado');
-            } catch (error) { toast.error('Error al generar Excel'); }
+        if (!selectedCustomerId || !selectedBranchId) return;
+
+        const endpoint = activeTab === 'movimientos' 
+            ? '/api/cxc/statement/pdf' 
+            : activeTab === 'antiguedad'
+                ? '/api/cxc/aging-report/pdf'
+                : activeTab === 'anticipos'
+                    ? '/api/cxc/anticipos/statement/pdf'
+                    : '/api/cxc/trupput/statement/pdf';
+
+        const filePrefix = activeTab === 'movimientos' 
+            ? 'Estado_Cuenta' 
+            : activeTab === 'antiguedad' 
+                ? 'Antiguedad_Saldos' 
+                : activeTab === 'anticipos' 
+                    ? 'Estado_Cuenta_Anticipos' 
+                    : 'Estado_Cuenta_Trupput';
+
+        const toastId = toast.loading('Generando Excel...');
+        try {
+            const res = await axios.get(endpoint, {
+                params: { 
+                    customer_id: selectedCustomerId, 
+                    branch_id: selectedBranchId,
+                    format: 'excel'
+                },
+                responseType: 'blob'
+            });
+
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${filePrefix}_${selectedCustomerId}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+            toast.success('Excel generado y descargado correctamente', { id: toastId });
+        } catch (error) {
+            console.error('Error al exportar Excel:', error);
+            toast.error('Error al generar Excel', { id: toastId });
         }
     };
 

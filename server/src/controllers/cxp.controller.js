@@ -3,6 +3,7 @@ const mailer = require('../services/mailer.service');
 const { generateProviderStatementPDF, generateProviderAgingPDF, generateProviderBalancesPDF } = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 
 /**
@@ -488,11 +489,12 @@ const exportProviderStatementPDF = async (req, res) => {
     }
 
     try {
-        const [companyRows] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [company_id]);
+        const comp = await reportPdfHelper.getCompanyInfo(company_id);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
-        const [providerRows] = await pool.query('SELECT nombre, correo FROM providers WHERE id = ?', [provider_id]);
+        const [providerRows] = await pool.query('SELECT nombre, correo, nit, nrc, numero_documento, telefono FROM providers WHERE id = ?', [provider_id]);
 
         if (!providerRows.length) return res.status(404).json({ message: 'Proveedor no encontrado' });
+        const provider = providerRows[0];
 
         const [purchases] = await pool.query(`
             SELECT h.fecha as fecha, cat.description as tipo, h.numero_documento as numero,
@@ -526,11 +528,42 @@ const exportProviderStatementPDF = async (req, res) => {
             return { ...m, balance: currentBalance };
         });
 
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `ESTADO DE CUENTA DE PROVEEDOR - ${provider.nombre.toUpperCase()}`,
+                sheets: [{
+                    name: 'Estado de Cuenta Prov',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Tipo', key: 'tipo', width: 16 },
+                        { header: 'Documento/Referencia', key: 'numero', width: 22 },
+                        { header: 'Concepto', key: 'concepto', width: 28 },
+                        { header: 'Cargo (Deuda +)', key: 'cargo', width: 18 },
+                        { header: 'Abono (Pagos -)', key: 'abono', width: 18 },
+                        { header: 'Saldo Pendiente', key: 'balance', width: 18 }
+                    ],
+                    data: history.map(m => ({
+                        fecha: reportPdfHelper.formatDate(m.fecha),
+                        tipo: m.tipo,
+                        numero: m.numero,
+                        concepto: m.concepto,
+                        cargo: parseFloat(m.cargo) || 0,
+                        abono: parseFloat(m.abono) || 0,
+                        balance: parseFloat(m.balance) || 0
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Estado_Cuenta_Prov_${provider.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+        }
+
         const pdfData = {
-            company_name: companyRows[0].razon_social,
-            branch_name: branchRows[0].nombre,
-            provider_name: providerRows[0].nombre,
-            provider_email: providerRows[0].correo,
+            company: comp,
+            branch_name: branchRows[0]?.nombre,
+            provider_name: provider.nombre,
+            provider_email: provider.correo,
+            provider_nit: provider.nit || provider.numero_documento,
+            provider_nrc: provider.nrc,
+            provider_phone: provider.telefono,
             total_balance: currentBalance,
             movements: history
         };
@@ -538,7 +571,7 @@ const exportProviderStatementPDF = async (req, res) => {
         const pdfBuffer = await generateProviderStatementPDF(pdfData);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Estado_Cuenta_Prov_${providerRows[0].nombre.replace(/ /g, '_')}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=Estado_Cuenta_Prov_${provider.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
         res.send(pdfBuffer);
 
     } catch (error) {
@@ -635,9 +668,12 @@ const exportProviderAgingPDF = async (req, res) => {
     const company_id = req.company_id;
 
     try {
-        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [company_id]);
+        const comp = await reportPdfHelper.getCompanyInfo(company_id);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
-        const [providerRows] = await pool.query('SELECT nombre, correo FROM providers WHERE id = ?', [provider_id]);
+        const [providerRows] = await pool.query('SELECT nombre, correo, nit, nrc, numero_documento, telefono FROM providers WHERE id = ?', [provider_id]);
+
+        if (!providerRows.length) return res.status(404).json({ message: 'Proveedor no encontrado' });
+        const provider = providerRows[0];
 
         const [rows] = await pool.query(`
             SELECT 
@@ -680,23 +716,62 @@ const exportProviderAgingPDF = async (req, res) => {
             else if (days <= 180) { b.d91_180 = saldo; totals.t91_180 += saldo; }
             else if (days <= 365) { b.d181_365 = saldo; totals.t181_365 += saldo; }
             else { b.d365_plus = saldo; totals.t365_plus += saldo; }
-            return { ...r, ...b };
+            return { ...r, ...b, saldo_pendiente: saldo };
         });
 
+        const total_balance = Object.values(totals).reduce((a, b) => a + b, 0);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `ANTIGÜEDAD DE SALDOS PROVEEDOR - ${provider.nombre.toUpperCase()}`,
+                sheets: [{
+                    name: 'Antigüedad Prov',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Documento', key: 'documento', width: 22 },
+                        { header: 'Tipo', key: 'tipo', width: 20 },
+                        { header: '0-30 Días', key: 'd0_30', width: 14 },
+                        { header: '31-60 Días', key: 'd31_60', width: 14 },
+                        { header: '61-90 Días', key: 'd61_90', width: 14 },
+                        { header: '91-180 Días', key: 'd91_180', width: 14 },
+                        { header: '181-365 Días', key: 'd181_365', width: 14 },
+                        { header: '+365 Días', key: 'd365_plus', width: 14 },
+                        { header: 'Total Saldo', key: 'saldo_pendiente', width: 16 }
+                    ],
+                    data: documents.map(d => ({
+                        fecha: reportPdfHelper.formatDate(d.fecha),
+                        documento: d.documento,
+                        tipo: d.tipo,
+                        d0_30: d.d0_30 || 0,
+                        d31_60: d.d31_60 || 0,
+                        d61_90: d.d61_90 || 0,
+                        d91_180: d.d91_180 || 0,
+                        d181_365: d.d181_365 || 0,
+                        d365_plus: d.d365_plus || 0,
+                        saldo_pendiente: d.saldo_pendiente || 0
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Antiguedad_Prov_${provider.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+        }
+
         const pdfData = {
-            company_name: companyRows[0].nombre,
-            branch_name: branchRows[0].nombre,
-            provider_name: providerRows[0].nombre,
-            provider_email: providerRows[0].correo,
+            company: comp,
+            branch_name: branchRows[0]?.nombre,
+            provider_name: provider.nombre,
+            provider_email: provider.correo,
+            provider_nit: provider.nit || provider.numero_documento,
+            provider_nrc: provider.nrc,
+            provider_phone: provider.telefono,
             documents,
             totals,
-            total_balance: Object.values(totals).reduce((a, b) => a + b, 0)
+            total_balance
         };
 
         const pdfBuffer = await generateProviderAgingPDF(pdfData);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Antiguedad_Prov_${providerRows[0].nombre.replace(/ /g, '_')}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=Antiguedad_Prov_${provider.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('Error in exportProviderAgingPDF:', error);

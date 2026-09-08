@@ -3,12 +3,14 @@ const mailer = require('../services/mailer.service');
 const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
 const { 
     generateStatementPDF, 
+    generateAgingPDF,
     generateTrupputStatementPDF,
     generateCustomerBalancesPDF,
     generatePaymentReceiptPDF
   } = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 
 /**
@@ -518,11 +520,12 @@ const exportStatementPDF = async (req, res) => {
     }
 
     try {
-        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [company_id]);
+        const comp = await reportPdfHelper.getCompanyInfo(company_id);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
-        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customer_id]);
+        const [customerRows] = await pool.query('SELECT nombre, correo, nit, nrc, numero_documento, telefono FROM customers WHERE id = ?', [customer_id]);
 
         if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+        const customer = customerRows[0];
 
         const [sales] = await pool.query(`
             SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
@@ -547,11 +550,42 @@ const exportStatementPDF = async (req, res) => {
             return { ...m, balance: currentBalance };
         });
 
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `ESTADO DE CUENTA - ${customer.nombre.toUpperCase()}`,
+                sheets: [{
+                    name: 'Estado de Cuenta',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Tipo', key: 'tipo', width: 14 },
+                        { header: 'Documento/Referencia', key: 'numero', width: 22 },
+                        { header: 'Concepto', key: 'concepto', width: 28 },
+                        { header: 'Cargo (+)', key: 'cargo', width: 16 },
+                        { header: 'Abono (-)', key: 'abono', width: 16 },
+                        { header: 'Saldo', key: 'balance', width: 16 }
+                    ],
+                    data: history.map(m => ({
+                        fecha: reportPdfHelper.formatDate(m.fecha),
+                        tipo: m.tipo,
+                        numero: m.numero,
+                        concepto: m.concepto,
+                        cargo: parseFloat(m.cargo) || 0,
+                        abono: parseFloat(m.abono) || 0,
+                        balance: parseFloat(m.balance) || 0
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Estado_Cuenta_${customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+        }
+
         const pdfData = {
-            company_name: companyRows[0].nombre,
-            branch_name: branchRows[0].nombre,
-            customer_name: customerRows[0].nombre,
-            customer_email: customerRows[0].correo,
+            company: comp,
+            branch_name: branchRows[0]?.nombre,
+            customer_name: customer.nombre,
+            customer_email: customer.correo,
+            customer_nit: customer.nit || customer.numero_documento,
+            customer_nrc: customer.nrc,
+            customer_phone: customer.telefono,
             total_balance: currentBalance,
             movements: history
         };
@@ -559,7 +593,7 @@ const exportStatementPDF = async (req, res) => {
         const pdfBuffer = await generateStatementPDF(pdfData);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Estado_Cuenta_${customerRows[0].nombre.replace(/ /g, '_')}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=Estado_Cuenta_${customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
         res.send(pdfBuffer);
 
     } catch (error) {
@@ -638,9 +672,12 @@ const exportAgingPDF = async (req, res) => {
     const company_id = req.company_id;
 
     try {
-        const [companyRows] = await pool.query('SELECT nombre FROM companies WHERE id = ?', [company_id]);
+        const comp = await reportPdfHelper.getCompanyInfo(company_id);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
-        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customer_id]);
+        const [customerRows] = await pool.query('SELECT nombre, correo, nit, nrc, numero_documento, telefono FROM customers WHERE id = ?', [customer_id]);
+
+        if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+        const customer = customerRows[0];
 
         const [rows] = await pool.query(`
             SELECT 
@@ -668,24 +705,62 @@ const exportAgingPDF = async (req, res) => {
             else if (days <= 180) { b.d91_180 = saldo; totals.t91_180 += saldo; }
             else if (days <= 365) { b.d181_365 = saldo; totals.t181_365 += saldo; }
             else { b.d365_plus = saldo; totals.t365_plus += saldo; }
-            return { ...r, ...b };
+            return { ...r, ...b, saldo_pendiente: saldo };
         });
 
+        const total_balance = Object.values(totals).reduce((a, b) => a + b, 0);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `ANTIGÜEDAD DE SALDOS - ${customer.nombre.toUpperCase()}`,
+                sheets: [{
+                    name: 'Antigüedad de Saldos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Documento', key: 'documento', width: 22 },
+                        { header: 'Tipo', key: 'tipo', width: 20 },
+                        { header: '0-30 Días', key: 'd0_30', width: 14 },
+                        { header: '31-60 Días', key: 'd31_60', width: 14 },
+                        { header: '61-90 Días', key: 'd61_90', width: 14 },
+                        { header: '91-180 Días', key: 'd91_180', width: 14 },
+                        { header: '181-365 Días', key: 'd181_365', width: 14 },
+                        { header: '+365 Días', key: 'd365_plus', width: 14 },
+                        { header: 'Total Saldo', key: 'saldo_pendiente', width: 16 }
+                    ],
+                    data: documents.map(d => ({
+                        fecha: reportPdfHelper.formatDate(d.fecha),
+                        documento: d.documento,
+                        tipo: d.tipo,
+                        d0_30: d.d0_30 || 0,
+                        d31_60: d.d31_60 || 0,
+                        d61_90: d.d61_90 || 0,
+                        d91_180: d.d91_180 || 0,
+                        d181_365: d.d181_365 || 0,
+                        d365_plus: d.d365_plus || 0,
+                        saldo_pendiente: d.saldo_pendiente || 0
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Antiguedad_Saldos_${customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+        }
+
         const pdfData = {
-            company_name: companyRows[0].nombre,
-            branch_name: branchRows[0].nombre,
-            customer_name: customerRows[0].nombre,
-            customer_email: customerRows[0].correo,
+            company: comp,
+            branch_name: branchRows[0]?.nombre,
+            customer_name: customer.nombre,
+            customer_email: customer.correo,
+            customer_nit: customer.nit || customer.numero_documento,
+            customer_nrc: customer.nrc,
+            customer_phone: customer.telefono,
             documents,
             totals,
-            total_balance: Object.values(totals).reduce((a, b) => a + b, 0)
+            total_balance
         };
 
-        const { generateAgingPDF } = require('../services/pdf.service');
         const pdfBuffer = await generateAgingPDF(pdfData);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=Antiguedad_Saldos_${customerRows[0].nombre.replace(/ /g, '_')}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=Antiguedad_Saldos_${customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('Error in exportAgingPDF:', error);
@@ -1078,11 +1153,12 @@ const exportAnticiposStatementPDF = async (req, res) => {
     }
 
     try {
-        const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [company_id]);
+        const comp = await reportPdfHelper.getCompanyInfo(company_id);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
-        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customer_id]);
+        const [customerRows] = await pool.query('SELECT nombre, correo, nit, nrc, numero_documento, telefono FROM customers WHERE id = ?', [customer_id]);
 
         if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+        const customer = customerRows[0];
 
         const [advances] = await pool.query(`
             SELECT 
@@ -1118,15 +1194,42 @@ const exportAnticiposStatementPDF = async (req, res) => {
             return { ...m, cargo, abono, balance: currentBalance };
         });
 
-        const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
-        const branchName = branchRows[0]?.nombre || 'Sucursal';
-        const customerName = customerRows[0]?.nombre || 'Cliente';
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `ESTADO DE CUENTA DE ANTICIPOS - ${customer.nombre.toUpperCase()}`,
+                sheets: [{
+                    name: 'Anticipos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Tipo', key: 'tipo', width: 14 },
+                        { header: 'Número/Referencia', key: 'numero', width: 22 },
+                        { header: 'Concepto', key: 'concepto', width: 30 },
+                        { header: 'Cargo (+)', key: 'cargo', width: 16 },
+                        { header: 'Abono (-)', key: 'abono', width: 16 },
+                        { header: 'Saldo', key: 'balance', width: 16 }
+                    ],
+                    data: history.map(m => ({
+                        fecha: reportPdfHelper.formatDate(m.fecha),
+                        tipo: m.tipo,
+                        numero: m.numero,
+                        concepto: m.concepto,
+                        cargo: parseFloat(m.cargo) || 0,
+                        abono: parseFloat(m.abono) || 0,
+                        balance: parseFloat(m.balance) || 0
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Estado_Cuenta_Anticipos_${customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+        }
 
         const pdfData = {
-            company_name: companyName,
-            branch_name: branchName,
-            customer_name: customerName,
-            customer_email: customerRows[0]?.correo || '',
+            company: comp,
+            branch_name: branchRows[0]?.nombre,
+            customer_name: customer.nombre,
+            customer_email: customer.correo,
+            customer_nit: customer.nit || customer.numero_documento,
+            customer_nrc: customer.nrc,
+            customer_phone: customer.telefono,
             title: 'ESTADO DE CUENTA DE ANTICIPOS',
             balance_label: 'SALDO DISPONIBLE EN ANTICIPOS:',
             total_balance: currentBalance,
@@ -1135,7 +1238,7 @@ const exportAnticiposStatementPDF = async (req, res) => {
 
         const pdfBuffer = await generateStatementPDF(pdfData);
 
-        const cleanCustomerName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanCustomerName = customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_');
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="Estado_Cuenta_Anticipos_${cleanCustomerName}.pdf"`);
         res.send(pdfBuffer);
@@ -1277,11 +1380,12 @@ const exportTrupputStatementPDF = async (req, res) => {
     }
 
     try {
-        const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [company_id]);
+        const comp = await reportPdfHelper.getCompanyInfo(company_id);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
-        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customer_id]);
+        const [customerRows] = await pool.query('SELECT nombre, correo, nit, nrc, numero_documento, telefono FROM customers WHERE id = ?', [customer_id]);
 
         if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
+        const customer = customerRows[0];
 
         const [recharges] = await pool.query(`
             SELECT 
@@ -1327,22 +1431,53 @@ const exportTrupputStatementPDF = async (req, res) => {
             return { ...m, balance_galones: currentBalanceGal };
         });
 
-        const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
-        const branchName = branchRows[0]?.nombre || 'Sucursal';
-        const customerName = customerRows[0]?.nombre || 'Cliente';
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `ESTADO DE CUENTA TRUPPUT - ${customer.nombre.toUpperCase()}`,
+                sheets: [{
+                    name: 'Trupput',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 14 },
+                        { header: 'Tipo', key: 'tipo', width: 14 },
+                        { header: 'Número/Referencia', key: 'numero', width: 22 },
+                        { header: 'Concepto', key: 'concepto', width: 30 },
+                        { header: 'Galones Recarga (+)', key: 'galones_cargo', width: 18 },
+                        { header: 'Galones Despacho (-)', key: 'galones_abono', width: 18 },
+                        { header: 'Saldo Galones', key: 'balance_galones', width: 18 },
+                        { header: 'Monto Cargo (+)', key: 'cargo', width: 16 },
+                        { header: 'Monto Abono (-)', key: 'abono', width: 16 }
+                    ],
+                    data: history.map(m => ({
+                        fecha: reportPdfHelper.formatDate(m.fecha),
+                        tipo: m.tipo,
+                        numero: m.numero,
+                        concepto: m.concepto,
+                        galones_cargo: parseFloat(m.galones_cargo) || 0,
+                        galones_abono: parseFloat(m.galones_abono) || 0,
+                        balance_galones: parseFloat(m.balance_galones) || 0,
+                        cargo: parseFloat(m.cargo) || 0,
+                        abono: parseFloat(m.abono) || 0
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Estado_Cuenta_Trupput_${customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+        }
 
         const pdfBuffer = await generateTrupputStatementPDF({
-            company_name: companyName,
-            branch_name: branchName,
-            customer_name: customerName,
-            customer_email: customerRows[0]?.correo || '',
+            company: comp,
+            branch_name: branchRows[0]?.nombre,
+            customer_name: customer.nombre,
+            customer_email: customer.correo,
+            customer_nit: customer.nit || customer.numero_documento,
+            customer_nrc: customer.nrc,
+            customer_phone: customer.telefono,
             total_balance_galones: currentBalanceGal,
             total_recargado: totalRecargado,
             total_despachado: totalDespachado,
             movements: history
         });
 
-        const cleanCustomerName = customerName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanCustomerName = customer.nombre.replace(/[^a-zA-Z0-9_-]/g, '_');
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="Estado_Cuenta_Trupput_${cleanCustomerName}.pdf"`);
         res.send(pdfBuffer);

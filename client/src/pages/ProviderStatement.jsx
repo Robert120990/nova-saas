@@ -90,46 +90,40 @@ const ProviderStatement = () => {
     };
 
     const handleExportExcel = async () => {
-        if (activeTab === 'movimientos') {
-            if (!statementData?.movements?.length) return toast.error('No hay datos para exportar');
-            try {
-                const { utils, writeFile } = await import('xlsx');
-                const exportData = statementData.movements.map(m => ({
-                    'Fecha': fmtDate(m.fecha),
-                    'Tipo': m.tipo,
-                    'Número/Referencia': m.numero,
-                    'Concepto': m.concepto,
-                    'Cargo (Nuestra Deuda +)': parseFloat(m.cargo),
-                    'Abono (Pagos -)': parseFloat(m.abono),
-                    'Saldo Pendiente': parseFloat(m.balance)
-                }));
-                const ws = utils.json_to_sheet(exportData);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "Estado de Cuenta Prov");
-                writeFile(wb, `Estado_Cuenta_Prov_${selectedProviderId}_${new Date().getTime()}.xlsx`);
-                toast.success('Excel generado');
-            } catch (error) { toast.error('Error al generar Excel'); }
-        } else {
-            if (!agingData?.documents?.length) return toast.error('No hay datos para exportar');
-            try {
-                const { utils, writeFile } = await import('xlsx');
-                const exportData = agingData.documents.map(d => ({
-                    'Fecha': fmtDate(d.fecha),
-                    'Documento': d.documento,
-                    'Tipo': d.tipo,
-                    '0-30': d.d0_30,
-                    '31-60': d.d31_60,
-                    '61-90': d.d61_90,
-                    '91-180': d.d91_180,
-                    '181-365': d.d181_365,
-                    '+365': d.d365_plus
-                }));
-                const ws = utils.json_to_sheet(exportData);
-                const wb = utils.book_new();
-                utils.book_append_sheet(wb, ws, "Antigüedad de Saldos Prov");
-                writeFile(wb, `Antiguedad_Prov_${selectedProviderId}_${new Date().getTime()}.xlsx`);
-                toast.success('Excel generado');
-            } catch (error) { toast.error('Error al generar Excel'); }
+        if (!selectedProviderId || !selectedBranchId) return;
+
+        const endpoint = activeTab === 'movimientos' 
+            ? '/api/cxp/statement/pdf' 
+            : '/api/cxp/aging-report/pdf';
+
+        const filePrefix = activeTab === 'movimientos' 
+            ? 'Estado_Cuenta_Proveedor' 
+            : 'Antiguedad_Saldos_Proveedor';
+
+        const toastId = toast.loading('Generando Excel...');
+        try {
+            const res = await axios.get(endpoint, {
+                params: { 
+                    provider_id: selectedProviderId, 
+                    branch_id: selectedBranchId,
+                    format: 'excel'
+                },
+                responseType: 'blob'
+            });
+
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${filePrefix}_${selectedProviderId}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+            toast.success('Excel generado y descargado correctamente', { id: toastId });
+        } catch (error) {
+            console.error('Error al exportar Excel:', error);
+            toast.error('Error al generar Excel', { id: toastId });
         }
     };
 
@@ -149,14 +143,16 @@ const ProviderStatement = () => {
                 responseType: 'blob'
             });
             
-            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             link.setAttribute('download', `${fileName}_${selectedProviderId}.pdf`);
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success('PDF descargado', { id: toastId });
+            setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+            toast.success('PDF generado y descargado correctamente', { id: toastId });
         } catch (error) {
             toast.error('Error al generar PDF', { id: toastId });
         }

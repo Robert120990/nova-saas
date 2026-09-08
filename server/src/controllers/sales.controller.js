@@ -2080,32 +2080,38 @@ const exportRTEE = async (req, res) => {
             venta: {
                 fecha_emision: dteJson.identificacion.fecEmi,
                 hora_emision: dteJson.identificacion.horEmi,
-                condicion_operacion: dteJson.resumen.condicionOperacion,
+                condicion_operacion: dteJson.resumen.condicionOperacion || 1,
                 total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
                 total_exento: dteJson.resumen.totalExenta || 0,
                 total_nosujetas: dteJson.resumen.totalNoSuj || 0,
-                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
+                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
                 total_descuento: dteJson.resumen.descuNoExenta || 0,
-                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIVAretenido || 0,
+                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
                 total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
                 fovial: parseFloat(venta.fovial) || 0,
                 cotrans: parseFloat(venta.cotrans) || 0,
                 tributos: dteJson.resumen.tributos || [],
                 totalSujetoRetencion: dteJson.resumen.totalSujetoRetencion || 0,
-                totalIVAretenido: dteJson.resumen.totalIVAretenido || 0,
-                total_retencion: dteJson.resumen.ivaRete || 0,
+                totalIVAretenido: dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || 0,
+                totalIvaRetenido: dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || 0,
+                total_retencion: dteJson.resumen.ivaRete || dteJson.resumen.totalIvaRetenido || 0,
                 total_percepcion: dteJson.resumen.ivaPerci || 0,
             },
-            items: dteJson.cuerpoDocumento.map(item => ({
+            items: (dteJson.cuerpoDocumento || []).map(item => ({
                 cantidad: item.cantidad || 1,
                 descripcion: item.descripcion || '',
                 precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
                 montoDescuento: item.montoDescu || 0,
                 totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
+                montoSujetoGrav: item.montoSujetoGrav || item.ventaGravada || 0,
                 uniMedida: item.uniMedida || 59,
                 tipoDte: item.tipoDte || null,
-                numDocumento: item.numDocumento || null,
+                tipoGeneracion: item.tipoGeneracion || null,
+                numDocumento: item.numeroDocumento || item.numDocumento || null,
+                numeroDocumento: item.numeroDocumento || item.numDocumento || null,
+                fechaEmision: item.fechaEmision || item.emissionDate || item.fecEmi || null,
                 ivaRetenido: item.ivaRetenido || 0,
+                codigoRetencionMH: item.codigoRetencionMH || null,
                 tributos: item.tributos || null,
             }))
         };
@@ -2213,32 +2219,38 @@ const getPublicRTEE = async (req, res) => {
             venta: {
                 fecha_emision: dteJson.identificacion.fecEmi,
                 hora_emision: dteJson.identificacion.horEmi,
-                condicion_operacion: dteJson.resumen.condicionOperacion,
+                condicion_operacion: dteJson.resumen.condicionOperacion || 1,
                 total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
                 total_exento: dteJson.resumen.totalExenta || 0,
                 total_nosujetas: dteJson.resumen.totalNoSuj || 0,
-                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
+                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
                 total_descuento: dteJson.resumen.descuNoExenta || 0,
-                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIVAretenido || 0,
+                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
                 total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
                 fovial: parseFloat(venta.fovial) || 0,
                 cotrans: parseFloat(venta.cotrans) || 0,
                 tributos: dteJson.resumen.tributos || [],
                 totalSujetoRetencion: dteJson.resumen.totalSujetoRetencion || 0,
-                totalIVAretenido: dteJson.resumen.totalIVAretenido || 0,
-                total_retencion: dteJson.resumen.ivaRete || 0,
+                totalIVAretenido: dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || 0,
+                totalIvaRetenido: dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || 0,
+                total_retencion: dteJson.resumen.ivaRete || dteJson.resumen.totalIvaRetenido || 0,
                 total_percepcion: dteJson.resumen.ivaPerci || 0,
             },
-            items: dteJson.cuerpoDocumento.map(item => ({
+            items: (dteJson.cuerpoDocumento || []).map(item => ({
                 cantidad: item.cantidad || 1,
                 descripcion: item.descripcion || '',
                 precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
                 montoDescuento: item.montoDescu || 0,
                 totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
+                montoSujetoGrav: item.montoSujetoGrav || item.ventaGravada || 0,
                 uniMedida: item.uniMedida || 59,
                 tipoDte: item.tipoDte || null,
-                numDocumento: item.numDocumento || null,
+                tipoGeneracion: item.tipoGeneracion || null,
+                numDocumento: item.numeroDocumento || item.numDocumento || null,
+                numeroDocumento: item.numeroDocumento || item.numDocumento || null,
+                fechaEmision: item.fechaEmision || item.emissionDate || item.fecEmi || null,
                 ivaRetenido: item.ivaRetenido || 0,
+                codigoRetencionMH: item.codigoRetencionMH || null,
                 tributos: item.tributos || null,
             }))
         };
@@ -2600,13 +2612,31 @@ const checkExistingCR = async (req, res) => {
         const { doc_number, doc_type } = req.query;
         if (!doc_number) return res.json({ exists: false });
 
-        const [rows] = await pool.query(
-            `SELECT 1 FROM sales_linked_documents ld
-             JOIN sales_headers h ON ld.sale_id = h.id
-             WHERE ld.doc_number = ? AND h.tipo_documento = '07' AND h.company_id = ?
-             LIMIT 1`,
-            [doc_number, req.company_id]
-        );
+        let query = `
+            SELECT 1 FROM sales_linked_documents ld
+            JOIN sales_headers h ON ld.sale_id = h.id
+            WHERE ld.doc_number = ?
+              AND (h.tipo_documento = '07' OR h.dte_type = '07')
+              AND h.company_id = ?
+              AND LOWER(h.estado) != 'anulado'
+              AND (
+                  (${dteValidoExistsSql('h')})
+                  OR (
+                      (h.codigo_generacion IS NULL OR h.codigo_generacion = '')
+                      AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id)
+                  )
+              )
+        `;
+        const params = [String(doc_number).trim(), req.company_id];
+
+        if (doc_type) {
+            query += ` AND ld.doc_type = ?`;
+            params.push(String(doc_type).trim());
+        }
+
+        query += ` LIMIT 1`;
+
+        const [rows] = await pool.query(query, params);
         res.json({ exists: rows.length > 0 });
     } catch (error) {
         console.error('[checkExistingCR] Error:', error.message);
@@ -3187,25 +3217,36 @@ const sendPublicDTEEmail = async (req, res) => {
             venta: {
                 fecha_emision: dteJson.identificacion?.fecEmi,
                 hora_emision: dteJson.identificacion?.horEmi,
-                condicion_operacion: dteJson.resumen?.condicionOperacion,
-                total_gravado: dteJson.resumen?.totalGravada || 0,
-                total_iva: dteJson.resumen?.totalIva || (dteJson.resumen?.tributos?.find(t => t.codigo === '20')?.valor || 0),
+                condicion_operacion: dteJson.resumen?.condicionOperacion || 1,
+                total_gravado: dteJson.resumen?.totalGravada || dteJson.resumen?.totalSujetoRetencion || 0,
+                total_iva: dteJson.resumen?.totalIva || dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || (dteJson.resumen?.tributos?.find(t => t.codigo === '20')?.valor || 0),
                 total_descuento: dteJson.resumen?.descuNoExenta || 0,
-                total_pagar: dteJson.resumen?.totalPagar || 0,
-                total_letras: dteJson.resumen?.totalLetras || '',
+                total_pagar: dteJson.resumen?.totalPagar || dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
+                total_letras: dteJson.resumen?.totalLetras || dteJson.resumen?.totalIVAretenidoLetras || '',
                 fovial: parseFloat(venta.fovial) || 0,
                 cotrans: parseFloat(venta.cotrans) || 0,
                 tributos: dteJson.resumen?.tributos || [],
-                total_retencion: dteJson.resumen?.ivaRete || 0,
+                totalSujetoRetencion: dteJson.resumen?.totalSujetoRetencion || 0,
+                totalIVAretenido: dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || 0,
+                totalIvaRetenido: dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || 0,
+                total_retencion: dteJson.resumen?.ivaRete || dteJson.resumen?.totalIvaRetenido || 0,
                 total_percepcion: dteJson.resumen?.ivaPerci || 0
             },
             items: (dteJson.cuerpoDocumento || []).map(item => ({
                 cantidad: item.cantidad || 1,
                 descripcion: item.descripcion || '',
-                precioUnitario: item.precioUni || 0,
+                precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
                 montoDescuento: item.montoDescu || 0,
-                totalItem: item.ventaGravada || 0,
+                totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
+                montoSujetoGrav: item.montoSujetoGrav || item.ventaGravada || 0,
                 uniMedida: item.uniMedida || 59,
+                tipoDte: item.tipoDte || null,
+                tipoGeneracion: item.tipoGeneracion || null,
+                numDocumento: item.numeroDocumento || item.numDocumento || null,
+                numeroDocumento: item.numeroDocumento || item.numDocumento || null,
+                fechaEmision: item.fechaEmision || item.emissionDate || item.fecEmi || null,
+                ivaRetenido: item.ivaRetenido || 0,
+                codigoRetencionMH: item.codigoRetencionMH || null,
                 tributos: item.tributos || null,
             })),
             isVoided: (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO'
