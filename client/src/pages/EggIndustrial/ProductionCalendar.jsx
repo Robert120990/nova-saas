@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
 import Modal from '../../components/ui/Modal';
-import Money from '../../components/ui/Money';
+import Money, { MoneyInput } from '../../components/ui/Money';
 import {
     Calendar as CalendarIcon,
     ChevronLeft,
@@ -30,7 +30,10 @@ import {
     Wand2,
     CalendarCheck,
     ArrowRightLeft,
-    CheckSquare
+    CheckSquare,
+    Check,
+    AlertCircle,
+    Building2
 } from 'lucide-react';
 import {
     getJulianDayInfo,
@@ -77,6 +80,62 @@ const PRESENTATIONS = [
     'litro 2LB',
     'bolsa 20LB'
 ];
+
+/**
+ * Helper para buscar el acuerdo comercial activo de un cliente según el perfil o nombre de producto
+ */
+const findAgreementForProduct = (agreementsList, productType) => {
+    if (!agreementsList || agreementsList.length === 0 || !productType) return null;
+
+    const clean = (s) => (s || '')
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, ' ')
+        .trim();
+
+    const target = clean(productType);
+
+    // 1. Coincidencia exacta de tipo de producto
+    let match = agreementsList.find(a => clean(a.product_type) === target);
+    if (match) return match;
+
+    // 2. Coincidencias por palabras clave de perfiles
+    if (target.includes('clara')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('clara') || clean(a.product_name).includes('clara'));
+    } else if (target.includes('azucarada')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('azucar') || clean(a.product_name).includes('azucar'));
+    } else if (target.includes('salada')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('salad') || clean(a.product_name).includes('salad'));
+    } else if (target.includes('leche')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('leche') || clean(a.product_name).includes('leche'));
+    } else if (target.includes('plus')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('plus') || clean(a.product_name).includes('plus'));
+    } else if (target.includes('formulado') || target.includes('separacion')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('formulado') || clean(a.product_type).includes('separacion'));
+        if (!match) {
+            match = agreementsList.find(a => clean(a.product_type).includes('entero') && !clean(a.product_type).includes('plus'));
+        }
+    } else if (target.includes('entero')) {
+        match = agreementsList.find(a => clean(a.product_type).includes('entero') && !clean(a.product_type).includes('plus'));
+    }
+
+    if (match) return match;
+
+    // 3. Coincidencia por catálogo o descripción
+    match = agreementsList.find(a => {
+        const pName = clean(a.product_name);
+        return pName && (pName.includes(target) || target.includes(pName));
+    });
+    if (match) return match;
+
+    // 4. Si el cliente solo tiene 1 acuerdo comercial activo con precio registrado
+    if (agreementsList.length === 1 && parseFloat(agreementsList[0].agreed_price_per_lb) > 0) {
+        return agreementsList[0];
+    }
+
+    return null;
+};
 
 const ProductionCalendar = () => {
     const { user } = useAuth();
@@ -158,8 +217,9 @@ const ProductionCalendar = () => {
     const [newTaskUser, setNewTaskUser] = useState('');
     const [newTaskDesc, setNewTaskDesc] = useState(DEFAULT_PRESETS_BY_ROLE[FACTORY_ROLES[0]] || '');
 
-    // Customer order form
+    // Customer order form & CRM Integration
     const [orderForm, setOrderForm] = useState({
+        customer_id: '',
         customer_name: '',
         order_number: '',
         product_type: 'Huevo Entero Pasteurizado',
@@ -169,6 +229,14 @@ const ProductionCalendar = () => {
         price_per_lb: '',
         notes: ''
     });
+    const [customerSearchInput, setCustomerSearchInput] = useState('');
+    const [customerSearchResults, setCustomerSearchResults] = useState([]);
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    const [loadingCustomers, setLoadingCustomers] = useState(false);
+    const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [customerAgreements, setCustomerAgreements] = useState([]);
+    const [loadingAgreements, setLoadingAgreements] = useState(false);
+    const [agreedPriceNotice, setAgreedPriceNotice] = useState(null);
 
     // Fetch primary data
     const fetchProductions = async () => {
@@ -621,13 +689,150 @@ const ProductionCalendar = () => {
         }
     };
 
-    // Customer Orders Handlers
+    // Customer Orders & CRM Autocomplete Handlers
+    const searchCustomersList = async (query = '') => {
+        setLoadingCustomers(true);
+        try {
+            const res = await axios.get('/api/customers', {
+                params: {
+                    search: query || undefined,
+                    limit: 15
+                }
+            });
+            const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+            setCustomerSearchResults(list);
+        } catch (error) {
+            console.error('Error buscando clientes:', error);
+        } finally {
+            setLoadingCustomers(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isOrdersModalOpen) {
+            searchCustomersList('');
+        } else {
+            setShowCustomerDropdown(false);
+        }
+    }, [isOrdersModalOpen]);
+
+    const handleCustomerInputChange = (e) => {
+        const val = e.target.value;
+        setCustomerSearchInput(val);
+        setShowCustomerDropdown(true);
+
+        if (selectedCustomer && val !== selectedCustomer.nombre) {
+            setSelectedCustomer(null);
+            setCustomerAgreements([]);
+            setAgreedPriceNotice(null);
+            setOrderForm(prev => ({ ...prev, customer_id: '', customer_name: val, price_per_lb: '' }));
+        } else {
+            setOrderForm(prev => ({ ...prev, customer_name: val }));
+        }
+
+        searchCustomersList(val);
+    };
+
+    const handleSelectCustomer = async (cust) => {
+        setSelectedCustomer(cust);
+        setCustomerSearchInput(cust.nombre);
+        setShowCustomerDropdown(false);
+        setOrderForm(prev => ({
+            ...prev,
+            customer_id: cust.id,
+            customer_name: cust.nombre
+        }));
+
+        setLoadingAgreements(true);
+        try {
+            const res = await axios.get(`/api/crm/customer-agreements/active-by-customer/${cust.id}`);
+            const agreements = res.data || [];
+            setCustomerAgreements(agreements);
+
+            const match = findAgreementForProduct(agreements, orderForm.product_type);
+            if (match && parseFloat(match.agreed_price_per_lb) > 0) {
+                const price = match.agreed_price_per_lb;
+                setOrderForm(prev => ({ ...prev, customer_id: cust.id, customer_name: cust.nombre, price_per_lb: price }));
+                setAgreedPriceNotice({
+                    type: 'crm',
+                    price: price,
+                    product: match.product_type || match.product_name,
+                    label: `Precio pactado en CRM ($${parseFloat(price).toFixed(2)}/lb) jalado automáticamente`
+                });
+                toast.success(`Precio acordado de $${parseFloat(price).toFixed(2)}/lb jalado automáticamente desde CRM.`);
+            } else {
+                setOrderForm(prev => ({ ...prev, customer_id: cust.id, customer_name: cust.nombre, price_per_lb: '' }));
+                setAgreedPriceNotice({
+                    type: 'none',
+                    label: agreements.length > 0
+                        ? `Cliente con acuerdos para otros productos, sin precio pactado para ${orderForm.product_type}`
+                        : 'Cliente registrado sin acuerdos activos de precio en CRM'
+                });
+            }
+        } catch (error) {
+            console.error('Error al cargar acuerdos del cliente:', error);
+            setCustomerAgreements([]);
+        } finally {
+            setLoadingAgreements(false);
+        }
+    };
+
+    const handleProductTypeChange = (newProductType) => {
+        setOrderForm(prev => ({ ...prev, product_type: newProductType }));
+
+        if (selectedCustomer && customerAgreements.length > 0) {
+            const match = findAgreementForProduct(customerAgreements, newProductType);
+            if (match && parseFloat(match.agreed_price_per_lb) > 0) {
+                const price = match.agreed_price_per_lb;
+                setOrderForm(prev => ({ ...prev, product_type: newProductType, price_per_lb: price }));
+                setAgreedPriceNotice({
+                    type: 'crm',
+                    price: price,
+                    product: match.product_type || match.product_name,
+                    label: `Precio pactado en CRM ($${parseFloat(price).toFixed(2)}/lb) jalado automáticamente`
+                });
+                toast.info(`Precio acordado aplicado para ${newProductType}: $${parseFloat(price).toFixed(2)}/lb`);
+            } else {
+                setOrderForm(prev => ({ ...prev, product_type: newProductType, price_per_lb: '' }));
+                setAgreedPriceNotice({
+                    type: 'none',
+                    label: `Sin precio pactado en CRM para ${newProductType}`
+                });
+            }
+        }
+    };
+
     const handleSaveOrder = async (e) => {
         e.preventDefault();
+
+        let custId = orderForm.customer_id;
+        let custName = (orderForm.customer_name || customerSearchInput || '').trim();
+
+        if (!custId) {
+            const exact = customerSearchResults.find(c =>
+                c.nombre.toLowerCase().trim() === custName.toLowerCase().trim() ||
+                (c.nombre_comercial && c.nombre_comercial.toLowerCase().trim() === custName.toLowerCase().trim())
+            );
+            if (exact) {
+                custId = exact.id;
+                custName = exact.nombre;
+            } else {
+                toast.error('El cliente debe coincidir con un cliente registrado en el catálogo.');
+                setShowCustomerDropdown(true);
+                return;
+            }
+        }
+
         try {
-            await axios.post('/api/egg-industrial/orders', orderForm);
-            toast.success('Pedido de cliente registrado exitosamente.');
+            const payload = {
+                ...orderForm,
+                customer_id: custId,
+                customer_name: custName
+            };
+            const res = await axios.post('/api/egg-industrial/orders', payload);
+            toast.success(res.data.message || 'Pedido de cliente registrado exitosamente.');
             setOrderForm({
+                customer_id: '',
                 customer_name: '',
                 order_number: '',
                 product_type: 'Huevo Entero Pasteurizado',
@@ -637,11 +842,15 @@ const ProductionCalendar = () => {
                 price_per_lb: '',
                 notes: ''
             });
+            setSelectedCustomer(null);
+            setCustomerSearchInput('');
+            setCustomerAgreements([]);
+            setAgreedPriceNotice(null);
             fetchOrders();
             fetchSuggestions();
         } catch (error) {
             console.error('Error al guardar pedido:', error);
-            toast.error('Error al registrar pedido.');
+            toast.error(error.response?.data?.message || 'Error al registrar pedido.');
         }
     };
 
@@ -2128,29 +2337,132 @@ const ProductionCalendar = () => {
             >
                 <div className="space-y-5">
                     {/* Formulario de Nuevo Pedido */}
-                    <form onSubmit={handleSaveOrder} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
-                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wide block">
-                            Registrar Nuevo Pedido para el Algoritmo de Sugerencias
-                        </span>
+                    <form onSubmit={handleSaveOrder} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3.5">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>Registrar Nuevo Pedido para el Algoritmo de Sugerencias</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                                Los precios se enlazan con el módulo de CRM
+                            </span>
+                        </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Cliente *</label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="ej. PriceSmart / Bimbo"
-                                    value={orderForm.customer_name}
-                                    onChange={(e) => setOrderForm({ ...orderForm, customer_name: e.target.value })}
-                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium"
-                                />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                            {/* CLIENTE OBLIGATORIO CON AUTOCOMPLETE */}
+                            <div className="relative">
+                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                    Cliente * <span className="text-slate-400 font-normal">(Catálogo existente)</span>
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="Buscar cliente existente..."
+                                        value={customerSearchInput}
+                                        onChange={handleCustomerInputChange}
+                                        onFocus={() => {
+                                            setShowCustomerDropdown(true);
+                                            if (customerSearchResults.length === 0) searchCustomersList(customerSearchInput);
+                                        }}
+                                        className={`w-full bg-white border rounded-lg px-2.5 py-1.5 font-medium pr-8 transition-colors ${
+                                            selectedCustomer 
+                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/20 text-slate-900 font-bold' 
+                                                : customerSearchInput && !selectedCustomer
+                                                    ? 'border-amber-400 bg-amber-50/10'
+                                                    : 'border-slate-300'
+                                        }`}
+                                    />
+                                    {selectedCustomer ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedCustomer(null);
+                                                setCustomerSearchInput('');
+                                                setCustomerAgreements([]);
+                                                setAgreedPriceNotice(null);
+                                                setOrderForm(prev => ({ ...prev, customer_id: '', customer_name: '', price_per_lb: '' }));
+                                                searchCustomersList('');
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-0.5 transition-colors"
+                                            title="Quitar cliente seleccionado"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    ) : (
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                            {loadingCustomers ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" /> : <Search className="w-3.5 h-3.5" />}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Feedback de selección */}
+                                {selectedCustomer && (
+                                    <div className="flex items-center gap-1.5 mt-1 text-[10px] font-bold text-emerald-700">
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                        <span>Cliente existente (ID: {selectedCustomer.id})</span>
+                                        {customerAgreements.length > 0 && (
+                                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded text-[9px]">
+                                                {customerAgreements.length} acuerdo{customerAgreements.length > 1 ? 's' : ''} CRM
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {!selectedCustomer && customerSearchInput.trim().length > 0 && !showCustomerDropdown && (
+                                    <p className="text-[10px] text-amber-600 mt-1 font-medium flex items-center gap-1">
+                                        <AlertCircle className="w-3 h-3 text-amber-500" />
+                                        <span>Debe coincidir con un cliente registrado en el sistema.</span>
+                                    </p>
+                                )}
+
+                                {/* Dropdown flotante de catálogo de clientes */}
+                                {showCustomerDropdown && (
+                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-100">
+                                        {loadingCustomers ? (
+                                            <div className="p-3 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                                                <span>Buscando en catálogo...</span>
+                                            </div>
+                                        ) : customerSearchResults.length === 0 ? (
+                                            <div className="p-3 text-center text-xs text-slate-400">
+                                                No se encontró ningún cliente registrado con ese término.
+                                            </div>
+                                        ) : (
+                                            customerSearchResults.map((cust) => (
+                                                <div
+                                                    key={cust.id}
+                                                    onClick={() => handleSelectCustomer(cust)}
+                                                    className="p-2.5 hover:bg-indigo-50/70 cursor-pointer transition-colors text-xs flex items-center justify-between"
+                                                >
+                                                    <div>
+                                                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                                            <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                                                            <span>{cust.nombre}</span>
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500 mt-0.5">
+                                                            {cust.nombre_comercial && cust.nombre_comercial !== cust.nombre && (
+                                                                <span className="mr-2 italic text-slate-600 font-medium">"{cust.nombre_comercial}"</span>
+                                                            )}
+                                                            NIT: {cust.nit || 'N/A'} • NRC: {cust.nrc || 'N/A'}
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                                                        Elegir
+                                                    </span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
+                            {/* PRODUCTO REQUERIDO */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Producto Requerido *</label>
                                 <select
                                     value={orderForm.product_type}
-                                    onChange={(e) => setOrderForm({ ...orderForm, product_type: e.target.value })}
+                                    onChange={(e) => handleProductTypeChange(e.target.value)}
                                     className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium"
                                 >
                                     {PRODUCT_PROFILES.map(p => (
@@ -2159,6 +2471,7 @@ const ProductionCalendar = () => {
                                 </select>
                             </div>
 
+                            {/* CANTIDAD LBS */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Cantidad (Lbs) *</label>
                                 <input
@@ -2171,6 +2484,7 @@ const ProductionCalendar = () => {
                                 />
                             </div>
 
+                            {/* FECHA DE ENTREGA */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Fecha de Entrega Requerida *</label>
                                 <input
@@ -2182,24 +2496,55 @@ const ProductionCalendar = () => {
                                 />
                             </div>
 
+                            {/* PRECIO ACORDADO ($/LB) CON AUTO-PULL CRM */}
                             <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Precio Acordado ($/Lb)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="ej. 1.25"
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-bold text-slate-600 uppercase">
+                                        Precio Acordado ($/Lb)
+                                    </label>
+                                    {agreedPriceNotice?.type === 'crm' && (
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded animate-pulse">
+                                            <Sparkles className="w-2.5 h-2.5 text-emerald-600" /> Auto CRM
+                                        </span>
+                                    )}
+                                </div>
+                                <MoneyInput
                                     value={orderForm.price_per_lb}
-                                    onChange={(e) => setOrderForm({ ...orderForm, price_per_lb: e.target.value })}
-                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium"
+                                    onChange={(e) => {
+                                        setOrderForm({ ...orderForm, price_per_lb: e.target.value });
+                                        if (agreedPriceNotice?.type === 'crm') {
+                                            setAgreedPriceNotice(prev => ({ ...prev, overridden: true }));
+                                        }
+                                    }}
+                                    placeholder="ej. 1.25"
+                                    step="0.0001"
+                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 />
+                                {loadingAgreements ? (
+                                    <p className="text-[10px] text-indigo-600 mt-1 flex items-center gap-1">
+                                        <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Verificando acuerdos en CRM...
+                                    </p>
+                                ) : agreedPriceNotice ? (
+                                    <p className={`text-[10px] mt-1 font-medium flex items-center gap-1 ${
+                                        agreedPriceNotice.type === 'crm' ? 'text-emerald-700' : 'text-slate-500'
+                                    }`}>
+                                        {agreedPriceNotice.type === 'crm' && <Check className="w-3 h-3 text-emerald-600" />}
+                                        <span>{agreedPriceNotice.label}</span>
+                                        {agreedPriceNotice.overridden && (
+                                            <span className="text-amber-600 italic">(manual)</span>
+                                        )}
+                                    </p>
+                                ) : null}
                             </div>
 
+                            {/* BOTÓN GUARDAR */}
                             <div className="flex items-end">
                                 <button
                                     type="submit"
-                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow transition-all"
+                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow transition-all flex items-center justify-center gap-1.5"
                                 >
-                                    Guardar Pedido
+                                    <Plus className="w-4 h-4" />
+                                    <span>Guardar Pedido</span>
                                 </button>
                             </div>
                         </div>
@@ -2213,6 +2558,7 @@ const ProductionCalendar = () => {
                                     <th className="px-3 py-2.5">Cliente</th>
                                     <th className="px-3 py-2.5">Producto</th>
                                     <th className="px-3 py-2.5 text-right">Cantidad (Lbs)</th>
+                                    <th className="px-3 py-2.5 text-right">Precio ($/Lb)</th>
                                     <th className="px-3 py-2.5">Entrega</th>
                                     <th className="px-3 py-2.5">Estado</th>
                                     <th className="px-3 py-2.5 text-center">Acciones</th>
@@ -2221,17 +2567,30 @@ const ProductionCalendar = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {customerOrders.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-3 py-6 text-center text-slate-400 font-medium">
+                                        <td colSpan={7} className="px-3 py-6 text-center text-slate-400 font-medium">
                                             No hay pedidos registrados todavía.
                                         </td>
                                     </tr>
                                 ) : (
                                     customerOrders.map(order => (
-                                        <tr key={order.id} className="hover:bg-slate-50">
-                                            <td className="px-3 py-2 font-bold text-slate-900">{order.customer_name}</td>
+                                        <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-3 py-2">
+                                                <div className="font-bold text-slate-900">{order.customer_name}</div>
+                                                {order.customer_id && (
+                                                    <span className="text-[10px] text-slate-400 font-normal">
+                                                        Cliente ID #{order.customer_id}
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className="px-3 py-2 text-slate-700">{order.product_type}</td>
                                             <td className="px-3 py-2 text-right font-bold text-indigo-600">
                                                 {parseFloat(order.quantity_lbs || 0).toLocaleString()} Lbs
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                                <span className="font-bold text-slate-800">
+                                                    <Money value={order.price_per_lb} />
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 block font-normal">/ Lb</span>
                                             </td>
                                             <td className="px-3 py-2 text-slate-600">
                                                 {order.required_delivery_date ? new Date(order.required_delivery_date).toLocaleDateString('es-SV', { timeZone: 'UTC' }) : 'N/A'}
@@ -2246,6 +2605,7 @@ const ProductionCalendar = () => {
                                                     type="button"
                                                     onClick={() => handleDeleteOrder(order.id)}
                                                     className="p-1 hover:bg-red-50 text-red-500 rounded transition-colors"
+                                                    title="Eliminar pedido"
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" />
                                                 </button>

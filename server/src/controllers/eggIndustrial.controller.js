@@ -2676,15 +2676,24 @@ const getEggCustomerOrders = async (req, res) => {
     try {
         const { status } = req.query;
         const company_id = req.company_id || req.user?.company_id;
-        let sql = 'SELECT * FROM egg_customer_orders WHERE company_id = ?';
+        let sql = `
+            SELECT o.*, 
+                   c.nombre as customer_registered_name, 
+                   c.nombre_comercial as customer_commercial_name,
+                   c.nit as customer_nit, 
+                   c.nrc as customer_nrc
+            FROM egg_customer_orders o
+            LEFT JOIN customers c ON o.customer_id = c.id
+            WHERE o.company_id = ?
+        `;
         const params = [company_id];
 
         if (status) {
-            sql += ' AND status = ?';
+            sql += ' AND o.status = ?';
             params.push(status);
         }
 
-        sql += ' ORDER BY required_delivery_date ASC, created_at DESC';
+        sql += ' ORDER BY o.required_delivery_date ASC, o.created_at DESC';
         const [orders] = await pool.query(sql, params);
         res.json(orders);
     } catch (error) {
@@ -2715,6 +2724,59 @@ const saveEggCustomerOrder = async (req, res) => {
             return res.status(400).json({ message: 'Cliente, Producto, Cantidad (Lbs) y Fecha requerida son obligatorios.' });
         }
 
+        // 1. Validar que el cliente coincida con un cliente existente registrado en el sistema
+        let resolvedCustomerId = customer_id ? parseInt(customer_id) : null;
+        let resolvedCustomerName = (customer_name || '').trim();
+
+        if (resolvedCustomerId) {
+            const [cCheck] = await pool.query(
+                'SELECT id, nombre, nombre_comercial FROM customers WHERE id = ? AND company_id = ?',
+                [resolvedCustomerId, company_id]
+            );
+            if (cCheck.length === 0) {
+                return res.status(400).json({ message: 'El cliente seleccionado no existe en el catálogo de clientes.' });
+            }
+            resolvedCustomerName = cCheck[0].nombre;
+        } else {
+            // Buscar coincidencia por nombre o nombre comercial en customers
+            const [cCheck] = await pool.query(
+                `SELECT id, nombre, nombre_comercial FROM customers 
+                 WHERE company_id = ? 
+                   AND (LOWER(TRIM(nombre)) = LOWER(TRIM(?)) OR LOWER(TRIM(nombre_comercial)) = LOWER(TRIM(?)))
+                 LIMIT 1`,
+                [company_id, resolvedCustomerName, resolvedCustomerName]
+            );
+            if (cCheck.length === 0) {
+                return res.status(400).json({ 
+                    message: `El cliente '${resolvedCustomerName}' no coincide con ningún cliente registrado. Debe seleccionar un cliente existente.` 
+                });
+            }
+            resolvedCustomerId = cCheck[0].id;
+            resolvedCustomerName = cCheck[0].nombre;
+        }
+
+        // 2. Si el precio acordado no se ingresó manualmente (> 0), jalarlo automáticamente desde el CRM
+        let finalPrice = parseFloat(price_per_lb) || 0;
+        if (finalPrice <= 0 && resolvedCustomerId) {
+            const [agreements] = await pool.query(
+                `SELECT agreed_price_per_lb 
+                 FROM egg_costing_customer_agreements 
+                 WHERE company_id = ? 
+                   AND (customer_id = ? OR customer_name = ?)
+                   AND status = 'activo'
+                   AND (
+                       product_type = ? 
+                       OR LOWER(product_type) LIKE LOWER(?) 
+                       OR LOWER(?) LIKE CONCAT('%', LOWER(product_type), '%')
+                   )
+                 ORDER BY updated_at DESC LIMIT 1`,
+                [company_id, resolvedCustomerId, resolvedCustomerName, product_type, `%${product_type}%`, product_type]
+            );
+            if (agreements.length > 0 && parseFloat(agreements[0].agreed_price_per_lb) > 0) {
+                finalPrice = parseFloat(agreements[0].agreed_price_per_lb);
+            }
+        }
+
         if (id) {
             await pool.query(
                 `UPDATE egg_customer_orders SET
@@ -2723,13 +2785,13 @@ const saveEggCustomerOrder = async (req, res) => {
                     status = ?, price_per_lb = ?, notes = ?
                  WHERE id = ? AND company_id = ?`,
                 [
-                    customer_id || null, customer_name, order_number || null, product_type,
+                    resolvedCustomerId, resolvedCustomerName, order_number || null, product_type,
                     presentation || 'cubeta 30LB', parseFloat(quantity_lbs) || 0,
-                    required_delivery_date, status || 'pendiente', parseFloat(price_per_lb) || 0,
+                    required_delivery_date, status || 'pendiente', finalPrice,
                     notes || null, id, company_id
                 ]
             );
-            return res.json({ id, message: 'Pedido actualizado exitosamente.' });
+            return res.json({ id, message: 'Pedido actualizado exitosamente.', customer_id: resolvedCustomerId, price_per_lb: finalPrice });
         } else {
             const [result] = await pool.query(
                 `INSERT INTO egg_customer_orders (
@@ -2737,13 +2799,13 @@ const saveEggCustomerOrder = async (req, res) => {
                     presentation, quantity_lbs, required_delivery_date, status, price_per_lb, notes
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    company_id, customer_id || null, customer_name, order_number || null, product_type,
+                    company_id, resolvedCustomerId, resolvedCustomerName, order_number || null, product_type,
                     presentation || 'cubeta 30LB', parseFloat(quantity_lbs) || 0,
-                    required_delivery_date, status || 'pendiente', parseFloat(price_per_lb) || 0,
+                    required_delivery_date, status || 'pendiente', finalPrice,
                     notes || null
                 ]
             );
-            return res.status(201).json({ id: result.insertId, message: 'Pedido registrado exitosamente.' });
+            return res.status(201).json({ id: result.insertId, message: 'Pedido registrado exitosamente.', customer_id: resolvedCustomerId, price_per_lb: finalPrice });
         }
     } catch (error) {
         console.error('Error al guardar pedido de ovoproductos:', error);
