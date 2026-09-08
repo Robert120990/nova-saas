@@ -162,6 +162,24 @@ function buildTree(items) {
         }
     }
 
+    // Asegurar Liquidación IVA y Pago a Cuenta en Libros de IVA
+    const ivaNode = Object.values(itemMap).find(i => 
+        (i.id === 63 || i.label === 'Libros de IVA') ||
+        (i.children && i.children.some(c => c.path === '/iva/compras'))
+    );
+    if (ivaNode && !ivaNode.children.some(c => c.path === '/iva/liquidacion')) {
+        ivaNode.children.push({
+            id: 'virtual-vat-liquidation',
+            label: 'Liquidación IVA y Pago a Cuenta',
+            path: '/iva/liquidacion',
+            permission: 'view_vat_liquidation',
+            permission_key: 'view_vat_liquidation',
+            hideInMenu: false,
+            icon: iconMap.Calculator || iconMap.Circle,
+            children: []
+        });
+    }
+
     return roots;
 }
 
