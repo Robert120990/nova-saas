@@ -1,6 +1,4 @@
-const mysql = require('mysql2/promise');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
+const pool = require('../server/src/config/db');
 
 const RH_REPORTS = [
     { label: 'Planilla de ISSS', path: '/rh/reportes/isss', icon: 'FileText', perm: 'manage_rh_planillas' },
@@ -12,13 +10,6 @@ const RH_REPORTS = [
 ];
 
 async function runMigration() {
-    const pool = mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-    });
-
     try {
         console.log('Running migration v168 - RH reports menu...');
 
@@ -81,7 +72,6 @@ async function runMigration() {
         console.error('Error en migración v168:', e);
         process.exit(1);
     } finally {
-        await pool.end();
         process.exit(0);
     }
 }
