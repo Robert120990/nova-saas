@@ -24,15 +24,28 @@ function parsePermissions(permissions) {
     }
 }
 
-function parseModules(modules) {
-    if (!modules) return null;
-    if (Array.isArray(modules)) return modules;
-    try {
-        const parsed = JSON.parse(modules);
-        return Array.isArray(parsed) ? parsed : null;
-    } catch {
-        return null;
+function parseModules(modules, companyName = '', companyId = null) {
+    let list = null;
+    if (modules) {
+        if (Array.isArray(modules)) list = [...modules];
+        else {
+            try {
+                const parsed = JSON.parse(modules);
+                if (Array.isArray(parsed)) list = [...parsed];
+            } catch {
+                list = null;
+            }
+        }
     }
+
+    const isAndelsa = companyId === 9 || (typeof companyName === 'string' && companyName.toUpperCase().includes('ANDELSA'));
+    if (isAndelsa) {
+        if (!list) list = ['sales', 'purchases', 'inventory', 'accounting', 'human_resources'];
+        if (!list.includes('egg_industrial')) list.push('egg_industrial');
+        if (!list.includes('crm')) list.push('crm');
+    }
+
+    return list;
 }
 
 const login = async (req, res) => {
@@ -153,7 +166,7 @@ const login = async (req, res) => {
                 email: user.email,
                 role: company.role_name,
                 permissions: parsePermissions(company.permissions),
-                enabled_modules: parseModules(company.enabled_modules),
+                enabled_modules: parseModules(company.enabled_modules, company.razon_social, company.id),
                 company_id: company.id,
                 branch_id: branch.id,
                 company_name: company.razon_social,
@@ -294,7 +307,7 @@ const selectContext = async (req, res) => {
             email: user.email,
             role: empData.role_name,
             permissions: parsePermissions(empData.permissions),
-            enabled_modules: parseModules(empData.enabled_modules),
+            enabled_modules: parseModules(empData.enabled_modules, empData.razon_social, company_id),
             company_id,
             branch_id,
             company_name: empData.razon_social,

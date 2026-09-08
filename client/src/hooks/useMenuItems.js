@@ -5,6 +5,8 @@ import iconMap from '../config/iconMap';
 
 export const GROUP_MODULE_MAP = {
     'Huevo Industrial': 'egg_industrial',
+    'Industrial': 'egg_industrial',
+    'Planta de Huevo': 'egg_industrial',
     'Gasolinera': 'gas_station',
     'Control de Pozo': 'pozo',
     'CRM': 'crm',
@@ -33,12 +35,25 @@ function buildTree(items) {
         itemMap[item.id] = normalize(item);
     });
 
+    // Grupos raíz clave para rescatar submenús con parent_id desfasado
+    const industrialRoot = Object.values(itemMap).find(i => !i.parent_id && (i.label?.includes('Industrial') || i.label?.includes('Huevo')));
+    const crmRoot = Object.values(itemMap).find(i => !i.parent_id && i.label === 'CRM');
+
     items.forEach(item => {
         const normalized = itemMap[item.id];
         if (item.parent_id && itemMap[item.parent_id]) {
             itemMap[item.parent_id].children.push(normalized);
         } else if (!item.parent_id) {
             roots.push(normalized);
+        } else {
+            // Huérfano con parent_id que no existe en el catálogo
+            if (item.path?.startsWith('/industrial/') && industrialRoot) {
+                industrialRoot.children.push(normalized);
+            } else if (item.path?.startsWith('/crm/') && crmRoot) {
+                crmRoot.children.push(normalized);
+            } else {
+                roots.push(normalized);
+            }
         }
     });
 

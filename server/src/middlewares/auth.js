@@ -13,6 +13,8 @@ const verifyToken = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
+        req.company_id = req.headers['x-company-id'] ? parseInt(req.headers['x-company-id']) : (decoded.company_id || null);
+        req.branch_id = req.headers['x-branch-id'] ? parseInt(req.headers['x-branch-id']) : (decoded.branch_id || null);
         next();
     } catch (error) {
         console.error('Token verification FAILED:', error.message);

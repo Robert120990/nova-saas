@@ -65,13 +65,36 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         if (item.permission === 'manage_company_modules') {
             return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
         }
+        // Flexibilidad para CRM y Calendario para roles administrativos
+        const userRole = (user?.role || '').toLowerCase();
+        const isAdminRole = userRole.includes('admin') || userRole.includes('geren') || userRole.includes('supervis');
+        if (item.permission === 'manage_customer_agreements' || item.permission === 'view_crm') {
+            if (isAdminRole || permissions.includes('manage_sales') || permissions.includes('view_sales')) {
+                return true;
+            }
+        }
+        if (item.permission === 'manage_production') {
+            if (isAdminRole || userRole.includes('operacion') || permissions.includes('view_industrial_dashboard')) {
+                return true;
+            }
+        }
         return permissions.includes(item.permission);
     };
 
     const isGroupEnabled = (group) => {
-        if (!user?.enabled_modules || !Array.isArray(user.enabled_modules)) return true;
+        if (isSuperAdmin) return true;
         const reqModule = GROUP_MODULE_MAP[group.label];
         if (!reqModule) return true;
+
+        // Si estamos en entorno ANDELSA o la empresa activa es ANDELSA, Huevo Industrial y CRM siempre activos
+        const isAndelsaContext = user?.company_id === 9 || 
+                                 (typeof user?.company_name === 'string' && user.company_name.toUpperCase().includes('ANDELSA')) ||
+                                 (typeof window !== 'undefined' && window.location.hostname.includes('andelsa'));
+        if (isAndelsaContext && (reqModule === 'egg_industrial' || reqModule === 'crm')) {
+            return true;
+        }
+
+        if (!user?.enabled_modules || !Array.isArray(user.enabled_modules)) return true;
         return user.enabled_modules.includes(reqModule);
     };
 

@@ -33,6 +33,18 @@ const CommandPalette = ({ isOpen, onClose }) => {
         if (item.permission_key === 'manage_company_modules') {
             return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
         }
+        const userRole = (user?.role || '').toLowerCase();
+        const isAdminRole = userRole.includes('admin') || userRole.includes('geren') || userRole.includes('supervis');
+        if (item.permission_key === 'manage_customer_agreements' || item.permission_key === 'view_crm') {
+            if (isAdminRole || permissions.includes('manage_sales') || permissions.includes('view_sales')) {
+                return true;
+            }
+        }
+        if (item.permission_key === 'manage_production') {
+            if (isAdminRole || userRole.includes('operacion') || permissions.includes('view_industrial_dashboard')) {
+                return true;
+            }
+        }
         return permissions.includes(item.permission_key);
     };
 
@@ -45,6 +57,10 @@ const CommandPalette = ({ isOpen, onClose }) => {
             }
         });
 
+        const isAndelsaContext = user?.company_id === 9 || 
+                                 (typeof user?.company_name === 'string' && user.company_name.toUpperCase().includes('ANDELSA')) ||
+                                 (typeof window !== 'undefined' && window.location.hostname.includes('andelsa'));
+
         flatItems.forEach(item => {
             if (!item.path) return;
             if (!hasPermission(item)) return;
@@ -53,11 +69,16 @@ const CommandPalette = ({ isOpen, onClose }) => {
             let groupLabel = '';
             if (item.parent_id && parentMap[item.parent_id]) {
                 groupLabel = parentMap[item.parent_id];
+            } else if (item.path?.startsWith('/industrial/')) {
+                groupLabel = 'Huevo Industrial';
+            } else if (item.path?.startsWith('/crm/')) {
+                groupLabel = 'CRM';
             }
 
-            if (groupLabel && GROUP_MODULE_MAP[groupLabel]) {
+            if (!isSuperAdmin && groupLabel && GROUP_MODULE_MAP[groupLabel]) {
                 const reqModule = GROUP_MODULE_MAP[groupLabel];
-                if (user?.enabled_modules && Array.isArray(user.enabled_modules) && !user.enabled_modules.includes(reqModule)) {
+                const isAndelsaExempt = isAndelsaContext && (reqModule === 'egg_industrial' || reqModule === 'crm');
+                if (!isAndelsaExempt && user?.enabled_modules && Array.isArray(user.enabled_modules) && !user.enabled_modules.includes(reqModule)) {
                     return;
                 }
             }
@@ -72,7 +93,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         });
 
         return results;
-    }, [flatItems, permissions, isSuperAdmin, user?.enabled_modules]);
+    }, [flatItems, permissions, isSuperAdmin, user?.enabled_modules, user?.company_id, user?.company_name]);
 
     const filteredItems = useMemo(() => {
         if (!search.trim()) return [];

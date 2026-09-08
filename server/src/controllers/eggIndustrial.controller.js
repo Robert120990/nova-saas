@@ -1344,7 +1344,8 @@ const getScheduledProductions = async (req, res) => {
             LEFT JOIN egg_production_batches b ON p.batch_id = b.id
             WHERE p.company_id = ?
         `;
-        const params = [req.company_id];
+        const company_id = req.company_id || req.user?.company_id;
+        const params = [company_id];
 
         if (start_date) {
             sql += ' AND p.production_date >= ?';
@@ -1420,7 +1421,7 @@ const createScheduledProduction = async (req, res) => {
             tasks
         } = req.body;
 
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
         const branch_id = req.body.branch_id || null;
 
         // Generar lote correlativo automático en formato Juliano si no viene
@@ -1518,7 +1519,7 @@ const updateScheduledProduction = async (req, res) => {
     try {
         await connection.beginTransaction();
         const { id } = req.params;
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         const {
             production_date,
@@ -1623,7 +1624,7 @@ const moveScheduledProduction = async (req, res) => {
     try {
         const { id } = req.params;
         const { production_date, start_time, end_time } = req.body;
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         if (!production_date) {
             return res.status(400).json({ message: 'La nueva fecha es obligatoria.' });
@@ -1677,7 +1678,7 @@ const moveScheduledProduction = async (req, res) => {
 const deleteScheduledProduction = async (req, res) => {
     try {
         const { id } = req.params;
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         const [existing] = await pool.query(
             'SELECT * FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
@@ -1723,7 +1724,7 @@ const startBatchFromSchedule = async (req, res) => {
     try {
         await connection.beginTransaction();
         const { id } = req.params;
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         const [schedRows] = await connection.query(
             'SELECT * FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
@@ -1849,7 +1850,7 @@ const toggleTaskStatus = async (req, res) => {
 // 19.8 Motor de Sugerencias Inteligentes de Producción
 const getProductionSuggestions = async (req, res) => {
     try {
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         // 1. Obtener pedidos pendientes
         const [orders] = await pool.query(
@@ -2116,7 +2117,7 @@ const getProductionSuggestions = async (req, res) => {
 // 19.8.1 Sugerencia Mensual Completa de Producción por IA (Demanda + Histórico + Ventas Promedio + Balance Coproductos)
 const getMonthlyProductionSuggestions = async (req, res) => {
     try {
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
         const now = new Date();
         const targetYear = parseInt(req.query.year) || now.getFullYear();
         const targetMonth = parseInt(req.query.month) || (now.getMonth() + 1); // 1-12
@@ -2357,7 +2358,7 @@ const applyMonthlyPlan = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
         const { productions, overwrite_existing } = req.body;
 
         if (!Array.isArray(productions) || productions.length === 0) {
@@ -2462,7 +2463,7 @@ const applyMonthlyPlan = async (req, res) => {
 // 19.8.3 Planificador de Materia Prima e Insumos (MRP)
 const getRawMaterialPlanning = async (req, res) => {
     try {
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
         const now = new Date();
         const targetYear = parseInt(req.query.year) || now.getFullYear();
         const targetMonth = parseInt(req.query.month) || (now.getMonth() + 1);
@@ -2638,7 +2639,7 @@ const getRawMaterialPlanning = async (req, res) => {
 const convertLotToJulian = async (req, res) => {
     try {
         const { id } = req.params;
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         const [rows] = await pool.query(
             'SELECT id, production_date, lot_code FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
@@ -2674,8 +2675,9 @@ const convertLotToJulian = async (req, res) => {
 const getEggCustomerOrders = async (req, res) => {
     try {
         const { status } = req.query;
+        const company_id = req.company_id || req.user?.company_id;
         let sql = 'SELECT * FROM egg_customer_orders WHERE company_id = ?';
-        const params = [req.company_id];
+        const params = [company_id];
 
         if (status) {
             sql += ' AND status = ?';
@@ -2707,7 +2709,7 @@ const saveEggCustomerOrder = async (req, res) => {
             notes
         } = req.body;
 
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         if (!customer_name || !product_type || !quantity_lbs || !required_delivery_date) {
             return res.status(400).json({ message: 'Cliente, Producto, Cantidad (Lbs) y Fecha requerida son obligatorios.' });
@@ -2752,7 +2754,7 @@ const saveEggCustomerOrder = async (req, res) => {
 const deleteEggCustomerOrder = async (req, res) => {
     try {
         const { id } = req.params;
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
 
         await pool.query(
             'DELETE FROM egg_customer_orders WHERE id = ? AND company_id = ?',
@@ -2769,7 +2771,7 @@ const deleteEggCustomerOrder = async (req, res) => {
 // 19.10 Usuarios de Fábrica para Asignación de Roles
 const getFactoryUsers = async (req, res) => {
     try {
-        const company_id = req.company_id;
+        const company_id = req.company_id || req.user?.company_id;
         const [users] = await pool.query(
             `SELECT u.id, u.username, u.nombre, r.name as role_name
              FROM users u
