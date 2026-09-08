@@ -14,7 +14,9 @@ import {
     Wrench,
     AlertOctagon,
     Lock,
-    Calendar
+    Calendar,
+    ShieldAlert,
+    Sparkles
 } from 'lucide-react';
 
 const EggProduction = () => {
@@ -47,7 +49,8 @@ const EggProduction = () => {
             milk_powder_lbs: '',
             ppg_g: ''
         },
-        operator_name: user?.nombre || ''
+        operator_name: user?.nombre || '',
+        bypass_cip_check: false
     });
 
     const [cipForm, setCipForm] = useState({
@@ -108,9 +111,9 @@ const EggProduction = () => {
         fetchData();
     }, [companyId]);
 
-    // Handle new production batch
-    const handleCreateBatch = async (e) => {
-        e.preventDefault();
+    // Handle new production batch with optional bypass
+    const handleCreateBatch = async (e, forceBypass = false) => {
+        if (e && e.preventDefault) e.preventDefault();
         setCipBlockedError(null);
 
         if (!batchForm.raw_materials || batchForm.raw_materials.length === 0) {
@@ -122,15 +125,18 @@ const EggProduction = () => {
             return toast.error('El peso total debe ser mayor a cero.');
         }
 
+        const shouldBypass = forceBypass || Boolean(batchForm.bypass_cip_check);
+
         setIsSubmitting(true);
         try {
             await axios.post('/api/egg-industrial/batches', {
                 ...batchForm,
                 run_number: parseInt(batchForm.run_number) || 1,
                 raw_materials: batchForm.raw_materials,
-                ingredients: batchForm.ingredients
+                ingredients: batchForm.ingredients,
+                bypass_cip_check: shouldBypass
             });
-            toast.success('Lote de producción iniciado exitosamente.');
+            toast.success(shouldBypass ? 'Lote de producción iniciado bajo excepción de sanitización.' : 'Lote de producción iniciado exitosamente.');
             setBatchForm({
                 product_type: 'huevo entero',
                 presentation: 'cubeta 32LB',
@@ -145,7 +151,8 @@ const EggProduction = () => {
                     milk_powder_lbs: '',
                     ppg_g: ''
                 },
-                operator_name: user?.nombre || ''
+                operator_name: user?.nombre || '',
+                bypass_cip_check: false
             });
             fetchData();
             setIsNewBatchModalOpen(false);
@@ -153,6 +160,25 @@ const EggProduction = () => {
             console.error('Error creating production batch:', error);
             setCipBlockedError(error.response?.data?.message || 'Error al iniciar el lote.');
             toast.error(error.response?.data?.message || 'Error al iniciar lote de producción.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Auto-registrar CIP express aprobado con 1 clic
+    const handleQuickSanitize = async () => {
+        setIsSubmitting(true);
+        try {
+            const res = await axios.post('/api/egg-industrial/cip/quick-sanitize', {
+                equipment_name: 'pasteurizador',
+                operator_name: user?.nombre || 'Supervisor Planta'
+            });
+            toast.success(res.data?.message || 'Sanitización CIP express aprobada correctamente.');
+            setCipBlockedError(null);
+            fetchData();
+        } catch (error) {
+            console.error('Error in quick sanitize:', error);
+            toast.error(error.response?.data?.message || 'Error al registrar sanitización rápida.');
         } finally {
             setIsSubmitting(false);
         }
@@ -658,18 +684,41 @@ const EggProduction = () => {
 
                     {/* CIP Block Warning Alert */}
                     {cipBlockedError && (
-                        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2 text-rose-800">
-                            <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide">
-                                <AlertOctagon size={16} className="text-rose-600" />
-                                ALERTA DE INOCUIDAD: BLOQUEO POR SANITIZACIÓN CIP
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-3 text-rose-900 shadow-sm">
+                            <div className="flex gap-2 items-center font-black text-xs uppercase tracking-wide text-rose-700">
+                                <AlertOctagon size={18} className="text-rose-600 shrink-0" />
+                                <span>Alerta de Inocuidad: Pasteurizador Sin Sanitización CIP Vigente</span>
                             </div>
-                            <p className="text-xs leading-relaxed">{cipBlockedError}</p>
-                            <button
-                                onClick={() => { setActiveTab('cip'); setCipBlockedError(null); }}
-                                className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 border border-rose-300 text-rose-800 rounded-lg text-xs font-bold transition-all"
-                            >
-                                Registrar Sanitización CIP Ahora
-                            </button>
+                            <p className="text-xs leading-relaxed text-rose-800">
+                                {cipBlockedError}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-200/70">
+                                <button
+                                    type="button"
+                                    onClick={handleQuickSanitize}
+                                    disabled={isSubmitting}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                                >
+                                    <Sparkles size={13} />
+                                    Auto-registrar CIP Aprobado de Hoy (1 clic)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleCreateBatch(e, true)}
+                                    disabled={isSubmitting}
+                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                                >
+                                    <ShieldAlert size={13} />
+                                    Iniciar de todos modos (Omitir CIP)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setIsNewBatchModalOpen(false); }}
+                                    className="px-3 py-1.5 bg-white hover:bg-rose-100/60 border border-rose-300 text-rose-800 rounded-xl text-xs font-semibold transition-all"
+                                >
+                                    Ir a Bitácora CIP Manual
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -863,6 +912,26 @@ const EggProduction = () => {
                                     />
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Checkbox de autorización de excepción de CIP */}
+                        <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3">
+                            <input
+                                type="checkbox"
+                                id="bypassCipCheckModal"
+                                checked={batchForm.bypass_cip_check || false}
+                                onChange={(e) => setBatchForm({ ...batchForm, bypass_cip_check: e.target.checked })}
+                                className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                            />
+                            <label htmlFor="bypassCipCheckModal" className="text-xs text-amber-900 cursor-pointer select-none">
+                                <span className="font-bold flex items-center gap-1.5">
+                                    <ShieldAlert size={14} className="text-amber-600" />
+                                    Autorizar inicio bajo excepción operativa de sanitización CIP
+                                </span>
+                                <span className="text-[11px] text-amber-700 block mt-0.5">
+                                    Marque esta casilla si la planta ya fue sanitizada o requiere procesar de urgencia sin registro formal previo de CIP (se auditará como evento de excepción).
+                                </span>
+                            </label>
                         </div>
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">

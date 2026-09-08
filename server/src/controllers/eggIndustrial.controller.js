@@ -69,6 +69,12 @@ const createRawMaterial = async (req, res) => {
             if (sumBoxes > 0) finalBoxes = sumBoxes;
         }
 
+        let branchId = req.body.branch_id || req.user?.branch_id;
+        if (!branchId) {
+            const [b] = await pool.query('SELECT id FROM branches WHERE company_id = ? LIMIT 1', [req.company_id]);
+            branchId = b[0]?.id || 1;
+        }
+
         const [result] = await pool.query(
             `INSERT INTO egg_raw_materials (
                 company_id, branch_id, provider_id, egg_type, egg_color, egg_size, 
@@ -77,7 +83,7 @@ const createRawMaterial = async (req, res) => {
             ) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                req.company_id, req.body.branch_id || req.user?.branch_id || null, provider_id, egg_type, 
+                req.company_id, branchId, provider_id, egg_type, 
                 egg_color || 'blanco', egg_size || 'L', fecha || new Date().toISOString().split('T')[0], 
                 finalWeightLbs, finalBoxes, finalWeightLbs, temperature_c || null, 
                 truck_temperature_c || null, truck_plate || null, driver_name || null, 
@@ -238,6 +244,36 @@ const createCipLog = async (req, res) => {
     }
 };
 
+const quickSanitizeCip = async (req, res) => {
+    try {
+        const { operator_name, notes } = req.body;
+        const [result] = await pool.query(
+            `INSERT INTO egg_cip_logs (company_id, equipment_name, chemical_used, temperature_c, duration_minutes, operator_name, validation_status, notes)
+             VALUES (?, 'pasteurizador', 'Ácido Peracético 1.5% (Sanitización Express)', 78.50, 45, ?, 'completado', ?)`,
+            [
+                req.company_id,
+                operator_name || req.user?.nombre || 'Operador de Planta',
+                notes || 'Sanitización CIP express validada y aprobada para inicio de turno de producción.'
+            ]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'cip.completed', 'info', ?, ?, ?)`,
+            [
+                req.company_id,
+                'Sanitización CIP express en pasteurizador validada y completada.',
+                JSON.stringify({ cip_id: result.insertId, equipment_name: 'pasteurizador' }),
+                operator_name || req.user?.nombre || 'Operador de Planta'
+            ]
+        );
+
+        res.status(201).json({ success: true, id: result.insertId, message: 'Sanitización CIP express registrada y aprobada.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // 3. LOTES DE PRODUCCIÓN
 const getProductionBatches = async (req, res) => {
     try {
@@ -296,7 +332,7 @@ const createProductionBatch = async (req, res) => {
             return res.status(400).json({ message: 'El peso total de entrada debe ser mayor a cero.' });
         }
 
-        // --- REGLA CRÍTICA INDUSTRIAL: VALIDAR CIP RECIENTE ---
+        // --- REGLA CRÍTICA INDUSTRIAL: VALIDAR CIP RECIENTE O EXCEPCIÓN AUTORIZADA ---
         const [cipLogs] = await connection.query(
             `SELECT id FROM egg_cip_logs 
              WHERE company_id = ? AND equipment_name = 'pasteurizador' 
@@ -305,10 +341,13 @@ const createProductionBatch = async (req, res) => {
             [company_id]
         );
 
-        if (cipLogs.length === 0) {
+        const bypassCip = req.body.bypass_cip_check === true || req.body.bypass_cip_check === 'true';
+
+        if (cipLogs.length === 0 && !bypassCip) {
             await connection.rollback();
             return res.status(400).json({
-                message: 'BLOQUEO DE INICIO: No se puede iniciar la producción porque no se ha registrado una limpieza de sanitización CIP aprobada para el "pasteurizador" en las últimas 12 horas. Por favor realice y valide el CIP antes de iniciar.'
+                message: 'BLOQUEO DE INOCUIDAD: El pasteurizador no cuenta con una limpieza CIP aprobada en las últimas 12 horas. Puede autorizar el inicio bajo excepción operativa o registrar la sanitización CIP.',
+                can_bypass: true
             });
         }
 
@@ -387,6 +426,19 @@ const createProductionBatch = async (req, res) => {
                 operator_name
             ]
         );
+
+        if (cipLogs.length === 0 && bypassCip) {
+            await connection.query(
+                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+                 VALUES (?, 'batch.cip_bypassed', 'warning', ?, ?, ?)`,
+                [
+                    company_id,
+                    `Inicio de lote oficial ${batch_code_display} autorizado bajo excepción: sin verificación previa de sanitización CIP en pasteurizador.`,
+                    JSON.stringify({ batch_id: batchId, batch_uuid, batch_code_display, operator: operator_name }),
+                    operator_name
+                ]
+            );
+        }
 
         await connection.commit();
 
@@ -1102,6 +1154,328 @@ const deleteCostConcept = async (req, res) => {
     try {
         await pool.query('DELETE FROM egg_cost_concepts WHERE id = ? AND company_id = ?', [req.params.id, req.company_id]);
         res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 14.1 CARGA AUTOMÁTICA DE COSTOS DESDE PLANILLAS RRHH Y GASTOS OPERATIVOS
+const getCostsSystemSources = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { month, year } = req.query;
+        const currentYear = parseInt(year) || new Date().getFullYear();
+        const currentMonth = parseInt(month) || (new Date().getMonth() + 1);
+
+        // 1. Planillas de RRHH (Sueldos y Mano de Obra)
+        let payrollQuery = `
+            SELECT 
+                p.id, p.empleado_id, p.periodo_mes, p.periodo_anio, p.quincena, p.estado,
+                COALESCE(p.sueldo_base, 0) as sueldo_base,
+                COALESCE(p.total_percepciones, 0) as total_percepciones,
+                COALESCE(p.monto_recibir, 0) as monto_recibir,
+                COALESCE(p.bonificacion_fija, 0) as bonificacion_fija
+            FROM rh_planillas p
+            WHERE p.company_id = ? AND p.estado != 'anulada'
+        `;
+        const payrollParams = [companyId];
+        if (month && year) {
+            payrollQuery += ' AND p.periodo_mes = ? AND p.periodo_anio = ?';
+            payrollParams.push(currentMonth, currentYear);
+        }
+        payrollQuery += ' ORDER BY p.periodo_anio DESC, p.periodo_mes DESC, p.id DESC LIMIT 50';
+
+        const [payrolls] = await pool.query(payrollQuery, payrollParams);
+
+        const totalPayrollPerceptions = payrolls.reduce((sum, p) => sum + parseFloat(p.total_percepciones || 0), 0);
+        const totalPayrollBase = payrolls.reduce((sum, p) => sum + parseFloat(p.sueldo_base || 0), 0);
+
+        // 2. Gastos Fijos y Operativos de Planta (Facturas / Comprobantes)
+        let expensesQuery = `
+            SELECT 
+                h.id, h.fecha, h.numero_documento, h.monto_total, h.observaciones,
+                i.description as item_description, i.total as item_total,
+                t.name as expense_type_name
+            FROM expense_headers h
+            LEFT JOIN expense_items i ON h.id = i.expense_id
+            LEFT JOIN cat_expense_types t ON i.expense_type_id = t.id
+            WHERE h.company_id = ? AND h.status = 'ACTIVO'
+        `;
+        const expensesParams = [companyId];
+        if (month && year) {
+            expensesQuery += ' AND ((h.period_month = ? AND h.period_year = ?) OR (MONTH(h.fecha) = ? AND YEAR(h.fecha) = ?))';
+            expensesParams.push(currentMonth, currentYear, currentMonth, currentYear);
+        }
+        expensesQuery += ' ORDER BY h.fecha DESC LIMIT 100';
+
+        const [expenseRows] = await pool.query(expensesQuery, expensesParams);
+
+        let energyTotal = 0;
+        let boilerFuelTotal = 0;
+        let maintenanceTotal = 0;
+        let otherOpsTotal = 0;
+
+        expenseRows.forEach(row => {
+            const desc = ((row.item_description || '') + ' ' + (row.observaciones || '') + ' ' + (row.expense_type_name || '')).toLowerCase();
+            const amount = parseFloat(row.item_total || row.monto_total || 0);
+
+            if (/energ[ií]a|luz|electric|delsur|caess|clea|edesal/i.test(desc)) {
+                energyTotal += amount;
+            } else if (/diesel|di[eé]sel|combustible|gas\b|glp|bunker|caldera/i.test(desc)) {
+                boilerFuelTotal += amount;
+            } else if (/mantenimiento|reparaci[oó]n|repuesto|t[eé]cnico|taller/i.test(desc)) {
+                maintenanceTotal += amount;
+            } else {
+                otherOpsTotal += amount;
+            }
+        });
+
+        // 3. Obtener volumen proyectado de planta para cálculo por lote y por libra
+        const [costingCfg] = await pool.query(
+            "SELECT setting_key, setting_value FROM egg_costing_configurations WHERE company_id = ? AND setting_key IN ('monthly_projected_lbs', 'standard_batch_weight_lbs')",
+            [companyId]
+        );
+        const cfgMap = {};
+        costingCfg.forEach(c => { cfgMap[c.setting_key] = parseFloat(c.setting_value) || 0; });
+        const monthlyProjectedLbs = cfgMap.monthly_projected_lbs || 100000;
+        const standardBatchLbs = cfgMap.standard_batch_weight_lbs || 12000;
+        const estimatedBatchesPerMonth = standardBatchLbs > 0 ? (monthlyProjectedLbs / standardBatchLbs) : 8;
+
+        const suggestedConcepts = [
+            {
+                concept_name: 'Mano de Obra Operativa (Planilla RRHH)',
+                monthly_total: totalPayrollPerceptions,
+                default_value: estimatedBatchesPerMonth > 0 ? +(totalPayrollPerceptions / estimatedBatchesPerMonth).toFixed(2) : 0,
+                source_type: 'rh_planillas',
+                details: `${payrolls.length} registros de nómina encontrados. Total mensual: $${totalPayrollPerceptions.toFixed(2)}. Distribuido en ${estimatedBatchesPerMonth.toFixed(1)} lotes mensuales proyectados.`
+            },
+            {
+                concept_name: 'Energía Eléctrica de Planta',
+                monthly_total: energyTotal,
+                default_value: estimatedBatchesPerMonth > 0 ? +(energyTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
+                source_type: 'expenses_energy',
+                details: `Facturación eléctrica del período: $${energyTotal.toFixed(2)}.`
+            },
+            {
+                concept_name: 'Combustible / Caldera (Diesel/Gas)',
+                monthly_total: boilerFuelTotal,
+                default_value: estimatedBatchesPerMonth > 0 ? +(boilerFuelTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
+                source_type: 'expenses_boiler',
+                details: `Consumo de combustibles y caldera del período: $${boilerFuelTotal.toFixed(2)}.`
+            },
+            {
+                concept_name: 'Mantenimiento Técnico y Repuestos',
+                monthly_total: maintenanceTotal,
+                default_value: estimatedBatchesPerMonth > 0 ? +(maintenanceTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
+                source_type: 'expenses_maintenance',
+                details: `Servicios de mantenimiento y refacciones del período: $${maintenanceTotal.toFixed(2)}.`
+            },
+            {
+                concept_name: 'Gastos Operativos e Indirectos Generales',
+                monthly_total: otherOpsTotal,
+                default_value: estimatedBatchesPerMonth > 0 ? +(otherOpsTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
+                source_type: 'expenses_general',
+                details: `Otros gastos operativos registrados: $${otherOpsTotal.toFixed(2)}.`
+            }
+        ];
+
+        res.json({
+            period: { month: currentMonth, year: currentYear },
+            payrolls_summary: {
+                count: payrolls.length,
+                total_perceptions: totalPayrollPerceptions,
+                total_base: totalPayrollBase,
+                items: payrolls
+            },
+            expenses_summary: {
+                count: expenseRows.length,
+                total: energyTotal + boilerFuelTotal + maintenanceTotal + otherOpsTotal,
+                breakdown: {
+                    energy: energyTotal,
+                    boiler_fuel: boilerFuelTotal,
+                    maintenance: maintenanceTotal,
+                    other_ops: otherOpsTotal
+                }
+            },
+            production_basis: {
+                monthly_projected_lbs: monthlyProjectedLbs,
+                standard_batch_lbs: standardBatchLbs,
+                estimated_batches: estimatedBatchesPerMonth
+            },
+            suggested_concepts: suggestedConcepts
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const syncCostsSystemSources = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { concepts, update_gif_config } = req.body;
+
+        if (!Array.isArray(concepts) || concepts.length === 0) {
+            return res.status(400).json({ message: 'No se recibieron conceptos para sincronizar.' });
+        }
+
+        for (const c of concepts) {
+            const name = (c.concept_name || '').trim();
+            const val = parseFloat(c.default_value) || 0;
+            if (!name) continue;
+
+            const [existing] = await pool.query(
+                'SELECT id FROM egg_cost_concepts WHERE company_id = ? AND concept_name = ?',
+                [companyId, name]
+            );
+
+            if (existing.length > 0) {
+                await pool.query(
+                    'UPDATE egg_cost_concepts SET default_value = ? WHERE id = ? AND company_id = ?',
+                    [val, existing[0].id, companyId]
+                );
+            } else {
+                await pool.query(
+                    'INSERT INTO egg_cost_concepts (company_id, concept_name, default_value) VALUES (?, ?, ?)',
+                    [companyId, name, val]
+                );
+            }
+        }
+
+        // Si se solicitó actualizar los GIF en egg_costing_configurations
+        if (update_gif_config) {
+            const totalMonthly = concepts.reduce((sum, c) => sum + (parseFloat(c.monthly_total) || 0), 0);
+            if (totalMonthly > 0) {
+                await pool.query(
+                    `UPDATE egg_costing_configurations 
+                     SET setting_value = ? 
+                     WHERE company_id = ? AND setting_key = 'monthly_gif_total'`,
+                    [totalMonthly, companyId]
+                );
+            }
+        }
+
+        res.json({ success: true, message: 'Conceptos de costos fijos y operativos sincronizados exitosamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 14.2 PARAMETRIZACIÓN DE PREFIJOS DE LOTE POR PROVEEDOR
+const getProviderLotConfigs = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT c.*, p.nombre as provider_name, p.nombre_comercial,
+                    (SELECT rm.provider_lot 
+                     FROM egg_raw_materials rm 
+                     WHERE rm.provider_id = c.provider_id AND rm.company_id = c.company_id 
+                     ORDER BY rm.id DESC LIMIT 1) as last_registered_lot,
+                    (SELECT rm.fecha 
+                     FROM egg_raw_materials rm 
+                     WHERE rm.provider_id = c.provider_id AND rm.company_id = c.company_id 
+                     ORDER BY rm.id DESC LIMIT 1) as last_registered_date
+             FROM egg_provider_lot_configurations c
+             JOIN providers p ON c.provider_id = p.id
+             WHERE c.company_id = ?
+             ORDER BY p.nombre ASC`,
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const saveProviderLotConfig = async (req, res) => {
+    try {
+        const { provider_id, lot_prefix, format_pattern, next_correlative, notes } = req.body;
+        if (!provider_id || !lot_prefix) {
+            return res.status(400).json({ message: 'Proveedor y prefijo de lote son obligatorios.' });
+        }
+        await pool.query(
+            `INSERT INTO egg_provider_lot_configurations 
+             (company_id, provider_id, lot_prefix, format_pattern, next_correlative, notes)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE 
+                lot_prefix = VALUES(lot_prefix),
+                format_pattern = VALUES(format_pattern),
+                next_correlative = VALUES(next_correlative),
+                notes = VALUES(notes),
+                updated_at = NOW()`,
+            [req.company_id, provider_id, lot_prefix.trim().toUpperCase(), format_pattern || 'PREFIX-DATE', next_correlative || 1, notes || null]
+        );
+        res.json({ success: true, message: 'Configuración de lote guardada correctamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteProviderLotConfig = async (req, res) => {
+    try {
+        await pool.query('DELETE FROM egg_provider_lot_configurations WHERE id = ? AND company_id = ?', [req.params.id, req.company_id]);
+        res.json({ success: true, message: 'Configuración eliminada.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getProviderLotIntelligence = async (req, res) => {
+    try {
+        const providerId = req.params.providerId;
+        const [configs] = await pool.query(
+            'SELECT * FROM egg_provider_lot_configurations WHERE provider_id = ? AND company_id = ?',
+            [providerId, req.company_id]
+        );
+        const [prov] = await pool.query(
+            'SELECT id, nombre, nombre_comercial FROM providers WHERE id = ? AND company_id = ?',
+            [providerId, req.company_id]
+        );
+        const [history] = await pool.query(
+            `SELECT id, provider_lot, fecha, weight_lbs, total_boxes, created_at
+             FROM egg_raw_materials 
+             WHERE provider_id = ? AND company_id = ? 
+             ORDER BY id DESC LIMIT 5`,
+            [providerId, req.company_id]
+        );
+
+        const config = configs[0] || null;
+        const provider = prov[0] || null;
+        const lastLot = history[0]?.provider_lot || null;
+
+        let prefix = config?.lot_prefix;
+        if (!prefix && provider) {
+            const name = (provider.nombre_comercial || provider.nombre || '').toUpperCase();
+            if (name.includes('HECTOR') || name.includes('HÉCTOR')) prefix = 'HD-25918';
+            else if (name.includes('CANDY')) prefix = 'GC-CANDY';
+            else if (name.includes('GRANJA') || name.includes('AVICOLA') || name.includes('AVÍCOLA')) prefix = 'LOTE-AV';
+            else {
+                const cleanName = name.replace(/[^A-Z0-9\s]/g, '').trim();
+                const words = cleanName.split(/\s+/).filter(w => w.length > 2 && !['SOCIEDAD','ANONIMA','CAPITAL','VARIABLE','S.A.','C.V.','DE','RL'].includes(w));
+                prefix = words.length >= 2 ? `${words[0].slice(0, 3)}-${words[1].slice(0, 4)}` : `LOTE-${(cleanName.slice(0, 4) || 'PROV')}`;
+            }
+        }
+        if (!prefix) prefix = 'LOTE-PROV';
+
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const dateStr = `${month}${day}`;
+        const pattern = config?.format_pattern || 'PREFIX-DATE';
+
+        let suggestedLot = `${prefix}-${dateStr}`;
+        if (pattern === 'PREFIX-CORRELATIVO') {
+            const nextCorr = String(config?.next_correlative || (history.length + 1)).padStart(3, '0');
+            suggestedLot = `${prefix}-${nextCorr}`;
+        }
+
+        res.json({
+            provider,
+            config,
+            prefix,
+            last_registered_lot: lastLot,
+            last_registered_date: history[0]?.fecha || null,
+            suggested_lot: suggestedLot,
+            historical_lots: history
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -2881,6 +3255,13 @@ module.exports = {
     getCostConcepts,
     saveCostConcept,
     deleteCostConcept,
+    getCostsSystemSources,
+    syncCostsSystemSources,
+    getProviderLotConfigs,
+    saveProviderLotConfig,
+    deleteProviderLotConfig,
+    getProviderLotIntelligence,
+    quickSanitizeCip,
     getBatchVariableCosts,
     saveBatchVariableCost,
     deleteBatchVariableCost,

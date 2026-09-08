@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -16,7 +17,10 @@ import {
     Search,
     Pencil,
     Ban,
-    Truck
+    Truck,
+    Settings,
+    Sparkles,
+    History
 } from 'lucide-react';
 
 const EggReception = () => {
@@ -26,17 +30,12 @@ const EggReception = () => {
     // States for raw materials list and providers list
     const [rawMaterials, setRawMaterials] = useState([]);
     const [providers, setProviders] = useState([]);
+    const [providerLotConfigs, setProviderLotConfigs] = useState([]);
+    const [providerLotIntel, setProviderLotIntel] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
     const todayStr = new Date().toISOString().split('T')[0];
-
-    // Preset providers (ANDELSA plant habituals)
-    const PRESET_PROVIDERS = [
-        { name: 'Don Héctor', code: 'HD 25918', prefix: 'HD-25918' },
-        { name: 'Granja Candy', code: 'CANDY', prefix: 'GC-CANDY' },
-        { name: 'Avícola La Granja', code: 'AV-GRANJA', prefix: 'LOTE-AV' }
-    ];
 
     const [useTarimas, setUseTarimas] = useState(false);
     const [tarimas, setTarimas] = useState([
@@ -130,26 +129,39 @@ const EggReception = () => {
         }));
     };
 
-    const applyPreset = (preset) => {
-        const match = providers.find(p => p.nombre?.toLowerCase().includes(preset.name.toLowerCase()));
-        setFormData(prev => ({
-            ...prev,
-            provider_id: match ? match.id : prev.provider_id,
-            provider_lot: `${preset.prefix}-${new Date().toISOString().slice(5, 10).replace(/-/g, '')}`
-        }));
-        toast.info(`Preset aplicado: ${preset.name}`);
+    const handleProviderSelect = async (providerId) => {
+        setFormData(prev => ({ ...prev, provider_id: providerId }));
+        if (!providerId) {
+            setProviderLotIntel(null);
+            return;
+        }
+        try {
+            const res = await axios.get(`/api/egg-industrial/providers/${providerId}/lot-intelligence`);
+            setProviderLotIntel(res.data);
+            if (res.data?.suggested_lot) {
+                setFormData(prev => ({
+                    ...prev,
+                    provider_id: providerId,
+                    provider_lot: res.data.suggested_lot
+                }));
+            }
+        } catch (e) {
+            console.error('Error fetching provider lot intelligence:', e);
+        }
     };
 
-    // Fetch raw materials and providers on mount
+    // Fetch raw materials, providers and lot configurations on mount
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [rmRes, provRes] = await Promise.all([
+            const [rmRes, provRes, lotCfgRes] = await Promise.all([
                 axios.get('/api/egg-industrial/raw-materials'),
-                axios.get('/api/providers')
+                axios.get('/api/providers'),
+                axios.get('/api/egg-industrial/provider-lot-configs')
             ]);
             setRawMaterials(rmRes.data);
             setProviders(Array.isArray(provRes.data) ? provRes.data : (provRes.data?.data || []));
+            setProviderLotConfigs(Array.isArray(lotCfgRes.data) ? lotCfgRes.data : []);
         } catch (error) {
             console.error('Error fetching egg reception data:', error);
             toast.error('Error al cargar la información de recepción.');
@@ -173,18 +185,17 @@ const EggReception = () => {
         if (!formData.weight_lbs || parseFloat(formData.weight_lbs) <= 0) {
             return toast.error('El peso debe ser mayor a cero.');
         }
-        if (!formData.temperature_c) {
-            return toast.error('Debe ingresar la temperatura.');
-        }
         if (!formData.provider_lot.trim()) {
             return toast.error('El lote del proveedor es obligatorio.');
         }
 
         const parsedWeight = parseFloat(formData.weight_lbs);
-        const parsedTemp = parseFloat(formData.temperature_c);
+        const parsedTemp = formData.temperature_c !== '' && formData.temperature_c !== null 
+            ? parseFloat(formData.temperature_c) 
+            : null;
 
-        // Quality rule warning toast
-        if (parsedTemp > 6.0) {
+        // Quality rule warning toast only if temperature was entered
+        if (parsedTemp !== null && !isNaN(parsedTemp) && parsedTemp > 6.0) {
             toast.warning('ALERTA DE CONTROL DE CALIDAD: La temperatura ingresada supera el límite máximo de inocuidad (6°C). El lote será marcado para revisión adicional.', { duration: 6000 });
         }
 
@@ -210,6 +221,7 @@ const EggReception = () => {
             toast.success('Recepción de materia prima registrada con éxito.');
             setIsCreateModalOpen(false);
             setUseTarimas(false);
+            setProviderLotIntel(null);
             setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }]);
             setFormData({
                 provider_id: '',
@@ -249,7 +261,7 @@ const EggReception = () => {
             egg_size: rm.egg_size || 'L',
             fecha: rm.fecha ? rm.fecha.split('T')[0] : '',
             weight_lbs: rm.weight_lbs || '',
-            temperature_c: rm.temperature_c || '',
+            temperature_c: rm.temperature_c !== null && rm.temperature_c !== undefined ? rm.temperature_c : '',
             provider_lot: rm.provider_lot || '',
             certificate_urls: certUrls,
             operator_name: rm.operator_name || '',
@@ -263,8 +275,11 @@ const EggReception = () => {
         e.preventDefault();
         if (!editForm.provider_id) return toast.error('Debe seleccionar un proveedor.');
         if (!editForm.weight_lbs || parseFloat(editForm.weight_lbs) <= 0) return toast.error('El peso debe ser mayor a cero.');
-        if (!editForm.temperature_c) return toast.error('Debe ingresar la temperatura.');
         if (!editForm.provider_lot.trim()) return toast.error('El lote del proveedor es obligatorio.');
+
+        const parsedEditTemp = editForm.temperature_c !== '' && editForm.temperature_c !== null 
+            ? parseFloat(editForm.temperature_c) 
+            : null;
 
         setIsSubmitting(true);
         try {
@@ -275,7 +290,7 @@ const EggReception = () => {
                 ...editForm,
                 provider_lot: editForm.provider_lot.trim().toUpperCase(),
                 weight_lbs: parseFloat(editForm.weight_lbs),
-                temperature_c: parseFloat(editForm.temperature_c),
+                temperature_c: parsedEditTemp,
                 certificate_urls: urlsArray
             });
             toast.success('Recepción actualizada correctamente.');
@@ -388,24 +403,55 @@ const EggReception = () => {
                         </button>
                     </div>
 
-                    {/* Presets Rápidos */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Proveedores Frecuentes (ANDELSA):</span>
-                            <span className="text-[10px] text-indigo-600 font-bold">Autocompleta proveedor y prefijo de lote</span>
+                    {/* Presets y Proveedores Parametrizados */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                                <Boxes size={13} className="text-indigo-600" />
+                                Proveedores Frecuentes y Prefijos Parametrizados:
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-500 font-medium">Autocompleta proveedor y correlativo</span>
+                                <Link
+                                    to="/egg-industrial/config"
+                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 underline"
+                                >
+                                    <Settings size={11} />
+                                    Parametrizar
+                                </Link>
+                            </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            {PRESET_PROVIDERS.map((preset, idx) => (
-                                <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={() => applyPreset(preset)}
-                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-indigo-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
-                                >
-                                    <span>📦 {preset.name}</span>
-                                    <span className="text-[9px] bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-indigo-700">{preset.code}</span>
-                                </button>
-                            ))}
+                            {providerLotConfigs.length > 0 ? (
+                                providerLotConfigs.map((cfg) => (
+                                    <button
+                                        key={cfg.id}
+                                        type="button"
+                                        onClick={() => handleProviderSelect(cfg.provider_id)}
+                                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
+                                            String(formData.provider_id) === String(cfg.provider_id)
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                                : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
+                                        }`}
+                                    >
+                                        <span>📦 {cfg.provider_name}</span>
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                                            String(formData.provider_id) === String(cfg.provider_id)
+                                                ? 'bg-indigo-700 text-white'
+                                                : 'bg-indigo-50 border border-indigo-100 text-indigo-700'
+                                        }`}>
+                                            {cfg.lot_prefix}
+                                        </span>
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="text-[11px] text-slate-500 italic flex items-center gap-2">
+                                    <span>No hay proveedores con prefijo parametrizado aún.</span>
+                                    <Link to="/egg-industrial/config" className="text-indigo-600 font-bold underline">
+                                        Parametrizar en Configuración de Planta
+                                    </Link>
+                                </div>
+                            )}
                         </div>
                     </div>
                     
@@ -462,7 +508,7 @@ const EggReception = () => {
                                 <SearchableSelect
                                     options={providers}
                                     value={formData.provider_id}
-                                    onChange={(e) => setFormData({ ...formData, provider_id: e.target.value })}
+                                    onChange={(e) => handleProviderSelect(e.target.value)}
                                     valueKey="id"
                                     labelKey="nombre"
                                     placeholder="Buscar proveedor..."
@@ -525,42 +571,81 @@ const EggReception = () => {
                                         </select>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Lote del Proveedor *</label>
+                            ) : null}
+
+                            {/* Lote del proveedor con inteligencia histórica */}
+                            <div className="space-y-1 md:col-span-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                                        <span>Lote del Proveedor *</span>
+                                        {providerLotIntel?.prefix && (
+                                            <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
+                                                Prefijo: {providerLotIntel.prefix}
+                                            </span>
+                                        )}
+                                    </label>
+                                    {providerLotIntel?.last_registered_lot && (
+                                        <span className="text-[10px] text-slate-500 font-medium">
+                                            Último: <strong className="text-slate-800 font-bold">{providerLotIntel.last_registered_lot}</strong>
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="relative">
                                     <input
                                         type="text"
                                         value={formData.provider_lot}
                                         onChange={(e) => setFormData({ ...formData, provider_lot: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
-                                        placeholder="Ej: LOTE-AV-991A"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
+                                        placeholder="Ej: LOTE-AV-0908"
                                     />
+                                    {providerLotIntel?.suggested_lot && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, provider_lot: providerLotIntel.suggested_lot }))}
+                                            className="absolute right-2 top-2 text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200"
+                                            title="Reaplicar sugerencia inteligente"
+                                        >
+                                            <Sparkles size={11} />
+                                            Sugerir
+                                        </button>
+                                    )}
                                 </div>
-                            )}
 
-                            {formData.egg_type === 'huevo cáscara' && (
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Lote del Proveedor *</label>
-                                    <input
-                                        type="text"
-                                        value={formData.provider_lot}
-                                        onChange={(e) => setFormData({ ...formData, provider_lot: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
-                                        placeholder="Ej: LOTE-AV-991A"
-                                    />
-                                </div>
-                            )}
+                                {/* Desglose de Histórico de Lotes Anteriores */}
+                                {providerLotIntel?.historical_lots?.length > 0 && (
+                                    <div className="flex items-center gap-1.5 flex-wrap pt-1.5">
+                                        <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1 uppercase tracking-tight">
+                                            <History size={11} className="text-slate-400" />
+                                            Histórico Anterior:
+                                        </span>
+                                        {providerLotIntel.historical_lots.map((hl) => (
+                                            <button
+                                                key={hl.id}
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, provider_lot: hl.provider_lot }))}
+                                                className="px-2 py-0.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded text-[10px] font-mono font-bold transition-all"
+                                                title={`Registrado el ${hl.fecha || 'N/D'} (${hl.weight_lbs} lbs)`}
+                                            >
+                                                {hl.provider_lot}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
-                            {/* Temperature */}
+                            {/* Temperature (NO REQUERIDA / OPCIONAL) */}
                             <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Temperatura Huevo (°C) *</label>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1">
+                                    <span>Temperatura Huevo (°C)</span>
+                                    <span className="text-slate-400 font-normal lowercase">(opcional)</span>
+                                </label>
                                 <div className="relative">
                                     <input
                                         type="number"
                                         value={formData.temperature_c}
                                         onChange={(e) => setFormData({ ...formData, temperature_c: e.target.value })}
                                         className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
-                                        placeholder="Máx 6.0°C"
+                                        placeholder="Opcional (Máx 6.0°C si aplica)"
                                         step="0.01"
                                     />
                                     <Thermometer className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
@@ -862,13 +947,19 @@ const EggReception = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
-                                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
-                                                        parseFloat(rm.temperature_c) > 6.0 
-                                                            ? 'bg-rose-50 text-rose-700 border border-rose-200' 
-                                                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                    }`}>
-                                                        {rm.temperature_c}°C
-                                                    </span>
+                                                    {rm.temperature_c !== null && rm.temperature_c !== undefined && rm.temperature_c !== '' ? (
+                                                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+                                                            parseFloat(rm.temperature_c) > 6.0 
+                                                                ? 'bg-rose-50 text-rose-700 border border-rose-200' 
+                                                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                        }`}>
+                                                            {rm.temperature_c}°C
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 font-medium text-[10px] italic">
+                                                            N/R
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight">
@@ -1023,7 +1114,9 @@ const EggReception = () => {
                                     <input type="number" value={editForm.weight_lbs} onChange={(e) => setEditForm({ ...editForm, weight_lbs: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs" step="0.01" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Temperatura en Sensor (°C)</label>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                                        Temperatura en Sensor (°C) <span className="text-slate-400 font-normal lowercase">(opcional)</span>
+                                    </label>
                                     <input type="number" value={editForm.temperature_c} onChange={(e) => setEditForm({ ...editForm, temperature_c: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs" step="0.01" />
                                 </div>
                                 <div className="space-y-1">

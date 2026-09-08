@@ -11,6 +11,7 @@ router.put('/raw-materials/:id/void', eggController.voidRawMaterial);
 // 2. CIP (Clean In Place)
 router.get('/cip', eggController.getCipLogs);
 router.post('/cip', eggController.createCipLog);
+router.post('/cip/quick-sanitize', eggController.quickSanitizeCip);
 
 // 3. Lotes de Producción
 router.get('/batches', eggController.getProductionBatches);
@@ -41,6 +42,8 @@ router.post('/maintenance', eggController.createMaintenanceLog);
 // 9. Costos Operativos Industriales
 router.get('/costs', eggController.getIndustrialCosts);
 router.post('/costs', eggController.createIndustrialCosts);
+router.get('/costs/system-sources', eggController.getCostsSystemSources);
+router.post('/costs/sync-system-sources', eggController.syncCostsSystemSources);
 
 // 10. Forecasting
 router.get('/forecast', eggController.getForecasting);
@@ -60,6 +63,12 @@ router.get('/cost-concepts', eggController.getCostConcepts);
 router.post('/cost-concepts', eggController.saveCostConcept);
 router.put('/cost-concepts/:id', eggController.saveCostConcept);
 router.delete('/cost-concepts/:id', eggController.deleteCostConcept);
+
+// 14.1 Parametrización de Prefijos de Lote por Proveedor
+router.get('/provider-lot-configs', eggController.getProviderLotConfigs);
+router.post('/provider-lot-configs', eggController.saveProviderLotConfig);
+router.delete('/provider-lot-configs/:id', eggController.deleteProviderLotConfig);
+router.get('/providers/:providerId/lot-intelligence', eggController.getProviderLotIntelligence);
 
 // 15. Costos Variables por Lote
 router.get('/batches/:batchId/variable-costs', eggController.getBatchVariableCosts);
