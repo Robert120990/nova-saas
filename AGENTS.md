@@ -156,6 +156,9 @@ TODO nuevo reporte en PDF debe implementar el estándar contable unificado usand
 - **Idioma de los Commits**:
   - TODOS los mensajes de commit DEBEN redactarse en **español** (por ejemplo: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...` con descripción clara en español).
   - Queda estrictamente prohibido redactar mensajes de commit en inglés.
+- **Commits Atómicos y Separados — OBLIGATORIO**:
+  - Queda estrictamente prohibido mezclar funcionalidades no relacionadas o tareas distintas en un solo commit combinado.
+  - Cada funcionalidad, módulo, reporte o corrección de error debe tener su propio commit independiente con los archivos que le corresponden estrictamente (por ejemplo: `feat(inventario): ...`, `fix(dte): ...`).
 - **Verificación Previa Obligatoria antes de `git push`**:
   - Antes de realizar cualquier `git push` hacia el repositorio remoto (GitHub / origin):
     1. Ejecutar obligatoriamente `git fetch origin` (o la rama remota correspondiente) para comprobar el estado actualizado en GitHub.
