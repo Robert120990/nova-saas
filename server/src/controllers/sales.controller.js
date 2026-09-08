@@ -3355,6 +3355,138 @@ const changeSalesShift = async (req, res) => {
     }
 };
 
+/**
+ * Obtiene métricas y estadísticas consolidadas de DTEs emitidos por rango de fechas.
+ */
+const getDteStats = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const { start_date, end_date, branch_id } = req.query;
+
+        let where = 'WHERE h.company_id = ?';
+        const params = [companyId];
+
+        if (start_date && end_date) {
+            where += ' AND DATE(h.fecha_emision) BETWEEN ? AND ?';
+            params.push(start_date, end_date);
+        } else if (start_date) {
+            where += ' AND DATE(h.fecha_emision) = ?';
+            params.push(start_date);
+        }
+
+        if (branch_id && branch_id !== 'all') {
+            where += ' AND h.branch_id = ?';
+            params.push(branch_id);
+        }
+
+        const summaryQuery = `
+            SELECT 
+                COUNT(*) as total_ventas,
+                COUNT(CASE WHEN h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '' THEN 1 END) as total_dtes_emitidos,
+                COUNT(CASE WHEN (h.sello_recepcion IS NOT NULL AND h.sello_recepcion != '') THEN 1 END) as total_aceptados,
+                COUNT(CASE WHEN h.estado = 'anulado' OR EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'INVALIDADO') THEN 1 END) as total_invalidados,
+                COUNT(CASE WHEN (h.sello_recepcion IS NULL OR h.sello_recepcion = '') AND h.estado != 'anulado' AND EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'REJECTED') THEN 1 END) as total_rechazados,
+                COUNT(CASE WHEN (h.sello_recepcion IS NULL OR h.sello_recepcion = '') AND h.estado != 'anulado' AND EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'CONTINGENCIA') THEN 1 END) as total_contingencia,
+                COUNT(CASE WHEN h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '' AND (h.sello_recepcion IS NULL OR h.sello_recepcion = '') AND h.estado != 'anulado' AND NOT EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status IN ('REJECTED', 'CONTINGENCIA')) THEN 1 END) as total_pendientes,
+                
+                SUM(h.total_pagar) as total_monto_ventas,
+                SUM(CASE WHEN h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '' THEN h.total_pagar ELSE 0 END) as total_monto_dtes
+            FROM sales_headers h
+            ${where}
+        `;
+
+        const byTypeQuery = `
+            SELECT 
+                h.tipo_documento,
+                COUNT(*) as cantidad,
+                SUM(h.total_pagar) as monto,
+                COUNT(CASE WHEN h.sello_recepcion IS NOT NULL AND h.sello_recepcion != '' THEN 1 END) as aceptados,
+                COUNT(CASE WHEN (h.sello_recepcion IS NULL OR h.sello_recepcion = '') AND h.estado != 'anulado' AND EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'REJECTED') THEN 1 END) as rechazados,
+                COUNT(CASE WHEN h.estado = 'anulado' OR EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'INVALIDADO') THEN 1 END) as invalidados
+            FROM sales_headers h
+            ${where} AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != ''
+            GROUP BY h.tipo_documento
+            ORDER BY cantidad DESC
+        `;
+
+        const dailyQuery = `
+            SELECT 
+                DATE_FORMAT(h.fecha_emision, '%Y-%m-%d') as fecha,
+                COUNT(*) as total_dtes,
+                COUNT(CASE WHEN h.sello_recepcion IS NOT NULL AND h.sello_recepcion != '' THEN 1 END) as aceptados,
+                COUNT(CASE WHEN (h.sello_recepcion IS NULL OR h.sello_recepcion = '') AND h.estado != 'anulado' AND EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'REJECTED') THEN 1 END) as rechazados,
+                COUNT(CASE WHEN h.estado = 'anulado' OR EXISTS (SELECT 1 FROM dtes d WHERE d.company_id = h.company_id AND d.venta_id = h.id AND d.status = 'INVALIDADO') THEN 1 END) as invalidados,
+                COUNT(CASE WHEN h.tipo_documento = '01' THEN 1 END) as facturas,
+                COUNT(CASE WHEN h.tipo_documento = '03' THEN 1 END) as creditos_fiscales,
+                COUNT(CASE WHEN h.tipo_documento NOT IN ('01', '03') THEN 1 END) as otros_dtes,
+                SUM(h.total_pagar) as total_monto
+            FROM sales_headers h
+            ${where} AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != ''
+            GROUP BY DATE(h.fecha_emision)
+            ORDER BY fecha DESC
+            LIMIT 31
+        `;
+
+        const [[summaryRows], [byTypeRows], [dailyRows]] = await Promise.all([
+            pool.query(summaryQuery, params),
+            pool.query(byTypeQuery, params),
+            pool.query(dailyQuery, params)
+        ]);
+
+        const rawSummary = summaryRows[0] || {};
+        const totalDtes = Number(rawSummary.total_dtes_emitidos || 0);
+        const totalAceptados = Number(rawSummary.total_aceptados || 0);
+        const totalRechazados = Number(rawSummary.total_rechazados || 0);
+        const totalInvalidados = Number(rawSummary.total_invalidados || 0);
+        const totalMontoDtes = Number(rawSummary.total_monto_dtes || 0);
+
+        const summary = {
+            total_ventas: Number(rawSummary.total_ventas || 0),
+            total_dtes_emitidos: totalDtes,
+            total_aceptados: totalAceptados,
+            porcentaje_aceptados: totalDtes > 0 ? ((totalAceptados / totalDtes) * 100).toFixed(1) : '100.0',
+            total_rechazados: totalRechazados,
+            porcentaje_rechazados: totalDtes > 0 ? ((totalRechazados / totalDtes) * 100).toFixed(1) : '0.0',
+            total_invalidados: totalInvalidados,
+            porcentaje_invalidados: totalDtes > 0 ? ((totalInvalidados / totalDtes) * 100).toFixed(1) : '0.0',
+            total_contingencia: Number(rawSummary.total_contingencia || 0),
+            total_pendientes: Number(rawSummary.total_pendientes || 0),
+            total_monto_ventas: Number(rawSummary.total_monto_ventas || 0),
+            total_monto_dtes: totalMontoDtes
+        };
+
+        const byType = byTypeRows.map(row => {
+            const cant = Number(row.cantidad || 0);
+            const monto = Number(row.monto || 0);
+            return {
+                tipo_documento: row.tipo_documento,
+                nombre: dteTypeNames[row.tipo_documento] || `DTE Tipo ${row.tipo_documento}`,
+                cantidad: cant,
+                monto: monto,
+                aceptados: Number(row.aceptados || 0),
+                rechazados: Number(row.rechazados || 0),
+                invalidados: Number(row.invalidados || 0),
+                porcentaje_cantidad: totalDtes > 0 ? ((cant / totalDtes) * 100).toFixed(1) : '0.0',
+                porcentaje_monto: totalMontoDtes > 0 ? ((monto / totalMontoDtes) * 100).toFixed(1) : '0.0'
+            };
+        });
+
+        res.json({
+            period: {
+                start_date: start_date || null,
+                end_date: end_date || null,
+                branch_id: branch_id || 'all'
+            },
+            summary,
+            by_type: byType,
+            daily_breakdown: dailyRows
+        });
+    } catch (error) {
+        console.error('Error in getDteStats:', error);
+        res.status(500).json({ message: 'Error al calcular estadísticas de DTE', error: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
@@ -3387,5 +3519,6 @@ module.exports = {
     emitRetorno,
     getRetornoStatus,
     getDTEByCodigoGeneracion,
-    changeSalesShift
+    changeSalesShift,
+    getDteStats
 };

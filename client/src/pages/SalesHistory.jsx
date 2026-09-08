@@ -9,10 +9,11 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    ChevronDown
+    ChevronDown, BarChart3
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import SaleDetailModal from '../components/sales/SaleDetailModal';
+import DteStatsModal from '../components/sales/DteStatsModal';
 
 const formatDateTime = (dateStr) => {
     if (!dateStr || dateStr === 'N/A') return 'N/A 00:00';
@@ -78,6 +79,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     const [menuState, setMenuState] = useState(null);
     const [viewType, setViewType] = useState('detalle');
     const [isEditDTEModalOpen, setIsEditDTEModalOpen] = useState(false);
+    const [isDteStatsOpen, setIsDteStatsOpen] = useState(false);
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
     const limit = 10;
@@ -454,10 +456,20 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight text-Spanish">Historial de Ventas</h2>
                     <p className="text-slate-500 font-medium text-Spanish">Consulta y gestión de documentos emitidos</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsDteStatsOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-2xl border border-indigo-200/70 shadow-sm hover:shadow transition-all text-xs active:scale-95 cursor-pointer"
+                        title="Consultar estadísticas de DTEs emitidos"
+                    >
+                        <BarChart3 size={16} className="text-indigo-600" />
+                        <span>Estadísticas DTE</span>
+                    </button>
                 </div>
             </div>
 
@@ -1003,6 +1015,12 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal de Estadísticas DTE */}
+            <DteStatsModal 
+                isOpen={isDteStatsOpen} 
+                onClose={() => setIsDteStatsOpen(false)} 
+            />
         </div>
     );
 };

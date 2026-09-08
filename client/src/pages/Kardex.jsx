@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
@@ -6,7 +6,6 @@ import {
     ArrowUpCircle, 
     ArrowDownCircle, 
     Box, 
-    Filter,
     Layers,
     Calendar,
     FileSpreadsheet,
@@ -17,26 +16,31 @@ import {
     Maximize2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
 
 const Kardex = () => {
     const { user } = useAuth();
-    const formatDateTime = (dateString) => {
+
+    const formatDate = (dateString) => {
         if (!dateString) return '---';
         const date = new Date(dateString);
         return new Intl.DateTimeFormat('es-SV', {
             day: '2-digit',
             month: '2-digit',
-            year: 'numeric',
+            year: 'numeric'
+        }).format(date);
+    };
+
+    const formatTime = (dateString) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return new Intl.DateTimeFormat('es-SV', {
             hour: '2-digit',
             minute: '2-digit',
-            second: '2-digit',
             hour12: false
         }).format(date);
     };
@@ -51,7 +55,19 @@ const Kardex = () => {
     const [productSearchModal, setProductSearchModal] = useState('');
     const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
     const [modalPage, setModalPage] = useState(1);
-    const itemsPerPage = 10;
+    const itemsPerPage = 15;
+
+    // PDF Viewer States
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
 
     // Queries
     const { data: branches = [] } = useQuery({
@@ -152,120 +168,119 @@ const Kardex = () => {
     const productCosto = selectedProduct?.costo || 0;
     const totalValuation = currentStock * productCosto;
 
-    const exportToExcel = () => {
-        if (movements.length === 0) return;
-        
-        const worksheet = XLSX.utils.json_to_sheet(movements.map((m, index) => {
-            const balanceAtThisPoint = movements
-                .slice(index)
-                .reduce((acc, mov) => {
-                    if (mov.tipo_movimiento === 'ENTRADA') return acc + parseFloat(mov.cantidad);
-                    return acc - parseFloat(mov.cantidad);
-                }, 0);
+    const handleOpenPdfModal = async () => {
+        if (!productId || !branchId || movements.length === 0) return;
 
-            return {
-                Fecha: formatDateTime(m.created_at),
-                Tipo: m.tipo_movimiento,
-                Documento: `${m.tipo_documento} #${m.documento_id}`,
-                Cantidad: m.cantidad,
-                Precio: `$${(parseFloat(m.precio_venta || m.current_price)).toFixed(2)}`,
-                Costo: `$${(parseFloat(productCosto)).toFixed(2)}`,
-                Balance: balanceAtThisPoint
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
+
+        try {
+            const params = {
+                product_id: productId,
+                branch_id: branchId
             };
-        }));
-        
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Kardex");
-        XLSX.writeFile(workbook, `Kardex_${selectedProduct?.nombre || 'Producto'}.xlsx`);
+
+            const response = await axios.get('/api/inventory/kardex-report', {
+                params,
+                responseType: 'blob'
+            });
+
+            if (response.data.type !== 'application/pdf') {
+                const text = await response.data.text();
+                let errorMsg = 'Error al generar el reporte en formato PDF';
+                try {
+                    const errObj = JSON.parse(text);
+                    errorMsg = errObj.message || errorMsg;
+                } catch {}
+                throw new Error(errorMsg);
+            }
+
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(response.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching Kardex PDF:', err);
+            setPdfError(err.message || 'Ocurrió un error al generar el PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
     };
 
-    const exportToPDF = () => {
-        if (movements.length === 0) return;
+    const exportToExcel = async () => {
+        if (!productId || !branchId || movements.length === 0) return;
+        try {
+            const params = {
+                product_id: productId,
+                branch_id: branchId,
+                format: 'excel'
+            };
 
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text("Reporte de Kardex", 14, 22);
-        
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Producto: ${selectedProduct?.nombre}`, 14, 30);
-        doc.text(`Sucursal: ${branches.find(b => String(b.id) === String(branchId))?.nombre || ''}`, 14, 35);
-        doc.text(`Fecha Reporte: ${formatDateTime(new Date())}`, 14, 40);
+            const response = await axios.get('/api/inventory/kardex-report', {
+                params,
+                responseType: 'blob'
+            });
 
-        const tableColumn = ["Fecha", "Tipo", "Documento", "Cant.", "Precio", "Costo", "Balance"];
-        const tableRows = movements.map((m, index) => {
-            const balanceAtThisPoint = movements
-                .slice(index)
-                .reduce((acc, mov) => {
-                    if (mov.tipo_movimiento === 'ENTRADA') return acc + parseFloat(mov.cantidad);
-                    return acc - parseFloat(mov.cantidad);
-                }, 0);
-
-            return [
-                formatDateTime(m.created_at),
-                m.tipo_movimiento,
-                `${m.tipo_documento} #${m.documento_id}`,
-                m.cantidad,
-                `$${(parseFloat(m.precio_venta || m.current_price)).toFixed(2)}`,
-                `$${(parseFloat(productCosto)).toFixed(2)}`,
-                balanceAtThisPoint
-            ];
-        });
-
-        autoTable(doc, {
-            head: [tableColumn],
-            body: tableRows,
-            startY: 45,
-            styles: { fontSize: 7 },
-            headStyles: { fillColor: [79, 70, 229] }
-        });
-
-        doc.save(`Kardex_${selectedProduct?.nombre || 'Producto'}.pdf`);
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const prodName = selectedProduct?.codigo || selectedProduct?.nombre || 'Producto';
+            link.setAttribute('download', `Kardex_${prodName}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Reporte de Kárdex exportado a Excel correctamente');
+        } catch (err) {
+            console.error('Error exporting Kardex to Excel:', err);
+            toast.error('Error al exportar a Excel');
+        }
     };
-
-    const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 ml-1";
-    const cardCls = "bg-white p-6 rounded-2xl border border-slate-200 shadow-sm";
 
     return (
-        <div className="max-w-6xl mx-auto space-y-6 pb-20">
-            <div className="flex items-center justify-between">
+        <div className="max-w-6xl mx-auto space-y-3.5 pb-16">
+            {/* Encabezado y Acciones */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Consulta de Kardex</h2>
-                    <p className="text-slate-500 mt-1 font-medium text-sm text-[Spanish]">Historial de movimientos y saldos de inventario</p>
+                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Consulta de Kardex</h2>
+                    <p className="text-slate-500 font-medium text-xs">Historial de movimientos y saldos de inventario</p>
                 </div>
                 {productId && branchId && movements.length > 0 && (
-                    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-2">
+                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
                         <button 
                             onClick={exportToExcel}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all border border-emerald-100 shadow-sm shadow-emerald-600/5 h-[42px]"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all border border-emerald-200/60 shadow-xs cursor-pointer"
+                            title="Exportar a Excel"
                         >
-                            <FileSpreadsheet size={16} />
-                            Excel
+                            <FileSpreadsheet size={15} />
+                            <span>Excel</span>
                         </button>
                         <button 
-                            onClick={exportToPDF}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all border border-rose-100 shadow-sm shadow-rose-600/5 h-[42px]"
+                            onClick={handleOpenPdfModal}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all border border-rose-200/60 shadow-xs cursor-pointer"
+                            title="Visualizar Reporte en PDF"
                         >
-                            <FilePdf size={16} />
-                            PDF
+                            <FilePdf size={15} />
+                            <span>PDF</span>
                         </button>
                     </div>
                 )}
             </div>
 
-            {/* Filters */}
-            <div className={cardCls}>
-                <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-3">
-                    <Filter size={18} className="text-indigo-600" />
-                    <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Filtros de Búsqueda</h3>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
-                    <div className="lg:col-span-4">
-                        <label className={labelCls}>Sucursal</label>
+            {/* Filtros Compactos */}
+            <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                    <div className="sm:col-span-4 lg:col-span-3">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 ml-0.5">
+                            Sucursal
+                        </label>
                         <select 
                             value={branchId} 
                             onChange={(e) => setBranchId(e.target.value)}
-                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-bold h-[40px]"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 transition-all text-xs font-semibold h-[36px]"
                         >
                             <option value="">Seleccionar Sucursal...</option>
                             {branches.map(b => (
@@ -273,31 +288,49 @@ const Kardex = () => {
                             ))}
                         </select>
                     </div>
-                    <div className="lg:col-span-8">
-                        <label className={labelCls}>Producto (Código / F3 Buscar)</label>
-                        <div className="flex items-stretch">
-                            <div className="relative w-40 shrink-0">
-                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                    <div className="sm:col-span-8 lg:col-span-9">
+                        <div className="flex items-center justify-between mb-1 ml-0.5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                Producto (Código / F3 Buscar)
+                            </label>
+                            {selectedProduct && (
+                                <button
+                                    onClick={() => { setProductId(''); setSelectedProduct(null); }}
+                                    className="text-[10px] text-slate-400 hover:text-rose-600 font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                    <X size={11} /> Limpiar selección
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex items-stretch gap-1.5">
+                            <div className="relative w-36 sm:w-44 shrink-0">
+                                <Barcode className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                 <input 
                                     type="text"
                                     value={quickBarcode}
                                     onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())}
                                     onKeyDown={handleBarcodeSubmit}
-                                    placeholder="CÓDIGO..."
-                                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-l-xl border-r-0 outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 font-mono text-[11px] font-black transition-all h-[40px]"
+                                    placeholder="ESCANEAR..."
+                                    className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 font-mono text-[11px] font-bold transition-all h-[36px]"
                                 />
                             </div>
-                            <div className="flex-1 px-4 py-2 bg-indigo-50/20 border border-slate-200 rounded-r-xl text-xs font-bold text-slate-700 flex items-center justify-between group overflow-hidden h-[40px]">
-                                <span className={productId ? 'text-indigo-600 truncate' : 'text-slate-400 italic truncate'}>
-                                    {selectedProduct ? `${selectedProduct.nombre} (${selectedProduct.codigo})` : 'Seleccione o escanee un producto'}
+                            <div 
+                                onClick={() => setIsProductModalOpen(true)}
+                                className="flex-1 px-3 py-1.5 bg-indigo-50/20 hover:bg-indigo-50/40 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-between group overflow-hidden h-[36px] cursor-pointer transition-all"
+                            >
+                                <span className={productId ? 'text-indigo-700 truncate font-bold text-xs' : 'text-slate-400 italic truncate text-xs font-normal'}>
+                                    {selectedProduct ? `${selectedProduct.nombre} (${selectedProduct.codigo})` : 'Seleccione o presione F3 para buscar producto...'}
                                 </span>
-                                <button 
-                                    onClick={() => setIsProductModalOpen(true)}
-                                    className="ml-2 p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-black transition-all shadow-sm shrink-0"
-                                    title="Buscar Producto (F3)"
-                                >
-                                    <Search size={12} />
-                                </button>
+                                <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                                    <span className="hidden sm:inline-block px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-black">F3</span>
+                                    <button 
+                                        type="button"
+                                        className="p-1 bg-indigo-600 text-white rounded-lg group-hover:bg-slate-900 transition-all shadow-xs"
+                                        title="Buscar Producto (F3)"
+                                    >
+                                        <Search size={12} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -310,7 +343,7 @@ const Kardex = () => {
                     <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
                         <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
                             <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Seleccionar Producto</h3>
-                            <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all"><X size={20} /></button>
+                            <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="p-6">
                             <div className="relative">
@@ -340,7 +373,7 @@ const Kardex = () => {
                                             setProductSearchModal('');
                                             setModalPage(1);
                                         }} 
-                                        className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group text-left"
+                                        className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group text-left cursor-pointer"
                                     >
                                         <div className="flex items-center gap-4 min-w-0">
                                             <div className="p-2.5 bg-white rounded-xl shadow-sm border border-slate-100 group-hover:text-indigo-600 transition-colors">
@@ -365,7 +398,7 @@ const Kardex = () => {
                         </div>
                         {modalProductsData.totalPages > 1 && (
                             <div className="border-t border-slate-100 p-4">
-                                <Pagination
+                                <Pagination 
                                     currentPage={modalPage}
                                     totalPages={modalProductsData.totalPages}
                                     totalItems={modalProductsData.total}
@@ -379,63 +412,91 @@ const Kardex = () => {
                 </div>
             )}
 
+            {/* Tarjetas de Resumen Compactas */}
             {productId && branchId && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2">
-                    <div className="bg-indigo-600 p-4 rounded-2xl shadow-lg shadow-indigo-600/20 text-white">
-                        <div className="flex items-center justify-between mb-1">
-                            <Layers size={16} className="opacity-80" />
-                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-80">Saldo Actual</span>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 animate-in fade-in duration-150">
+                    <div className="bg-white px-3.5 py-2.5 rounded-xl border border-indigo-200/80 shadow-xs flex items-center justify-between">
+                        <div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 block leading-tight">
+                                Saldo Actual
+                            </span>
+                            <span className="text-lg font-black text-slate-900 leading-tight">
+                                {currentStock}
+                            </span>
                         </div>
-                        <div className="text-xl font-black">{currentStock}</div>
+                        <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                            <Layers size={16} />
+                        </div>
                     </div>
-                    <div className="bg-emerald-500 p-4 rounded-2xl shadow-lg shadow-emerald-500/20 text-white">
-                        <div className="flex items-center justify-between mb-1">
-                            <ArrowUpCircle size={16} className="opacity-80" />
-                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-80">Total Entradas</span>
+
+                    <div className="bg-white px-3.5 py-2.5 rounded-xl border border-emerald-200/80 shadow-xs flex items-center justify-between">
+                        <div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 block leading-tight">
+                                Total Entradas
+                            </span>
+                            <span className="text-lg font-black text-emerald-700 leading-tight">
+                                +{totals.entradas}
+                            </span>
                         </div>
-                        <div className="text-xl font-black text-[Spanish]">{totals.entradas}</div>
+                        <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                            <ArrowUpCircle size={16} />
+                        </div>
                     </div>
-                    <div className="bg-rose-500 p-4 rounded-2xl shadow-lg shadow-rose-500/20 text-white">
-                        <div className="flex items-center justify-between mb-1">
-                            <ArrowDownCircle size={16} className="opacity-80" />
-                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-80">Total Salidas</span>
+
+                    <div className="bg-white px-3.5 py-2.5 rounded-xl border border-rose-200/80 shadow-xs flex items-center justify-between">
+                        <div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-rose-600 block leading-tight">
+                                Total Salidas
+                            </span>
+                            <span className="text-lg font-black text-rose-700 leading-tight">
+                                -{totals.salidas}
+                            </span>
                         </div>
-                        <div className="text-xl font-black text-[Spanish]">{totals.salidas}</div>
+                        <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg">
+                            <ArrowDownCircle size={16} />
+                        </div>
                     </div>
-                    <div className="bg-amber-500 p-4 rounded-2xl shadow-lg shadow-amber-500/20 text-white">
-                        <div className="flex items-center justify-between mb-1">
-                            <DollarSign size={16} className="opacity-80" />
-                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-80">Valorización</span>
+
+                    <div className="bg-white px-3.5 py-2.5 rounded-xl border border-amber-200/80 shadow-xs flex items-center justify-between">
+                        <div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-amber-600 block leading-tight">
+                                Valorización
+                            </span>
+                            <span className="text-lg font-black text-slate-900 leading-tight">
+                                <Money value={totalValuation} />
+                            </span>
                         </div>
-                        <div className="text-xl font-black text-[Spanish] tracking-tight">
-                            ${totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
+                            <DollarSign size={16} />
                         </div>
                     </div>
                 </div>
             )}
 
             {/* Movements Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
                 {productId && branchId && (
-                    <div className="bg-slate-50/50 p-4 border-b border-slate-100 flex items-center gap-4">
-                        <div className="flex-1 relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <div className="bg-slate-50/60 px-3.5 py-2 border-b border-slate-100 flex items-center justify-between gap-3">
+                        <div className="relative flex-1 max-w-xs sm:max-w-sm">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
                             <input 
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value.toUpperCase())}
-                                placeholder="Buscar en movimientos..."
-                                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-bold"
+                                placeholder="Filtrar por tipo o doc..."
+                                className="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 transition-all text-xs font-semibold h-[30px]"
                             />
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-400">
+                            {filteredMovements.length} {filteredMovements.length === 1 ? 'movimiento' : 'movimientos'}
                         </div>
                     </div>
                 )}
                 <Table
-                    headers={['Fecha', 'Tipo', 'Documento', 'Cantidad', 'Precio', 'Costo', 'Balance']}
+                    headers={['Fecha / Hora', 'Tipo', 'Documento', 'Cantidad', 'Precio Venta', 'Costo Unit.', 'Balance']}
                     data={paginatedMovements}
                     isLoading={isLoading}
                     renderRow={(mov, index) => {
-                        // Calculate running balance for each row (needs to consider the full list for correct index calculation)
                         const overallIndex = (currentPage - 1) * itemsPerPage + index;
                         const balanceAtThisPoint = filteredMovements
                             .slice(overallIndex)
@@ -445,41 +506,43 @@ const Kardex = () => {
                             }, 0);
 
                         return (
-                            <tr key={mov.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2 text-slate-500">
-                                        <Calendar size={14} />
-                                        <span className="text-xs font-bold whitespace-nowrap">{formatDateTime(mov.created_at)}</span>
+                            <tr key={mov.id} className="hover:bg-indigo-50/20 transition-colors border-b border-slate-100 last:border-0 text-xs">
+                                <td className="px-3.5 py-1.5 whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                        <Calendar size={12} className="text-slate-400 shrink-0" />
+                                        <div className="flex flex-col leading-tight">
+                                            <span className="font-bold text-slate-700 leading-none">{formatDate(mov.created_at)}</span>
+                                            <span className="text-[10px] text-slate-400 font-mono mt-0.5 leading-none">{formatTime(mov.created_at)}</span>
+                                        </div>
                                     </div>
                                 </td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                                <td className="px-3.5 py-1.5">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                                         mov.tipo_movimiento === 'ENTRADA'
-                                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                            : 'bg-rose-50 text-rose-600 border border-rose-100'
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                            : 'bg-rose-50 text-rose-700 border border-rose-200/60'
                                     }`}>
+                                        {mov.tipo_movimiento === 'ENTRADA' ? <ArrowUpCircle size={11} /> : <ArrowDownCircle size={11} />}
                                         {mov.tipo_movimiento}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4">
-                                    <div className="text-xs font-bold text-slate-600">{mov.tipo_documento}</div>
-                                    <div className="text-[10px] text-slate-400 font-mono">#{mov.documento_id}</div>
+                                <td className="px-3.5 py-1.5 leading-tight">
+                                    <div className="font-bold text-slate-800 text-xs truncate max-w-[200px]">{mov.tipo_documento || 'Movimiento'}</div>
+                                    <div className="text-[10px] text-slate-400 font-mono">Doc #{mov.documento_id}</div>
                                 </td>
-                                <td className="px-6 py-4 font-black text-sm text-slate-700">
-                                    {mov.tipo_movimiento === 'ENTRADA' ? '+' : '-'}{mov.cantidad}
+                                <td className="px-3.5 py-1.5 text-right font-black text-xs">
+                                    <span className={mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : 'text-rose-600'}>
+                                        {mov.tipo_movimiento === 'ENTRADA' ? '+' : '-'}{parseFloat(mov.cantidad || 0)}
+                                    </span>
                                 </td>
-                                <td className="px-6 py-4">
-                                    <div className="text-sm font-bold text-slate-900">
-                                        <Money value={mov.precio_venta ? parseFloat(mov.precio_venta) : parseFloat(mov.current_price)} />
-                                    </div>
+                                <td className="px-3.5 py-1.5 text-right font-bold text-xs text-slate-800">
+                                    <Money value={mov.precio_venta ? parseFloat(mov.precio_venta) : parseFloat(mov.current_price || 0)} />
                                 </td>
-                                <td className="px-6 py-4">
-                                    <div className="text-sm font-bold text-slate-600">
-                                        <Money value={productCosto} />
-                                    </div>
+                                <td className="px-3.5 py-1.5 text-right font-semibold text-xs text-slate-600">
+                                    <Money value={productCosto} />
                                 </td>
-                                <td className="px-6 py-4">
-                                    <span className="text-sm font-black text-slate-900 bg-slate-100 px-3 py-1 rounded-xl text-[Spanish]">
+                                <td className="px-3.5 py-1.5 text-right">
+                                    <span className="font-mono font-black text-xs text-slate-900 bg-slate-100/90 px-2 py-0.5 rounded-md border border-slate-200/60">
                                         {balanceAtThisPoint}
                                     </span>
                                 </td>
@@ -488,22 +551,22 @@ const Kardex = () => {
                     }}
                 />
                 {!productId || !branchId ? (
-                    <div className="py-20 flex flex-col items-center justify-center text-center space-y-3">
-                        <div className="bg-slate-50 p-4 rounded-full">
-                            <Box size={40} className="text-slate-200" />
+                    <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
+                        <div className="bg-slate-50 p-3 rounded-full">
+                            <Box size={28} className="text-slate-300" />
                         </div>
                         <div>
-                            <p className="font-bold text-slate-400 uppercase text-xs tracking-widest text-[Spanish]">Esperando Selección</p>
-                            <p className="text-slate-500 text-sm mt-1 text-[Spanish]">Selecciona un producto y una sucursal para ver los movimientos.</p>
+                            <p className="font-bold text-slate-400 uppercase text-[11px] tracking-widest">Esperando Selección</p>
+                            <p className="text-slate-500 text-xs mt-0.5">Selecciona un producto y una sucursal para ver los movimientos.</p>
                         </div>
                     </div>
                 ) : movements.length === 0 && !isLoading && (
-                    <div className="py-20 flex flex-col items-center justify-center text-center space-y-3">
-                        <p className="text-slate-400 text-sm font-medium">No se encontraron movimientos para esta selección</p>
+                    <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
+                        <p className="text-slate-400 text-xs font-medium">No se encontraron movimientos para esta selección</p>
                     </div>
                 )}
                 {productId && branchId && filteredMovements.length > itemsPerPage && (
-                    <div className="border-t border-slate-100">
+                    <div className="border-t border-slate-100 px-2 py-1">
                         <Pagination 
                             currentPage={currentPage}
                             totalPages={totalPages}
@@ -515,6 +578,22 @@ const Kardex = () => {
                     </div>
                 )}
             </div>
+
+            {/* Modal de Visualización Interactiva de Reporte PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Consulta de Kárdex"
+                subtitle={`Producto: [${selectedProduct?.codigo || 'S/C'}] ${selectedProduct?.nombre || ''} • Sucursal: ${branches.find(b => String(b.id) === String(branchId))?.nombre || ''}`}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando reporte de Kárdex en formato contable oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Kardex_${selectedProduct?.codigo || selectedProduct?.nombre || 'Producto'}.pdf`}
+                footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
+            />
         </div>
     );
 };

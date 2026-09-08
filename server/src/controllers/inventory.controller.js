@@ -4,6 +4,7 @@ const pdfService = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 const getInventory = async (req, res) => {
     try {
@@ -858,9 +859,193 @@ const getInventoryMovementsReport = async (req, res) => {
     }
 };
 
+const getKardexReport = async (req, res) => {
+    try {
+        const { product_id, branch_id, startDate, endDate, tipo_movimiento } = req.query;
+        const company_id = req.company_id;
+
+        if (!product_id || !branch_id) {
+            return res.status(400).json({ message: 'Producto y Sucursal son requeridos' });
+        }
+
+        // 1. Fetch Company Info
+        const [companyRows] = await pool.query(
+            'SELECT id, razon_social as nombre, razon_social, nombre_comercial, nit, nrc FROM companies WHERE id = ?',
+            [company_id]
+        );
+        const [branchRows] = await pool.query(
+            'SELECT nombre FROM branches WHERE id = ?',
+            [branch_id]
+        );
+
+        if (!companyRows.length || !branchRows.length) {
+            return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
+        }
+
+        const company = companyRows[0];
+        const branch = branchRows[0];
+
+        // 2. Fetch Product Info
+        const [productRows] = await pool.query(`
+            SELECT 
+                p.id,
+                p.nombre,
+                p.codigo,
+                p.codigo_barra as barcode,
+                p.costo,
+                c.name as categoria,
+                COALESCE(pbp.precio_unitario, 0) as precio_venta,
+                COALESCE(i.stock, 0) as stock_actual
+            FROM products p
+            LEFT JOIN product_categories c ON p.category_id = c.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
+            LEFT JOIN inventory i ON p.id = i.product_id AND i.branch_id = ?
+            WHERE p.id = ? AND p.company_id = ?
+        `, [branch_id, branch_id, product_id, company_id]);
+
+        if (!productRows.length) {
+            return res.status(404).json({ message: 'Producto no encontrado' });
+        }
+
+        const product = productRows[0];
+
+        // 3. Calculate Initial Balance if startDate is present
+        let initialBalance = 0;
+        if (startDate) {
+            const [initRows] = await pool.query(`
+                SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END) as initial_balance
+                FROM inventory_movements
+                WHERE product_id = ? AND branch_id = ? AND DATE(created_at) < ?
+            `, [product_id, branch_id, startDate]);
+            initialBalance = parseFloat(initRows[0]?.initial_balance || 0);
+        }
+
+        // 4. Fetch Movements
+        let query = `
+            SELECT 
+                m.id,
+                m.created_at,
+                m.tipo_movimiento,
+                m.tipo_documento,
+                m.documento_id,
+                m.cantidad,
+                m.precio_venta,
+                COALESCE(pbp.precio_unitario, 0) as current_price
+            FROM inventory_movements m
+            LEFT JOIN product_branch_prices pbp ON m.product_id = pbp.product_id AND pbp.branch_id = m.branch_id
+            WHERE m.product_id = ? AND m.branch_id = ?
+        `;
+        const params = [product_id, branch_id];
+
+        if (startDate) {
+            query += ` AND DATE(m.created_at) >= ?`;
+            params.push(startDate);
+        }
+        if (endDate) {
+            query += ` AND DATE(m.created_at) <= ?`;
+            params.push(endDate);
+        }
+        if (tipo_movimiento && tipo_movimiento !== 'ALL') {
+            query += ` AND m.tipo_movimiento = ?`;
+            params.push(tipo_movimiento);
+        }
+
+        query += ` ORDER BY m.created_at ASC, m.id ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        // 5. Calculate Running Balances chronologically
+        let runningBalance = initialBalance;
+        const movementsWithBalance = rows.map(m => {
+            const qty = parseFloat(m.cantidad || 0);
+            if (m.tipo_movimiento === 'ENTRADA') {
+                runningBalance += qty;
+            } else {
+                runningBalance -= qty;
+            }
+            return {
+                ...m,
+                balance: runningBalance,
+                costo: product.costo
+            };
+        });
+
+        // For display matching screen (newest first):
+        const movementsDisplay = [...movementsWithBalance].reverse();
+
+        // 6. Period Text
+        let periodText = '';
+        if (startDate && endDate) {
+            periodText = `DEL ${reportPdfHelper.formatDate(startDate)} AL ${reportPdfHelper.formatDate(endDate)}`;
+        } else if (startDate) {
+            periodText = `DESDE EL ${reportPdfHelper.formatDate(startDate)}`;
+        } else if (endDate) {
+            periodText = `AL ${reportPdfHelper.formatDate(endDate)}`;
+        } else {
+            periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
+        }
+
+        const reportData = {
+            company_id,
+            company,
+            branch_name: branch.nombre,
+            product,
+            periodText,
+            movements: movementsDisplay,
+            finalStock: runningBalance
+        };
+
+        // 7. Handle Excel export
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Kardex',
+                    columns: [
+                        { header: 'Fecha y Hora', key: 'fecha', width: 20 },
+                        { header: 'Tipo', key: 'tipo', width: 12 },
+                        { header: 'Documento', key: 'documento', width: 25 },
+                        { header: 'No. Doc', key: 'doc_id', width: 12 },
+                        { header: 'Cantidad', key: 'cantidad', width: 14 },
+                        { header: 'Precio Venta', key: 'precio_venta', width: 15 },
+                        { header: 'Costo Unitario', key: 'costo', width: 15 },
+                        { header: 'Saldo Unidades', key: 'saldo', width: 15 }
+                    ],
+                    data: movementsDisplay.map(m => {
+                        const dateObj = new Date(m.created_at);
+                        const timeStr = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' });
+                        return {
+                            fecha: `${reportPdfHelper.formatDate(m.created_at)} ${timeStr}`.trim(),
+                            tipo: m.tipo_movimiento,
+                            documento: m.tipo_documento || 'Movimiento',
+                            doc_id: m.documento_id || '',
+                            cantidad: (m.tipo_movimiento === 'ENTRADA' ? '+' : '-') + parseFloat(m.cantidad || 0).toFixed(2),
+                            precio_venta: parseFloat(m.precio_venta || m.current_price || 0).toFixed(2),
+                            costo: parseFloat(product.costo || 0).toFixed(2),
+                            saldo: parseFloat(m.balance || 0).toFixed(2)
+                        };
+                    })
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `kardex-${product.codigo || 'producto'}.xlsx`);
+        }
+
+        // 8. Generate & Send PDF
+        const pdfBuffer = await pdfService.generateKardexReportPDF(reportData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=kardex-${product.codigo || 'producto'}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('[KardexReport] Full error:', error.message);
+        res.status(500).json({ message: error.message || 'Error al generar el reporte de Kárdex' });
+    }
+};
+
 module.exports = { 
     getInventory, 
     getKardex, 
+    getKardexReport,
     createTransfer, 
     getTransfers, 
     deleteTransfer, 

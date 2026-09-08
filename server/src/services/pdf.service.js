@@ -719,6 +719,182 @@ const generateMovementsReportPDF = async (data) => {
 };
 
 /**
+ * Generates a PDF buffer for a Kardex Report (Movement history for a product in a branch)
+ * Strictly follows official accounting standards from reportPdfHelper.js:
+ * - Letter size, portrait layout
+ * - Official unified company header with NRC, NIT, period and monetary legend
+ * - Product overview information box
+ * - Clean tabular layout with #f1f5f9 header, 7pt Helvetica-Bold #0f172a
+ * - Running balances and monetary values with reportPdfHelper.fmt
+ * - Defensive pagination (currentY > 700)
+ * - Summary row and official closing footer without authorized signatures
+ * - Dynamic page numbers (Página X de Y)
+ */
+const generateKardexReportPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
+
+    const title = 'CONSULTA DE KÁRDEX DE PRODUCTO';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = data.periodText || `AL ${reportPdfHelper.formatDate(new Date())}`;
+
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+
+    const startX = 30;
+    const contentWidth = 552;
+
+    // 1. Product Overview Card
+    const product = data.product || {};
+    const cardHeight = 36;
+    doc.rect(startX, currentY, contentWidth, cardHeight).fillAndStroke('#f8fafc', '#e2e8f0');
+
+    // Row 1: Product Code, Name, Category
+    const prodCodigo = product.codigo ? `[${product.codigo}] ` : '';
+    const prodNombre = `${prodCodigo}${product.nombre || 'PRODUCTO'}`;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`PRODUCTO: ${prodNombre}`, startX + 8, currentY + 6, { width: 360, truncate: true });
+
+    doc.fontSize(7).font('Helvetica').fillColor('#475569');
+    const catName = (product.categoria || 'GENERAL').toUpperCase();
+    doc.text(`CATEGORÍA: ${catName}`, startX + 375, currentY + 6, { width: 168, align: 'right', truncate: true });
+
+    // Row 2: Barcode, Costo, Precio Venta, Stock Actual, Valorización
+    const costo = parseFloat(product.costo || 0);
+    const precio = parseFloat(product.precio_venta || 0);
+    const stockActual = parseFloat(product.stock_actual !== undefined ? product.stock_actual : (data.finalStock || 0));
+    const valorizacion = stockActual * costo;
+
+    doc.fontSize(7).font('Helvetica').fillColor('#475569');
+    const barcodeText = product.barcode ? `CÓDIGO BARRA: ${product.barcode}   |   ` : '';
+    doc.text(`${barcodeText}COSTO UNITARIO: ${reportPdfHelper.fmt(costo)}   |   PRECIO VENTA: ${reportPdfHelper.fmt(precio)}`, startX + 8, currentY + 20, { width: 340, truncate: true });
+
+    doc.font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`STOCK ACTUAL: ${stockActual.toFixed(2)}   |   VALORIZACIÓN: ${reportPdfHelper.fmt(valorizacion)}`, startX + 330, currentY + 20, { width: 214, align: 'right' });
+
+    currentY += cardHeight + 8;
+
+    // 2. Table Column Configuration (Width sum: 90 + 52 + 160 + 60 + 60 + 60 + 70 = 552)
+    const colWidths = {
+        fecha: 90,
+        tipo: 52,
+        doc: 160,
+        cantidad: 60,
+        precio: 60,
+        costo: 60,
+        saldo: 70
+    };
+    const colX = {
+        fecha: startX,
+        tipo: startX + colWidths.fecha,
+        doc: startX + colWidths.fecha + colWidths.tipo,
+        cantidad: startX + colWidths.fecha + colWidths.tipo + colWidths.doc,
+        precio: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cantidad,
+        costo: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cantidad + colWidths.precio,
+        saldo: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cantidad + colWidths.precio + colWidths.costo
+    };
+
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA / HORA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('TIPO', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4, align: 'center' });
+        doc.text('DOCUMENTO / REF.', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('CANTIDAD', colX.cantidad, y + 3, { width: colWidths.cantidad - 4, align: 'right' });
+        doc.text('P. VENTA', colX.precio, y + 3, { width: colWidths.precio - 4, align: 'right' });
+        doc.text('COSTO UNIT.', colX.costo, y + 3, { width: colWidths.costo - 4, align: 'right' });
+        doc.text('SALDO UNID.', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
+
+    currentY = drawTableHeader(currentY);
+
+    const movements = data.movements || [];
+    let totalEntradas = 0;
+    let totalSalidas = 0;
+
+    movements.forEach((m, idx) => {
+        if (currentY > 700) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        const qty = parseFloat(m.cantidad || 0);
+        if (m.tipo_movimiento === 'ENTRADA') {
+            totalEntradas += qty;
+        } else {
+            totalSalidas += qty;
+        }
+
+        // Alternating row background
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 1, contentWidth, 13).fill('#f8fafc');
+        }
+
+        const dateObj = new Date(m.created_at);
+        const fechaStr = reportPdfHelper.formatDate(m.created_at);
+        const horaStr = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const fullFecha = horaStr ? `${fechaStr} ${horaStr}` : fechaStr;
+
+        const isEntrada = m.tipo_movimiento === 'ENTRADA';
+        const docText = `${m.tipo_documento || 'Movimiento'} ${m.documento_id ? '#' + m.documento_id : ''}`.trim();
+        const pVenta = parseFloat(m.precio_venta || m.current_price || 0);
+        const pCosto = parseFloat(m.costo || product.costo || 0);
+        const saldoUnid = parseFloat(m.balance !== undefined ? m.balance : 0);
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#334155');
+        doc.text(fullFecha, colX.fecha + 2, currentY, { width: colWidths.fecha - 4, lineBreak: false });
+
+        // Tipo badge text
+        doc.font('Helvetica-Bold').fillColor(isEntrada ? '#047857' : '#b91c1c');
+        doc.text(m.tipo_movimiento || '---', colX.tipo + 2, currentY, { width: colWidths.tipo - 4, align: 'center', lineBreak: false });
+
+        doc.font('Helvetica').fillColor('#1e293b');
+        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true, lineBreak: false });
+
+        doc.font('Helvetica-Bold').fillColor(isEntrada ? '#047857' : '#b91c1c');
+        doc.text(`${isEntrada ? '+' : '-'}${qty.toFixed(2)}`, colX.cantidad, currentY, { width: colWidths.cantidad - 4, align: 'right', lineBreak: false });
+
+        doc.font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.fmt(pVenta), colX.precio, currentY, { width: colWidths.precio - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(pCosto), colX.costo, currentY, { width: colWidths.costo - 4, align: 'right', lineBreak: false });
+
+        doc.font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(saldoUnid.toFixed(2), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right', lineBreak: false });
+
+        currentY += 13;
+    });
+
+    if (movements.length === 0) {
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#94a3b8');
+        doc.text('No se encontraron movimientos registrados para el producto en el período seleccionado.', startX, currentY + 10, { width: contentWidth, align: 'center' });
+        currentY += 30;
+    }
+
+    if (currentY > 680) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+
+    // Totals line & summary
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 5;
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTAL ENTRADAS: +${totalEntradas.toFixed(2)}`, startX + 10, currentY);
+    doc.text(`TOTAL SALIDAS: -${totalSalidas.toFixed(2)}`, startX + 150, currentY);
+    doc.text(`SALDO FINAL: ${stockActual.toFixed(2)} UNIDADES`, startX + 280, currentY);
+    doc.text(`VALOR TOTAL: ${reportPdfHelper.fmt(valorizacion)}`, startX + 410, currentY, { width: 135, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, movements.length, 'Movimientos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
+/**
  * Generates a PDF for Customer Balances Report
  */
 const generateCustomerBalancesPDF = async (data) => {
@@ -5233,6 +5409,7 @@ module.exports = {
     generateProviderAgingPDF,
     generateStockReportPDF,
     generateMovementsReportPDF,
+    generateKardexReportPDF,
     generateCustomerBalancesPDF,
     generateProviderBalancesPDF,
     generatePaymentReceiptPDF,

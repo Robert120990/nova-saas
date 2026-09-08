@@ -260,6 +260,7 @@ router.get('/inventory', inventoryController.getInventory);
 router.get('/inventory/stock-report', inventoryController.getInventoryStockReport);
 router.get('/inventory/movements-report', inventoryController.getInventoryMovementsReport);
 router.get('/inventory/kardex', inventoryController.getKardex);
+router.get('/inventory/kardex-report', inventoryController.getKardexReport);
 router.get('/inventory/transfers', inventoryController.getTransfers);
 router.get('/inventory/transfers/:id', inventoryController.getTransferDetail);
 router.post('/inventory/transfers', inventoryController.createTransfer);
@@ -361,6 +362,9 @@ router.get('/sales/tienda/ventas', checkPermission('send_sales_rrs'), tiendaVent
 router.post('/sales/tienda/ventas/rrs', checkPermission('send_sales_rrs'), tiendaVentasController.sendVentasToRrs);
 
 router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), salesController.changeSalesShift);
+
+// DTE Statistics
+router.get('/sales/dte-stats', salesController.getDteStats);
 
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
