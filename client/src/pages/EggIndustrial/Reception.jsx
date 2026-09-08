@@ -20,8 +20,10 @@ import {
     Truck,
     Settings,
     Sparkles,
-    History
+    History,
+    Printer
 } from 'lucide-react';
+import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
 
 const EggReception = () => {
     const { user } = useAuth();
@@ -84,6 +86,40 @@ const EggReception = () => {
         status: 'aprobado'
     });
     const [voidConfirmId, setVoidConfirmId] = useState(null);
+
+    // Estado del modal de impresión de etiquetas de tarimas
+    const [printTarimaModal, setPrintTarimaModal] = useState({
+        isOpen: false,
+        tarima: null,
+        allTarimas: [],
+        receptionData: {}
+    });
+
+    const handleOpenPrintTarima = (tarimaItem, allTarimasList, customReceptionData = null) => {
+        const currentProvider = providers.find(p => String(p.id) === String(formData.provider_id));
+        const recData = customReceptionData || {
+            reception_id: editingId || null,
+            provider_name: currentProvider?.nombre || 'PROVEEDOR PENDIENTE',
+            provider_lot: formData.provider_lot || 'LOTE PENDIENTE',
+            fecha: formData.fecha || todayStr,
+            egg_type: formData.egg_type,
+            egg_color: formData.egg_color,
+            egg_size: formData.egg_size,
+            temperature_c: formData.temperature_c,
+            truck_temperature_c: formData.truck_temperature_c,
+            truck_plate: formData.truck_plate,
+            driver_name: formData.driver_name,
+            operator_name: formData.operator_name || user?.nombre,
+            company_name: user?.company_name || 'ANDELSA, S.A. DE C.V.'
+        };
+
+        setPrintTarimaModal({
+            isOpen: true,
+            tarima: tarimaItem,
+            allTarimas: allTarimasList || (tarimaItem ? [tarimaItem] : []),
+            receptionData: recData
+        });
+    };
 
     // Helpers para tarimas
     const addTarima = () => {
@@ -716,7 +752,7 @@ const EggReception = () => {
                                                     <th className="p-2">Peso Bruto (lb)</th>
                                                     <th className="p-2">Tara (lb)</th>
                                                     <th className="p-2 text-right">Peso Neto (lb)</th>
-                                                    <th className="p-2 w-10"></th>
+                                                    <th className="p-2 w-16 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
@@ -754,15 +790,26 @@ const EggReception = () => {
                                                             {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
                                                         </td>
                                                         <td className="p-2 text-center">
-                                                            {tarimas.length > 1 && (
+                                                            <div className="flex items-center justify-center gap-1">
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => removeTarima(idx)}
-                                                                    className="text-rose-500 hover:text-rose-700 p-1"
+                                                                    onClick={() => handleOpenPrintTarima(t, tarimas)}
+                                                                    className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
+                                                                    title={`Imprimir Ficha / Etiqueta de Tarima #${t.tarima_number}`}
                                                                 >
-                                                                    <XCircle size={15} />
+                                                                    <Printer size={14} />
                                                                 </button>
-                                                            )}
+                                                                {tarimas.length > 1 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeTarima(idx)}
+                                                                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                                                                        title="Eliminar Tarima"
+                                                                    >
+                                                                        <XCircle size={15} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -771,14 +818,25 @@ const EggReception = () => {
                                     </div>
 
                                     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                                        <button
-                                            type="button"
-                                            onClick={addTarima}
-                                            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-indigo-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 shadow-xs transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Agregar Tarima #{tarimas.length + 1}
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={addTarima}
+                                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-indigo-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 shadow-xs transition-all"
+                                            >
+                                                <Plus size={14} />
+                                                Agregar Tarima #{tarimas.length + 1}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenPrintTarima(tarimas[0], tarimas)}
+                                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 flex items-center gap-1.5 shadow-xs transition-all"
+                                                title="Imprimir etiquetas de todas las tarimas registradas"
+                                            >
+                                                <Printer size={14} />
+                                                Imprimir Tarimas ({tarimas.length})
+                                            </button>
+                                        </div>
                                         <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs shadow-xs">
                                             <span className="text-slate-500">Tarimas: <strong className="text-slate-800">{tarimas.length}</strong></span>
                                             <span className="text-slate-500">Total Cajas: <strong className="text-indigo-700">{formData.total_boxes}</strong></span>
@@ -995,6 +1053,48 @@ const EggReception = () => {
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <div className="flex items-center justify-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                let parsedTarimas = [];
+                                                                try {
+                                                                    parsedTarimas = typeof rm.tarimas_json === 'string'
+                                                                        ? JSON.parse(rm.tarimas_json || '[]')
+                                                                        : (rm.tarimas_json || []);
+                                                                } catch (e) {
+                                                                    parsedTarimas = [];
+                                                                }
+                                                                if (!Array.isArray(parsedTarimas) || parsedTarimas.length === 0) {
+                                                                    parsedTarimas = [{
+                                                                        tarima_number: 1,
+                                                                        boxes_count: rm.total_boxes || 0,
+                                                                        gross_weight_lbs: rm.weight_lbs || 0,
+                                                                        tare_weight_lbs: 0,
+                                                                        net_weight_lbs: rm.weight_lbs || 0
+                                                                    }];
+                                                                }
+                                                                const recData = {
+                                                                    reception_id: rm.id,
+                                                                    provider_name: rm.provider_name,
+                                                                    provider_lot: rm.provider_lot,
+                                                                    fecha: rm.fecha || rm.created_at,
+                                                                    egg_type: rm.egg_type,
+                                                                    egg_color: rm.egg_color,
+                                                                    egg_size: rm.egg_size,
+                                                                    temperature_c: rm.temperature_c,
+                                                                    truck_temperature_c: rm.truck_temperature_c,
+                                                                    truck_plate: rm.truck_plate,
+                                                                    driver_name: rm.driver_name,
+                                                                    operator_name: rm.operator_name,
+                                                                    company_name: user?.company_name || 'ANDELSA, S.A. DE C.V.'
+                                                                };
+                                                                handleOpenPrintTarima(parsedTarimas[0], parsedTarimas, recData);
+                                                            }}
+                                                            className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg border border-sky-200 transition-colors shadow-xs"
+                                                            title="Imprimir Etiquetas de Tarimas"
+                                                        >
+                                                            <Printer size={13} />
+                                                        </button>
                                                         {rm.status !== 'anulado' && (
                                                             <button
                                                                 onClick={() => handleEdit(rm)}
@@ -1166,6 +1266,15 @@ const EggReception = () => {
                     </div>
                 </div>
             )}
+
+            {/* Modal de Impresión de Fichas de Tarimas */}
+            <TarimaLabelModal
+                isOpen={printTarimaModal.isOpen}
+                onClose={() => setPrintTarimaModal({ isOpen: false, tarima: null, allTarimas: [], receptionData: {} })}
+                tarima={printTarimaModal.tarima}
+                allTarimas={printTarimaModal.allTarimas}
+                receptionData={printTarimaModal.receptionData}
+            />
         </div>
     );
 };
