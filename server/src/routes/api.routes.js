@@ -562,11 +562,14 @@ router.use('/ai', aiRoutes);
 const eggIndustrialRoutes = require('./eggIndustrial.routes');
 router.use('/egg-industrial', eggIndustrialRoutes);
 
-// CRM — Acuerdos Comerciales de Precios con Clientes
+// CRM — Acuerdos Comerciales de Precios con Clientes y Configuración
 router.get('/crm/customer-agreements', crmAgreementsController.getAgreements);
 router.get('/crm/customer-agreements/active-by-customer/:customerId', crmAgreementsController.getActiveAgreementsByCustomer);
 router.post('/crm/customer-agreements', crmAgreementsController.saveAgreement);
 router.delete('/crm/customer-agreements/:id', crmAgreementsController.deleteAgreement);
+router.get('/crm/settings', crmAgreementsController.getCrmSettings);
+router.post('/crm/settings', crmAgreementsController.updateCrmSettings);
+
 
 // Gas Station - Distributors
 router.get('/gas-station/distributors', gasDistributorController.getDistributors);

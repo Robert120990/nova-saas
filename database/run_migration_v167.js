@@ -37,13 +37,13 @@ async function runMigration() {
         const [calendarRows] = await pool.query("SELECT id FROM menu_items WHERE path = '/industrial/calendario' LIMIT 1");
         if (calendarRows.length > 0) {
             await pool.query(
-                "UPDATE menu_items SET parent_id = ?, label = 'Calendario de Producción', icon = 'Calendar', permission_key = 'manage_production', is_active = 1, hide_in_menu = 0, sort_order = 4 WHERE id = ?",
+                "UPDATE menu_items SET parent_id = ?, label = 'Calendario de Producción', icon = 'Calendar', permission_key = 'manage_production_calendar', is_active = 1, hide_in_menu = 0, sort_order = 4 WHERE id = ?",
                 [industrialGroupId, calendarRows[0].id]
             );
             console.log(`✓ Menú 'Calendario de Producción' vinculado exitosamente al padre id=${industrialGroupId}.`);
         } else {
             await pool.query(
-                "INSERT INTO menu_items (parent_id, label, path, icon, permission_key, sort_order, is_active, hide_in_menu) VALUES (?, 'Calendario de Producción', '/industrial/calendario', 'Calendar', 'manage_production', 4, 1, 0)",
+                "INSERT INTO menu_items (parent_id, label, path, icon, permission_key, sort_order, is_active, hide_in_menu) VALUES (?, 'Calendario de Producción', '/industrial/calendario', 'Calendar', 'manage_production_calendar', 4, 1, 0)",
                 [industrialGroupId]
             );
             console.log(`✓ Menú 'Calendario de Producción' insertado bajo el padre id=${industrialGroupId}.`);
@@ -82,6 +82,22 @@ async function runMigration() {
             console.log(`✓ Menú 'Acuerdos con Clientes' insertado bajo el padre CRM id=${crmGroupId}.`);
         }
 
+        // 4.1. Vincular y activar 'Configuración de CRM' (/crm/configuracion)
+        const [crmConfRows] = await pool.query("SELECT id FROM menu_items WHERE path = '/crm/configuracion' LIMIT 1");
+        if (crmConfRows.length > 0) {
+            await pool.query(
+                "UPDATE menu_items SET parent_id = ?, label = 'Configuración de CRM', icon = 'Settings', permission_key = 'manage_crm_settings', is_active = 1, hide_in_menu = 0, sort_order = 2 WHERE id = ?",
+                [crmGroupId, crmConfRows[0].id]
+            );
+            console.log(`✓ Menú 'Configuración de CRM' vinculado exitosamente al padre CRM id=${crmGroupId}.`);
+        } else {
+            await pool.query(
+                "INSERT INTO menu_items (parent_id, label, path, icon, permission_key, sort_order, is_active, hide_in_menu) VALUES (?, 'Configuración de CRM', '/crm/configuracion', 'Settings', 'manage_crm_settings', 2, 1, 0)",
+                [crmGroupId]
+            );
+            console.log(`✓ Menú 'Configuración de CRM' insertado bajo el padre CRM id=${crmGroupId}.`);
+        }
+
         // 5. Asegurar módulos 'egg_industrial' y 'crm' en empresas ANDELSA
         const [andelsaCompanies] = await pool.query(
             "SELECT id, razon_social, enabled_modules FROM companies WHERE id = 9 OR razon_social LIKE '%ANDELSA%' OR nombre_comercial LIKE '%ANDELSA%'"
@@ -104,7 +120,14 @@ async function runMigration() {
         }
 
         // 6. Asignar permisos a roles clave
-        const targetPerms = ['view_crm', 'manage_customer_agreements', 'manage_production', 'view_industrial_dashboard'];
+        const targetPerms = [
+            'view_crm', 
+            'manage_customer_agreements', 
+            'manage_crm_settings', 
+            'manage_production', 
+            'manage_production_calendar', 
+            'view_industrial_dashboard'
+        ];
         const [roles] = await pool.query(
             "SELECT id, name, permissions FROM roles WHERE name IN ('SuperAdmin', 'Administrador', 'Admin', 'Gerencia', 'Supervisor', 'Operaciones', 'Ventas', 'Contador')"
         );
@@ -194,11 +217,32 @@ async function runMigration() {
                 price_per_lb DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
                 notes TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_eco_comp_date (company_id, required_delivery_date),
                 INDEX idx_eco_comp_status (company_id, status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS crm_settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                default_target_margin_pct DECIMAL(5,2) DEFAULT 22.00,
+                default_payment_terms_days INT DEFAULT 30,
+                default_freight_per_lb DECIMAL(8,4) DEFAULT 0.0000,
+                min_monthly_volume_lbs DECIMAL(12,2) DEFAULT 5000.00,
+                contract_alert_days INT DEFAULT 15,
+                auto_apply_agreements_in_pos TINYINT(1) DEFAULT 1,
+                require_supervisor_override TINYINT(1) DEFAULT 1,
+                grace_period_days INT DEFAULT 5,
+                default_terms_conditions TEXT NULL,
+                notification_email VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_crm_settings_company (company_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        console.log('✓ Tabla crm_settings asegurada.');
 
         console.log('--- Migración v167 completada exitosamente ---');
         process.exit(0);

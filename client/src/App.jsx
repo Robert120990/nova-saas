@@ -164,6 +164,7 @@ import EggProductionCalendar from './pages/EggIndustrial/ProductionCalendar';
 
 // CRM Pages
 import CustomerAgreements from './pages/CRM/CustomerAgreements';
+import CrmConfig from './pages/CRM/CrmConfig';
 
 import Layout from './components/layout/Layout';
 
@@ -380,6 +381,7 @@ function App() {
 
                         {/* CRM Comercial */}
                         <Route path="/crm/acuerdos" element={<CustomerAgreements />} />
+                        <Route path="/crm/configuracion" element={<CrmConfig />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

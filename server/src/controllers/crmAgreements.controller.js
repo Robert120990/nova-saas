@@ -380,9 +380,161 @@ const deleteAgreement = async (req, res) => {
     }
 };
 
+// 5. Obtener configuración general del CRM
+const getCrmSettings = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa faltante' });
+        }
+
+        // Asegurar tabla crm_settings si no existe
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS crm_settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                default_target_margin_pct DECIMAL(5,2) DEFAULT 22.00,
+                default_payment_terms_days INT DEFAULT 30,
+                default_freight_per_lb DECIMAL(8,4) DEFAULT 0.0000,
+                min_monthly_volume_lbs DECIMAL(12,2) DEFAULT 5000.00,
+                contract_alert_days INT DEFAULT 15,
+                auto_apply_agreements_in_pos TINYINT(1) DEFAULT 1,
+                require_supervisor_override TINYINT(1) DEFAULT 1,
+                grace_period_days INT DEFAULT 5,
+                default_terms_conditions TEXT NULL,
+                notification_email VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_crm_settings_company (company_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        const [rows] = await pool.query(
+            'SELECT * FROM crm_settings WHERE company_id = ? LIMIT 1',
+            [companyId]
+        );
+
+        const defaultSettings = {
+            company_id: companyId,
+            default_target_margin_pct: 22.00,
+            default_payment_terms_days: 30,
+            default_freight_per_lb: 0.0000,
+            min_monthly_volume_lbs: 5000.00,
+            contract_alert_days: 15,
+            auto_apply_agreements_in_pos: 1,
+            require_supervisor_override: 1,
+            grace_period_days: 5,
+            default_terms_conditions: '1. Los precios pactados aplican exclusivamente para los volúmenes mensuales y presentaciones especificadas en el presente acuerdo.\n2. Todo despacho está sujeto a confirmación de stock y crédito vigente.\n3. Los precios acordados no incluyen flete adicional salvo especificación en el acuerdo.',
+            notification_email: ''
+        };
+
+        if (rows.length === 0) {
+            return res.json(defaultSettings);
+        }
+
+        res.json({
+            ...defaultSettings,
+            ...rows[0]
+        });
+    } catch (error) {
+        console.error('Error al obtener configuración de CRM:', error);
+        res.status(500).json({ message: 'Error interno al obtener la configuración del CRM.' });
+    }
+};
+
+// 6. Guardar / actualizar configuración general del CRM
+const updateCrmSettings = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa faltante' });
+        }
+
+        const {
+            default_target_margin_pct = 22.00,
+            default_payment_terms_days = 30,
+            default_freight_per_lb = 0.0000,
+            min_monthly_volume_lbs = 5000.00,
+            contract_alert_days = 15,
+            auto_apply_agreements_in_pos = 1,
+            require_supervisor_override = 1,
+            grace_period_days = 5,
+            default_terms_conditions = '',
+            notification_email = ''
+        } = req.body;
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS crm_settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                default_target_margin_pct DECIMAL(5,2) DEFAULT 22.00,
+                default_payment_terms_days INT DEFAULT 30,
+                default_freight_per_lb DECIMAL(8,4) DEFAULT 0.0000,
+                min_monthly_volume_lbs DECIMAL(12,2) DEFAULT 5000.00,
+                contract_alert_days INT DEFAULT 15,
+                auto_apply_agreements_in_pos TINYINT(1) DEFAULT 1,
+                require_supervisor_override TINYINT(1) DEFAULT 1,
+                grace_period_days INT DEFAULT 5,
+                default_terms_conditions TEXT NULL,
+                notification_email VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_crm_settings_company (company_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        await pool.query(`
+            INSERT INTO crm_settings (
+                company_id,
+                default_target_margin_pct,
+                default_payment_terms_days,
+                default_freight_per_lb,
+                min_monthly_volume_lbs,
+                contract_alert_days,
+                auto_apply_agreements_in_pos,
+                require_supervisor_override,
+                grace_period_days,
+                default_terms_conditions,
+                notification_email
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                default_target_margin_pct = VALUES(default_target_margin_pct),
+                default_payment_terms_days = VALUES(default_payment_terms_days),
+                default_freight_per_lb = VALUES(default_freight_per_lb),
+                min_monthly_volume_lbs = VALUES(min_monthly_volume_lbs),
+                contract_alert_days = VALUES(contract_alert_days),
+                auto_apply_agreements_in_pos = VALUES(auto_apply_agreements_in_pos),
+                require_supervisor_override = VALUES(require_supervisor_override),
+                grace_period_days = VALUES(grace_period_days),
+                default_terms_conditions = VALUES(default_terms_conditions),
+                notification_email = VALUES(notification_email),
+                updated_at = CURRENT_TIMESTAMP
+        `, [
+            companyId,
+            parseFloat(default_target_margin_pct) || 22.00,
+            parseInt(default_payment_terms_days, 10) || 30,
+            parseFloat(default_freight_per_lb) || 0.0000,
+            parseFloat(min_monthly_volume_lbs) || 5000.00,
+            parseInt(contract_alert_days, 10) || 15,
+            auto_apply_agreements_in_pos ? 1 : 0,
+            require_supervisor_override ? 1 : 0,
+            parseInt(grace_period_days, 10) || 5,
+            default_terms_conditions || '',
+            notification_email || ''
+        ]);
+
+        res.json({ message: 'Configuración comercial de CRM guardada exitosamente.' });
+    } catch (error) {
+        console.error('Error al actualizar configuración de CRM:', error);
+        res.status(500).json({ message: 'Error interno al actualizar la configuración del CRM.' });
+    }
+};
+
 module.exports = {
     getAgreements,
     getActiveAgreementsByCustomer,
     saveAgreement,
-    deleteAgreement
+    deleteAgreement,
+    getCrmSettings,
+    updateCrmSettings
 };
