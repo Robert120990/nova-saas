@@ -213,6 +213,220 @@ const saveAgreement = async (req, res) => {
         const validFromVal = valid_from ? valid_from : null;
         const validToVal = valid_to ? valid_to : null;
 
+        // Si se envió un array de productos / presentaciones múltiples (items)
+        if (Array.isArray(items) && items.length > 0) {
+            // Validar que no haya combinaciones duplicadas en la lista enviada
+            const seenCombos = new Set();
+            for (const item of items) {
+                const pType = (item.product_type || 'Huevo Entero Pasteurizado').trim().toLowerCase();
+                const pPres = (item.presentation || 'cubeta 30LB').trim().toLowerCase();
+                const comboKey = `${pType}___${pPres}`;
+                if (seenCombos.has(comboKey)) {
+                    return res.status(400).json({
+                        message: `No se pueden repetir productos con la misma presentación: "${item.product_type} - ${item.presentation}" está duplicado.`
+                    });
+                }
+                seenCombos.add(comboKey);
+            }
+
+            const savedIds = [];
+            for (const item of items) {
+                const pricePerLb = parseFloat(item.agreed_price_per_lb) || 0;
+                let unitPrice = parseFloat(item.agreed_unit_price);
+                if (isNaN(unitPrice) || unitPrice <= 0) {
+                    let lbs = 1;
+                    const text = `${item.presentation || ''} ${item.product_type || ''}`.toLowerCase();
+                    const m = text.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)/i);
+                    if (m) {
+                        lbs = parseFloat(m[1]) || 1;
+                    } else if (text.includes('galón') || text.includes('galon')) {
+                        lbs = 8;
+                    } else if (text.includes('litro')) {
+                        lbs = 2;
+                    }
+                    unitPrice = pricePerLb * lbs;
+                }
+
+                const itemProductId = item.product_id || null;
+                const itemProductType = item.product_type || 'Huevo Entero Pasteurizado';
+                const itemPresentation = item.presentation || 'cubeta 30LB';
+                const itemMonthlyVolume = parseFloat(item.monthly_volume_lbs) || parseFloat(monthly_volume_lbs) || 0;
+                const itemTargetMargin = parseFloat(target_margin_pct) || 20;
+                const targetId = item.id || (items.length === 1 ? id : null);
+
+                if (targetId) {
+                    // Actualizar registro existente
+                    await pool.query(`
+                        UPDATE egg_costing_customer_agreements
+                        SET customer_id = ?,
+                            customer_name = ?,
+                            product_id = ?,
+                            product_type = ?,
+                            presentation = ?,
+                            agreed_price_per_lb = ?,
+                            agreed_unit_price = ?,
+                            monthly_volume_lbs = ?,
+                            target_margin_pct = ?,
+                            freight_cost_per_lb = ?,
+                            payment_terms_days = ?,
+                            valid_from = ?,
+                            valid_to = ?,
+                            notes = ?,
+                            status = ?
+                        WHERE id = ? AND company_id = ?
+                    `, [
+                        customer_id || null,
+                        customer_name.trim(),
+                        itemProductId,
+                        itemProductType,
+                        itemPresentation,
+                        pricePerLb,
+                        unitPrice,
+                        itemMonthlyVolume,
+                        itemTargetMargin,
+                        parseFloat(freight_cost_per_lb) || 0,
+                        parseInt(payment_terms_days, 10) || 30,
+                        validFromVal,
+                        validToVal,
+                        notes ? notes.trim() : null,
+                        status || 'activo',
+                        targetId,
+                        companyId
+                    ]);
+                    savedIds.push(targetId);
+                } else {
+                    // Buscar si ya existe acuerdo para este cliente y producto/presentación en la empresa
+                    let existingQuery = `
+                        SELECT id FROM egg_costing_customer_agreements 
+                        WHERE company_id = ? 
+                          AND product_type = ? 
+                          AND presentation = ?
+                          AND (customer_id = ? OR (customer_id IS NULL AND customer_name = ?))
+                        LIMIT 1
+                    `;
+                    const [existingRows] = await pool.query(existingQuery, [
+                        companyId,
+                        itemProductType,
+                        itemPresentation,
+                        customer_id || 0,
+                        customer_name.trim()
+                    ]);
+
+                    if (existingRows.length > 0) {
+                        const existingId = existingRows[0].id;
+                        await pool.query(`
+                            UPDATE egg_costing_customer_agreements
+                            SET customer_id = ?,
+                                customer_name = ?,
+                                product_id = ?,
+                                agreed_price_per_lb = ?,
+                                agreed_unit_price = ?,
+                                monthly_volume_lbs = ?,
+                                target_margin_pct = ?,
+                                freight_cost_per_lb = ?,
+                                payment_terms_days = ?,
+                                valid_from = ?,
+                                valid_to = ?,
+                                notes = ?,
+                                status = ?
+                            WHERE id = ? AND company_id = ?
+                        `, [
+                            customer_id || null,
+                            customer_name.trim(),
+                            itemProductId,
+                            pricePerLb,
+                            unitPrice,
+                            itemMonthlyVolume,
+                            itemTargetMargin,
+                            parseFloat(freight_cost_per_lb) || 0,
+                            parseInt(payment_terms_days, 10) || 30,
+                            validFromVal,
+                            validToVal,
+                            notes ? notes.trim() : null,
+                            status || 'activo',
+                            existingId,
+                            companyId
+                        ]);
+                        savedIds.push(existingId);
+                    } else {
+                        // Insertar nuevo acuerdo para este producto y presentación
+                        const [result] = await pool.query(`
+                            INSERT INTO egg_costing_customer_agreements (
+                                company_id,
+                                customer_id,
+                                customer_name,
+                                product_id,
+                                product_type,
+                                presentation,
+                                agreed_price_per_lb,
+                                agreed_unit_price,
+                                monthly_volume_lbs,
+                                target_margin_pct,
+                                freight_cost_per_lb,
+                                payment_terms_days,
+                                valid_from,
+                                valid_to,
+                                notes,
+                                status
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        `, [
+                            companyId,
+                            customer_id || null,
+                            customer_name.trim(),
+                            itemProductId,
+                            itemProductType,
+                            itemPresentation,
+                            pricePerLb,
+                            unitPrice,
+                            itemMonthlyVolume,
+                            itemTargetMargin,
+                            parseFloat(freight_cost_per_lb) || 0,
+                            parseInt(payment_terms_days, 10) || 30,
+                            validFromVal,
+                            validToVal,
+                            notes ? notes.trim() : null,
+                            status || 'activo'
+                        ]);
+                        savedIds.push(result.insertId);
+
+                        // Registrar creación inicial en historial
+                        try {
+                            await pool.query(
+                                `INSERT INTO egg_costing_agreement_history 
+                                 (agreement_id, company_id, customer_id, customer_name, product_type, presentation, agreed_price_per_lb, previous_price_per_lb, monthly_volume_lbs, valid_from, valid_to, change_reason, changed_by)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    result.insertId,
+                                    companyId,
+                                    customer_id || null,
+                                    customer_name.trim(),
+                                    itemProductType,
+                                    itemPresentation,
+                                    pricePerLb,
+                                    null,
+                                    itemMonthlyVolume,
+                                    validFromVal,
+                                    validToVal,
+                                    change_reason || 'Pacto comercial de precio con cliente',
+                                    req.user?.nombre || 'Usuario CRM'
+                                ]
+                            );
+                        } catch (hErr) {
+                            console.warn('Advertencia historial inicial CRM:', hErr.message);
+                        }
+                    }
+                }
+            }
+
+            return res.json({
+                message: items.length > 1
+                    ? `Se guardaron ${items.length} productos y presentaciones para el acuerdo comercial.`
+                    : 'Acuerdo comercial guardado exitosamente.',
+                ids: savedIds
+            });
+        }
+
+        // Modo plano tradicional (1 solo producto)
         if (id) {
             // Guardar versión previa en historial
             try {

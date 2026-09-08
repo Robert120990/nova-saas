@@ -358,6 +358,91 @@ const saveCustomerAgreement = async (req, res) => {
         const validToDate = valid_to ? valid_to.split('T')[0] : null;
         const userName = req.user?.nombre || 'Usuario Sistema';
 
+        // Si se envió un array de productos / presentaciones múltiples (items)
+        if (Array.isArray(req.body.items) && req.body.items.length > 0) {
+            const items = req.body.items;
+            const seenCombos = new Set();
+            for (const item of items) {
+                const pType = (item.product_type || 'Huevo Entero Pasteurizado').trim().toLowerCase();
+                const pPres = (item.presentation || 'cubeta 30LB').trim().toLowerCase();
+                const comboKey = `${pType}___${pPres}`;
+                if (seenCombos.has(comboKey)) {
+                    return res.status(400).json({
+                        message: `No se pueden repetir productos con la misma presentación: "${item.product_type} - ${item.presentation}" está duplicado.`
+                    });
+                }
+                seenCombos.add(comboKey);
+            }
+
+            const savedIds = [];
+            for (const item of items) {
+                const itemPricePerLb = parseFloat(item.agreed_price_per_lb) || 0;
+                let itemUnitPrice = parseFloat(item.agreed_unit_price);
+                if (isNaN(itemUnitPrice) || itemUnitPrice <= 0) {
+                    let lbs = 1;
+                    const text = `${item.presentation || ''} ${item.product_type || ''}`.toLowerCase();
+                    const m = text.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)/i);
+                    if (m) {
+                        lbs = parseFloat(m[1]) || 1;
+                    } else if (text.includes('galón') || text.includes('galon')) {
+                        lbs = 8;
+                    } else if (text.includes('litro')) {
+                        lbs = 2;
+                    }
+                    itemUnitPrice = itemPricePerLb * lbs;
+                }
+
+                const itemProductId = item.product_id || null;
+                const itemProductType = item.product_type || 'Huevo Entero Pasteurizado';
+                const itemPresentation = item.presentation || 'cubeta 30LB';
+                const itemMonthlyVolume = parseFloat(item.monthly_volume_lbs) || parseFloat(monthly_volume_lbs) || 0;
+                const itemTargetMargin = parseFloat(target_margin_pct) || 20;
+                const targetId = item.id || (items.length === 1 ? id : null);
+
+                if (targetId) {
+                    await pool.query(
+                        `UPDATE egg_costing_customer_agreements 
+                         SET customer_id = ?, customer_name = ?, product_id = ?, product_type = ?, presentation = ?, agreed_price_per_lb = ?, agreed_unit_price = ?, monthly_volume_lbs = ?, target_margin_pct = ?, freight_cost_per_lb = ?, payment_terms_days = ?, valid_from = ?, valid_to = ?, notes = ?, status = ?
+                         WHERE id = ? AND company_id = ?`,
+                        [customer_id || null, customer_name, itemProductId, itemProductType, itemPresentation, itemPricePerLb, itemUnitPrice, itemMonthlyVolume, itemTargetMargin, freight_cost_per_lb || 0, payment_terms_days || 30, validFromDate, validToDate, notes || null, status || 'activo', targetId, req.company_id]
+                    );
+                    savedIds.push(targetId);
+                } else {
+                    const [existingRows] = await pool.query(
+                        `SELECT id FROM egg_costing_customer_agreements 
+                         WHERE company_id = ? AND product_type = ? AND presentation = ?
+                           AND (customer_id = ? OR (customer_id IS NULL AND customer_name = ?)) LIMIT 1`,
+                        [req.company_id, itemProductType, itemPresentation, customer_id || 0, customer_name.trim()]
+                    );
+
+                    if (existingRows.length > 0) {
+                        const existingId = existingRows[0].id;
+                        await pool.query(
+                            `UPDATE egg_costing_customer_agreements 
+                             SET customer_id = ?, customer_name = ?, product_id = ?, agreed_price_per_lb = ?, agreed_unit_price = ?, monthly_volume_lbs = ?, target_margin_pct = ?, freight_cost_per_lb = ?, payment_terms_days = ?, valid_from = ?, valid_to = ?, notes = ?, status = ?
+                             WHERE id = ? AND company_id = ?`,
+                            [customer_id || null, customer_name, itemProductId, itemPricePerLb, itemUnitPrice, itemMonthlyVolume, itemTargetMargin, freight_cost_per_lb || 0, payment_terms_days || 30, validFromDate, validToDate, notes || null, status || 'activo', existingId, req.company_id]
+                        );
+                        savedIds.push(existingId);
+                    } else {
+                        const [result] = await pool.query(
+                            `INSERT INTO egg_costing_customer_agreements (company_id, customer_id, customer_name, product_id, product_type, presentation, agreed_price_per_lb, agreed_unit_price, monthly_volume_lbs, target_margin_pct, freight_cost_per_lb, payment_terms_days, valid_from, valid_to, notes, status)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [req.company_id, customer_id || null, customer_name, itemProductId, itemProductType, itemPresentation, itemPricePerLb, itemUnitPrice, itemMonthlyVolume, itemTargetMargin, freight_cost_per_lb || 0, payment_terms_days || 30, validFromDate, validToDate, notes || null, status || 'activo']
+                        );
+                        savedIds.push(result.insertId);
+                    }
+                }
+            }
+
+            return res.json({
+                message: items.length > 1
+                    ? `Se guardaron ${items.length} productos y presentaciones para el acuerdo comercial.`
+                    : 'Acuerdo comercial guardado exitosamente.',
+                ids: savedIds
+            });
+        }
+
         if (id) {
             // Guardar versión previa en historial si hay cambio de precio, volumen, fechas o motivo
             const [priorRows] = await pool.query(
