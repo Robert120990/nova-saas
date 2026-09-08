@@ -579,6 +579,17 @@ const Purchases = () => {
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
 
+        const d = fecha ? new Date(fecha) : new Date();
+        const docYear = !isNaN(d.getTime()) ? d.getFullYear() : new Date().getFullYear();
+        const docMonth = !isNaN(d.getTime()) ? d.getMonth() + 1 : new Date().getMonth() + 1;
+        let finalPeriodYear = activePeriod?.year || docYear;
+        let finalPeriodMonth = activePeriod?.month || docMonth;
+
+        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+            finalPeriodYear = docYear;
+            finalPeriodMonth = docMonth;
+        }
+
         const payload = {
             branch_id: branchId, provider_id: providerId, fecha, numero_documento: numeroDoc,
             tipo_documento_id: tipoDocId, condicion_operacion_id: condicionId, observaciones,
@@ -587,7 +598,7 @@ const Purchases = () => {
             iva: totals.iva, retencion: totals.retencion, percepcion: totals.percepcion, 
             fovial: totals.fovial, cotrans: totals.cotrans, monto_total: totals.total,
             documento_afectado: docAfectado, fecha_afectada: fechaAfectada,
-            period_year: activePeriod?.year, period_month: activePeriod?.month,
+            period_year: finalPeriodYear, period_month: finalPeriodMonth,
             items: selectedItems
         };
 

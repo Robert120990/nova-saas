@@ -1301,15 +1301,15 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         }
     });
 
-    const debitoFiscalBruto = ccfSales.iva + fcfSales.iva + otrosSales.iva;
-    const debitoFiscalNc = ncSales.iva;
-    const debitoFiscalNeto = Math.max(0, debitoFiscalBruto - debitoFiscalNc);
+    const debitoFiscalBruto = Math.round((ccfSales.iva + fcfSales.iva + otrosSales.iva) * 100) / 100;
+    const debitoFiscalNc = Math.round(ncSales.iva * 100) / 100;
+    const debitoFiscalNeto = Math.round(Math.max(0, debitoFiscalBruto - debitoFiscalNc) * 100) / 100;
 
-    const ventasGravadasNetas = Math.max(0, (ccfSales.gravado + fcfSales.gravado + otrosSales.gravado) - ncSales.gravado);
-    const ventasExentasNetas = Math.max(0, (ccfSales.exento + fcfSales.exento + otrosSales.exento) - ncSales.exento);
-    const ventasNosujetasNetas = Math.max(0, (ccfSales.nosujeta + fcfSales.nosujeta + otrosSales.nosujeta) - ncSales.nosujeta);
-    const retencionesIvaSufridas = Math.max(0, (ccfSales.retenido + fcfSales.retenido) - ncSales.retenido);
-    const percepcionesIvaEfectuadas = ccfSales.percibido + fcfSales.percibido;
+    const ventasGravadasNetas = Math.round(Math.max(0, (ccfSales.gravado + fcfSales.gravado + otrosSales.gravado) - ncSales.gravado) * 100) / 100;
+    const ventasExentasNetas = Math.round(Math.max(0, (ccfSales.exento + fcfSales.exento + otrosSales.exento) - ncSales.exento) * 100) / 100;
+    const ventasNosujetasNetas = Math.round(Math.max(0, (ccfSales.nosujeta + fcfSales.nosujeta + otrosSales.nosujeta) - ncSales.nosujeta) * 100) / 100;
+    const retencionesIvaSufridas = Math.round(Math.max(0, (ccfSales.retenido + fcfSales.retenido) - ncSales.retenido) * 100) / 100;
+    const percepcionesIvaEfectuadas = Math.round((ccfSales.percibido + fcfSales.percibido) * 100) / 100;
 
     // 2. Crédito Fiscal (Compras del período)
     let purchasesWhere = [
@@ -1384,15 +1384,15 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         }
     });
 
-    const creditoFiscalBruto = ccfPurchases.iva + otrosPurchases.iva;
-    const creditoFiscalNc = ncPurchases.iva;
-    const creditoFiscalNeto = Math.max(0, creditoFiscalBruto - creditoFiscalNc);
+    const creditoFiscalBruto = Math.round((ccfPurchases.iva + otrosPurchases.iva) * 100) / 100;
+    const creditoFiscalNc = Math.round(ncPurchases.iva * 100) / 100;
+    const creditoFiscalNeto = Math.round(Math.max(0, creditoFiscalBruto - creditoFiscalNc) * 100) / 100;
 
-    const comprasGravadasNetas = Math.max(0, (ccfPurchases.gravado + otrosPurchases.gravado) - ncPurchases.gravado);
-    const comprasExentasNetas = Math.max(0, (ccfPurchases.exento + otrosPurchases.exento) - ncPurchases.exento);
-    const comprasNosujetasNetas = Math.max(0, (ccfPurchases.nosujeta + otrosPurchases.nosujeta) - ncPurchases.nosujeta);
-    const percepcionesIvaSoportadas = ccfPurchases.percepcion + otrosPurchases.percepcion;
-    const retencionesSujetosExcluidos = sujetosExcluidos.retencion; // 13% retención IVA en compras a sujetos excluidos
+    const comprasGravadasNetas = Math.round(Math.max(0, (ccfPurchases.gravado + otrosPurchases.gravado) - ncPurchases.gravado) * 100) / 100;
+    const comprasExentasNetas = Math.round(Math.max(0, (ccfPurchases.exento + otrosPurchases.exento) - ncPurchases.exento) * 100) / 100;
+    const comprasNosujetasNetas = Math.round(Math.max(0, (ccfPurchases.nosujeta + otrosPurchases.nosujeta) - ncPurchases.nosujeta) * 100) / 100;
+    const percepcionesIvaSoportadas = Math.round((ccfPurchases.percepcion + otrosPurchases.percepcion) * 100) / 100;
+    const retencionesSujetosExcluidos = Math.round(sujetosExcluidos.retencion * 100) / 100;
 
     // 3. Liquidación de IVA (F-07)
     const diferenciaIva = debitoFiscalNeto - creditoFiscalNeto;

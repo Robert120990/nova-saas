@@ -158,6 +158,21 @@ const createPurchase = async (req, res) => {
 
         const finalMontoTotal = Math.round((gravadaNum + exentaNum + nosujetaNum + finalIva + fovialNum + cotransNum - retencionNum + percepcionNum) * 100) / 100;
 
+        // Periodo fiscal de la compra (Art. 65 Ley del IVA: no puede declararse en un periodo anterior a su emision)
+        let finalPeriodYear = parseInt(period_year, 10);
+        let finalPeriodMonth = parseInt(period_month, 10);
+        if (fecha) {
+            const d = new Date(fecha);
+            if (!isNaN(d.getTime())) {
+                const docYear = d.getUTCFullYear();
+                const docMonth = d.getUTCMonth() + 1;
+                if (!finalPeriodYear || !finalPeriodMonth || finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+                    finalPeriodYear = docYear;
+                    finalPeriodMonth = docMonth;
+                }
+            }
+        }
+
         // 1. Insertar Cabecera
         const [headerResult] = await connection.query(`
              INSERT INTO purchase_headers 
@@ -176,7 +191,7 @@ const createPurchase = async (req, res) => {
              nosujetaNum, exentaNum, gravadaNum,
              finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
              req.body.documento_afectado || null, req.body.fecha_afectada || null,
-             period_year, period_month
+             finalPeriodYear, finalPeriodMonth
          ]);
 
         const purchaseId = headerResult.insertId;
@@ -344,6 +359,21 @@ const updatePurchase = async (req, res) => {
 
         const finalMontoTotal = Math.round((gravadaNum + exentaNum + nosujetaNum + finalIva + fovialNum + cotransNum - retencionNum + percepcionNum) * 100) / 100;
 
+        // Periodo fiscal de la compra (Art. 65 Ley del IVA: no puede declararse en un periodo anterior a su emision)
+        let finalPeriodYear = parseInt(period_year, 10);
+        let finalPeriodMonth = parseInt(period_month, 10);
+        if (fecha) {
+            const d = new Date(fecha);
+            if (!isNaN(d.getTime())) {
+                const docYear = d.getUTCFullYear();
+                const docMonth = d.getUTCMonth() + 1;
+                if (!finalPeriodYear || !finalPeriodMonth || finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+                    finalPeriodYear = docYear;
+                    finalPeriodMonth = docMonth;
+                }
+            }
+        }
+
         // 2. Actualizar Cabecera
         await connection.query(`
             UPDATE purchase_headers SET 
@@ -362,7 +392,7 @@ const updatePurchase = async (req, res) => {
             nosujetaNum, exentaNum, gravadaNum,
             finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
             req.body.documento_afectado || null, req.body.fecha_afectada || null,
-            period_year, period_month,
+            finalPeriodYear, finalPeriodMonth,
             id, companyId
         ]);
 
