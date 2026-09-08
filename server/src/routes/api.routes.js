@@ -490,11 +490,6 @@ router.post('/cxp/payments/:id/send-email', cxpController.sendReceiptEmail);
 router.get('/cxp/balances-report', cxpController.getProviderBalancesReport);
 router.get('/cxp/payments/:id/pdf', cxpController.exportPaymentPDF);
 
-// Libros de IVA
-router.get('/vat-books/purchases-pdf', vatBooksController.getVatBookPurchasesPDF);
-router.get('/vat-books/sales-taxpayers-pdf', vatBooksController.getVatBookSalesTaxpayersPDF);
-router.get('/vat-books/sales-consumers-pdf', vatBooksController.getVatBookSalesConsumersPDF);
-
 // Accounting Module
 router.get('/accounting/account-types', accountingController.getAccountTypes);
 router.post('/accounting/account-types', accountingController.createAccountType);
@@ -965,6 +960,14 @@ router.get('/rh/reportes/renta', rhReportesController.getInformeRentaReport);
 router.get('/rh/reportes/constancia-sueldo', rhReportesController.getConstanciaSueldo);
 router.get('/rh/reportes/carta-renta', rhReportesController.getCartaRenta);
 router.get('/rh/reportes/empleados', rhReportesController.getListadoEmpleadosReport);
+router.get('/rh/reportes/insaforp', rhReportesController.getPlanillaInsaforpReport);
+router.get('/rh/reportes/costo-laboral', rhReportesController.getCostoLaboralReport);
+router.get('/rh/reportes/descuentos-terceros', rhReportesController.getDescuentosTercerosReport);
+router.get('/rh/reportes/horas-extras', rhReportesController.getHorasExtrasReport);
+router.get('/rh/reportes/acciones-personal', rhReportesController.getAccionesPersonalReport);
+router.get('/rh/reportes/pasivos-laborales', rhReportesController.getPasivosLaboralesReport);
+router.get('/rh/reportes/control-vacaciones', rhReportesController.getControlVacacionesReport);
+router.get('/rh/reportes/rotacion-personal', rhReportesController.getRotacionPersonalReport);
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
 

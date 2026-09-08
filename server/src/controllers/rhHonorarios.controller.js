@@ -120,10 +120,25 @@ const exportPDF = async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
         const p = rows[0];
 
+        let responsable = '';
+        let firmaUrl = '', selloUrl = '';
+        const [rhCfg] = await pool.query(
+            `SELECT responsable_nombre, firma_url, sello_url FROM rh_config WHERE company_id = ?`,
+            [req.company_id]
+        );
+        if (rhCfg.length > 0) {
+            if (rhCfg[0].responsable_nombre) responsable = rhCfg[0].responsable_nombre;
+            firmaUrl = rhCfg[0].firma_url || '';
+            selloUrl = rhCfg[0].sello_url || '';
+        }
+
         const pdfData = {
             company_name: p.company_name,
             company_nit: p.company_nit,
             logo_url: p.logo_url,
+            responsable_nombre: responsable,
+            firma_url: firmaUrl,
+            sello_url: selloUrl,
             numero: p.numero,
             fecha: p.fecha,
             nombre: p.nombre,

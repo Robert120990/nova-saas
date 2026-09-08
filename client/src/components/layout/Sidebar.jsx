@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
 import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X } from 'lucide-react';
@@ -41,6 +41,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     // Initialize groups as collapsed
     const [expandedGroups, setExpandedGroups] = useState({});
     const [expandedItems, setExpandedItems] = useState({});
+    const hoverTimeoutRef = useRef(null);
 
     const toggleGroup = (groupId) => {
         if (effectiveCollapsed) return; // Don't expand groups when collapsed
@@ -105,46 +106,101 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
     const { topLevelItems, menuConfig } = useMenuItems();
 
-    // Auto-expand group containing current route
+    // Auto-expand group and sub-items containing current route
     useEffect(() => {
         if (!menuConfig) return;
         menuConfig.forEach(group => {
             if (!isGroupEnabled(group)) return;
-            const hasActive = group.children?.some(child => 
-                child.path && (location.pathname === child.path || (child.path !== '/' && location.pathname.startsWith(child.path)))
-            );
-            if (hasActive) {
+            let groupHasActive = false;
+
+            group.children?.forEach(child => {
+                const isChildActive = child.path && (
+                    location.pathname === child.path || 
+                    (child.path !== '/' && location.pathname.startsWith(child.path))
+                );
+                if (isChildActive) {
+                    groupHasActive = true;
+                }
+
+                // Check if any subchild (e.g. inside Reportes or Catálogos) is active
+                const hasActiveSub = child.children?.some(sub => 
+                    sub.path && (location.pathname === sub.path || (sub.path !== '/' && location.pathname.startsWith(sub.path)))
+                );
+                if (hasActiveSub) {
+                    groupHasActive = true;
+                    setExpandedItems(prev => ({ ...prev, [child.id]: true }));
+                }
+            });
+
+            if (groupHasActive) {
                 setExpandedGroups(prev => ({ ...prev, [group.id]: true }));
             }
         });
     }, [location.pathname, menuConfig, user?.enabled_modules]);
 
     const [hoveredItem, setHoveredItem] = useState(null);
-    const [hoveredPos, setHoveredPos] = useState({ top: 0, left: 0 });
+    const [hoveredPos, setHoveredPos] = useState({ top: null, bottom: null, left: 0, maxHeight: 500 });
 
-    const handleMouseEnter = (e, item) => {
+    const openFlyout = (targetElement, item) => {
         if (!item.children || item.children.length === 0) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        
-        // Calcular posicionamiento para evitar que se corte por abajo
-        const estimatedHeight = (item.children.length * 45) + 60; // Estima la altura del menú
-        let top = rect.top;
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+        const rect = targetElement.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        if (top + estimatedHeight > viewportHeight) {
-            top = viewportHeight - estimatedHeight - 10; // Ajuste hacia arriba con margen
-            if (top < 10) top = 10; // Evita que se salga por arriba
+        // Altura estimada del contenido (encabezado ~48px + items de ~36px c/u)
+        const estimatedHeight = (item.children.length * 36) + 48;
+        const spaceBelow = viewportHeight - rect.top - 16;
+
+        if (spaceBelow >= estimatedHeight || rect.top < viewportHeight / 2) {
+            // Cabe hacia abajo o está en la mitad superior de la pantalla:
+            // Anclamos la parte superior con el botón
+            const top = Math.max(12, Math.min(rect.top - 4, viewportHeight - 200));
+            const maxHeight = Math.min(viewportHeight - top - 16, viewportHeight - 24);
+            setHoveredPos({
+                top,
+                bottom: null,
+                left: rect.right + 4,
+                maxHeight
+            });
+        } else {
+            // Está en la parte inferior y no cabe hacia abajo:
+            // ¡ANCLAMOS LA BASE DEL FLYOUT CON LA BASE DEL BOTÓN!
+            // De esta forma, el menú se alinea directamente con el cursor a la derecha
+            const bottom = Math.max(12, viewportHeight - rect.bottom - 4);
+            const maxHeight = Math.min(viewportHeight - bottom - 16, viewportHeight - 24);
+            setHoveredPos({
+                top: null,
+                bottom,
+                left: rect.right + 4,
+                maxHeight
+            });
         }
 
-        setHoveredPos({ 
-            top, 
-            left: rect.right + 8 
-        });
         setHoveredItem(item);
     };
 
+    const handleMouseEnter = (e, item) => {
+        openFlyout(e.currentTarget, item);
+    };
+
     const handleMouseLeave = () => {
-        setHoveredItem(null);
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+        hoverTimeoutRef.current = setTimeout(() => {
+            setHoveredItem(null);
+        }, 160);
+    };
+
+    const handleFlyoutEnter = () => {
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+
+    const handleSubmenuTrigger = (e, item) => {
+        if (hoveredItem?.id === item.id) {
+            setHoveredItem(null);
+        } else {
+            openFlyout(e.currentTarget, item);
+        }
     };
 
     const renderMenuItem = (item, depth = 0) => {
@@ -155,39 +211,41 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         const paddingLeft = effectiveCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
 
         if (hasChildren) {
-            // En móvil: acordeón inline (el flyout no cabe en el drawer y se corta)
+            // En móvil drawer (pantallas pequeñas táctiles): acordeón inline porque el flyout no cabe a la derecha
             if (isMobileOpen) {
                 const isExpanded = !!expandedItems[item.id];
                 return (
                     <div key={item.id} className="relative">
                         <button
+                            type="button"
                             onClick={() => setExpandedItems(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                            className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 text-slate-400 hover:bg-white/5 hover:text-white group`}
+                            className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 ${
+                                isExpanded ? 'text-white bg-white/5' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                            } group`}
                         >
                             <div className="flex items-center gap-3">
-                                <item.icon size={18} className="group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100 shrink-0" />
+                                <item.icon size={18} className={`transition-transform shrink-0 ${isExpanded ? 'text-indigo-400' : 'opacity-70 group-hover:opacity-100'}`} />
                                 <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>
                             </div>
                             {isExpanded
-                                ? <ChevronDown size={14} className="opacity-40 group-hover:opacity-100 transition-all" />
+                                ? <ChevronDown size={14} className="text-indigo-400 transition-transform" />
                                 : <ChevronRight size={14} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />}
                         </button>
 
                         {isExpanded && (
-                            <div className="mt-1 space-y-1 pb-1">
+                            <div className="mt-1 space-y-0.5 pb-1">
                                 {visibleChildren.filter(child => child.path).map(child => (
                                     <NavLink
                                         key={child.path}
                                         to={child.path}
                                         end
                                         onClick={() => {
-                                            setExpandedItems({});
                                             if (onCloseMobile) onCloseMobile();
                                         }}
                                         className={({ isActive }) =>
                                             `flex items-center gap-3 pl-12 pr-4 py-1.5 rounded-xl transition-all duration-200 ${
                                                 isActive
-                                                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-600/20'
+                                                ? 'bg-indigo-600/15 text-indigo-400 font-semibold border border-indigo-600/30'
                                                 : 'text-slate-400 hover:bg-white/5 hover:text-slate-100 border border-transparent'
                                             }`
                                         }
@@ -202,17 +260,32 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 );
             }
 
+            // En desktop: SIEMPRE se despliega a la derecha (flyout flotante alineado con el botón)
+            const isOpen = hoveredItem?.id === item.id;
             return (
-                <div key={item.id} className="relative">
+                <div 
+                    key={item.id} 
+                    className="relative"
+                    onMouseEnter={(e) => handleMouseEnter(e, item)}
+                    onMouseLeave={handleMouseLeave}
+                >
                     <button
-                        onMouseEnter={(e) => handleMouseEnter(e, item)}
-                        className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 text-slate-400 hover:bg-white/5 hover:text-white group`}
+                        type="button"
+                        onClick={(e) => handleSubmenuTrigger(e, item)}
+                        className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 ${
+                            isOpen
+                            ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30 shadow-sm'
+                            : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
+                        } group`}
+                        title={effectiveCollapsed ? item.label : ""}
                     >
                         <div className="flex items-center gap-3">
-                            <item.icon size={effectiveCollapsed ? 20 : 18} className="group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100" />
+                            <item.icon size={effectiveCollapsed ? 20 : 18} className={`transition-transform shrink-0 ${isOpen ? 'text-indigo-400 scale-110' : 'opacity-70 group-hover:opacity-100 group-hover:scale-110'}`} />
                             {!effectiveCollapsed && <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>}
                         </div>
-                        {!effectiveCollapsed && <ChevronRight size={14} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />}
+                        {!effectiveCollapsed && (
+                            <ChevronRight size={14} className={`transition-all ${isOpen ? 'text-indigo-400 translate-x-1 opacity-100' : 'opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1'}`} />
+                        )}
                     </button>
                 </div>
             );
@@ -354,41 +427,53 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 })}
             </nav>
 
-            {/* Menú Lateral (Flyout) con Position Fixed */}
-            {hoveredItem && (
+            {/* Menú Lateral (Flyout) con Position Fixed desplegado SIEMPRE a la derecha en Desktop */}
+            {hoveredItem && !isMobileOpen && (
                 <div 
-                    onMouseEnter={() => setHoveredItem(hoveredItem)}
+                    onMouseEnter={handleFlyoutEnter}
                     onMouseLeave={handleMouseLeave}
-                    className="fixed bg-slate-900 border border-slate-800 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-2 z-[999] transition-all duration-300 animate-in fade-in zoom-in-95"
+                    className="fixed bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.65)] p-2 z-[999] transition-all duration-150 animate-in fade-in zoom-in-95 before:absolute before:-left-3 before:top-0 before:bottom-0 before:w-4 before:content-['']"
                     style={{ 
-                        top: hoveredPos.top, 
+                        top: hoveredPos.top !== null ? hoveredPos.top : undefined,
+                        bottom: hoveredPos.bottom !== null ? hoveredPos.bottom : undefined,
                         left: hoveredPos.left,
-                        width: '220px'
+                        minWidth: '270px',
+                        maxWidth: '320px',
+                        maxHeight: hoveredPos.maxHeight
                     }}
                 >
-                    <div className="px-3 py-2 mb-2 border-b border-white/5">
-                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{hoveredItem.label}</span>
+                    <div className="px-3 py-2 mb-1.5 border-b border-white/10 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <hoveredItem.icon size={15} className="text-indigo-400" />
+                            <span className="text-[11px] font-bold text-white uppercase tracking-wider">{hoveredItem.label}</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded-full">
+                            {hoveredItem.children.filter(c => c.path && !c.hideInMenu).length}
+                        </span>
                     </div>
-                    <div className="space-y-1 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
+                    <div 
+                        className="space-y-0.5 overflow-y-auto custom-scrollbar pr-1"
+                        style={{ maxHeight: `calc(${hoveredPos.maxHeight}px - 54px)` }}
+                    >
                         {hoveredItem.children.filter(child => child.path && !child.hideInMenu).map(child => (
                             <NavLink
                                 key={child.path}
                                 to={child.path}
                                 end
                                 onClick={() => {
-                                    handleMouseLeave();
+                                    setHoveredItem(null);
                                     if (onCloseMobile) onCloseMobile();
                                 }}
                                 className={({ isActive }) =>
-                                    `flex items-center gap-3 pl-6 pr-3 py-1.5 rounded-lg transition-all duration-200 ${
+                                    `flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${
                                         isActive
-                                        ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-600/20'
-                                        : 'text-slate-400 hover:bg-white/5 hover:text-slate-100 border border-transparent'
+                                        ? 'bg-indigo-600/25 text-indigo-300 font-semibold border border-indigo-500/40 shadow-sm'
+                                        : 'text-slate-300 hover:bg-white/10 hover:text-white border border-transparent'
                                     }`
                                 }
                             >
-                                {child.icon && <child.icon size={14} className="opacity-70" />}
-                                <span className="text-[12px] font-medium tracking-tight">{child.label}</span>
+                                {child.icon && <child.icon size={15} className="opacity-75 shrink-0" />}
+                                <span className="text-[12px] font-medium tracking-tight truncate">{child.label}</span>
                             </NavLink>
                         ))}
                     </div>

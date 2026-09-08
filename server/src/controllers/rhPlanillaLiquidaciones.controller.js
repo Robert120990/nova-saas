@@ -372,6 +372,7 @@ const exportPDF = async (req, res) => {
                    e.num_dui, e.num_nit,
                    e.fecha_ingreso, e.afp_id,
                    c.descripcion as cargo_nombre,
+                   d.descripcion as departamento_nombre,
                    comp.razon_social as company_name,
                    comp.nit as company_nit,
                    comp.logo_url
@@ -379,6 +380,7 @@ const exportPDF = async (req, res) => {
             JOIN rh_empleados e ON pl.empleado_id = e.id
             JOIN companies comp ON pl.company_id = comp.id
             LEFT JOIN rh_cargos c ON e.cargo_id = c.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
             WHERE pl.id = ? AND pl.company_id = ?
         `, [id, req.company_id]);
 
@@ -406,14 +408,32 @@ const exportPDF = async (req, res) => {
             if (afpRows.length > 0) afpPorcentaje = afpRows[0].porcentaje_empleado;
         }
 
+        let responsable = '';
+        let firmaUrl = '', selloUrl = '';
+        const [rhCfg] = await pool.query(
+            `SELECT responsable_nombre, firma_url, sello_url FROM rh_config WHERE company_id = ?`,
+            [req.company_id]
+        );
+        if (rhCfg.length > 0) {
+            if (rhCfg[0].responsable_nombre) responsable = rhCfg[0].responsable_nombre;
+            firmaUrl = rhCfg[0].firma_url || '';
+            selloUrl = rhCfg[0].sello_url || '';
+        }
+
         const pdfData = {
+            id: p.id,
             company_name: p.company_name,
             company_nit: p.company_nit,
             logo_url: p.logo_url,
+            responsable_nombre: responsable,
+            firma_url: firmaUrl,
+            sello_url: selloUrl,
+            empleado_codigo: p.empleado_codigo,
             empleado_nombres: p.empleado_nombres,
             empleado_apellidos: p.empleado_apellidos,
             sueldo_base: p.sueldo_base,
             cargo_nombre: p.cargo_nombre,
+            departamento_nombre: p.departamento_nombre,
             fecha_ingreso: p.fecha_ingreso,
             periodo_indemnizacion_desde: p.periodo_indemnizacion_desde,
             periodo_indemnizacion_hasta: p.periodo_indemnizacion_hasta,
@@ -484,12 +504,15 @@ const exportFiniquito = async (req, res) => {
 
         let empleadorNombre = p.company_name;
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
-        const [rhCfg] = await pool.query(`SELECT responsable_nombre, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
+        let firmaUrl = '', selloUrl = '';
+        const [rhCfg] = await pool.query(`SELECT responsable_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
         if (rhCfg.length > 0) {
             if (rhCfg[0].responsable_nombre) empleadorNombre = rhCfg[0].responsable_nombre;
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
             notarioDept = rhCfg[0].notario_departamento || '';
+            firmaUrl = rhCfg[0].firma_url || '';
+            selloUrl = rhCfg[0].sello_url || '';
         }
 
         const pdfData = {
@@ -505,6 +528,8 @@ const exportFiniquito = async (req, res) => {
             notario_nombre: notarioNombre,
             notario_domicilio: notarioDomicilio,
             notario_dept: notarioDept,
+            firma_url: firmaUrl,
+            sello_url: selloUrl,
             motivo: motivo || 'RENUNCIA INMEDIATA'
         };
 
@@ -543,12 +568,15 @@ const exportAcuerdoPago = async (req, res) => {
 
         let empleadorNombre = p.company_name;
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
-        const [rhCfg] = await pool.query(`SELECT responsable_nombre, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
+        let firmaUrl = '', selloUrl = '';
+        const [rhCfg] = await pool.query(`SELECT responsable_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
         if (rhCfg.length > 0) {
             if (rhCfg[0].responsable_nombre) empleadorNombre = rhCfg[0].responsable_nombre;
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
             notarioDept = rhCfg[0].notario_departamento || '';
+            firmaUrl = rhCfg[0].firma_url || '';
+            selloUrl = rhCfg[0].sello_url || '';
         }
 
         const pdfData = {
@@ -563,6 +591,8 @@ const exportAcuerdoPago = async (req, res) => {
             notario_nombre: notarioNombre,
             notario_domicilio: notarioDomicilio,
             notario_dept: notarioDept,
+            firma_url: firmaUrl,
+            sello_url: selloUrl,
             monto_recibir: p.monto_recibir,
             cuotas: p.cuotas,
             pago_por_cuota: p.pago_por_cuota

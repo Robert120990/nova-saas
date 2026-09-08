@@ -5,7 +5,8 @@ import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Trash2, Gift, Calculator, Save, Eye, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Gift, Calculator, Save, Eye, AlertCircle, FileText, ReceiptText } from 'lucide-react';
+import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
 
 const yearNow = new Date().getFullYear();
 const years = Array.from({ length: 6 }, (_, i) => yearNow - 2 + i);
@@ -24,6 +25,7 @@ const Aguinaldos = () => {
     const [searchTerm] = useState('');
     const [, setDebouncedSearch] = useState('');
     const [filterAño, setFilterAño] = useState(yearNow);
+    const [previewPeriodo, setPreviewPeriodo] = useState(null);
 
     // Modal form
     const [calcAño, setCalcAño] = useState(yearNow);
@@ -76,35 +78,24 @@ const Aguinaldos = () => {
         if (ok) deleteMutation.mutate({ año: r.periodo_año, mes: r.periodo_mes, departamento_id: r.filtro_departamento_id || 0 });
     };
 
-    const handleDownloadPDF = async (r) => {
-        try {
-            const params = { año: r.periodo_año, mes: r.periodo_mes };
-            if (r.filtro_departamento_id) params.departamento_id = r.filtro_departamento_id;
-            const res = await axios.get('/api/rh/planilla-aguinaldos/pdf', { params, responseType: 'blob' });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Aguinaldos_${r.periodo_año}_${r.periodo_mes}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            toast.success('PDF descargado');
-        } catch { toast.error('Error al descargar PDF'); }
+    const handleVerPlanillaPDF = (r) => {
+        setPreviewPeriodo({
+            anio: r.periodo_año,
+            mes: r.periodo_mes || 12,
+            departamento_id: r.filtro_departamento_id,
+            departamento_nombre: r.departamento_nombre,
+            tipo: 'aguinaldo'
+        });
     };
-    const handleDownloadRecibos = async (r) => {
-        try {
-            const params = { año: r.periodo_año, mes: r.periodo_mes };
-            if (r.filtro_departamento_id) params.departamento_id = r.filtro_departamento_id;
-            const res = await axios.get('/api/rh/planilla-aguinaldos/recibos', { params, responseType: 'blob' });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Recibos_Aguinaldos_${r.periodo_año}_${r.periodo_mes}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            toast.success('Recibos generados');
-        } catch { toast.error('Error al generar recibos'); }
+
+    const handleVerRecibosPDF = (r) => {
+        setPreviewPeriodo({
+            anio: r.periodo_año,
+            mes: r.periodo_mes || 12,
+            departamento_id: r.filtro_departamento_id,
+            departamento_nombre: r.departamento_nombre,
+            tipo: 'aguinaldo-recibos'
+        });
     };
 
     const handleDownloadCSV = async (r) => {
@@ -225,11 +216,11 @@ const Aguinaldos = () => {
                                 <span className="text-xs font-bold text-emerald-600">${parseFloat(item.total_monto).toFixed(2)}</span>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleVerPlanilla(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver planilla"><Eye size={15} /></button>
-                                <button onClick={() => handleDownloadPDF(item)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Descargar PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>
-                                <button onClick={() => handleDownloadRecibos(item)} className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Recibos individuales"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
+                                <button onClick={() => handleVerPlanilla(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle de planilla"><Eye size={15} /></button>
+                                <button onClick={() => handleVerPlanillaPDF(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver Planilla de Aguinaldos en PDF (Formato Oficial)"><FileText size={15} /></button>
+                                <button onClick={() => handleVerRecibosPDF(item)} className="p-1 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Ver e Imprimir Recibos de Aguinaldo Masivos"><ReceiptText size={15} /></button>
                                 <button onClick={() => handleDownloadCSV(item)} className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Descargar CSV"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
-                                <button onClick={() => handleDelete(item)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                                <button onClick={() => handleDelete(item)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar planilla"><Trash2 size={15} /></button>
                             </td>
                         </tr>
                     )} />
@@ -271,9 +262,41 @@ const Aguinaldos = () => {
                     </div>
 
                     {yaExiste && calculado.length > 0 && (
-                        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
-                            <AlertCircle size={14} className="text-amber-600 shrink-0" />
-                            <span className="text-[10px] font-bold text-amber-700">Planilla guardada para este periodo.</span>
+                        <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <AlertCircle size={14} className="text-amber-600 shrink-0" />
+                                <span className="text-[10px] font-bold text-amber-700">Planilla guardada para este período.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewPeriodo({
+                                        anio: calcAño,
+                                        mes: calcMes,
+                                        departamento_id: calcDeptoId || undefined,
+                                        departamento_nombre: deptos.find(d => String(d.id) === String(calcDeptoId))?.descripcion,
+                                        tipo: 'aguinaldo'
+                                    })}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 rounded-lg font-bold text-[11px] transition-colors border border-indigo-200 shadow-sm"
+                                >
+                                    <FileText size={13} />
+                                    <span>Ver PDF Planilla</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewPeriodo({
+                                        anio: calcAño,
+                                        mes: calcMes,
+                                        departamento_id: calcDeptoId || undefined,
+                                        departamento_nombre: deptos.find(d => String(d.id) === String(calcDeptoId))?.descripcion,
+                                        tipo: 'aguinaldo-recibos'
+                                    })}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 rounded-lg font-bold text-[11px] transition-colors border border-purple-200 shadow-sm"
+                                >
+                                    <ReceiptText size={13} />
+                                    <span>Ver PDF Recibos</span>
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -299,7 +322,7 @@ const Aguinaldos = () => {
                                 <tbody>
                                     {calculado.map((item, i) => (
                                         <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                            <td className="px-1.5 py-0.5 font-mono font-bold text-indigo-500">{item.codigo}</td>
+                                             <td className="px-1.5 py-0.5 font-mono font-bold text-indigo-500">{item.codigo}</td>
                                             <td className="px-1.5 py-0.5 font-bold text-slate-700 max-w-[180px] truncate">{item.nombres} {item.apellidos}</td>
                                             <td className="px-1.5 py-0.5 text-slate-500 max-w-[120px] truncate">{item.cargo_nombre || '-'}</td>
                                             <td className="px-1.5 py-0.5 text-slate-500">{fmtDate(item.fecha_ingreso)}</td>
@@ -337,6 +360,13 @@ const Aguinaldos = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal de Vista Previa de Reportes / Recibos */}
+            <PlanillaReportModal
+                isOpen={!!previewPeriodo}
+                onClose={() => setPreviewPeriodo(null)}
+                periodo={previewPeriodo}
+            />
         </div>
     );
 };

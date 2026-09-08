@@ -1,6 +1,6 @@
 const pool = require('../config/db');
-const PDFDocument = require('pdfkit');
 const excelService = require('../services/excel.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 /**
  * Extreme defensive parsing: Ensures everything is a string or number as expected
@@ -16,17 +16,18 @@ const cleanStr = (val) => {
 };
 
 const safeFormatDate = (date) => {
-    if (!date) return '---';
-    try {
-        const d = new Date(date);
-        if (isNaN(d.getTime())) return '---';
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const yyyy = d.getFullYear();
-        return `${dd}/${mm}/${yyyy}`;
-    } catch (e) {
-        return '---';
-    }
+    return reportPdfHelper.formatDate(date);
+};
+
+const MONTH_NAMES = [
+    '', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
+];
+
+const getPeriodText = (month, year) => {
+    const mNum = parseInt(month, 10);
+    const mName = MONTH_NAMES[mNum] || month;
+    return `MES DE ${mName} DE ${year}`;
 };
 
 /**
@@ -50,7 +51,7 @@ const DTE_JOIN_SQL = `
  * Incluye en el libro/anexo solo ventas cuyo DTE más reciente (último intento
  * por MAX(id) del JOIN deduplicado) tiene status válido. Excluye ventas sin DTE
  * (sin código de generación), rechazadas (REJECTED/ERROR) e invalidadas.
- * Requiere el alias `d` del DTE_JOIN_SQL.
+ * Requiere el alias \`d\` del DTE_JOIN_SQL.
  */
 const DTE_VALIDO_SQL = `(
     d.venta_id IS NOT NULL
@@ -58,35 +59,47 @@ const DTE_VALIDO_SQL = `(
 )`;
 
 /**
- * Summary Box with extreme layout safety and credit notes support
+ * Summary Box with unified accounting style and credit notes support
  */
 const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
     try {
         const hasNc = (totals.nc_total && totals.nc_total > 0) || (totals.nc_grav && totals.nc_grav > 0);
-        const boxWidth = 250;
+        const boxWidth = 260;
         const boxHeight = hasNc ? 165 : 140;
 
-        if (y + boxHeight > 550) {
+        if (y + boxHeight > 510) {
             doc.addPage();
             y = 30;
         }
 
         doc.save();
-        doc.lineWidth(1).strokeColor('#e2e8f0').rect(x, y, boxWidth, boxHeight).stroke();
-        doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold').text(String(title), x + 10, y + 8);
-        
-        let rowY = y + 25;
+        // Fondo y borde del cuadro
+        doc.roundedRect(x, y, boxWidth, boxHeight, 4).fillAndStroke('#f8fafc', '#cbd5e1');
+
+        // Encabezado del cuadro
+        doc.roundedRect(x, y, boxWidth, 18, 4).fill('#f1f5f9');
+        doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold').text(String(title).toUpperCase(), x + 10, y + 5);
+
+        let rowY = y + 24;
         const drawRow = (label, val, isBold = false, isNegative = false) => {
-            doc.fillColor(isBold ? '#1e293b' : '#475569').fontSize(8).font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(String(label), x + 10, rowY);
-            const formattedVal = isNegative ? `-$${Math.abs(n(val)).toFixed(2)}` : `$${n(val).toFixed(2)}`;
-            doc.fillColor(isBold ? '#1e293b' : '#334155').font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(formattedVal, x + 150, rowY, { width: 90, align: 'right' });
-            rowY += 13;
+            doc.fillColor(isBold ? '#0f172a' : '#475569')
+                .fontSize(7.5)
+                .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
+                .text(String(label), x + 10, rowY, { width: 135 });
+
+            const formattedVal = reportPdfHelper.fmt(isNegative ? -Math.abs(n(val)) : n(val));
+            doc.fillColor(isBold ? '#0f172a' : '#1e293b')
+                .fontSize(7.5)
+                .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
+                .text(formattedVal, x + 140, rowY, { width: 110, align: 'right' });
+
+            rowY += 12.5;
         };
 
         if (hasNc) {
             drawRow('Total Bruto:', totals.bruto_total || (totals.total + (totals.nc_total || 0)));
             drawRow('(-) Notas de Crédito:', totals.nc_total, false, true);
-            doc.moveTo(x + 10, rowY).lineTo(x + boxWidth - 10, rowY).strokeColor('#e2e8f0').stroke();
+            doc.moveTo(x + 8, rowY).lineTo(x + boxWidth - 8, rowY).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
             rowY += 3;
         }
 
@@ -97,41 +110,19 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
             drawRow('FOVIAL:', totals.fovial);
             drawRow('COTRANS:', totals.cotrans);
         }
-        if (totals.ret !== undefined) {
+        if (totals.ret !== undefined && (totals.ret > 0 || hasNc)) {
             drawRow('Retenciones/Percepciones:', totals.ret);
         }
-        
-        doc.moveTo(x + 10, rowY).lineTo(x + boxWidth - 10, rowY).strokeColor('#cbd5e1').stroke();
-        rowY += 4;
+
+        doc.moveTo(x + 8, rowY).lineTo(x + boxWidth - 8, rowY).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+        rowY += 3;
         drawRow(hasNc ? 'TOTAL GENERAL NETO:' : 'TOTAL GENERAL:', totals.total, true);
         doc.restore();
+        return y + boxHeight;
     } catch (err) {
         console.error('[VAT Books] Error drawing summary box:', err);
+        return y;
     }
-};
-
-/**
- * Promise-based PDF Buffer Generator
- */
-const generatePdfBuffer = (setupFn) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ layout: 'landscape', margin: 30, size: 'LETTER', autoFirstPage: true });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => {
-                console.error('[VAT Books] PDF Stream Error:', err);
-                reject(err);
-            });
-            
-            setupFn(doc);
-            doc.end();
-        } catch (e) {
-            console.error('[VAT Books] PDF Generation Exception:', e);
-            reject(e);
-        }
-    });
 };
 
 /**
@@ -146,8 +137,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
-        const [companies] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
-        const company = companies[0] || { razon_social: 'EMPRESA' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
         
         let branchName = 'TODAS / CONSOLIDADO';
         if (branch_id && branch_id !== 'all') {
@@ -180,7 +170,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 const esNC = isNotaCreditoCompra(r);
                 const sign = esNC ? -1 : 1;
                 return {
-                    Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                    Fecha: reportPdfHelper.formatDate(r.fecha),
                     'Tipo Doc': r.tipo_doc_nombre || (esNC ? 'Nota de Crédito' : 'Crédito Fiscal'),
                     'No. Documento': r.numero_documento || '',
                     Proveedor: r.provider_nombre || 'S/N',
@@ -209,76 +199,123 @@ const getVatBookPurchasesPDF = async (req, res) => {
             return excelService.sendExcelResponse(res, buffer, `Libro_Compras_${month}_${year}.xlsx`);
         }
 
-        const buffer = await generatePdfBuffer((doc) => {
-            // Header
-            doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
-            doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
-            doc.fontSize(8).font('Helvetica-Bold').text(`SUCURSAL: ${String(branchName)}`, 30, 58);
-            doc.fontSize(12).font('Helvetica-Bold').text('LIBRO DE COMPRAS (IVA)', 30, 30, { align: 'right' });
-            doc.fontSize(10).text(`MES: ${String(month)} / AÑO: ${String(year)}`, 30, 45, { align: 'right' });
-            doc.moveDown(3);
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            let currentY = doc.y;
-            const drawHeader = (y) => {
-                doc.fontSize(7).font('Helvetica-Bold');
-                doc.text('FECHA', startX, y);
-                doc.text('DOCUMENTO', startX + 50, y);
-                doc.text('PROVEEDOR', startX + 150, y);
-                doc.text('NIT/NRC', startX + 290, y);
-                doc.text('GRAVADA', startX + 370, y, { width: 50, align: 'right' });
-                doc.text('EXENTA', startX + 420, y, { width: 50, align: 'right' });
-                doc.text('IVA', startX + 470, y, { width: 40, align: 'right' });
-                doc.text('FOV', startX + 510, y, { width: 40, align: 'right' });
-                doc.text('COT', startX + 550, y, { width: 40, align: 'right' });
-                doc.text('RET/PER', startX + 590, y, { width: 50, align: 'right' });
-                doc.text('TOTAL', startX + 645, y, { width: 75, align: 'right' });
-                doc.moveTo(startX, y + 10).lineTo(startX + 720, y + 10).stroke();
-                return y + 15;
-            };
+        const title = 'LIBRO DE COMPRAS (I.V.A.)';
+        const periodText = getPeriodText(month, year);
+        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
 
-            currentY = drawHeader(currentY);
-            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+        const startX = 30;
+        const totalWidth = 732;
+        const cols = {
+            fecha: 45,
+            documento: 124,
+            proveedor: 180,
+            nit_nrc: 68,
+            gravada: 48,
+            exenta: 42,
+            iva: 44,
+            fov: 35,
+            cot: 35,
+            ret_per: 44,
+            total: 67
+        };
 
-            rows.forEach(r => {
-                if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
-                const esNC = isNotaCreditoCompra(r);
-                const g = n(r.total_gravada), e = n(r.total_exenta), i = n(r.iva);
-                const f = n(r.fovial), c = n(r.cotrans), re = n(r.retencion) + n(r.percepcion), to = n(r.monto_total);
+        const drawPageHeader = () => {
+            reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        };
 
-                doc.fontSize(7).font('Helvetica');
-                doc.text(safeFormatDate(r.fecha), startX, currentY);
-                doc.text(`${String(r.tipo_doc_nombre || '')} ${String(r.numero_documento || '')}`, startX + 50, currentY, { width: 95, truncate: true });
-                doc.text(String(r.provider_nombre || 'S/N'), startX + 150, currentY, { width: 135, truncate: true });
-                doc.text(String(r.provider_nit || ''), startX + 290, currentY, { width: 80, truncate: true });
+        const drawTableHeader = () => {
+            const y = doc.y;
+            doc.rect(startX, y, totalWidth, 15).fill('#f1f5f9');
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX;
+            doc.text('FECHA', x + 2, y + 4, { width: cols.fecha - 4 }); x += cols.fecha;
+            doc.text('DOCUMENTO', x + 2, y + 4, { width: cols.documento - 4 }); x += cols.documento;
+            doc.text('PROVEEDOR', x + 2, y + 4, { width: cols.proveedor - 4 }); x += cols.proveedor;
+            doc.text('NIT/NRC', x + 2, y + 4, { width: cols.nit_nrc - 4 }); x += cols.nit_nrc;
+            doc.text('GRAVADA', x, y + 4, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
+            doc.text('EXENTA', x, y + 4, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
+            doc.text('IVA', x, y + 4, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+            doc.text('FOV', x, y + 4, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
+            doc.text('COT', x, y + 4, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
+            doc.text('RET/PER', x, y + 4, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
+            doc.moveTo(startX, y + 15).lineTo(startX + totalWidth, y + 15).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            doc.y = y + 19;
+        };
 
-                const fmtAmount = (val) => esNC ? `-$${val.toFixed(2)}` : `$${val.toFixed(2)}`;
-                doc.text(fmtAmount(g), startX + 370, currentY, { width: 50, align: 'right' });
-                doc.text(fmtAmount(e), startX + 420, currentY, { width: 50, align: 'right' });
-                doc.text(fmtAmount(i), startX + 470, currentY, { width: 40, align: 'right' });
-                doc.text(fmtAmount(f), startX + 510, currentY, { width: 40, align: 'right' });
-                doc.text(fmtAmount(c), startX + 550, currentY, { width: 40, align: 'right' });
-                doc.text(fmtAmount(re), startX + 590, currentY, { width: 50, align: 'right' });
-                doc.text(fmtAmount(to), startX + 645, currentY, { width: 75, align: 'right' });
+        drawPageHeader();
+        drawTableHeader();
 
-                if (esNC) {
-                    t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
-                    t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
-                } else {
-                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
-                    t.bruto_total += to;
-                }
-                currentY += 13;
-            });
-            drawPdfSummaryBox(doc, 480, currentY + 15, t, 'RESUMEN DE COMPRAS');
+        let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+
+        rows.forEach((r, idx) => {
+            if (doc.y > 510) {
+                doc.addPage();
+                drawPageHeader();
+                drawTableHeader();
+            }
+
+            const esNC = isNotaCreditoCompra(r);
+            const sign = esNC ? -1 : 1;
+            const g = n(r.total_gravada), e = n(r.total_exenta), i = n(r.iva);
+            const f = n(r.fovial), c = n(r.cotrans), re = n(r.retencion) + n(r.percepcion), to = n(r.monto_total);
+
+            const rowY = doc.y;
+            if (idx % 2 === 1) {
+                doc.rect(startX, rowY - 1, totalWidth, 13).fill('#f8fafc');
+            }
+
+            doc.fontSize(6.5).font('Helvetica').fillColor('#0f172a');
+            let x = startX;
+            doc.text(reportPdfHelper.formatDate(r.fecha), x + 2, rowY, { lineBreak: false }); x += cols.fecha;
+            
+            const docLabel = `${String(r.tipo_doc_nombre || '')} ${String(r.numero_documento || '')}`.trim();
+            doc.text(reportPdfHelper.fitText(doc, docLabel || '---', cols.documento - 4), x + 2, rowY, { lineBreak: false }); x += cols.documento;
+            doc.text(reportPdfHelper.fitText(doc, String(r.provider_nombre || 'S/N').toUpperCase(), cols.proveedor - 4), x + 2, rowY, { lineBreak: false }); x += cols.proveedor;
+            
+            const nitNrc = String(r.provider_nit || r.provider_nrc || '').trim();
+            doc.text(reportPdfHelper.fitText(doc, nitNrc || '---', cols.nit_nrc - 4), x + 2, rowY, { lineBreak: false }); x += cols.nit_nrc;
+
+            doc.text(reportPdfHelper.fmt(sign * g), x, rowY, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
+            doc.text(reportPdfHelper.fmt(sign * e), x, rowY, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
+            doc.text(reportPdfHelper.fmt(sign * i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+            doc.text(reportPdfHelper.fmt(sign * f), x, rowY, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
+            doc.text(reportPdfHelper.fmt(sign * c), x, rowY, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
+            doc.text(reportPdfHelper.fmt(sign * re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
+
+            if (esNC) {
+                t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
+                t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+            } else {
+                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                t.bruto_total += to;
+            }
+            doc.y = rowY + 13;
         });
 
+        if (doc.y > 470) {
+            doc.addPage();
+            drawPageHeader();
+        }
+
+        const boxX = startX + totalWidth - 260;
+        const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN DE COMPRAS');
+
+        const footerY = Math.max(doc.y, boxEndY) + 12;
+        reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
+        reportPdfHelper.renderPageNumbers(doc);
+        doc.end();
+
+        const buffer = await getBuffer();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="Libro_Compras_${month}_${year}.pdf"`);
         res.send(buffer);
     } catch (e) {
         console.error('[VAT Books] Error Purchases PDF:', e);
-        res.status(500).json({ message: 'Error', error: e.message });
+        res.status(500).json({ message: 'Error al generar PDF de compras: ' + e.message });
     }
 };
 
@@ -294,8 +331,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
-        const [companies] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
-        const company = companies[0] || { razon_social: 'EMPRESA' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
 
         let branchName = 'TODAS / CONSOLIDADO';
         if (branch_id && branch_id !== 'all') {
@@ -340,7 +376,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
                 const esNC = r.tipo_documento === '05';
                 const sign = esNC ? -1 : 1;
                 return {
-                    Fecha: new Date(r.fecha_emision).toLocaleDateString('es-SV'),
+                    Fecha: reportPdfHelper.formatDate(r.fecha_emision),
                     'Tipo Doc': esNC ? 'Nota de Crédito' : 'Crédito Fiscal',
                     'No. Documento': r.numero_control || '---',
                     Cliente: r.customer_nombre || 'CLIENTE S/N',
@@ -375,73 +411,120 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             return excelService.sendExcelResponse(res, buffer, `Libro_CCF_${month}_${year}.xlsx`);
         }
 
-        const buffer = await generatePdfBuffer((doc) => {
-            doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
-            doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
-            doc.fontSize(8).font('Helvetica-Bold').text(`SUCURSAL: ${String(branchName)}`, 30, 58);
-            doc.fontSize(12).font('Helvetica-Bold').text('LIBRO DE VENTAS A CONTRIBUYENTES', 30, 30, { align: 'right' });
-            doc.fontSize(10).text(`MES: ${String(month)} / AÑO: ${String(year)}`, 30, 45, { align: 'right' });
-            doc.moveDown(3);
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            let currentY = doc.y;
-            const drawHeader = (y) => {
-                doc.fontSize(7).font('Helvetica-Bold');
-                doc.text('FECHA', startX, y, { width: 36 });
-                doc.text('DOCUMENTO', startX + 36, y, { width: 132 });
-                doc.text('CLIENTE', startX + 168, y, { width: 227 });
-                doc.text('NRC', startX + 395, y, { width: 41 });
-                doc.text('GRAVADA', startX + 436, y, { width: 48, align: 'right' });
-                doc.text('EXENTA', startX + 484, y, { width: 42, align: 'right' });
-                doc.text('IVA DEB.', startX + 526, y, { width: 42, align: 'right' });
-                doc.text('FOV', startX + 568, y, { width: 30, align: 'right' });
-                doc.text('COT', startX + 598, y, { width: 30, align: 'right' });
-                doc.text('RET/PER', startX + 628, y, { width: 42, align: 'right' });
-                doc.text('TOTAL', startX + 670, y, { width: 55, align: 'right' });
-                doc.moveTo(startX, y + 10).lineTo(startX + 725, y + 10).stroke();
-                return y + 15;
-            };
+        const title = 'LIBRO DE VENTAS A CONTRIBUYENTES (CRÉDITO FISCAL)';
+        const periodText = getPeriodText(month, year);
+        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
 
-            currentY = drawHeader(currentY);
-            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+        const startX = 30;
+        const totalWidth = 732;
+        const cols = {
+            fecha: 45,
+            documento: 124,
+            cliente: 190,
+            nrc: 45,
+            gravada: 48,
+            exenta: 42,
+            iva: 44,
+            fov: 35,
+            cot: 35,
+            ret_per: 46,
+            total: 78
+        };
 
-            rows.forEach(r => {
-                if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
-                const esNC = r.tipo_documento === '05';
-                const g = n(r.total_gravado), e = n(r.total_exento), i = n(r.total_iva);
-                const f = n(r.fovial), c = n(r.cotrans), re = n(r.iva_retenido) + n(r.iva_percibido), to = n(r.total_pagar);
+        const drawPageHeader = () => {
+            reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        };
 
-                doc.fontSize(6.5).font('Helvetica');
-                doc.text(safeFormatDate(r.fecha_emision), startX, currentY, { width: 36 });
-                doc.text(cleanStr(r.numero_control || '---'), startX + 36, currentY, { width: 132 });
-                doc.text(cleanStr(r.customer_nombre || 'CLIENTE S/N').toUpperCase(), startX + 168, currentY, { width: 227, height: 10, ellipsis: true });
-                doc.text(cleanStr(r.customer_nrc || ''), startX + 395, currentY, { width: 41, height: 10, ellipsis: true });
+        const drawTableHeader = () => {
+            const y = doc.y;
+            doc.rect(startX, y, totalWidth, 15).fill('#f1f5f9');
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX;
+            doc.text('FECHA', x + 2, y + 4, { width: cols.fecha - 4 }); x += cols.fecha;
+            doc.text('DOCUMENTO', x + 2, y + 4, { width: cols.documento - 4 }); x += cols.documento;
+            doc.text('CLIENTE', x + 2, y + 4, { width: cols.cliente - 4 }); x += cols.cliente;
+            doc.text('NRC', x + 2, y + 4, { width: cols.nrc - 4 }); x += cols.nrc;
+            doc.text('GRAVADA', x, y + 4, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
+            doc.text('EXENTA', x, y + 4, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
+            doc.text('IVA DEB.', x, y + 4, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+            doc.text('FOV', x, y + 4, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
+            doc.text('COT', x, y + 4, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
+            doc.text('RET/PER', x, y + 4, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
+            doc.moveTo(startX, y + 15).lineTo(startX + totalWidth, y + 15).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            doc.y = y + 19;
+        };
 
-                const fmtAmount = (val) => esNC ? `-$${val.toFixed(2)}` : `$${val.toFixed(2)}`;
-                doc.text(fmtAmount(g), startX + 436, currentY, { width: 48, align: 'right' });
-                doc.text(fmtAmount(e), startX + 484, currentY, { width: 42, align: 'right' });
-                doc.text(fmtAmount(i), startX + 526, currentY, { width: 42, align: 'right' });
-                doc.text(fmtAmount(f), startX + 568, currentY, { width: 30, align: 'right' });
-                doc.text(fmtAmount(c), startX + 598, currentY, { width: 30, align: 'right' });
-                doc.text(fmtAmount(re), startX + 628, currentY, { width: 42, align: 'right' });
-                doc.text(fmtAmount(to), startX + 670, currentY, { width: 55, align: 'right' });
+        drawPageHeader();
+        drawTableHeader();
 
-                if (esNC) {
-                    t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
-                    t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
-                } else {
-                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
-                    t.bruto_total += to;
-                }
-                currentY += 13;
-            });
-            drawPdfSummaryBox(doc, 505, currentY + 15, t, 'RESUMEN VENTAS CCF');
+        let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+
+        rows.forEach((r, idx) => {
+            if (doc.y > 510) {
+                doc.addPage();
+                drawPageHeader();
+                drawTableHeader();
+            }
+
+            const esNC = r.tipo_documento === '05';
+            const sign = esNC ? -1 : 1;
+            const g = n(r.total_gravado), e = n(r.total_exento), i = n(r.total_iva);
+            const f = n(r.fovial), c = n(r.cotrans), re = n(r.iva_retenido) + n(r.iva_percibido), to = n(r.total_pagar);
+
+            const rowY = doc.y;
+            if (idx % 2 === 1) {
+                doc.rect(startX, rowY - 1, totalWidth, 13).fill('#f8fafc');
+            }
+
+            doc.fontSize(6.5).font('Helvetica').fillColor('#0f172a');
+            let x = startX;
+            doc.text(reportPdfHelper.formatDate(r.fecha_emision), x + 2, rowY, { lineBreak: false }); x += cols.fecha;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.numero_control || '---'), cols.documento - 4), x + 2, rowY, { lineBreak: false }); x += cols.documento;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.customer_nombre || 'CLIENTE S/N').toUpperCase(), cols.cliente - 4), x + 2, rowY, { lineBreak: false }); x += cols.cliente;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.customer_nrc || '---'), cols.nrc - 4), x + 2, rowY, { lineBreak: false }); x += cols.nrc;
+
+            doc.text(reportPdfHelper.fmt(sign * g), x, rowY, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
+            doc.text(reportPdfHelper.fmt(sign * e), x, rowY, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
+            doc.text(reportPdfHelper.fmt(sign * i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+            doc.text(reportPdfHelper.fmt(sign * f), x, rowY, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
+            doc.text(reportPdfHelper.fmt(sign * c), x, rowY, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
+            doc.text(reportPdfHelper.fmt(sign * re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
+
+            if (esNC) {
+                t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
+                t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+            } else {
+                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                t.bruto_total += to;
+            }
+            doc.y = rowY + 13;
         });
 
+        if (doc.y > 470) {
+            doc.addPage();
+            drawPageHeader();
+        }
+
+        const boxX = startX + totalWidth - 260;
+        const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN VENTAS CCF');
+
+        const footerY = Math.max(doc.y, boxEndY) + 12;
+        reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
+        reportPdfHelper.renderPageNumbers(doc);
+        doc.end();
+
+        const buffer = await getBuffer();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="Libro_CCF_${month}_${year}.pdf"`);
         res.send(buffer);
-    } catch (e) { console.error('[VAT Books] Error CCF:', e); res.status(500).json({ message: 'Error', error: e.message }); }
+    } catch (e) { 
+        console.error('[VAT Books] Error CCF:', e); 
+        res.status(500).json({ message: 'Error al generar Libro CCF: ' + e.message }); 
+    }
 };
 
 /**
@@ -453,12 +536,11 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
         const companyId = req.company_id || req.user?.company_id;
         const isResumen = resumen !== 'false';
 
-        console.log(`[VAT Books] Generating FAC: Co=${companyId}, Period=${year}-${month}, Branch=${branch_id}`);
+        console.log(`[VAT Books] Generating FAC: Co=${companyId}, Period=${year}-${month}, Branch=${branch_id}, isResumen=${isResumen}`);
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
-        const [companies] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
-        const company = companies[0] || { razon_social: 'EMPRESA' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
 
         let branchName = 'TODAS / CONSOLIDADO';
         if (branch_id && branch_id !== 'all') {
@@ -526,7 +608,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
         if (req.query.format === 'excel') {
             if (isResumen) {
                 const excelData = rows.map(r => ({
-                    Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                    Fecha: reportPdfHelper.formatDate(r.fecha),
                     'Tipo Doc': 'Factura',
                     'No. Documento': `${r.num_desde || '---'} - ${r.num_hasta || '---'}`,
                     Cliente: 'CONSUMIDOR FINAL',
@@ -560,7 +642,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                     const sign = esNC ? -1 : 1;
                     return {
                         'N° Control': r.numero_control || 'SIN DTE',
-                        Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
+                        Fecha: reportPdfHelper.formatDate(r.fecha),
                         'Tipo Doc': esNC ? 'Nota de Crédito' : 'Factura',
                         Cliente: r.cliente || 'CONSUMIDOR FINAL',
                         NIT: r.nit || '',
@@ -591,117 +673,205 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             }
         }
 
-        const buffer = await generatePdfBuffer((doc) => {
-            doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
-            doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
-            doc.fontSize(8).font('Helvetica-Bold').text(`SUCURSAL: ${String(branchName)}`, 30, 58);
-            doc.fontSize(12).font('Helvetica-Bold').text('LIBRO DE VENTAS A CONSUMIDOR FINAL', 30, 30, { align: 'right' });
-            doc.fontSize(10).text(`${isResumen ? 'RESUMEN' : 'DETALLE'} — MES: ${String(month)} / AÑO: ${String(year)}`, 30, 45, { align: 'right' });
-            doc.moveDown(3);
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            let currentY = doc.y;
+        const title = isResumen 
+            ? 'LIBRO DE VENTAS A CONSUMIDOR FINAL (RESUMEN)' 
+            : 'LIBRO DE VENTAS A CONSUMIDOR FINAL (DETALLE)';
+        const periodText = getPeriodText(month, year);
+        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
 
-            if (isResumen) {
-                const drawHeader = (y) => {
-                    doc.fontSize(7).font('Helvetica-Bold');
-                    doc.text('FECHA', startX, y);
-                    doc.text('DEL No.', startX + 55, y);
-                    doc.text('AL No.', startX + 195, y);
-                    doc.text('GRAVADO', startX + 335, y, { width: 60, align: 'right' });
-                    doc.text('EXENTO', startX + 395, y, { width: 55, align: 'right' });
-                    doc.text('IVA', startX + 450, y, { width: 45, align: 'right' });
-                    doc.text('FOVIAL', startX + 495, y, { width: 45, align: 'right' });
-                    doc.text('COTRANS', startX + 540, y, { width: 45, align: 'right' });
-                    doc.text('TOTAL', startX + 585, y, { width: 70, align: 'right' });
-                    doc.moveTo(startX, y + 10).lineTo(startX + 655, y + 10).stroke();
-                    return y + 15;
-                };
+        const startX = 30;
+        const totalWidth = 732;
 
-                currentY = drawHeader(currentY);
-                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, bruto_total: 0 };
+        const drawPageHeader = () => {
+            reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        };
 
-                rows.forEach(r => {
-                    if (currentY > 540) { doc.addPage(); currentY = drawHeader(30); }
-                    const g = n(r.t_grav), i = n(r.t_iva);
-                    const e = n(r.t_exe);
-                    const f = n(r.t_fov), c = n(r.t_cot), to = n(r.t_pagar);
+        if (isResumen) {
+            const cols = {
+                fecha: 55,
+                del_no: 155,
+                al_no: 155,
+                gravado: 62,
+                exento: 58,
+                iva: 54,
+                fovial: 48,
+                cotrans: 48,
+                total: 97
+            };
 
-                    doc.fontSize(7).font('Helvetica');
-                    doc.text(safeFormatDate(r.fecha), startX, currentY);
-                    doc.text(String(r.num_desde || '---'), startX + 55, currentY, { width: 135, truncate: true });
-                    doc.text(String(r.num_hasta || '---'), startX + 195, currentY, { width: 135, truncate: true });
-                    doc.text(`$${g.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${e.toFixed(2)}`, startX + 395, currentY, { width: 50, align: 'right' });
-                    doc.text(`$${i.toFixed(2)}`, startX + 450, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${f.toFixed(2)}`, startX + 495, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${c.toFixed(2)}`, startX + 540, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${to.toFixed(2)}`, startX + 585, currentY, { width: 65, align: 'right' });
+            const drawTableHeader = () => {
+                const y = doc.y;
+                doc.rect(startX, y, totalWidth, 15).fill('#f1f5f9');
+                doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+                let x = startX;
+                doc.text('FECHA', x + 2, y + 4, { width: cols.fecha - 4 }); x += cols.fecha;
+                doc.text('DEL No.', x + 2, y + 4, { width: cols.del_no - 4 }); x += cols.del_no;
+                doc.text('AL No.', x + 2, y + 4, { width: cols.al_no - 4 }); x += cols.al_no;
+                doc.text('GRAVADO', x, y + 4, { width: cols.gravado - 2, align: 'right' }); x += cols.gravado;
+                doc.text('EXENTO', x, y + 4, { width: cols.exento - 2, align: 'right' }); x += cols.exento;
+                doc.text('IVA', x, y + 4, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+                doc.text('FOVIAL', x, y + 4, { width: cols.fovial - 2, align: 'right' }); x += cols.fovial;
+                doc.text('COTRANS', x, y + 4, { width: cols.cotrans - 2, align: 'right' }); x += cols.cotrans;
+                doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
+                doc.moveTo(startX, y + 15).lineTo(startX + totalWidth, y + 15).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+                doc.y = y + 19;
+            };
 
-                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
-                    t.nc_total += n(r.nc_total); t.nc_grav += n(r.nc_grav); t.bruto_total += n(r.bruto_total);
-                    currentY += 13;
-                });
-                drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');
-            } else {
-                const drawDetailHeader = (y) => {
-                    doc.fontSize(6.5).font('Helvetica-Bold');
-                    doc.text('N° CONTROL', startX, y);
-                    doc.text('FECHA', startX + 120, y);
-                    doc.text('CLIENTE', startX + 185, y);
-                    doc.text('NIT', startX + 325, y);
-                    doc.text('GRAVADO', startX + 415, y, { width: 55, align: 'right' });
-                    doc.text('EXENTO', startX + 475, y, { width: 50, align: 'right' });
-                    doc.text('IVA', startX + 530, y, { width: 40, align: 'right' });
-                    doc.text('FOVIAL', startX + 575, y, { width: 35, align: 'right' });
-                    doc.text('COTRANS', startX + 615, y, { width: 35, align: 'right' });
-                    doc.text('TOTAL', startX + 655, y, { width: 55, align: 'right' });
-                    doc.moveTo(startX, y + 10).lineTo(startX + 710, y + 10).stroke();
-                    return y + 15;
-                };
+            drawPageHeader();
+            drawTableHeader();
 
-                currentY = drawDetailHeader(currentY);
-                let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, bruto_total: 0 };
 
-                rows.forEach(r => {
-                    if (currentY > 540) { doc.addPage(); currentY = drawDetailHeader(30); }
-                    const esNC = r.tipo_documento === '05';
-                    const g = n(r.total_gravado), i = n(r.total_iva);
-                    const e = n(r.total_exento);
-                    const f = n(r.fovial), c = n(r.cotrans), to = n(r.total_pagar);
+            rows.forEach((r, idx) => {
+                if (doc.y > 510) {
+                    doc.addPage();
+                    drawPageHeader();
+                    drawTableHeader();
+                }
 
-                    doc.fontSize(6.5).font('Helvetica');
-                    doc.text(String(r.numero_control || 'SIN DTE'), startX, currentY, { width: 115, truncate: true });
-                    doc.text(safeFormatDate(r.fecha), startX + 120, currentY, { width: 60 });
-                    doc.text(String(r.cliente || 'CONSUMIDOR FINAL'), startX + 185, currentY, { width: 135, truncate: true });
-                    doc.text(String(r.nit || ''), startX + 325, currentY, { width: 85, truncate: true });
+                const g = n(r.t_grav), i = n(r.t_iva);
+                const e = n(r.t_exe);
+                const f = n(r.t_fov), c = n(r.t_cot), to = n(r.t_pagar);
 
-                    const fmtAmount = (val) => esNC ? `-$${val.toFixed(2)}` : `$${val.toFixed(2)}`;
-                    doc.text(fmtAmount(g), startX + 415, currentY, { width: 55, align: 'right' });
-                    doc.text(fmtAmount(e), startX + 475, currentY, { width: 50, align: 'right' });
-                    doc.text(fmtAmount(i), startX + 530, currentY, { width: 40, align: 'right' });
-                    doc.text(fmtAmount(f), startX + 575, currentY, { width: 35, align: 'right' });
-                    doc.text(fmtAmount(c), startX + 615, currentY, { width: 35, align: 'right' });
-                    doc.text(fmtAmount(to), startX + 655, currentY, { width: 55, align: 'right' });
+                const rowY = doc.y;
+                if (idx % 2 === 1) {
+                    doc.rect(startX, rowY - 1, totalWidth, 13).fill('#f8fafc');
+                }
 
-                    if (esNC) {
-                        t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.total -= to;
-                        t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
-                    } else {
-                        t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
-                        t.bruto_total += to;
-                    }
-                    currentY += 11;
-                });
-                drawPdfSummaryBox(doc, 420, currentY + 15, t, 'RESUMEN VENTAS FAC');
+                doc.fontSize(6.5).font('Helvetica').fillColor('#0f172a');
+                let x = startX;
+                doc.text(reportPdfHelper.formatDate(r.fecha), x + 2, rowY, { lineBreak: false }); x += cols.fecha;
+                doc.text(reportPdfHelper.fitText(doc, String(r.num_desde || '---'), cols.del_no - 4), x + 2, rowY, { lineBreak: false }); x += cols.del_no;
+                doc.text(reportPdfHelper.fitText(doc, String(r.num_hasta || '---'), cols.al_no - 4), x + 2, rowY, { lineBreak: false }); x += cols.al_no;
+                doc.text(reportPdfHelper.fmt(g), x, rowY, { width: cols.gravado - 2, align: 'right' }); x += cols.gravado;
+                doc.text(reportPdfHelper.fmt(e), x, rowY, { width: cols.exento - 2, align: 'right' }); x += cols.exento;
+                doc.text(reportPdfHelper.fmt(i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+                doc.text(reportPdfHelper.fmt(f), x, rowY, { width: cols.fovial - 2, align: 'right' }); x += cols.fovial;
+                doc.text(reportPdfHelper.fmt(c), x, rowY, { width: cols.cotrans - 2, align: 'right' }); x += cols.cotrans;
+                doc.text(reportPdfHelper.fmt(to), x, rowY, { width: cols.total - 2, align: 'right' });
+
+                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                t.nc_total += n(r.nc_total); t.nc_grav += n(r.nc_grav); t.bruto_total += n(r.bruto_total);
+                doc.y = rowY + 13;
+            });
+
+            if (doc.y > 470) {
+                doc.addPage();
+                drawPageHeader();
             }
-        });
 
+            const boxX = startX + totalWidth - 260;
+            const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN VENTAS FAC');
+
+            const footerY = Math.max(doc.y, boxEndY) + 12;
+            reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Días');
+            reportPdfHelper.renderPageNumbers(doc);
+        } else {
+            const cols = {
+                numero_control: 124,
+                fecha: 46,
+                cliente: 180,
+                nit: 68,
+                gravado: 52,
+                exento: 46,
+                iva: 44,
+                fovial: 36,
+                cotrans: 36,
+                total: 100
+            };
+
+            const drawDetailHeader = () => {
+                const y = doc.y;
+                doc.rect(startX, y, totalWidth, 15).fill('#f1f5f9');
+                doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+                let x = startX;
+                doc.text('N° CONTROL', x + 2, y + 4, { width: cols.numero_control - 4 }); x += cols.numero_control;
+                doc.text('FECHA', x + 2, y + 4, { width: cols.fecha - 4 }); x += cols.fecha;
+                doc.text('CLIENTE', x + 2, y + 4, { width: cols.cliente - 4 }); x += cols.cliente;
+                doc.text('NIT', x + 2, y + 4, { width: cols.nit - 4 }); x += cols.nit;
+                doc.text('GRAVADO', x, y + 4, { width: cols.gravado - 2, align: 'right' }); x += cols.gravado;
+                doc.text('EXENTO', x, y + 4, { width: cols.exento - 2, align: 'right' }); x += cols.exento;
+                doc.text('IVA', x, y + 4, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+                doc.text('FOVIAL', x, y + 4, { width: cols.fovial - 2, align: 'right' }); x += cols.fovial;
+                doc.text('COTRANS', x, y + 4, { width: cols.cotrans - 2, align: 'right' }); x += cols.cotrans;
+                doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
+                doc.moveTo(startX, y + 15).lineTo(startX + totalWidth, y + 15).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+                doc.y = y + 19;
+            };
+
+            drawPageHeader();
+            drawDetailHeader();
+
+            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+
+            rows.forEach((r, idx) => {
+                if (doc.y > 510) {
+                    doc.addPage();
+                    drawPageHeader();
+                    drawDetailHeader();
+                }
+
+                const esNC = r.tipo_documento === '05';
+                const sign = esNC ? -1 : 1;
+                const g = n(r.total_gravado), i = n(r.total_iva);
+                const e = n(r.total_exento);
+                const f = n(r.fovial), c = n(r.cotrans), to = n(r.total_pagar);
+
+                const rowY = doc.y;
+                if (idx % 2 === 1) {
+                    doc.rect(startX, rowY - 1, totalWidth, 13).fill('#f8fafc');
+                }
+
+                doc.fontSize(6.5).font('Helvetica').fillColor('#0f172a');
+                let x = startX;
+                doc.text(reportPdfHelper.fitText(doc, String(r.numero_control || 'SIN DTE'), cols.numero_control - 4), x + 2, rowY, { lineBreak: false }); x += cols.numero_control;
+                doc.text(reportPdfHelper.formatDate(r.fecha), x + 2, rowY, { lineBreak: false }); x += cols.fecha;
+                doc.text(reportPdfHelper.fitText(doc, String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(), cols.cliente - 4), x + 2, rowY, { lineBreak: false }); x += cols.cliente;
+                doc.text(reportPdfHelper.fitText(doc, String(r.nit || '---'), cols.nit - 4), x + 2, rowY, { lineBreak: false }); x += cols.nit;
+
+                doc.text(reportPdfHelper.fmt(sign * g), x, rowY, { width: cols.gravado - 2, align: 'right' }); x += cols.gravado;
+                doc.text(reportPdfHelper.fmt(sign * e), x, rowY, { width: cols.exento - 2, align: 'right' }); x += cols.exento;
+                doc.text(reportPdfHelper.fmt(sign * i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+                doc.text(reportPdfHelper.fmt(sign * f), x, rowY, { width: cols.fovial - 2, align: 'right' }); x += cols.fovial;
+                doc.text(reportPdfHelper.fmt(sign * c), x, rowY, { width: cols.cotrans - 2, align: 'right' }); x += cols.cotrans;
+                doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
+
+                if (esNC) {
+                    t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.total -= to;
+                    t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+                } else {
+                    t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.total += to;
+                    t.bruto_total += to;
+                }
+                doc.y = rowY + 13;
+            });
+
+            if (doc.y > 470) {
+                doc.addPage();
+                drawPageHeader();
+            }
+
+            const boxX = startX + totalWidth - 260;
+            const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN VENTAS FAC');
+
+            const footerY = Math.max(doc.y, boxEndY) + 12;
+            reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
+            reportPdfHelper.renderPageNumbers(doc);
+        }
+        doc.end();
+
+        const buffer = await getBuffer();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="Libro_FAC_${month}_${year}.pdf"`);
         res.send(buffer);
-    } catch (e) { console.error('[VAT Books] Error FAC:', e); res.status(500).json({ message: 'Error', error: e.message }); }
+    } catch (e) { 
+        console.error('[VAT Books] Error FAC:', e); 
+    }
 };
+
+
 
 /**
  * 4. Anexos de IVA (consulta con rango de fechas + tipo DTE)
@@ -833,6 +1003,10 @@ const getVatBookAnexosIVA = async (req, res) => {
 
 const getVatBookAnexosIVAPDF = async (req, res) => {
     try {
+        if (req.query.format === 'excel') {
+            return getVatBookAnexosIVAExcel(req, res);
+        }
+
         const companyId = req.company_id || req.user?.company_id;
         const branchId = req.user?.branch_id;
 
@@ -840,10 +1014,9 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
 
         const { fecha_inicio, fecha_fin, tipo_dte, search = '' } = req.query;
 
-        const [companies] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
-        const company = companies[0] || { razon_social: 'EMPRESA' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
 
-        let branchName = '---';
+        let branchName = 'TODAS / CONSOLIDADO';
         if (branchId) {
             const [branches] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
             branchName = branches[0]?.nombre || '---';
@@ -854,79 +1027,116 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
         });
         const [rows] = await pool.query(dataQuery, params);
 
-        const buffer = await generatePdfBuffer((doc) => {
-            doc.fontSize(14).font('Helvetica-Bold').text(String(company.razon_social), 30, 30);
-            doc.fontSize(8).font('Helvetica').text(`NIT: ${String(company.nit || '')}  NRC: ${String(company.nrc || '')}`, 30, 48);
-            doc.fontSize(8).font('Helvetica-Bold').text(`SUCURSAL: ${String(branchName)}`, 30, 58);
-            doc.fontSize(12).font('Helvetica-Bold').text('ANEXOS DE IVA', 30, 30, { align: 'right' });
-            doc.fontSize(10).text(`PERIODO: ${String(fecha_inicio || '---')} AL ${String(fecha_fin || '---')}`, 30, 45, { align: 'right' });
-            doc.moveDown(3);
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            let currentY = doc.y;
+        const title = 'ANEXOS DE I.V.A. (DOCUMENTOS TRIBUTARIOS ELECTRÓNICOS)';
+        const periodText = (fecha_inicio && fecha_fin)
+            ? `DEL ${reportPdfHelper.formatDate(fecha_inicio)} AL ${reportPdfHelper.formatDate(fecha_fin)}`
+            : 'TODOS LOS REGISTROS';
+        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
 
-            const drawHeader = (y) => {
-                doc.fontSize(6).font('Helvetica-Bold');
-                doc.text('N°', startX, y, { width: 20 });
-                doc.text('FECHA', startX + 20, y, { width: 48 });
-                doc.text('COD. GENERACIÓN', startX + 68, y, { width: 110 });
-                doc.text('N° CONTROL', startX + 178, y, { width: 80 });
-                doc.text('SELLO RECEPCIÓN', startX + 258, y, { width: 90 });
-                doc.text('ESTADO', startX + 348, y, { width: 56 });
-                doc.text('CLIENTE', startX + 404, y, { width: 130 });
-                doc.text('NIT', startX + 534, y, { width: 65 });
-                doc.text('NRC', startX + 599, y, { width: 40 });
-                doc.text('TIPO', startX + 639, y, { width: 30 });
-                doc.text('EXENTA', startX + 669, y, { width: 38, align: 'right' });
-                doc.text('GRAVADA', startX + 707, y, { width: 44, align: 'right' });
-                doc.text('IVA', startX + 751, y, { width: 36, align: 'right' });
-                doc.text('RET', startX + 787, y, { width: 30, align: 'right' });
-                doc.text('FOV', startX + 817, y, { width: 26, align: 'right' });
-                doc.text('COT', startX + 843, y, { width: 26, align: 'right' });
-                doc.text('TOTAL', startX + 869, y, { width: 40, align: 'right' });
-                doc.moveTo(startX, y + 9).lineTo(startX + 909, y + 9).stroke();
-                return y + 14;
-            };
+        const startX = 30;
+        const totalWidth = 732;
+        const cols = {
+            num: 22,
+            fecha: 44,
+            codigo_generacion: 112,
+            numero_control: 102,
+            sello_recepcion: 90,
+            estado: 44,
+            cliente: 120,
+            tipo_dte: 26,
+            gravada: 44,
+            iva: 40,
+            ret: 34,
+            total: 54
+        };
 
-            currentY = drawHeader(currentY);
-            let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+        const drawPageHeader = () => {
+            reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        };
 
-            rows.forEach((r, idx) => {
-                if (currentY > 545) { doc.addPage(); currentY = drawHeader(30); }
-                const g = n(r.total_gravado), e = n(r.total_exento), i = n(r.total_iva);
-                const f = n(r.fovial), c = n(r.cotrans), re = n(r.iva_retenido) + n(r.iva_percibido), to = n(r.total_pagar);
+        const drawTableHeader = () => {
+            const y = doc.y;
+            doc.rect(startX, y, totalWidth, 15).fill('#f1f5f9');
+            doc.fontSize(6).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX;
+            doc.text('N°', x + 2, y + 4, { width: cols.num - 4 }); x += cols.num;
+            doc.text('FECHA', x + 2, y + 4, { width: cols.fecha - 4 }); x += cols.fecha;
+            doc.text('COD. GENERACIÓN', x + 2, y + 4, { width: cols.codigo_generacion - 4 }); x += cols.codigo_generacion;
+            doc.text('N° CONTROL', x + 2, y + 4, { width: cols.numero_control - 4 }); x += cols.numero_control;
+            doc.text('SELLO RECEPCIÓN', x + 2, y + 4, { width: cols.sello_recepcion - 4 }); x += cols.sello_recepcion;
+            doc.text('ESTADO', x + 2, y + 4, { width: cols.estado - 4 }); x += cols.estado;
+            doc.text('CLIENTE', x + 2, y + 4, { width: cols.cliente - 4 }); x += cols.cliente;
+            doc.text('TIPO', x + 2, y + 4, { width: cols.tipo_dte - 4 }); x += cols.tipo_dte;
+            doc.text('GRAVADA', x, y + 4, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
+            doc.text('IVA', x, y + 4, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+            doc.text('RET', x, y + 4, { width: cols.ret - 2, align: 'right' }); x += cols.ret;
+            doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
+            doc.moveTo(startX, y + 15).lineTo(startX + totalWidth, y + 15).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            doc.y = y + 19;
+        };
 
-                doc.fontSize(6).font('Helvetica');
-                doc.text(String(idx + 1), startX, currentY, { width: 20 });
-                doc.text(safeFormatDate(r.fecha_emision), startX + 20, currentY, { width: 46 });
-                doc.text(cleanStr(r.codigo_generacion || '---'), startX + 68, currentY, { width: 108, truncate: true });
-                doc.text(cleanStr(r.numero_control || '---'), startX + 178, currentY, { width: 78, truncate: true });
-                doc.text(cleanStr(r.sello_recepcion || '---'), startX + 258, currentY, { width: 88, truncate: true });
-                doc.text(cleanStr(r.estado || 'PENDIENTE'), startX + 348, currentY, { width: 54, truncate: true });
-                doc.text(String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(), startX + 404, currentY, { width: 128, truncate: true });
-                doc.text(cleanStr(r.nit || ''), startX + 534, currentY, { width: 63, truncate: true });
-                doc.text(cleanStr(r.nrc || ''), startX + 599, currentY, { width: 38, truncate: true });
-                doc.text(cleanStr(r.tipo_dte || r.tipo_documento), startX + 639, currentY, { width: 28, truncate: true });
-                doc.text(`$${e.toFixed(2)}`, startX + 669, currentY, { width: 38, align: 'right' });
-                doc.text(`$${g.toFixed(2)}`, startX + 707, currentY, { width: 44, align: 'right' });
-                doc.text(`$${i.toFixed(2)}`, startX + 751, currentY, { width: 36, align: 'right' });
-                doc.text(`$${re.toFixed(2)}`, startX + 787, currentY, { width: 30, align: 'right' });
-                doc.text(`$${f.toFixed(2)}`, startX + 817, currentY, { width: 26, align: 'right' });
-                doc.text(`$${c.toFixed(2)}`, startX + 843, currentY, { width: 26, align: 'right' });
-                doc.text(`$${to.toFixed(2)}`, startX + 869, currentY, { width: 40, align: 'right' });
+        drawPageHeader();
+        drawTableHeader();
 
-                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
-                currentY += 11;
-            });
-            drawPdfSummaryBox(doc, 560, currentY + 15, t, 'RESUMEN ANEXOS IVA');
+        let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0 };
+
+        rows.forEach((r, idx) => {
+            if (doc.y > 510) {
+                doc.addPage();
+                drawPageHeader();
+                drawTableHeader();
+            }
+
+            const g = n(r.total_gravado), e = n(r.total_exento), i = n(r.total_iva);
+            const f = n(r.fovial), c = n(r.cotrans), re = n(r.iva_retenido) + n(r.iva_percibido), to = n(r.total_pagar);
+
+            const rowY = doc.y;
+            if (idx % 2 === 1) {
+                doc.rect(startX, rowY - 1, totalWidth, 12).fill('#f8fafc');
+            }
+
+            doc.fontSize(5.5).font('Helvetica').fillColor('#0f172a');
+            let x = startX;
+            doc.text(String(idx + 1), x + 2, rowY, { lineBreak: false }); x += cols.num;
+            doc.text(reportPdfHelper.formatDate(r.fecha_emision), x + 2, rowY, { lineBreak: false }); x += cols.fecha;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.codigo_generacion || '---'), cols.codigo_generacion - 4), x + 2, rowY, { lineBreak: false }); x += cols.codigo_generacion;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.numero_control || '---'), cols.numero_control - 4), x + 2, rowY, { lineBreak: false }); x += cols.numero_control;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.sello_recepcion || '---'), cols.sello_recepcion - 4), x + 2, rowY, { lineBreak: false }); x += cols.sello_recepcion;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.estado || 'PENDIENTE'), cols.estado - 4), x + 2, rowY, { lineBreak: false }); x += cols.estado;
+            doc.text(reportPdfHelper.fitText(doc, String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(), cols.cliente - 4), x + 2, rowY, { lineBreak: false }); x += cols.cliente;
+            doc.text(reportPdfHelper.fitText(doc, cleanStr(r.tipo_dte || r.tipo_documento), cols.tipo_dte - 4), x + 2, rowY, { lineBreak: false }); x += cols.tipo_dte;
+
+            doc.text(reportPdfHelper.fmt(g), x, rowY, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
+            doc.text(reportPdfHelper.fmt(i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
+            doc.text(reportPdfHelper.fmt(re), x, rowY, { width: cols.ret - 2, align: 'right' }); x += cols.ret;
+            doc.text(reportPdfHelper.fmt(to), x, rowY, { width: cols.total - 2, align: 'right' });
+
+            t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+            doc.y = rowY + 12;
         });
 
+        if (doc.y > 470) {
+            doc.addPage();
+            drawPageHeader();
+        }
+
+        const boxX = startX + totalWidth - 260;
+        const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN ANEXOS IVA');
+
+        const footerY = Math.max(doc.y, boxEndY) + 12;
+        reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
+        reportPdfHelper.renderPageNumbers(doc);
+        doc.end();
+
+        const buffer = await getBuffer();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="Anexos_IVA_${fecha_inicio || 'inicio'}_${fecha_fin || 'fin'}.pdf"`);
         res.send(buffer);
     } catch (e) {
         console.error('[VAT Books] Error Anexos IVA PDF:', e);
-        res.status(500).json({ message: 'Error', error: e.message });
+        res.status(500).json({ message: 'Error al generar PDF de Anexos IVA: ' + e.message });
     }
 };
 

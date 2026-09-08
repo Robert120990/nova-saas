@@ -730,11 +730,858 @@ async function generateListadoEmpleadosPdf(reportData) {
     return await getBuffer();
 }
 
+/**
+ * 7. Planilla de INSAFORP / INCAF (1% Patronal) (Landscape)
+ */
+async function generatePlanillaInsaforpPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'PLANILLA DE APORTES A INSAFORP / INCAF (1% PATRONAL)';
+
+    const colX = {
+        num: 30,
+        codigo: 56,
+        nombre: 106,
+        dui: 310,
+        isss: 382,
+        dias: 454,
+        devengado: 486,
+        cotizable: 578,
+        aporte: 670
+    };
+    const colW = {
+        num: 24,
+        codigo: 48,
+        nombre: 200,
+        dui: 70,
+        isss: 70,
+        dias: 30,
+        devengado: 90,
+        cotizable: 90,
+        aporte: 92
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('NO. DUI', colX.dui, y + 3, { width: colW.dui, align: 'center' });
+        doc.text('NO. ISSS', colX.isss, y + 3, { width: colW.isss, align: 'center' });
+        doc.text('DÍAS', colX.dias, y + 3, { width: colW.dias, align: 'center' });
+        doc.text('SALARIO DEV.', colX.devengado, y + 3, { width: colW.devengado - 3, align: 'right' });
+        doc.text('BASE COTIZABLE', colX.cotizable, y + 3, { width: colW.cotizable - 3, align: 'right' });
+        doc.text('APORTE INCAF (1%)', colX.aporte, y + 3, { width: colW.aporte - 3, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(item.num_dui || '---', colX.dui, currentY, { width: colW.dui, align: 'center' });
+        doc.text(item.num_isss || '---', colX.isss, currentY, { width: colW.isss, align: 'center' });
+        doc.text(String(item.dias_trabajados || 0), colX.dias, currentY, { width: colW.dias, align: 'center' });
+        doc.text(reportPdfHelper.fmt(item.salario_devengado), colX.devengado, currentY, { width: colW.devengado - 3, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.base_cotizable), colX.cotizable, currentY, { width: colW.cotizable - 3, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.aporte_insaforp), colX.aporte, currentY, { width: colW.aporte - 3, align: 'right' });
+
+        currentY += 12;
+    });
+
+    if (currentY > 515) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totals Row
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(30, currentY).lineTo(762, currentY).stroke();
+    currentY += 3;
+    doc.rect(30, currentY - 2, 732, 14).fill('#f1f5f9');
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTALES (${totals.total_empleados || items.length} EMPLEADOS):`, colX.codigo, currentY + 2, { width: 350 });
+    doc.text(reportPdfHelper.fmt(totals.total_devengado), colX.devengado, currentY + 2, { width: colW.devengado - 3, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_cotizable), colX.cotizable, currentY + 2, { width: colW.cotizable - 3, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_aporte), colX.aporte, currentY + 2, { width: colW.aporte - 3, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(30, currentY + 14).lineTo(762, currentY + 14).stroke();
+
+    currentY += 25;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Empleados');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 8. Costo Laboral Patronal (Cargas Sociales) (Landscape)
+ */
+async function generateCostoLaboralPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE CONSOLIDADO DE COSTO LABORAL PATRONAL (CARGAS SOCIALES)';
+
+    const colX = {
+        num: 30,
+        codigo: 54,
+        nombre: 100,
+        depto: 242,
+        salario: 324,
+        isssPat: 388,
+        afpPat: 442,
+        incaf: 496,
+        provVac: 542,
+        provAguin: 594,
+        provIndem: 646,
+        costoTotal: 700
+    };
+    const colW = {
+        num: 22,
+        codigo: 44,
+        nombre: 140,
+        depto: 80,
+        salario: 62,
+        isssPat: 52,
+        afpPat: 52,
+        incaf: 44,
+        provVac: 50,
+        provAguin: 50,
+        provIndem: 52,
+        costoTotal: 62
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('DEPTO.', colX.depto, y + 3, { width: colW.depto });
+        doc.text('DEVENGADO', colX.salario, y + 3, { width: colW.salario - 2, align: 'right' });
+        doc.text('ISSS (7.5%)', colX.isssPat, y + 3, { width: colW.isssPat - 2, align: 'right' });
+        doc.text('AFP (8.75%)', colX.afpPat, y + 3, { width: colW.afpPat - 2, align: 'right' });
+        doc.text('INCAF (1%)', colX.incaf, y + 3, { width: colW.incaf - 2, align: 'right' });
+        doc.text('VAC. (5.4%)', colX.provVac, y + 3, { width: colW.provVac - 2, align: 'right' });
+        doc.text('AGUIN. (8.3%)', colX.provAguin, y + 3, { width: colW.provAguin - 2, align: 'right' });
+        doc.text('INDEM. (8.3%)', colX.provIndem, y + 3, { width: colW.provIndem - 2, align: 'right' });
+        doc.text('COSTO TOTAL', colX.costoTotal, y + 3, { width: colW.costoTotal - 2, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.departamento || 'GENERAL', colW.depto), colX.depto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fmt(item.salario_devengado), colX.salario, currentY, { width: colW.salario - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.isss_patronal), colX.isssPat, currentY, { width: colW.isssPat - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.afp_patronal), colX.afpPat, currentY, { width: colW.afpPat - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.insaforp), colX.incaf, currentY, { width: colW.incaf - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.prov_vacacion), colX.provVac, currentY, { width: colW.provVac - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.prov_aguinaldo), colX.provAguin, currentY, { width: colW.provAguin - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.prov_indemnizacion), colX.provIndem, currentY, { width: colW.provIndem - 2, align: 'right' });
+        doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(item.costo_total), colX.costoTotal, currentY, { width: colW.costoTotal - 2, align: 'right' });
+        doc.font('Helvetica');
+
+        currentY += 12;
+    });
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totals Row
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(30, currentY).lineTo(762, currentY).stroke();
+    currentY += 3;
+    doc.rect(30, currentY - 2, 732, 14).fill('#f1f5f9');
+    doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTALES:', colX.codigo, currentY + 2, { width: 120 });
+    doc.text(reportPdfHelper.fmt(totals.total_devengado), colX.salario, currentY + 2, { width: colW.salario - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_isss_patronal), colX.isssPat, currentY + 2, { width: colW.isssPat - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_afp_patronal), colX.afpPat, currentY + 2, { width: colW.afpPat - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_insaforp), colX.incaf, currentY + 2, { width: colW.incaf - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_prov_vacacion), colX.provVac, currentY + 2, { width: colW.provVac - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_prov_aguinaldo), colX.provAguin, currentY + 2, { width: colW.provAguin - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_prov_indemnizacion), colX.provIndem, currentY + 2, { width: colW.provIndem - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_costo), colX.costoTotal, currentY + 2, { width: colW.costoTotal - 2, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(30, currentY + 14).lineTo(762, currentY + 14).stroke();
+
+    // Summary Factor
+    currentY += 20;
+    const factorSobrecosto = totals.total_devengado > 0
+        ? (((totals.total_costo - totals.total_devengado) / totals.total_devengado) * 100).toFixed(2)
+        : '0.00';
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#334155');
+    doc.text(`FACTOR DE SOBRECOSTO PATRONAL (CARGAS SOCIALES + PROVISIONES): ${factorSobrecosto}% SOBRE LA NÓMINA BRUTA`, 30, currentY);
+
+    currentY += 20;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Empleados');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 9. Descuentos a Terceros e Institucionales (Landscape)
+ */
+async function generateDescuentosTercerosPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE DE DESCUENTOS A TERCEROS E INSTITUCIONALES';
+
+    const colX = {
+        num: 30,
+        codigo: 56,
+        nombre: 106,
+        depto: 286,
+        concepto: 376,
+        referencia: 496,
+        cuotas: 586,
+        descuento: 636,
+        saldo: 700
+    };
+    const colW = {
+        num: 24,
+        codigo: 48,
+        nombre: 175,
+        depto: 85,
+        concepto: 115,
+        referencia: 85,
+        cuotas: 46,
+        descuento: 60,
+        saldo: 62
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('DEPARTAMENTO', colX.depto, y + 3, { width: colW.depto });
+        doc.text('TIPO / CONCEPTO', colX.concepto, y + 3, { width: colW.concepto });
+        doc.text('REFERENCIA / CRÉDITO', colX.referencia, y + 3, { width: colW.referencia });
+        doc.text('CUOTAS', colX.cuotas, y + 3, { width: colW.cuotas, align: 'center' });
+        doc.text('DESCONTADO', colX.descuento, y + 3, { width: colW.descuento - 2, align: 'right' });
+        doc.text('SALDO PEND.', colX.saldo, y + 3, { width: colW.saldo - 2, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.departamento || 'GENERAL', colW.depto), colX.depto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.concepto || 'DESCUENTO', colW.concepto), colX.concepto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.referencia || '---', colW.referencia), colX.referencia, currentY, { lineBreak: false });
+        doc.text(item.cuotas_info || '---', colX.cuotas, currentY, { width: colW.cuotas, align: 'center' });
+        doc.text(reportPdfHelper.fmt(item.monto_descontado), colX.descuento, currentY, { width: colW.descuento - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.saldo_pendiente), colX.saldo, currentY, { width: colW.saldo - 2, align: 'right' });
+
+        currentY += 12;
+    });
+
+    if (currentY > 515) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totals Row
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(30, currentY).lineTo(762, currentY).stroke();
+    currentY += 3;
+    doc.rect(30, currentY - 2, 732, 14).fill('#f1f5f9');
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTALES (${totals.total_registros || items.length} RETENCIONES):`, colX.codigo, currentY + 2, { width: 350 });
+    doc.text(reportPdfHelper.fmt(totals.total_descontado), colX.descuento, currentY + 2, { width: colW.descuento - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_saldo), colX.saldo, currentY + 2, { width: colW.saldo - 2, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(30, currentY + 14).lineTo(762, currentY + 14).stroke();
+
+    currentY += 25;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Descuentos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 10. Horas Extras y Recargos Laborales (Landscape)
+ */
+async function generateHorasExtrasPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE DE HORAS EXTRAS Y RECARGOS LABORALES';
+
+    const colX = {
+        num: 30,
+        codigo: 56,
+        nombre: 106,
+        depto: 290,
+        sueldoBase: 380,
+        diurnas: 450,
+        nocturnas: 525,
+        feriados: 600,
+        total: 680
+    };
+    const colW = {
+        num: 24,
+        codigo: 48,
+        nombre: 180,
+        depto: 85,
+        sueldoBase: 65,
+        diurnas: 72,
+        nocturnas: 72,
+        feriados: 76,
+        total: 82
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('DEPARTAMENTO', colX.depto, y + 3, { width: colW.depto });
+        doc.text('SUELDO BASE', colX.sueldoBase, y + 3, { width: colW.sueldoBase - 2, align: 'right' });
+        doc.text('H.E. DIURNAS', colX.diurnas, y + 3, { width: colW.diurnas - 2, align: 'right' });
+        doc.text('H.E. NOCTURNAS', colX.nocturnas, y + 3, { width: colW.nocturnas - 2, align: 'right' });
+        doc.text('FERIADOS/TURNOS', colX.feriados, y + 3, { width: colW.feriados - 2, align: 'right' });
+        doc.text('TOTAL RECARGOS', colX.total, y + 3, { width: colW.total - 2, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.departamento || 'GENERAL', colW.depto), colX.depto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fmt(item.sueldo_base), colX.sueldoBase, currentY, { width: colW.sueldoBase - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.monto_diurnas), colX.diurnas, currentY, { width: colW.diurnas - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.monto_nocturnas), colX.nocturnas, currentY, { width: colW.nocturnas - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.monto_feriados), colX.feriados, currentY, { width: colW.feriados - 2, align: 'right' });
+        doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(item.total_recargos), colX.total, currentY, { width: colW.total - 2, align: 'right' });
+        doc.font('Helvetica');
+
+        currentY += 12;
+    });
+
+    if (currentY > 515) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totals Row
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(30, currentY).lineTo(762, currentY).stroke();
+    currentY += 3;
+    doc.rect(30, currentY - 2, 732, 14).fill('#f1f5f9');
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTALES (${totals.total_empleados || items.length} EMPLEADOS CON RECARGOS):`, colX.codigo, currentY + 2, { width: 350 });
+    doc.text(reportPdfHelper.fmt(totals.total_diurnas), colX.diurnas, currentY + 2, { width: colW.diurnas - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_nocturnas), colX.nocturnas, currentY + 2, { width: colW.nocturnas - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_feriados), colX.feriados, currentY + 2, { width: colW.feriados - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_general), colX.total, currentY + 2, { width: colW.total - 2, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(30, currentY + 14).lineTo(762, currentY + 14).stroke();
+
+    currentY += 25;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Registros');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 11. Acciones de Personal y Novedades (Landscape)
+ */
+async function generateAccionesPersonalPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE CONSOLIDADO DE ACCIONES DE PERSONAL Y NOVEDADES';
+
+    const colX = {
+        num: 30,
+        fecha: 54,
+        codigo: 104,
+        nombre: 152,
+        depto: 312,
+        tipo: 398,
+        infraccion: 490,
+        sancion: 618,
+        estado: 706
+    };
+    const colW = {
+        num: 22,
+        fecha: 48,
+        codigo: 46,
+        nombre: 156,
+        depto: 82,
+        tipo: 88,
+        infraccion: 124,
+        sancion: 84,
+        estado: 56
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('FECHA', colX.fecha, y + 3, { width: colW.fecha, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('DEPARTAMENTO', colX.depto, y + 3, { width: colW.depto });
+        doc.text('TIPO ACCIÓN', colX.tipo, y + 3, { width: colW.tipo });
+        doc.text('MOTIVO / INFRACCIÓN', colX.infraccion, y + 3, { width: colW.infraccion });
+        doc.text('SANCIÓN / MEDIDA', colX.sancion, y + 3, { width: colW.sancion });
+        doc.text('ESTADO', colX.estado, y + 3, { width: colW.estado, align: 'center' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(reportPdfHelper.formatDate(item.fecha), colX.fecha, currentY, { width: colW.fecha, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.departamento || 'GENERAL', colW.depto), colX.depto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, (item.tipo_accion || 'ACCIÓN').toUpperCase(), colW.tipo), colX.tipo, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.descripcion_causa || '---', colW.infraccion), colX.infraccion, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.accion_tomar_label || '---', colW.sancion), colX.sancion, currentY, { lineBreak: false });
+
+        const isAplicada = item.estado === 'aplicada';
+        doc.font('Helvetica-Bold').fillColor(isAplicada ? '#166534' : '#64748b');
+        doc.text(String(item.estado || 'BORRADOR').toUpperCase(), colX.estado, currentY, { width: colW.estado, align: 'center' });
+        doc.font('Helvetica');
+
+        currentY += 12;
+    });
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Summary Box
+    currentY += 10;
+    doc.rect(30, currentY, 732, 22).fill('#f8fafc');
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).rect(30, currentY, 732, 22).stroke();
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    const summaryText = `RESUMEN: Total Acciones: ${totals.total || items.length}  |  Amonestaciones Verbales: ${totals.llamado_verbal || 0}  |  Amonestaciones Escritas: ${(totals.llamado_escrito_1 || 0) + (totals.llamado_escrito_2 || 0)}  |  Suspensiones: ${totals.suspension || 0}  |  Despidos: ${totals.despido || 0}  |  Otras Medidas: ${totals.otros || 0}`;
+    doc.text(summaryText, 40, currentY + 7, { width: 712 });
+
+    currentY += 35;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Acciones');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 12. Provisión de Pasivos Laborales (Indemnización, Vacación, Aguinaldo) (Landscape)
+ */
+async function generatePasivosLaboralesPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE DE PROVISIÓN DE PASIVOS LABORALES ACUMULADOS';
+
+    const colX = {
+        num: 30,
+        codigo: 54,
+        nombre: 100,
+        ingreso: 245,
+        antiguedad: 300,
+        sueldoBase: 368,
+        salarioDiario: 432,
+        provIndem: 486,
+        provVac: 558,
+        provAguin: 626,
+        totalPasivo: 694
+    };
+    const colW = {
+        num: 22,
+        codigo: 44,
+        nombre: 142,
+        ingreso: 52,
+        antiguedad: 65,
+        sueldoBase: 60,
+        salarioDiario: 50,
+        provIndem: 68,
+        provVac: 64,
+        provAguin: 64,
+        totalPasivo: 68
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('F. INGRESO', colX.ingreso, y + 3, { width: colW.ingreso, align: 'center' });
+        doc.text('ANTIGÜEDAD', colX.antiguedad, y + 3, { width: colW.antiguedad, align: 'center' });
+        doc.text('SUELDO BASE', colX.sueldoBase, y + 3, { width: colW.sueldoBase - 2, align: 'right' });
+        doc.text('SAL. DIARIO', colX.salarioDiario, y + 3, { width: colW.salarioDiario - 2, align: 'right' });
+        doc.text('INDEMNIZACIÓN', colX.provIndem, y + 3, { width: colW.provIndem - 2, align: 'right' });
+        doc.text('VACACIÓN PROP.', colX.provVac, y + 3, { width: colW.provVac - 2, align: 'right' });
+        doc.text('AGUINALDO PROP.', colX.provAguin, y + 3, { width: colW.provAguin - 2, align: 'right' });
+        doc.text('PASIVO TOTAL', colX.totalPasivo, y + 3, { width: colW.totalPasivo - 2, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.formatDate(item.fecha_ingreso), colX.ingreso, currentY, { width: colW.ingreso, align: 'center' });
+        doc.text(item.antiguedad_texto || '---', colX.antiguedad, currentY, { width: colW.antiguedad, align: 'center' });
+        doc.text(reportPdfHelper.fmt(item.sueldo_base), colX.sueldoBase, currentY, { width: colW.sueldoBase - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.salario_diario), colX.salarioDiario, currentY, { width: colW.salarioDiario - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.pasivo_indemnizacion), colX.provIndem, currentY, { width: colW.provIndem - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.pasivo_vacacion), colX.provVac, currentY, { width: colW.provVac - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.pasivo_aguinaldo), colX.provAguin, currentY, { width: colW.provAguin - 2, align: 'right' });
+        doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(item.pasivo_total), colX.totalPasivo, currentY, { width: colW.totalPasivo - 2, align: 'right' });
+        doc.font('Helvetica');
+
+        currentY += 12;
+    });
+
+    if (currentY > 515) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totals Row
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(30, currentY).lineTo(762, currentY).stroke();
+    currentY += 3;
+    doc.rect(30, currentY - 2, 732, 14).fill('#f1f5f9');
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTALES (${totals.total_empleados || items.length} EMPLEADOS):`, colX.codigo, currentY + 2, { width: 300 });
+    doc.text(reportPdfHelper.fmt(totals.total_indemnizacion), colX.provIndem, currentY + 2, { width: colW.provIndem - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_vacacion), colX.provVac, currentY + 2, { width: colW.provVac - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_aguinaldo), colX.provAguin, currentY + 2, { width: colW.provAguin - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_pasivo), colX.totalPasivo, currentY + 2, { width: colW.totalPasivo - 2, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(30, currentY + 14).lineTo(762, currentY + 14).stroke();
+
+    currentY += 25;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Empleados');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 13. Control de Vacaciones (Landscape)
+ */
+async function generateControlVacacionesPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE DE CONTROL DE VACACIONES (DEVENGADAS VS GOZADAS)';
+
+    const colX = {
+        num: 30,
+        codigo: 56,
+        nombre: 106,
+        depto: 284,
+        ingreso: 372,
+        antiguedad: 432,
+        periodos: 494,
+        gozados: 548,
+        pendientes: 602,
+        estado: 658
+    };
+    const colW = {
+        num: 24,
+        codigo: 48,
+        nombre: 175,
+        depto: 85,
+        ingreso: 56,
+        antiguedad: 58,
+        periodos: 50,
+        gozados: 50,
+        pendientes: 52,
+        estado: 104
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('DEPARTAMENTO', colX.depto, y + 3, { width: colW.depto });
+        doc.text('F. INGRESO', colX.ingreso, y + 3, { width: colW.ingreso, align: 'center' });
+        doc.text('ANTIGÜEDAD', colX.antiguedad, y + 3, { width: colW.antiguedad, align: 'center' });
+        doc.text('PERÍODOS', colX.periodos, y + 3, { width: colW.periodos, align: 'center' });
+        doc.text('DÍAS GOZ.', colX.gozados, y + 3, { width: colW.gozados, align: 'center' });
+        doc.text('DÍAS PEND.', colX.pendientes, y + 3, { width: colW.pendientes, align: 'center' });
+        doc.text('ESTADO LEGAL', colX.estado, y + 3, { width: colW.estado, align: 'center' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.departamento || 'GENERAL', colW.depto), colX.depto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.formatDate(item.fecha_ingreso), colX.ingreso, currentY, { width: colW.ingreso, align: 'center' });
+        doc.text(item.antiguedad_texto || '---', colX.antiguedad, currentY, { width: colW.antiguedad, align: 'center' });
+        doc.text(String(item.periodos_causados || 0), colX.periodos, currentY, { width: colW.periodos, align: 'center' });
+        doc.text(String(item.dias_gozados || 0), colX.gozados, currentY, { width: colW.gozados, align: 'center' });
+        doc.font('Helvetica-Bold').text(String(item.dias_pendientes || 0), colX.pendientes, currentY, { width: colW.pendientes, align: 'center' });
+        doc.font('Helvetica');
+
+        let statusColor = '#166534';
+        if (item.estado === 'VENCIDAS') statusColor = '#b91c1c';
+        else if (item.estado === 'POR VENCER') statusColor = '#b45309';
+
+        doc.font('Helvetica-Bold').fillColor(statusColor);
+        doc.text(item.estado || 'AL DÍA', colX.estado, currentY, { width: colW.estado, align: 'center' });
+        doc.font('Helvetica');
+
+        currentY += 12;
+    });
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Summary Box
+    currentY += 10;
+    doc.rect(30, currentY, 732, 22).fill('#f8fafc');
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).rect(30, currentY, 732, 22).stroke();
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`RESUMEN DE ESTADO: Total Empleados: ${items.length}  |  Al Día: ${totals.al_dia || 0}  |  Por Vencer: ${totals.por_vencer || 0}  |  Con Vacaciones Vencidas: ${totals.vencidas || 0}  |  Total Días Pendientes: ${totals.total_dias_pendientes || 0}`, 40, currentY + 7, { width: 712 });
+
+    currentY += 35;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Empleados');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
+/**
+ * 14. Rotación de Personal (Altas, Bajas y Estadísticas MTPS) (Landscape)
+ */
+async function generateRotacionPersonalPdf(reportData) {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { company, items = [], totals = {}, periodText, subtitle } = reportData;
+    const title = 'REPORTE DE ROTACIÓN DE PERSONAL (ALTAS, BAJAS Y ESTADÍSTICAS MTPS)';
+
+    const colX = {
+        num: 30,
+        codigo: 56,
+        nombre: 106,
+        depto: 280,
+        cargo: 370,
+        tipoMov: 460,
+        fecha: 528,
+        motivo: 588,
+        tiempo: 698
+    };
+    const colW = {
+        num: 24,
+        codigo: 48,
+        nombre: 170,
+        depto: 85,
+        cargo: 85,
+        tipoMov: 64,
+        fecha: 56,
+        motivo: 106,
+        tiempo: 64
+    };
+
+    const renderTableHeader = (y) => {
+        doc.rect(30, y, 732, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
+        doc.text('DEPARTAMENTO', colX.depto, y + 3, { width: colW.depto });
+        doc.text('CARGO', colX.cargo, y + 3, { width: colW.cargo });
+        doc.text('MOVIMIENTO', colX.tipoMov, y + 3, { width: colW.tipoMov, align: 'center' });
+        doc.text('FECHA', colX.fecha, y + 3, { width: colW.fecha, align: 'center' });
+        doc.text('MOTIVO / CAUSA', colX.motivo, y + 3, { width: colW.motivo });
+        doc.text('TIEMPO LAB.', colX.tiempo, y + 3, { width: colW.tiempo, align: 'center' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = renderTableHeader(currentY);
+
+    items.forEach((item, index) => {
+        if (currentY > 525) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = renderTableHeader(currentY);
+        }
+
+        if (index % 2 === 1) {
+            doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
+        doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
+        doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.departamento || 'GENERAL', colW.depto), colX.depto, currentY, { lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, item.cargo || '---', colW.cargo), colX.cargo, currentY, { lineBreak: false });
+
+        const isAlta = item.tipo_movimiento === 'ALTA';
+        doc.font('Helvetica-Bold').fillColor(isAlta ? '#166534' : '#b91c1c');
+        doc.text(item.tipo_movimiento || '---', colX.tipoMov, currentY, { width: colW.tipoMov, align: 'center' });
+        doc.font('Helvetica').fillColor('#1e293b');
+
+        doc.text(reportPdfHelper.formatDate(item.fecha), colX.fecha, currentY, { width: colW.fecha, align: 'center' });
+        doc.text(reportPdfHelper.fitText(doc, item.motivo || '---', colW.motivo), colX.motivo, currentY, { lineBreak: false });
+        doc.text(item.tiempo_laborado || '---', colX.tiempo, currentY, { width: colW.tiempo, align: 'center' });
+
+        currentY += 12;
+    });
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Summary Box
+    currentY += 10;
+    doc.rect(30, currentY, 732, 24).fill('#f8fafc');
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).rect(30, currentY, 732, 24).stroke();
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`INDICADORES MTPS: Total Movimientos: ${items.length}  |  Altas (Contrataciones): ${totals.altas || 0}  |  Bajas (Retiros): ${totals.bajas || 0}  |  Plantilla Promedio: ${totals.promedio_empleados || 0}  |  Tasa de Rotación: ${totals.tasa_rotacion || '0.00'}%`, 40, currentY + 8, { width: 712 });
+
+    currentY += 38;
+    reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Movimientos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+}
+
 module.exports = {
     generatePlanillaIsssPdf,
     generatePlanillaAfpPdf,
     generateInformeRentaPdf,
     generateConstanciaSueldoPdf,
     generateCartaRentaPdf,
-    generateListadoEmpleadosPdf
+    generateListadoEmpleadosPdf,
+    generatePlanillaInsaforpPdf,
+    generateCostoLaboralPdf,
+    generateDescuentosTercerosPdf,
+    generateHorasExtrasPdf,
+    generateAccionesPersonalPdf,
+    generatePasivosLaboralesPdf,
+    generateControlVacacionesPdf,
+    generateRotacionPersonalPdf
 };

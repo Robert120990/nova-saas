@@ -362,15 +362,32 @@ const exportPDF = async (req, res) => {
             if (afpRows.length > 0) afpPorcentaje = afpRows[0].porcentaje_empleado;
         }
 
+        let responsable = '';
+        let firmaUrl = '', selloUrl = '';
+        const [rhCfg] = await pool.query(
+            `SELECT responsable_nombre, firma_url, sello_url FROM rh_config WHERE company_id = ?`,
+            [req.company_id]
+        );
+        if (rhCfg.length > 0) {
+            if (rhCfg[0].responsable_nombre) responsable = rhCfg[0].responsable_nombre;
+            firmaUrl = rhCfg[0].firma_url || '';
+            selloUrl = rhCfg[0].sello_url || '';
+        }
+
         const pdfData = {
             id: p.id,
             company_name: p.company_name,
             company_nit: p.company_nit,
             logo_url: p.logo_url,
+            responsable_nombre: responsable,
+            firma_url: firmaUrl,
+            sello_url: selloUrl,
+            empleado_codigo: p.empleado_codigo,
             empleado_nombres: p.empleado_nombres,
             empleado_apellidos: p.empleado_apellidos,
             sueldo_base: p.sueldo_base,
             cargo_nombre: p.cargo_nombre,
+            departamento_nombre: p.departamento_nombre,
             fecha_ingreso: p.fecha_ingreso,
             fecha_inicial: p.fecha_inicial,
             fecha_final: p.fecha_final,

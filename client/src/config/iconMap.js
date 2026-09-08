@@ -61,6 +61,10 @@ import {
     Keyboard,
     Layers,
     ClipboardList,
+    GraduationCap,
+    Clock,
+    Scale,
+    Palmtree,
 } from 'lucide-react';
 
 const iconMap = {
@@ -126,6 +130,10 @@ const iconMap = {
     Keyboard,
     Layers,
     ClipboardList,
+    GraduationCap,
+    Clock,
+    Scale,
+    Palmtree,
 };
 
 export default iconMap;

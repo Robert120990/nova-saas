@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 const TABLE = 'rh_planilla_aguinaldos';
 
@@ -315,21 +316,26 @@ const exportPDF = async (req, res) => {
         const months = ['', 'Enero','Febrero','Marzo','Abril','Mayo','Junio',
             'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
+        const company = await reportPdfHelper.getCompanyInfo(req.company_id);
         const depLabel = departamento_id && departamento_id !== '0' ? (rows[0]?.departamento_nombre || '') : 'Todos';
 
         const { generateAguinaldoPDF } = require('../services/pdf.service');
         const pdfData = {
-            company_name: rows[0]?.company_name || '',
-            company_nit: rows[0]?.company_nit || '',
+            company,
+            company_name: company.razon_social || rows[0]?.company_name || '',
+            company_nit: company.nit || rows[0]?.company_nit || '',
+            company_nrc: company.nrc || '',
             logo_url: rows[0]?.logo_url || '',
             periodo_label: `${months[parseInt(mes) || 12]} ${año}`,
             departamento_label: depLabel,
+            año: parseInt(año),
+            mes: parseInt(mes) || 12,
             items: rows
         };
 
         const pdfBuffer = await generateAguinaldoPDF(pdfData);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=Aguinaldos_${año}_${mes || 12}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=Planilla_Aguinaldos_${año}_${mes || 12}.pdf`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('[Aguinaldos PDF] Error:', error);
@@ -344,6 +350,7 @@ const exportRecibos = async (req, res) => {
 
         let query = `
             SELECT pa.*, e.codigo, e.nombres, e.apellidos,
+                   e.num_dui, e.num_nit, e.fecha_ingreso,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    comp.razon_social as company_name,

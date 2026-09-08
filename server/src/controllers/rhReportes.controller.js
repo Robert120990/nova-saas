@@ -963,6 +963,1228 @@ const getListadoEmpleadosReport = async (req, res) => {
 };
 
 /**
+ * 7. Planilla de Aportes a INSAFORP / INCAF (1% Patronal)
+ */
+const getPlanillaInsaforpReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const anio = parseInt(req.query.anio) || new Date().getFullYear();
+        const mes = parseInt(req.query.mes) || (new Date().getMonth() + 1);
+        const quincena = req.query.quincena || 'todas';
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                p.id, p.empleado_id, p.dias_trabajados, p.sueldo_base, p.total_percepciones,
+                p.quincena,
+                e.codigo, e.nombres, e.apellidos, e.num_dui, e.num_isss, e.es_jubilado
+            FROM rh_planillas p
+            JOIN rh_empleados e ON p.empleado_id = e.id
+            WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
+        `;
+        const params = [companyId, anio, mes];
+
+        if (quincena && quincena !== 'todas') {
+            query += ` AND p.quincena = ?`;
+            params.push(quincena);
+        }
+        query += ` ORDER BY e.codigo ASC, p.id ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        // Group per employee
+        const empMap = new Map();
+        rows.forEach(r => {
+            const empId = r.empleado_id;
+            const perc = parseFloat(r.total_percepciones || 0);
+            const dias = parseInt(r.dias_trabajados || 0);
+
+            if (!empMap.has(empId)) {
+                empMap.set(empId, {
+                    id: empId,
+                    codigo: r.codigo,
+                    nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
+                    num_isss: r.num_isss || '',
+                    num_dui: r.num_dui || '',
+                    dias_trabajados: dias,
+                    salario_devengado: perc,
+                    es_jubilado: r.es_jubilado
+                });
+            } else {
+                const existing = empMap.get(empId);
+                existing.dias_trabajados += dias;
+                existing.salario_devengado += perc;
+            }
+        });
+
+        const cap = quincena === 'todas' ? 1000.00 : 500.00;
+        const items = Array.from(empMap.values()).map(emp => {
+            const cotizable = Math.min(emp.salario_devengado, cap);
+            const aporteInsaforp = Math.round(cotizable * 0.01 * 100) / 100;
+
+            return {
+                ...emp,
+                salario_devengado: Math.round(emp.salario_devengado * 100) / 100,
+                base_cotizable: Math.round(cotizable * 100) / 100,
+                aporte_insaforp: aporteInsaforp
+            };
+        });
+
+        const totals = items.reduce((acc, curr) => {
+            acc.total_devengado += curr.salario_devengado;
+            acc.total_cotizable += curr.base_cotizable;
+            acc.total_aporte += curr.aporte_insaforp;
+            return acc;
+        }, { total_devengado: 0, total_cotizable: 0, total_aporte: 0, total_empleados: items.length });
+
+        const mesName = MONTH_NAMES[mes - 1] || `Mes ${mes}`;
+        const quincenaText = quincena === 'primera' ? 'PRIMERA QUINCENA' : quincena === 'segunda' ? 'SEGUNDA QUINCENA' : 'TODO EL MES';
+        const periodText = `PERÍODO: ${mesName.toUpperCase()} ${anio} (${quincenaText})`;
+        const subtitle = `APORTE PATRONAL DEL 1% (LEY DE FORMACIÓN PROFESIONAL / INCAF)`;
+
+        const reportData = {
+            company,
+            items,
+            totals,
+            periodText,
+            subtitle,
+            anio,
+            mes,
+            quincena
+        };
+
+        if (format === 'json') {
+            return res.json(reportData);
+        }
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - APORTE INSAFORP - ${periodText}`,
+                sheets: [{
+                    name: 'Aporte INSAFORP',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Nombre del Empleado', key: 'nombre', width: 35 },
+                        { header: 'No. DUI', key: 'num_dui', width: 16 },
+                        { header: 'No. ISSS', key: 'num_isss', width: 16 },
+                        { header: 'Días', key: 'dias_trabajados', width: 8 },
+                        { header: 'Salario Devengado ($)', key: 'salario_devengado', width: 18 },
+                        { header: 'Base Cotizable ($)', key: 'base_cotizable', width: 18 },
+                        { header: 'Aporte INCAF (1%) ($)', key: 'aporte_insaforp', width: 18 }
+                    ],
+                    data: [
+                        ...items.map((item, idx) => ({
+                            num: idx + 1,
+                            codigo: item.codigo,
+                            nombre: item.nombre,
+                            num_dui: item.num_dui,
+                            num_isss: item.num_isss,
+                            dias_trabajados: item.dias_trabajados,
+                            salario_devengado: item.salario_devengado.toFixed(2),
+                            base_cotizable: item.base_cotizable.toFixed(2),
+                            aporte_insaforp: item.aporte_insaforp.toFixed(2)
+                        })),
+                        {
+                            num: '',
+                            codigo: 'TOTALES',
+                            nombre: `${items.length} Cotizantes`,
+                            num_dui: '',
+                            num_isss: '',
+                            dias_trabajados: '',
+                            salario_devengado: totals.total_devengado.toFixed(2),
+                            base_cotizable: totals.total_cotizable.toFixed(2),
+                            aporte_insaforp: totals.total_aporte.toFixed(2)
+                        }
+                    ]
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Aporte_INSAFORP_${anio}_${mes}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generatePlanillaInsaforpPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Aporte_INSAFORP_${anio}_${mes}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getPlanillaInsaforpReport error]:', error);
+        res.status(500).json({ message: 'Error al generar planilla de INSAFORP: ' + error.message });
+    }
+};
+
+/**
+ * 8. Costo Laboral Patronal (Cargas Sociales)
+ */
+const getCostoLaboralReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const anio = parseInt(req.query.anio) || new Date().getFullYear();
+        const mes = parseInt(req.query.mes) || (new Date().getMonth() + 1);
+        const quincena = req.query.quincena || 'todas';
+        const departamento_id = req.query.departamento_id;
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                p.id, p.empleado_id, p.total_percepciones, p.quincena,
+                e.codigo, e.nombres, e.apellidos, e.es_jubilado,
+                d.descripcion as departamento_nombre
+            FROM rh_planillas p
+            JOIN rh_empleados e ON p.empleado_id = e.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
+        `;
+        const params = [companyId, anio, mes];
+
+        if (quincena && quincena !== 'todas') {
+            query += ` AND p.quincena = ?`;
+            params.push(quincena);
+        }
+        if (departamento_id && departamento_id !== 'all') {
+            query += ` AND e.departamento_personal_id = ?`;
+            params.push(departamento_id);
+        }
+        query += ` ORDER BY d.descripcion ASC, e.codigo ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        const empMap = new Map();
+        rows.forEach(r => {
+            const empId = r.empleado_id;
+            const perc = parseFloat(r.total_percepciones || 0);
+
+            if (!empMap.has(empId)) {
+                empMap.set(empId, {
+                    id: empId,
+                    codigo: r.codigo,
+                    nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
+                    departamento: r.departamento_nombre || 'GENERAL',
+                    salario_devengado: perc,
+                    es_jubilado: r.es_jubilado
+                });
+            } else {
+                const existing = empMap.get(empId);
+                existing.salario_devengado += perc;
+            }
+        });
+
+        const capIsss = quincena === 'todas' ? 1000.00 : 500.00;
+        const items = Array.from(empMap.values()).map(emp => {
+            const dev = Math.round(emp.salario_devengado * 100) / 100;
+            const cotIsss = Math.min(dev, capIsss);
+            const isssPat = emp.es_jubilado ? 0 : Math.round(cotIsss * 0.075 * 100) / 100;
+            const afpPat = emp.es_jubilado ? 0 : Math.round(dev * 0.0875 * 100) / 100;
+            const incaf = Math.round(cotIsss * 0.01 * 100) / 100;
+            const provVac = Math.round(dev * 0.0541 * 100) / 100;
+            const provAguin = Math.round(dev * 0.0833 * 100) / 100;
+            const provIndem = Math.round(dev * 0.0833 * 100) / 100;
+            const costoTotal = Math.round((dev + isssPat + afpPat + incaf + provVac + provAguin + provIndem) * 100) / 100;
+
+            return {
+                ...emp,
+                salario_devengado: dev,
+                isss_patronal: isssPat,
+                afp_patronal: afpPat,
+                insaforp: incaf,
+                prov_vacacion: provVac,
+                prov_aguinaldo: provAguin,
+                prov_indemnizacion: provIndem,
+                costo_total: costoTotal
+            };
+        });
+
+        const totals = items.reduce((acc, curr) => {
+            acc.total_devengado += curr.salario_devengado;
+            acc.total_isss_patronal += curr.isss_patronal;
+            acc.total_afp_patronal += curr.afp_patronal;
+            acc.total_insaforp += curr.insaforp;
+            acc.total_prov_vacacion += curr.prov_vacacion;
+            acc.total_prov_aguinaldo += curr.prov_aguinaldo;
+            acc.total_prov_indemnizacion += curr.prov_indemnizacion;
+            acc.total_costo += curr.costo_total;
+            return acc;
+        }, {
+            total_devengado: 0, total_isss_patronal: 0, total_afp_patronal: 0, total_insaforp: 0,
+            total_prov_vacacion: 0, total_prov_aguinaldo: 0, total_prov_indemnizacion: 0, total_costo: 0,
+            total_empleados: items.length
+        });
+
+        const mesName = MONTH_NAMES[mes - 1] || `Mes ${mes}`;
+        const quincenaText = quincena === 'primera' ? '1RA QUINCENA' : quincena === 'segunda' ? '2DA QUINCENA' : 'TODO EL MES';
+        const periodText = `PERÍODO: ${mesName.toUpperCase()} ${anio} (${quincenaText})`;
+        const subtitle = `CARGAS SOCIALES Y PROVISIONES LABORALES PATRONALES`;
+
+        const reportData = { company, items, totals, periodText, subtitle, anio, mes, quincena };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - COSTO LABORAL - ${periodText}`,
+                sheets: [{
+                    name: 'Costo Laboral',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Nombre del Empleado', key: 'nombre', width: 32 },
+                        { header: 'Departamento', key: 'departamento', width: 22 },
+                        { header: 'Devengado ($)', key: 'salario_devengado', width: 15 },
+                        { header: 'ISSS Pat (7.5%) ($)', key: 'isss_patronal', width: 15 },
+                        { header: 'AFP Pat (8.75%) ($)', key: 'afp_patronal', width: 15 },
+                        { header: 'INCAF (1%) ($)', key: 'insaforp', width: 14 },
+                        { header: 'Vacación (5.4%) ($)', key: 'prov_vacacion', width: 15 },
+                        { header: 'Aguinaldo (8.3%) ($)', key: 'prov_aguinaldo', width: 15 },
+                        { header: 'Indemnización (8.3%) ($)', key: 'prov_indemnizacion', width: 16 },
+                        { header: 'Costo Total ($)', key: 'costo_total', width: 18 }
+                    ],
+                    data: [
+                        ...items.map((item, idx) => ({
+                            num: idx + 1,
+                            codigo: item.codigo,
+                            nombre: item.nombre,
+                            departamento: item.departamento,
+                            salario_devengado: item.salario_devengado.toFixed(2),
+                            isss_patronal: item.isss_patronal.toFixed(2),
+                            afp_patronal: item.afp_patronal.toFixed(2),
+                            insaforp: item.insaforp.toFixed(2),
+                            prov_vacacion: item.prov_vacacion.toFixed(2),
+                            prov_aguinaldo: item.prov_aguinaldo.toFixed(2),
+                            prov_indemnizacion: item.prov_indemnizacion.toFixed(2),
+                            costo_total: item.costo_total.toFixed(2)
+                        })),
+                        {
+                            num: '', codigo: 'TOTALES', nombre: `${items.length} Empleados`, departamento: '',
+                            salario_devengado: totals.total_devengado.toFixed(2),
+                            isss_patronal: totals.total_isss_patronal.toFixed(2),
+                            afp_patronal: totals.total_afp_patronal.toFixed(2),
+                            insaforp: totals.total_insaforp.toFixed(2),
+                            prov_vacacion: totals.total_prov_vacacion.toFixed(2),
+                            prov_aguinaldo: totals.total_prov_aguinaldo.toFixed(2),
+                            prov_indemnizacion: totals.total_prov_indemnizacion.toFixed(2),
+                            costo_total: totals.total_costo.toFixed(2)
+                        }
+                    ]
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Costo_Laboral_${anio}_${mes}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generateCostoLaboralPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Costo_Laboral_${anio}_${mes}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getCostoLaboralReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de costo laboral: ' + error.message });
+    }
+};
+
+/**
+ * 9. Descuentos a Terceros e Institucionales
+ */
+const getDescuentosTercerosReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const anio = parseInt(req.query.anio) || new Date().getFullYear();
+        const mes = parseInt(req.query.mes) || (new Date().getMonth() + 1);
+        const quincena = req.query.quincena || 'todas';
+        const tipo_descuento = req.query.tipo_descuento;
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                pd.id, pd.codigo as detalle_codigo, pd.descripcion as concepto, pd.valor_ingresado,
+                p.quincena, p.periodo_anio, p.periodo_mes,
+                e.id as empleado_id, e.codigo, e.nombres, e.apellidos,
+                d.descripcion as departamento_nombre,
+                ed.numero_credito, ed.numero_cuotas, ed.cuotas_restantes, ed.valor as cuota_programada
+            FROM rh_planilla_detalles pd
+            JOIN rh_planillas p ON pd.planilla_id = p.id
+            JOIN rh_empleados e ON p.empleado_id = e.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_descuentos_programados dp ON pd.codigo = dp.codigo AND dp.company_id = p.company_id
+            LEFT JOIN rh_empleado_descuentos ed ON ed.descuento_id = dp.id AND ed.empleado_id = e.id AND ed.activo = 1
+            WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
+              AND pd.operacion = 'restar'
+              AND UPPER(pd.codigo) NOT IN ('ISSS', 'AFP', 'RENTA')
+              AND pd.valor_ingresado > 0
+        `;
+        const params = [companyId, anio, mes];
+
+        if (quincena && quincena !== 'todas' && quincena !== 'all') {
+            query += ` AND p.quincena = ?`;
+            params.push(quincena);
+        }
+        if (tipo_descuento && tipo_descuento !== 'all' && tipo_descuento !== 'TODOS' && tipo_descuento !== 'todos') {
+            const upperTipo = tipo_descuento.toUpperCase().trim();
+            if (upperTipo === 'PGR' || upperTipo.includes('PROCURADUR')) {
+                query += ` AND (UPPER(pd.codigo) = 'PGR' OR UPPER(pd.descripcion) LIKE '%PGR%' OR UPPER(pd.descripcion) LIKE '%PROCURADUR%')`;
+            } else if (upperTipo === 'BANCO' || upperTipo.includes('PRESTAMO')) {
+                query += ` AND (UPPER(pd.codigo) = 'BANCO' OR UPPER(pd.descripcion) LIKE '%BANCO%' OR UPPER(pd.descripcion) LIKE '%PRESTAMO%')`;
+            } else if (upperTipo === 'FSV' || upperTipo.includes('VIVIENDA')) {
+                query += ` AND (UPPER(pd.codigo) = 'FSV' OR UPPER(pd.descripcion) LIKE '%FSV%' OR UPPER(pd.descripcion) LIKE '%FONDO SOCIAL%' OR UPPER(pd.descripcion) LIKE '%VIVIENDA%')`;
+            } else if (upperTipo === 'COOP' || upperTipo.includes('COOPERATIVA')) {
+                query += ` AND (UPPER(pd.codigo) LIKE '%COOP%' OR UPPER(pd.descripcion) LIKE '%COOP%')`;
+            } else if (upperTipo.includes('ANTICIP')) {
+                query += ` AND (UPPER(pd.codigo) LIKE '%ANTICIP%' OR UPPER(pd.descripcion) LIKE '%ANTICIP%')`;
+            } else {
+                query += ` AND (pd.codigo = ? OR pd.descripcion LIKE ?)`;
+                params.push(tipo_descuento, `%${tipo_descuento}%`);
+            }
+        }
+        query += ` ORDER BY pd.descripcion ASC, e.codigo ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        const items = rows.map(r => {
+            const descontado = parseFloat(r.valor_ingresado || 0);
+            const cuotasRest = r.cuotas_restantes !== null ? parseInt(r.cuotas_restantes) : null;
+            const cuotasTot = r.numero_cuotas !== null ? parseInt(r.numero_cuotas) : null;
+            const saldoEst = (cuotasRest && r.cuota_programada) ? (cuotasRest * parseFloat(r.cuota_programada)) : 0;
+
+            let cuotasInfo = '---';
+            if (cuotasTot !== null && cuotasRest !== null) {
+                cuotasInfo = `${cuotasTot - cuotasRest}/${cuotasTot}`;
+            }
+
+            return {
+                id: r.id,
+                codigo: r.codigo,
+                nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
+                departamento: r.departamento_nombre || 'GENERAL',
+                concepto: r.concepto || 'DESCUENTO',
+                referencia: r.numero_credito || '---',
+                cuotas_info: cuotasInfo,
+                monto_descontado: Math.round(descontado * 100) / 100,
+                saldo_pendiente: Math.round(saldoEst * 100) / 100
+            };
+        });
+
+        const totals = items.reduce((acc, curr) => {
+            acc.total_descontado += curr.monto_descontado;
+            acc.total_saldo += curr.saldo_pendiente;
+            return acc;
+        }, { total_descontado: 0, total_saldo: 0, total_registros: items.length });
+
+        const mesName = MONTH_NAMES[mes - 1] || `Mes ${mes}`;
+        const quincenaText = quincena === 'primera' ? '1RA QUINCENA' : quincena === 'segunda' ? '2DA QUINCENA' : 'TODO EL MES';
+        const periodText = `PERÍODO: ${mesName.toUpperCase()} ${anio} (${quincenaText})`;
+        const subtitle = `RETENCIONES COMERCIALES, JUDICIALES (PGR), BANCARIAS Y ANTICIPOS`;
+
+        const reportData = { company, items, totals, periodText, subtitle, anio, mes, quincena };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - DESCUENTOS A TERCEROS - ${periodText}`,
+                sheets: [{
+                    name: 'Descuentos Terceros',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Empleado', key: 'nombre', width: 35 },
+                        { header: 'Departamento', key: 'departamento', width: 22 },
+                        { header: 'Concepto / Tipo', key: 'concepto', width: 26 },
+                        { header: 'No. Referencia / Crédito', key: 'referencia', width: 22 },
+                        { header: 'Cuotas', key: 'cuotas_info', width: 12 },
+                        { header: 'Monto Descontado ($)', key: 'monto_descontado', width: 18 },
+                        { header: 'Saldo Estimado ($)', key: 'saldo_pendiente', width: 18 }
+                    ],
+                    data: [
+                        ...items.map((item, idx) => ({
+                            num: idx + 1,
+                            codigo: item.codigo,
+                            nombre: item.nombre,
+                            departamento: item.departamento,
+                            concepto: item.concepto,
+                            referencia: item.referencia,
+                            cuotas_info: item.cuotas_info,
+                            monto_descontado: item.monto_descontado.toFixed(2),
+                            saldo_pendiente: item.saldo_pendiente.toFixed(2)
+                        })),
+                        {
+                            num: '', codigo: 'TOTALES', nombre: `${items.length} Registros`, departamento: '',
+                            concepto: '', referencia: '', cuotas_info: '',
+                            monto_descontado: totals.total_descontado.toFixed(2),
+                            saldo_pendiente: totals.total_saldo.toFixed(2)
+                        }
+                    ]
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Descuentos_Terceros_${anio}_${mes}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generateDescuentosTercerosPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Descuentos_Terceros_${anio}_${mes}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getDescuentosTercerosReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de descuentos a terceros: ' + error.message });
+    }
+};
+
+/**
+ * 10. Horas Extras y Recargos Laborales
+ */
+const getHorasExtrasReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const anio = parseInt(req.query.anio) || new Date().getFullYear();
+        const mes = parseInt(req.query.mes) || (new Date().getMonth() + 1);
+        const quincena = req.query.quincena || 'todas';
+        const departamento_id = req.query.departamento_id;
+        const empleado_id = req.query.empleado_id;
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                p.id as planilla_id, p.empleado_id, p.sueldo_base, p.quincena,
+                e.codigo, e.nombres, e.apellidos,
+                d.descripcion as departamento_nombre,
+                pd.codigo as concepto_codigo, pd.descripcion as concepto_nombre, pd.tipo_valor,
+                pd.valor_base, pd.valor_ingresado
+            FROM rh_planillas p
+            JOIN rh_empleados e ON p.empleado_id = e.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            JOIN rh_planilla_detalles pd ON pd.planilla_id = p.id
+            WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
+              AND pd.operacion = 'sumar'
+              AND (
+                  UPPER(pd.descripcion) LIKE '%EXTRA%'
+                  OR UPPER(pd.descripcion) LIKE '%TURNO%'
+                  OR UPPER(pd.descripcion) LIKE '%FERIADO%'
+                  OR pd.codigo IN ('03', '05', '08', '11', '14')
+              )
+        `;
+        const params = [companyId, anio, mes];
+
+        if (quincena && quincena !== 'todas' && quincena !== 'all') {
+            query += ` AND p.quincena = ?`;
+            params.push(quincena);
+        }
+        if (departamento_id && departamento_id !== 'all') {
+            query += ` AND e.departamento_personal_id = ?`;
+            params.push(departamento_id);
+        }
+        if (empleado_id && empleado_id !== 'all' && empleado_id !== '') {
+            query += ` AND p.empleado_id = ?`;
+            params.push(empleado_id);
+        }
+        query += ` ORDER BY e.codigo ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        const empMap = new Map();
+        rows.forEach(r => {
+            const empId = r.empleado_id;
+            const desc = (r.concepto_nombre || '').toUpperCase();
+            const cod = String(r.concepto_codigo || '');
+            const val = parseFloat(r.valor_ingresado || 0);
+            const sueldo = parseFloat(r.sueldo_base || 0);
+            const valorHora = sueldo > 0 ? (sueldo / 240) : 0;
+
+            if (!empMap.has(empId)) {
+                empMap.set(empId, {
+                    id: empId,
+                    codigo: r.codigo,
+                    nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
+                    departamento: r.departamento_nombre || 'GENERAL',
+                    sueldo_base: sueldo,
+                    monto_diurnas: 0,
+                    monto_nocturnas: 0,
+                    monto_feriados: 0,
+                    total_recargos: 0
+                });
+            }
+
+            const item = empMap.get(empId);
+            let monto = val;
+            // Si el valor base ya tiene el monto monetario calculado, usarlo
+            if (r.valor_base && parseFloat(r.valor_base) > 0) {
+                monto = parseFloat(r.valor_base);
+            } else if (r.tipo_valor === 'horas') {
+                if (desc.includes('NOCTURNA') || cod === '03') {
+                    monto = val * valorHora * 2.25;
+                } else {
+                    monto = val * valorHora * 2.0;
+                }
+            }
+
+            if (desc.includes('DIURNA') || cod === '08') {
+                item.monto_diurnas += monto;
+            } else if (desc.includes('NOCTURNA') || cod === '03') {
+                item.monto_nocturnas += monto;
+            } else {
+                item.monto_feriados += monto;
+            }
+            item.total_recargos += monto;
+        });
+
+        let items = Array.from(empMap.values()).map(e => ({
+            ...e,
+            monto_diurnas: Math.round(e.monto_diurnas * 100) / 100,
+            monto_nocturnas: Math.round(e.monto_nocturnas * 100) / 100,
+            monto_feriados: Math.round(e.monto_feriados * 100) / 100,
+            total_recargos: Math.round(e.total_recargos * 100) / 100
+        }));
+
+        // Si existen empleados con recargos > 0, mostrar esos; si ninguno tiene recargos, mostrar los de la planilla con 0
+        const conRecargo = items.filter(i => i.total_recargos > 0);
+        if (conRecargo.length > 0 && (!empleado_id || empleado_id === 'all')) {
+            items = conRecargo;
+        }
+
+        const totals = items.reduce((acc, curr) => {
+            acc.total_diurnas += curr.monto_diurnas;
+            acc.total_nocturnas += curr.monto_nocturnas;
+            acc.total_feriados += curr.monto_feriados;
+            acc.total_general += curr.total_recargos;
+            return acc;
+        }, { total_diurnas: 0, total_nocturnas: 0, total_feriados: 0, total_general: 0, total_empleados: items.length });
+
+        const mesName = MONTH_NAMES[mes - 1] || `Mes ${mes}`;
+        const quincenaText = quincena === 'primera' ? '1RA QUINCENA' : quincena === 'segunda' ? '2DA QUINCENA' : 'TODO EL MES';
+        const periodText = `PERÍODO: ${mesName.toUpperCase()} ${anio} (${quincenaText})`;
+        const subtitle = `DETALLE DE HORAS EXTRAS (100% Y 125%) Y FERIADOS LABORADOS`;
+
+        const reportData = { company, items, totals, periodText, subtitle, anio, mes, quincena };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - HORAS EXTRAS - ${periodText}`,
+                sheets: [{
+                    name: 'Horas Extras',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Nombre del Empleado', key: 'nombre', width: 35 },
+                        { header: 'Departamento', key: 'departamento', width: 22 },
+                        { header: 'Sueldo Base ($)', key: 'sueldo_base', width: 16 },
+                        { header: 'H.E. Diurnas ($)', key: 'monto_diurnas', width: 16 },
+                        { header: 'H.E. Nocturnas ($)', key: 'monto_nocturnas', width: 16 },
+                        { header: 'Feriados / Turnos ($)', key: 'monto_feriados', width: 18 },
+                        { header: 'Total Recargos ($)', key: 'total_recargos', width: 18 }
+                    ],
+                    data: [
+                        ...items.map((item, idx) => ({
+                            num: idx + 1,
+                            codigo: item.codigo,
+                            nombre: item.nombre,
+                            departamento: item.departamento,
+                            sueldo_base: item.sueldo_base.toFixed(2),
+                            monto_diurnas: item.monto_diurnas.toFixed(2),
+                            monto_nocturnas: item.monto_nocturnas.toFixed(2),
+                            monto_feriados: item.monto_feriados.toFixed(2),
+                            total_recargos: item.total_recargos.toFixed(2)
+                        })),
+                        {
+                            num: '', codigo: 'TOTALES', nombre: `${items.length} Empleados con Recargos`, departamento: '',
+                            sueldo_base: '',
+                            monto_diurnas: totals.total_diurnas.toFixed(2),
+                            monto_nocturnas: totals.total_nocturnas.toFixed(2),
+                            monto_feriados: totals.total_feriados.toFixed(2),
+                            total_recargos: totals.total_general.toFixed(2)
+                        }
+                    ]
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Horas_Extras_${anio}_${mes}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generateHorasExtrasPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Horas_Extras_${anio}_${mes}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getHorasExtrasReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de horas extras: ' + error.message });
+    }
+};
+
+/**
+ * 11. Acciones de Personal y Novedades
+ */
+const getAccionesPersonalReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { fecha_inicio, fecha_fin, tipo_accion, estado, departamento_id, empleado_id, format } = req.query;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                ap.*,
+                e.codigo, e.nombres, e.apellidos,
+                d.descripcion as departamento_nombre
+            FROM rh_acciones_personal ap
+            JOIN rh_empleados e ON ap.empleado_id = e.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            WHERE ap.company_id = ?
+        `;
+        const params = [companyId];
+
+        if (fecha_inicio) {
+            query += ` AND DATE(ap.fecha) >= ?`;
+            params.push(fecha_inicio);
+        }
+        if (fecha_fin) {
+            query += ` AND DATE(ap.fecha) <= ?`;
+            params.push(fecha_fin);
+        }
+        if (tipo_accion && tipo_accion !== 'all' && tipo_accion !== 'TODAS' && tipo_accion !== 'todas') {
+            const lowAcc = tipo_accion.toLowerCase().trim();
+            query += ` AND (LOWER(ap.tipo_accion) = ? OR LOWER(ap.accion_tomar) LIKE ?)`;
+            params.push(lowAcc, `%${lowAcc}%`);
+        }
+        if (estado && estado !== 'all' && estado !== 'TODOS' && estado !== 'todos') {
+            query += ` AND LOWER(ap.estado) = LOWER(?)`;
+            params.push(estado);
+        }
+        if (departamento_id && departamento_id !== 'all') {
+            query += ` AND e.departamento_personal_id = ?`;
+            params.push(departamento_id);
+        }
+        if (empleado_id && empleado_id !== 'all' && empleado_id !== '') {
+            query += ` AND ap.empleado_id = ?`;
+            params.push(empleado_id);
+        }
+        query += ` ORDER BY ap.fecha DESC, ap.id DESC`;
+
+        const [rows] = await pool.query(query, params);
+
+        const ACCION_LABELS = {
+            llamado_verbal: 'Amonestación Verbal',
+            llamado_escrito_1: 'Amonestación Escrita #1',
+            llamado_escrito_2: 'Amonestación Escrita #2',
+            suspension: 'Suspensión Disciplinaria',
+            terminacion_sin_responsabilidad: 'Terminación s/ Resp.',
+            despido: 'Despido',
+            otro: 'Otra Medida'
+        };
+
+        const totals = { total: rows.length, llamado_verbal: 0, llamado_escrito_1: 0, llamado_escrito_2: 0, suspension: 0, despido: 0, otros: 0 };
+
+        const items = rows.map(r => {
+            const acc = r.accion_tomar || 'otro';
+            if (totals[acc] !== undefined) totals[acc]++;
+            else totals.otros++;
+
+            let accionLabel = ACCION_LABELS[acc] || r.accion_otra || 'Otra Medida';
+            if (acc === 'suspension' && r.dias_suspension) {
+                accionLabel += ` (${r.dias_suspension} días)`;
+            }
+
+            return {
+                id: r.id,
+                fecha: r.fecha,
+                codigo: r.codigo,
+                nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
+                departamento: r.departamento_nombre || 'GENERAL',
+                tipo_accion: r.tipo_accion || 'ACCIÓN',
+                descripcion_causa: r.descripcion_causa || r.infraccion_otra || '---',
+                accion_tomar_label: accionLabel,
+                estado: r.estado || 'borrador'
+            };
+        });
+
+        const periodText = (fecha_inicio && fecha_fin)
+            ? `DEL ${reportPdfHelper.formatDate(fecha_inicio)} AL ${reportPdfHelper.formatDate(fecha_fin)}`
+            : 'HISTORIAL COMPLETO DE ACCIONES DE PERSONAL';
+        const subtitle = `RESUMEN DE SANCIONES DISCIPLINARIAS Y MEDIDAS CORRECTIVAS`;
+
+        const reportData = { company, items, totals, periodText, subtitle };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - ACCIONES DE PERSONAL - ${periodText}`,
+                sheets: [{
+                    name: 'Acciones Personal',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Fecha', key: 'fecha_fmt', width: 14 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Empleado', key: 'nombre', width: 35 },
+                        { header: 'Departamento', key: 'departamento', width: 22 },
+                        { header: 'Tipo Acción', key: 'tipo_accion', width: 20 },
+                        { header: 'Causa / Infracción', key: 'descripcion_causa', width: 35 },
+                        { header: 'Medida Disciplinaria', key: 'accion_tomar_label', width: 25 },
+                        { header: 'Estado', key: 'estado', width: 14 }
+                    ],
+                    data: items.map((item, idx) => ({
+                        num: idx + 1,
+                        fecha_fmt: reportPdfHelper.formatDate(item.fecha),
+                        codigo: item.codigo,
+                        nombre: item.nombre,
+                        departamento: item.departamento,
+                        tipo_accion: item.tipo_accion,
+                        descripcion_causa: item.descripcion_causa,
+                        accion_tomar_label: item.accion_tomar_label,
+                        estado: String(item.estado || '').toUpperCase()
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Acciones_Personal_${fecha_inicio || 'historial'}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generateAccionesPersonalPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Acciones_Personal.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getAccionesPersonalReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de acciones de personal: ' + error.message });
+    }
+};
+
+/**
+ * 12. Provisión de Pasivos Laborales (Indemnización, Vacación, Aguinaldo)
+ */
+const getPasivosLaboralesReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const fecha_corte = req.query.fecha_corte || new Date().toISOString().split('T')[0];
+        const departamento_id = req.query.departamento_id;
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                e.id, e.codigo, e.nombres, e.apellidos, e.fecha_ingreso, e.sueldo_base,
+                d.descripcion as departamento_nombre
+            FROM rh_empleados e
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            WHERE e.company_id = ? AND e.es_activo = 1 AND e.fecha_ingreso IS NOT NULL
+        `;
+        const params = [companyId];
+
+        if (departamento_id && departamento_id !== 'all') {
+            query += ` AND e.departamento_personal_id = ?`;
+            params.push(departamento_id);
+        }
+        query += ` ORDER BY d.descripcion ASC, e.codigo ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        const corteDate = new Date(fecha_corte);
+
+        const items = rows.map(e => {
+            const ingresoDate = new Date(e.fecha_ingreso);
+            const diffTime = Math.max(0, corteDate.getTime() - ingresoDate.getTime());
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+            const anios = Math.floor(diffDays / 365.25);
+            const meses = Math.floor((diffDays % 365.25) / 30.4375);
+            const dias = Math.floor((diffDays % 365.25) % 30.4375);
+            const antiguedadTexto = `${anios}a ${meses}m ${dias}d`;
+
+            const sueldoBase = parseFloat(e.sueldo_base || 0);
+            const salarioDiario = sueldoBase / 30;
+
+            // Indemnización Art. 58 Código de Trabajo: 30 días de salario por año laborado (tope diario 4 salarios mínimos comercio = $48.67)
+            const salarioDiarioIndem = Math.min(salarioDiario, 48.67);
+            const pasivoIndemnizacion = Math.round(((diffDays / 365.25) * 30 * salarioDiarioIndem) * 100) / 100;
+
+            // Vacación Proporcional: 15 días + 30% recargo (19.5 días de salario por año)
+            const diasFraccionAnio = (diffDays % 365.25);
+            const pasivoVacacion = Math.round(((diasFraccionAnio / 365.25) * 19.5 * salarioDiario) * 100) / 100;
+
+            // Aguinaldo Proporcional: Días de ley según antigüedad
+            let diasTablaAguinaldo = 15;
+            if (anios >= 10) diasTablaAguinaldo = 21;
+            else if (anios >= 3) diasTablaAguinaldo = 19;
+
+            // Días transcurridos desde el 12 de diciembre anterior
+            const currentYearCorte = corteDate.getFullYear();
+            let baseDic = new Date(currentYearCorte, 11, 12);
+            if (corteDate < baseDic) {
+                baseDic = new Date(currentYearCorte - 1, 11, 12);
+            }
+            const diffDic = Math.max(0, Math.floor((corteDate.getTime() - baseDic.getTime()) / (1000 * 60 * 60 * 24)));
+            const pasivoAguinaldo = Math.round(((diffDic / 365) * diasTablaAguinaldo * salarioDiario) * 100) / 100;
+
+            const pasivoTotal = Math.round((pasivoIndemnizacion + pasivoVacacion + pasivoAguinaldo) * 100) / 100;
+
+            return {
+                id: e.id,
+                codigo: e.codigo,
+                nombre: `${e.nombres || ''} ${e.apellidos || ''}`.trim(),
+                departamento: e.departamento_nombre || 'GENERAL',
+                fecha_ingreso: e.fecha_ingreso,
+                antiguedad_texto: antiguedadTexto,
+                sueldo_base: Math.round(sueldoBase * 100) / 100,
+                salario_diario: Math.round(salarioDiario * 100) / 100,
+                pasivo_indemnizacion: pasivoIndemnizacion,
+                pasivo_vacacion: pasivoVacacion,
+                pasivo_aguinaldo: pasivoAguinaldo,
+                pasivo_total: pasivoTotal
+            };
+        });
+
+        const totals = items.reduce((acc, curr) => {
+            acc.total_indemnizacion += curr.pasivo_indemnizacion;
+            acc.total_vacacion += curr.pasivo_vacacion;
+            acc.total_aguinaldo += curr.pasivo_aguinaldo;
+            acc.total_pasivo += curr.pasivo_total;
+            return acc;
+        }, { total_indemnizacion: 0, total_vacacion: 0, total_aguinaldo: 0, total_pasivo: 0, total_empleados: items.length });
+
+        const periodText = `FECHA DE CORTE: ${reportPdfHelper.formatDate(fecha_corte)}`;
+        const subtitle = `CÁLCULO DE PASIVOS LABORALES ACUMULADOS SEGÚN CÓDIGO DE TRABAJO`;
+
+        const reportData = { company, items, totals, periodText, subtitle, fecha_corte };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - PASIVOS LABORALES - ${periodText}`,
+                sheets: [{
+                    name: 'Pasivos Laborales',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Nombre del Empleado', key: 'nombre', width: 35 },
+                        { header: 'F. Ingreso', key: 'ingreso_fmt', width: 14 },
+                        { header: 'Antigüedad', key: 'antiguedad_texto', width: 16 },
+                        { header: 'Sueldo Base ($)', key: 'sueldo_base', width: 16 },
+                        { header: 'Salario Diario ($)', key: 'salario_diario', width: 16 },
+                        { header: 'Indemnización ($)', key: 'pasivo_indemnizacion', width: 18 },
+                        { header: 'Vacación Prop. ($)', key: 'pasivo_vacacion', width: 18 },
+                        { header: 'Aguinaldo Prop. ($)', key: 'pasivo_aguinaldo', width: 18 },
+                        { header: 'Pasivo Total ($)', key: 'pasivo_total', width: 20 }
+                    ],
+                    data: [
+                        ...items.map((item, idx) => ({
+                            num: idx + 1,
+                            codigo: item.codigo,
+                            nombre: item.nombre,
+                            ingreso_fmt: reportPdfHelper.formatDate(item.fecha_ingreso),
+                            antiguedad_texto: item.antiguedad_texto,
+                            sueldo_base: item.sueldo_base.toFixed(2),
+                            salario_diario: item.salario_diario.toFixed(2),
+                            pasivo_indemnizacion: item.pasivo_indemnizacion.toFixed(2),
+                            pasivo_vacacion: item.pasivo_vacacion.toFixed(2),
+                            pasivo_aguinaldo: item.pasivo_aguinaldo.toFixed(2),
+                            pasivo_total: item.pasivo_total.toFixed(2)
+                        })),
+                        {
+                            num: '', codigo: 'TOTALES', nombre: `${items.length} Empleados`, ingreso_fmt: '', antiguedad_texto: '',
+                            sueldo_base: '', salario_diario: '',
+                            pasivo_indemnizacion: totals.total_indemnizacion.toFixed(2),
+                            pasivo_vacacion: totals.total_vacacion.toFixed(2),
+                            pasivo_aguinaldo: totals.total_aguinaldo.toFixed(2),
+                            pasivo_total: totals.total_pasivo.toFixed(2)
+                        }
+                    ]
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Pasivos_Laborales_${fecha_corte}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generatePasivosLaboralesPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Pasivos_Laborales_${fecha_corte}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getPasivosLaboralesReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de pasivos laborales: ' + error.message });
+    }
+};
+
+/**
+ * 13. Control de Vacaciones (Devengadas, Gozadas y Saldo Pendiente)
+ */
+const getControlVacacionesReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const anio = parseInt(req.query.anio) || new Date().getFullYear();
+        const departamento_id = req.query.departamento_id;
+        const estado_filtro = req.query.estado;
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT 
+                e.id, e.codigo, e.nombres, e.apellidos, e.fecha_ingreso, e.sueldo_base,
+                d.descripcion as departamento_nombre
+            FROM rh_empleados e
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            WHERE e.company_id = ? AND e.es_activo = 1 AND e.fecha_ingreso IS NOT NULL
+        `;
+        const params = [companyId];
+
+        if (departamento_id && departamento_id !== 'all') {
+            query += ` AND e.departamento_personal_id = ?`;
+            params.push(departamento_id);
+        }
+        query += ` ORDER BY d.descripcion ASC, e.codigo ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        // Fetch vacation history per employee
+        const [vacHist] = await pool.query(`
+            SELECT empleado_id, COUNT(*) as periodos_pagados, SUM(COALESCE(dias_transcurridos, 15)) as total_dias_gozados
+            FROM rh_planilla_vacaciones
+            WHERE company_id = ?
+            GROUP BY empleado_id
+        `, [companyId]);
+
+        const vacMap = new Map();
+        vacHist.forEach(v => {
+            vacMap.set(v.empleado_id, {
+                periodos_pagados: parseInt(v.periodos_pagados || 0),
+                total_dias_gozados: parseInt(v.total_dias_gozados || 0)
+            });
+        });
+
+        const today = new Date();
+        const totals = { al_dia: 0, por_vencer: 0, vencidas: 0, total_dias_pendientes: 0 };
+
+        let items = rows.map(e => {
+            const fIngreso = new Date(e.fecha_ingreso);
+            const diffTime = Math.max(0, today.getTime() - fIngreso.getTime());
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            const anios = Math.floor(diffDays / 365.25);
+            const meses = Math.floor((diffDays % 365.25) / 30.4375);
+            const antiguedadTexto = `${anios}a ${meses}m`;
+
+            const hist = vacMap.get(e.id) || { periodos_pagados: 0, total_dias_gozados: 0 };
+            const periodosCausados = anios;
+            const diasGozados = hist.total_dias_gozados;
+            const diasCausados = periodosCausados * 15;
+            const diasPendientes = Math.max(0, diasCausados - diasGozados);
+
+            let estado = 'AL DÍA';
+            if (diasPendientes >= 30) {
+                estado = 'VENCIDAS';
+                totals.vencidas++;
+            } else if (diasPendientes >= 15) {
+                estado = 'POR VENCER';
+                totals.por_vencer++;
+            } else {
+                totals.al_dia++;
+            }
+            totals.total_dias_pendientes += diasPendientes;
+
+            return {
+                id: e.id,
+                codigo: e.codigo,
+                nombre: `${e.nombres || ''} ${e.apellidos || ''}`.trim(),
+                departamento: e.departamento_nombre || 'GENERAL',
+                fecha_ingreso: e.fecha_ingreso,
+                antiguedad_texto: antiguedadTexto,
+                periodos_causados: periodosCausados,
+                dias_gozados: diasGozados,
+                dias_pendientes: diasPendientes,
+                estado
+            };
+        });
+
+        if (estado_filtro && estado_filtro !== 'all' && estado_filtro !== 'TODOS' && estado_filtro !== 'todos') {
+            const cleanFiltro = estado_filtro.toLowerCase().replace(/_/g, ' ');
+            items = items.filter(it => it.estado.toLowerCase().includes(cleanFiltro));
+        }
+
+        const periodText = `AÑO ${anio} • FECHA DE REVISIÓN: ${reportPdfHelper.formatDate(today)}`;
+        const subtitle = `CONTROL LEGAL DE PERÍODOS DE VACACIÓN (CÓDIGO DE TRABAJO ART. 177)`;
+
+        const reportData = { company, items, totals, periodText, subtitle, anio };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - CONTROL DE VACACIONES - ${anio}`,
+                sheets: [{
+                    name: 'Control Vacaciones',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Empleado', key: 'nombre', width: 35 },
+                        { header: 'Departamento', key: 'departamento', width: 22 },
+                        { header: 'F. Ingreso', key: 'ingreso_fmt', width: 14 },
+                        { header: 'Antigüedad', key: 'antiguedad_texto', width: 14 },
+                        { header: 'Períodos Causados', key: 'periodos_causados', width: 18 },
+                        { header: 'Días Gozados', key: 'dias_gozados', width: 14 },
+                        { header: 'Días Pendientes', key: 'dias_pendientes', width: 16 },
+                        { header: 'Estado Legal', key: 'estado', width: 16 }
+                    ],
+                    data: items.map((item, idx) => ({
+                        num: idx + 1,
+                        codigo: item.codigo,
+                        nombre: item.nombre,
+                        departamento: item.departamento,
+                        ingreso_fmt: reportPdfHelper.formatDate(item.fecha_ingreso),
+                        antiguedad_texto: item.antiguedad_texto,
+                        periodos_causados: item.periodos_causados,
+                        dias_gozados: item.dias_gozados,
+                        dias_pendientes: item.dias_pendientes,
+                        estado: item.estado
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Control_Vacaciones_${anio}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generateControlVacacionesPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Control_Vacaciones_${anio}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getControlVacacionesReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de control de vacaciones: ' + error.message });
+    }
+};
+
+/**
+ * 14. Rotación de Personal (Altas, Bajas y Estadísticas MTPS)
+ */
+const getRotacionPersonalReport = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const anio = parseInt(req.query.anio) || new Date().getFullYear();
+        const mes_inicio = parseInt(req.query.mes_inicio) || 1;
+        const mes_fin = parseInt(req.query.mes_fin) || 12;
+        const format = req.query.format;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        // 1. Altas (Contrataciones en el rango)
+        const [altasRows] = await pool.query(`
+            SELECT 
+                e.id, e.codigo, e.nombres, e.apellidos, e.fecha_ingreso as fecha,
+                'ALTA' as tipo_movimiento, 'NUEVA CONTRATACIÓN' as motivo,
+                d.descripcion as departamento_nombre, c.descripcion as cargo_nombre
+            FROM rh_empleados e
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
+            WHERE e.company_id = ? AND YEAR(e.fecha_ingreso) = ?
+              AND MONTH(e.fecha_ingreso) >= ? AND MONTH(e.fecha_ingreso) <= ?
+            ORDER BY e.fecha_ingreso ASC
+        `, [companyId, anio, mes_inicio, mes_fin]);
+
+        // 2. Bajas (Liquidaciones en el rango)
+        const [bajasRows] = await pool.query(`
+            SELECT 
+                pl.id, e.codigo, e.nombres, e.apellidos, pl.ultimos_dias_laborados as fecha,
+                'BAJA' as tipo_movimiento, 'LIQUIDACIÓN / FINIQUITO' as motivo,
+                d.descripcion as departamento_nombre, c.descripcion as cargo_nombre,
+                pl.dias_indemnizacion
+            FROM rh_planilla_liquidaciones pl
+            JOIN rh_empleados e ON pl.empleado_id = e.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
+            WHERE pl.company_id = ? AND pl.periodo_año = ?
+              AND pl.periodo_mes >= ? AND pl.periodo_mes <= ?
+            ORDER BY pl.ultimos_dias_laborados ASC
+        `, [companyId, anio, mes_inicio, mes_fin]);
+
+        // Promedio de empleados activos
+        const [empCount] = await pool.query(`
+            SELECT COUNT(*) as total FROM rh_empleados WHERE company_id = ? AND es_activo = 1
+        `, [companyId]);
+        const promedioEmpleados = Math.max(1, empCount[0]?.total || 1);
+
+        const allMovements = [
+            ...altasRows.map(r => ({ ...r, tiempo_laborado: '---' })),
+            ...bajasRows.map(r => ({ ...r, tiempo_laborado: r.dias_indemnizacion ? `${Math.floor(r.dias_indemnizacion / 30)} meses` : '---' }))
+        ].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+        const items = allMovements.map(m => ({
+            id: m.id,
+            codigo: m.codigo,
+            nombre: `${m.nombres || ''} ${m.apellidos || ''}`.trim(),
+            departamento: m.departamento_nombre || 'GENERAL',
+            cargo: m.cargo_nombre || '---',
+            tipo_movimiento: m.tipo_movimiento,
+            fecha: m.fecha,
+            motivo: m.motivo,
+            tiempo_laborado: m.tiempo_laborado
+        }));
+
+        const totalAltas = altasRows.length;
+        const totalBajas = bajasRows.length;
+        const tasaRotacion = (((totalAltas + totalBajas) / 2) / promedioEmpleados * 100).toFixed(2);
+
+        const totals = {
+            altas: totalAltas,
+            bajas: totalBajas,
+            promedio_empleados: promedioEmpleados,
+            tasa_rotacion: tasaRotacion
+        };
+
+        const periodText = `AÑO ${anio} (DEL MES ${mes_inicio} AL ${mes_fin})`;
+        const subtitle = `ESTADÍSTICAS DE MOVILIDAD Y RETENCIÓN DE TALENTO (MTPS)`;
+
+        const reportData = { company, items, totals, periodText, subtitle, anio };
+
+        if (format === 'json') return res.json(reportData);
+
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                title: `${company.razon_social} - ROTACIÓN DE PERSONAL - ${anio}`,
+                sheets: [{
+                    name: 'Rotación Personal',
+                    columns: [
+                        { header: 'N°', key: 'num', width: 6 },
+                        { header: 'Código', key: 'codigo', width: 12 },
+                        { header: 'Empleado', key: 'nombre', width: 35 },
+                        { header: 'Departamento', key: 'departamento', width: 22 },
+                        { header: 'Cargo', key: 'cargo', width: 22 },
+                        { header: 'Movimiento', key: 'tipo_movimiento', width: 14 },
+                        { header: 'Fecha', key: 'fecha_fmt', width: 14 },
+                        { header: 'Motivo / Causa', key: 'motivo', width: 26 },
+                        { header: 'Tiempo Laborado', key: 'tiempo_laborado', width: 16 }
+                    ],
+                    data: [
+                        ...items.map((item, idx) => ({
+                            num: idx + 1,
+                            codigo: item.codigo,
+                            nombre: item.nombre,
+                            departamento: item.departamento,
+                            cargo: item.cargo,
+                            tipo_movimiento: item.tipo_movimiento,
+                            fecha_fmt: reportPdfHelper.formatDate(item.fecha),
+                            motivo: item.motivo,
+                            tiempo_laborado: item.tiempo_laborado
+                        })),
+                        {
+                            num: '', codigo: 'RESUMEN', nombre: `Altas: ${totalAltas} | Bajas: ${totalBajas}`, departamento: `Tasa: ${tasaRotacion}%`,
+                            cargo: '', tipo_movimiento: '', fecha_fmt: '', motivo: '', tiempo_laborado: ''
+                        }
+                    ]
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Rotacion_Personal_${anio}.xlsx`);
+        }
+
+        const pdfBuffer = await rhReportPdfService.generateRotacionPersonalPdf(reportData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Rotacion_Personal_${anio}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getRotacionPersonalReport error]:', error);
+        res.status(500).json({ message: 'Error al generar reporte de rotación de personal: ' + error.message });
+    }
+};
+
+/**
  * Helper to fetch filter catalogs
  */
 const getReportesCatalogos = async (req, res) => {
@@ -1016,5 +2238,13 @@ module.exports = {
     getConstanciaSueldo,
     getCartaRenta,
     getListadoEmpleadosReport,
+    getPlanillaInsaforpReport,
+    getCostoLaboralReport,
+    getDescuentosTercerosReport,
+    getHorasExtrasReport,
+    getAccionesPersonalReport,
+    getPasivosLaboralesReport,
+    getControlVacacionesReport,
+    getRotacionPersonalReport,
     getReportesCatalogos
 };

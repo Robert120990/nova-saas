@@ -14,23 +14,44 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
     const [error, setError] = useState(null);
     const iframeRef = useRef(null);
 
-    const anio = periodo?.anio;
-    const mes = periodo?.mes;
+    const anio = periodo?.anio || periodo?.periodo_año || periodo?.año;
+    const mes = periodo?.mes || periodo?.periodo_mes || 12;
     const quincena = periodo?.quincena;
+    const departamento_id = periodo?.departamento_id || periodo?.filtro_departamento_id;
+    const departamento_nombre = periodo?.departamento_nombre;
     const tipo = periodo?.tipo || 'planilla';
-    const isRecibos = tipo === 'recibos';
+    const isAguinaldo = tipo === 'aguinaldo' || tipo === 'aguinaldo-recibos';
+    const isRecibos = tipo === 'recibos' || tipo === 'aguinaldo-recibos';
 
     const mesLabel = MONTH_NAMES[parseInt(mes)] || `Mes ${mes}`;
     const quincenaLabel = quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
 
     const fetchReport = async () => {
-        if (!anio || !mes || !quincena) return;
+        if (!anio || (!isAguinaldo && (!mes || !quincena))) return;
         setIsLoading(true);
         setError(null);
         try {
-            const endpoint = isRecibos ? '/api/rh/planillas/recibos-masivos' : '/api/rh/planillas/reporte-pdf';
+            let endpoint = '';
+            let params = {};
+
+            if (tipo === 'aguinaldo') {
+                endpoint = '/api/rh/planilla-aguinaldos/pdf';
+                params = { año: anio, mes: mes || 12 };
+                if (departamento_id && departamento_id !== '0') params.departamento_id = departamento_id;
+            } else if (tipo === 'aguinaldo-recibos') {
+                endpoint = '/api/rh/planilla-aguinaldos/recibos';
+                params = { año: anio, mes: mes || 12 };
+                if (departamento_id && departamento_id !== '0') params.departamento_id = departamento_id;
+            } else if (isRecibos) {
+                endpoint = '/api/rh/planillas/recibos-masivos';
+                params = { anio, mes, quincena };
+            } else {
+                endpoint = '/api/rh/planillas/reporte-pdf';
+                params = { anio, mes, quincena };
+            }
+
             const res = await axios.get(endpoint, {
-                params: { anio, mes, quincena },
+                params,
                 responseType: 'blob'
             });
 
@@ -41,7 +62,9 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
             setPdfUrl(url);
         } catch (err) {
             console.error('Error fetching PDF:', err);
-            const defaultMsg = isRecibos ? 'Error al generar los recibos masivos' : 'Error al generar el reporte de planilla';
+            const defaultMsg = isAguinaldo
+                ? (isRecibos ? 'Error al generar los recibos de aguinaldo' : 'Error al generar la planilla de aguinaldos')
+                : (isRecibos ? 'Error al generar los recibos masivos' : 'Error al generar el reporte de planilla');
             setError(err.response?.data?.message || defaultMsg);
             toast.error(defaultMsg);
         } finally {
@@ -50,7 +73,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
     };
 
     useEffect(() => {
-        if (isOpen && anio && mes && quincena) {
+        if (isOpen && anio && (isAguinaldo || (mes && quincena))) {
             fetchReport();
         } else {
             if (pdfUrl) {
@@ -63,7 +86,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         return () => {
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         };
-    }, [isOpen, anio, mes, quincena, tipo]);
+    }, [isOpen, anio, mes, quincena, tipo, departamento_id]);
 
     // Close on ESC
     useEffect(() => {
@@ -82,9 +105,9 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         if (!pdfUrl) return;
         const link = document.createElement('a');
         link.href = pdfUrl;
-        const defaultFilename = isRecibos
-            ? `Recibos_Planilla_${anio}_${mes}_${quincena}.pdf`
-            : `Planilla_${anio}_${mes}_${quincena}.pdf`;
+        const defaultFilename = isAguinaldo
+            ? (isRecibos ? `Recibos_Aguinaldos_${anio}_${mes}.pdf` : `Planilla_Aguinaldos_${anio}_${mes}.pdf`)
+            : (isRecibos ? `Recibos_Planilla_${anio}_${mes}_${quincena}.pdf` : `Planilla_${anio}_${mes}_${quincena}.pdf`);
         link.setAttribute('download', defaultFilename);
         document.body.appendChild(link);
         link.click();
@@ -125,18 +148,24 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">
-                                    {isRecibos ? 'Recibos de Pago Masivos' : 'Planilla de Sueldos y Salarios'}
+                                    {isAguinaldo
+                                        ? (isRecibos ? 'Recibos de Aguinaldo Masivos' : 'Planilla de Aguinaldos')
+                                        : (isRecibos ? 'Recibos de Pago Masivos' : 'Planilla de Sueldos y Salarios')}
                                 </h3>
                                 <span className={`text-[10px] font-bold ${
                                     isRecibos
                                         ? 'text-purple-700 bg-purple-50 border-purple-200/70'
                                         : 'text-indigo-700 bg-indigo-50 border-indigo-200/70'
                                 } border px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0`}>
-                                    {isRecibos ? 'Boletas de Pago' : 'Formato Oficial'}
+                                    {isAguinaldo
+                                        ? (isRecibos ? 'Boletas de Aguinaldo' : 'Formato Oficial')
+                                        : (isRecibos ? 'Boletas de Pago' : 'Formato Oficial')}
                                 </span>
                             </div>
                             <p className="text-xs text-slate-500 font-medium truncate">
-                                Período: {mesLabel} {anio} • {quincenaLabel}
+                                {isAguinaldo
+                                    ? `Período: ${mesLabel} ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
+                                    : `Período: ${mesLabel} ${anio} • ${quincenaLabel}`}
                             </p>
                         </div>
                     </div>
@@ -190,10 +219,14 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                         <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-slate-500">
                             <Loader2 size={36} className={`animate-spin ${isRecibos ? 'text-purple-600' : 'text-indigo-600'}`} />
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                                {isRecibos ? 'Generando recibos de pago...' : 'Generando planilla en formato contable...'}
+                                {isAguinaldo
+                                    ? (isRecibos ? 'Generando recibos de aguinaldo...' : 'Generando planilla de aguinaldos en formato oficial...')
+                                    : (isRecibos ? 'Generando recibos de pago...' : 'Generando planilla en formato contable...')}
                             </p>
                             <p className="text-[11px] text-slate-400">
-                                {isRecibos ? 'Compilando boletas individuales de cada empleado del período' : 'Procesando totales, deducciones y percepciones de ley'}
+                                {isAguinaldo
+                                    ? (isRecibos ? 'Compilando boletas individuales de aguinaldo de cada empleado' : 'Procesando cálculos, días de ley, exenciones y retenciones')
+                                    : (isRecibos ? 'Compilando boletas individuales de cada empleado del período' : 'Procesando totales, deducciones y percepciones de ley')}
                             </p>
                         </div>
                     ) : error ? (
@@ -217,7 +250,9 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                             ref={iframeRef}
                             src={`${pdfUrl}#view=FitH`}
                             className="w-full flex-1 border-0 bg-slate-100"
-                            title={isRecibos ? `Recibos ${anio} ${mes} ${quincena}` : `Planilla ${anio} ${mes} ${quincena}`}
+                            title={isAguinaldo
+                                ? (isRecibos ? `Recibos Aguinaldos ${anio} ${mes}` : `Planilla Aguinaldos ${anio} ${mes}`)
+                                : (isRecibos ? `Recibos ${anio} ${mes} ${quincena}` : `Planilla ${anio} ${mes} ${quincena}`)}
                         />
                     ) : null}
                 </div>
@@ -225,9 +260,13 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                 {/* Footer */}
                 <div className="px-6 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
                     <span className="font-medium text-slate-400">
-                        {isRecibos
-                            ? 'Boletas oficiales de pago quincenal • Formato individual para firma y entrega'
-                            : 'Formato contable estándar oficial • Presentación apaisada (Carta) sin firmas'}
+                        {isAguinaldo
+                            ? (isRecibos
+                                ? 'Boletas oficiales de aguinaldo • Formato individual para firma y entrega'
+                                : 'Planilla oficial de aguinaldos • Formato contable apaisado (Carta) sin firmas')
+                            : (isRecibos
+                                ? 'Boletas oficiales de pago quincenal • Formato individual para firma y entrega'
+                                : 'Formato contable estándar oficial • Presentación apaisada (Carta) sin firmas')}
                     </span>
                     <div className="flex items-center gap-3">
                         <span className="hidden sm:inline text-slate-400">
