@@ -11,8 +11,10 @@ import { IMaskInput } from 'react-imask';
 import { MoneyInput } from '../../components/ui/Money';
 import {
     Plus, Edit, Trash2, Search,
-    UserCircle, Briefcase, Wallet, ScrollText, CalendarX, Loader2
+    UserCircle, Briefcase, Wallet, ScrollText, CalendarX, Loader2,
+    FileSignature, FileText
 } from 'lucide-react';
+import AccionPersonalModal from '../../components/rh/AccionPersonalModal';
 
 const TABS = [
     { id: 'personal', label: 'Información Personal', icon: <UserCircle size={14} /> },
@@ -20,6 +22,7 @@ const TABS = [
     { id: 'descuentos', label: 'Descuentos Programados', icon: <Wallet size={14} /> },
     { id: 'indemnizaciones', label: 'Indemnizaciones', icon: <ScrollText size={14} /> },
     { id: 'ausencias', label: 'Faltas / Inasistencias', icon: <CalendarX size={14} /> },
+    { id: 'acciones', label: 'Acciones de Personal', icon: <FileSignature size={14} /> },
 ];
 
 const fmtDate = (dateStr) => {
@@ -127,6 +130,12 @@ const Empleados = () => {
     const { data: ausencias = [], refetch: refetchAusencias } = useQuery({
         queryKey: ['rh-empleado-ausencias', selected?.id],
         queryFn: async () => (await axios.get(`/api/rh/empleados/${selected.id}/ausencias`)).data,
+        enabled: !!selected?.id
+    });
+
+    const { data: accionesPersonal = [], refetch: refetchAcciones } = useQuery({
+        queryKey: ['rh-empleado-acciones', selected?.id],
+        queryFn: async () => (await axios.get(`/api/rh/acciones-personal?empleado_id=${selected.id}&limit=100`)).data?.data || [],
         enabled: !!selected?.id
     });
 
@@ -633,6 +642,14 @@ const Empleados = () => {
                             deleteAusenciaMutation={deleteAusenciaMutation}
                             refetch={refetchAusencias}
                         />
+
+                        {/* TAB 6: Acciones de Personal */}
+                        <AccionesPersonalTab
+                            visible={activeTab === 'acciones'}
+                            selected={selected}
+                            acciones={accionesPersonal}
+                            refetch={refetchAcciones}
+                        />
                     </div>
 
                     {/* Only show save button for tabs 1-2 (main form) */}
@@ -1011,6 +1028,183 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
                     </div>
                 </div>
             </Modal>
+        </div>
+    );
+};
+
+// --- Sub-component: Acciones de Personal ---
+const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
+    const confirm = useConfirm();
+    const [loadingPdfId, setLoadingPdfId] = useState(null);
+    const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+    const [selectedActionForEdit, setSelectedActionForEdit] = useState(null);
+
+    const deleteMutation = useMutation({
+        mutationFn: (id) => axios.delete(`/api/rh/acciones-personal/${id}`),
+        onSuccess: () => {
+            refetch();
+            toast.success('Acción de personal eliminada');
+        },
+        onError: (err) => {
+            toast.error(err.response?.data?.message || 'Error al eliminar acción');
+        }
+    });
+
+    const handleDelete = async (a) => {
+        const ok = await confirm({
+            title: '¿Eliminar Acción de Personal?',
+            message: `¿Está seguro de eliminar la acción ${a.codigo}? Esta acción no se puede deshacer.`,
+            confirmLabel: 'Sí, eliminar',
+            variant: 'danger'
+        });
+        if (ok) deleteMutation.mutate(a.id);
+    };
+
+    const handlePrintPDF = async (a) => {
+        try {
+            setLoadingPdfId(a.id);
+            const res = await axios.get(`/api/rh/acciones-personal/${a.id}/pdf`, { responseType: 'blob' });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            window.open(blobUrl, '_blank');
+        } catch (err) {
+            console.error('Error al generar PDF:', err);
+            toast.error('Error al abrir el PDF');
+        } finally {
+            setLoadingPdfId(null);
+        }
+    };
+
+    if (!visible) return null;
+
+    if (!selected) {
+        return (
+            <div className="py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                <FileSignature size={32} className="mx-auto text-slate-300 mb-2" />
+                <p className="text-xs font-bold text-slate-400">Guarda el empleado primero para gestionar acciones de personal</p>
+            </div>
+        );
+    }
+
+    const ACCION_LABELS = {
+        llamado_verbal: { label: 'Llamado verbal', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+        llamado_escrito_1: { label: 'Llamado escrito 1', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+        llamado_escrito_2: { label: '2do llamado escrito', color: 'bg-red-50 text-red-700 border-red-200' },
+        suspension: { label: 'Suspensión', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+        terminacion_sin_responsabilidad: { label: 'Terminación s/ resp.', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+        despido: { label: 'Despido', color: 'bg-red-100 text-red-800 border-red-300' },
+        otro: { label: 'Otro', color: 'bg-slate-50 text-slate-700 border-slate-200' }
+    };
+
+    return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-2">
+                    <FileSignature size={16} className="text-indigo-600" />
+                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Acciones de Personal / Amonestaciones</h3>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setSelectedActionForEdit(null);
+                        setIsActionModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                >
+                    <Plus size={14} /> Nueva Acción
+                </button>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-xs">
+                    <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Correlativo</th>
+                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Fecha</th>
+                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Medida / Sanción</th>
+                            <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Causa</th>
+                            <th className="text-center px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Firma</th>
+                            <th className="text-center px-3 py-2 font-bold text-slate-500 uppercase text-[10px] w-24">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {acciones.length === 0 ? (
+                            <tr><td colSpan={6} className="text-center py-8 text-slate-400 italic">Sin acciones de personal registradas</td></tr>
+                        ) : acciones.map(a => {
+                            const opt = ACCION_LABELS[a.accion_tomar] || { label: a.accion_tomar, color: 'bg-slate-50 text-slate-700 border-slate-200' };
+                            const suspensionText = a.accion_tomar === 'suspension' && a.dias_suspension ? ` (${a.dias_suspension} d)` : '';
+                            return (
+                                <tr key={a.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                    <td className="px-3 py-2 font-mono font-bold text-indigo-700">{a.codigo}</td>
+                                    <td className="px-3 py-2 text-slate-600">{fmtDate(a.fecha)}</td>
+                                    <td className="px-3 py-2">
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${opt.color}`}>
+                                            {opt.label}{suspensionText}
+                                        </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-slate-700 max-w-[200px] truncate" title={a.descripcion_causa}>
+                                        {a.descripcion_causa || '-'}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                        {a.estado_firma === 'firmado' ? (
+                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Firmado</span>
+                                        ) : a.estado_firma === 'se_nego_a_firmar' ? (
+                                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">Se negó</span>
+                                        ) : (
+                                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">Pendiente</span>
+                                        )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <div className="flex items-center justify-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => handlePrintPDF(a)}
+                                                disabled={loadingPdfId === a.id}
+                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                                                title="Descargar / Imprimir PDF Oficial"
+                                            >
+                                                {loadingPdfId === a.id ? <Loader2 size={15} className="animate-spin text-indigo-600" /> : <FileText size={15} />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedActionForEdit(a);
+                                                    setIsActionModalOpen(true);
+                                                }}
+                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                title="Editar Acción"
+                                            >
+                                                <Edit size={15} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDelete(a)}
+                                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Eliminar"
+                                            >
+                                                <Trash2 size={15} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Modal de Acción de Personal in-situ */}
+            <AccionPersonalModal
+                isOpen={isActionModalOpen}
+                onClose={() => {
+                    setIsActionModalOpen(false);
+                    setSelectedActionForEdit(null);
+                }}
+                selectedAction={selectedActionForEdit}
+                initialEmployee={selected}
+                onSuccess={() => refetch()}
+                zIndex="z-[60]"
+            />
         </div>
     );
 };

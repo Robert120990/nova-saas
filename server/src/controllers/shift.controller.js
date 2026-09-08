@@ -697,8 +697,8 @@ const exportArqueosPDF = async (req, res) => {
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
         if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas es requerido' });
 
-        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
-        const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '' };
+        const [companyRows] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
+        const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '', nrc: '' };
 
         let branchName = 'Todas las sucursales';
         if (branch_id && branch_id !== 'all') {
@@ -860,8 +860,11 @@ const exportArqueosPDF = async (req, res) => {
         const mappedRemesas = remesasRows.map(mapRemesa);
 
         const reportData = {
+            company_id: companyId,
+            company: company,
             company_name: company.razon_social,
             company_nit: company.nit,
+            company_nrc: company.nrc,
             branch_name: branchName,
             start_date,
             end_date,

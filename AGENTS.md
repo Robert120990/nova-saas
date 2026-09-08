@@ -120,6 +120,17 @@ Toda modificación de pantallas existentes y toda nueva opción/pantalla en `cli
 - Tablas nativas SIEMPRE con `overflow-x-auto`; tablas densas de edición con `.table-cards` + `data-label`.
 - Probar en 320px y 375px + ejecutar `npm run lint` y `npm run build` antes de terminar.
 
+### Reportes en PDF y Excel (per .opencode/skills/reporte/REPORT_DESIGN_RULES.md) — OBLIGATORIO
+TODO nuevo reporte en PDF debe implementar el estándar contable unificado usando `server/src/utils/reportPdfHelper.js`:
+- Documento: `reportPdfHelper.createPdfDocument('landscape' | 'portrait')` con tamaño `LETTER`, margen 30pt y `bufferPages: true`.
+- Encabezado: `reportPdfHelper.renderHeader(doc, company, title, periodText, orientation, subtitle)` con timestamp de emisión, razón social en mayúsculas negrita, título, NRC, NIT, período centrado, leyenda `(CIFRAS EXPRESADAS EN DOLARES DE LOS ESTADOS UNIDOS DE AMERICA)` y línea divisoria `#e2e8f0`.
+- Tablas: Barra de cabecera `#f1f5f9` (14pt), texto `#0f172a` negrita 7pt, línea inferior `#cbd5e1`.
+- Monedas: Formatear exclusivamente con `reportPdfHelper.fmt(val)` (`$ -` para ceros/nulos, `$(X.XX)` para negativos).
+- Paginación y Cierre: Salto defensivo (`doc.y > 510` en landscape o `> 700` en portrait), `reportPdfHelper.renderClosingFooter` ("Número de {Entidad} Impresas : N", "FIN DEL REPORTE.") y paginación dinámica centrada con `reportPdfHelper.renderPageNumbers(doc)`.
+- **SIN FIRMAS**: Los reportes operacionales (ventas, inventario, compras, gastos, cxc, cxp, arqueos, rentabilidad) **NO llevan firmas** bajo ninguna circunstancia. Las firmas quedan reservadas para balances/estados contables.
+- Exportación Excel: Todo endpoint debe soportar `?format=excel` antes de la generación PDF usando `excelService.createExcelBuffer` y `excelService.sendExcelResponse`.
+- Frontend: Usar `<ReportLayout>` (`client/src/components/ui/ReportLayout.jsx`) con `onExportExcel`.
+
 ## Environment Configuration
 
 ### Main Server (`.env`)

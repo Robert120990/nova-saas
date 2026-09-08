@@ -3,6 +3,7 @@ const PDFDocument = require('pdfkit');
 const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 /**
  * Obtener lista de compras con búsqueda y paginación
@@ -673,8 +674,7 @@ const getPurchaseReportPDF = async (req, res) => {
         }
 
         // 1. Obtener datos de la empresa
-        const [company] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
-        const comp = company[0] || { razon_social: 'EMPRESA', nit: '---' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
 
         // 2. Construir Query de Compras
         let sql = `
@@ -747,157 +747,188 @@ const getPurchaseReportPDF = async (req, res) => {
             return excelService.sendExcelResponse(res, buffer, 'reporte-compras.xlsx');
         }
 
-        // 3. Generar PDF (LANDSCAPE)
-        const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
-        const chunks = [];
-        doc.on('data', chunk => chunks.push(chunk));
-        doc.on('end', () => {
-            const result = Buffer.concat(chunks);
-            res.setHeader('Content-Type', 'application/pdf');
-            res.send(result);
-        });
+        let branchName = 'TODAS LAS SUCURSALES';
+        if (branch_id && branch_id !== 'all' && rows.length > 0) {
+            branchName = (rows[0].branch_nombre || '').toUpperCase();
+        } else if (branch_id && branch_id !== 'all') {
+            const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (bRows.length > 0) branchName = (bRows[0].nombre || '').toUpperCase();
+        }
 
-        // Header
-        doc.fontSize(16).font('Helvetica-Bold').text(comp.razon_social.toUpperCase(), { align: 'center' });
-        doc.fontSize(10).font('Helvetica').text(`NIT: ${comp.nit}`, { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DE COMPRAS (DETALLADO)', { align: 'center' });
-        doc.fontSize(9).font('Helvetica').text(`Periodo: ${start_date} al ${end_date}`, { align: 'center' });
-        
-        let branchName = 'Todas las sucursales';
-        if (branch_id !== 'all' && rows.length > 0) branchName = rows[0].branch_nombre;
-        doc.text(`Sucursal: ${branchName}`, { align: 'center' });
-        doc.moveDown(1.5);
+        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+        const subtitle = `SUCURSAL: ${branchName}`;
 
-        // Table logic
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
         const startX = 30;
-        let currentY = doc.y;
+        const contentWidth = 732; // 792 - 60
 
-        const drawTableHeader = (y) => {
-            doc.fontSize(7).font('Helvetica-Bold');
-            doc.text('FECHA', startX, y);
-            doc.text('TIPO DOC', startX + 45, y);
-            doc.text('NÚMERO', startX + 150, y);
-            doc.text('CONDICIÓN', startX + 220, y);
-            doc.text('GRAVADA', startX + 275, y, { width: 55, align: 'right' });
-            doc.text('EXENTA', startX + 335, y, { width: 55, align: 'right' });
-            doc.text('IVA', startX + 395, y, { width: 45, align: 'right' });
-            doc.text('RET.', startX + 445, y, { width: 40, align: 'right' });
-            doc.text('PER.', startX + 490, y, { width: 40, align: 'right' });
-            doc.text('FOV.', startX + 535, y, { width: 45, align: 'right' });
-            doc.text('COT.', startX + 585, y, { width: 45, align: 'right' });
-            doc.text('TOTAL', startX + 635, y, { width: 70, align: 'right' });
-            doc.moveTo(startX, y + 10).lineTo(740, y + 10).stroke();
-            return y + 15;
+        reportPdfHelper.renderHeader(doc, company, 'Reporte de Compras (Detallado)', periodText, 'landscape', subtitle);
+
+        const colW = {
+            fecha: 46,
+            tipoDoc: 66,
+            numero: 105,
+            condicion: 48,
+            gravada: 52,
+            exenta: 50,
+            iva: 45,
+            ret: 42,
+            per: 42,
+            fov: 44,
+            cot: 44,
+            total: 66
         };
 
-        currentY = drawTableHeader(currentY);
+        const drawTableHeader = (yPos) => {
+            doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX + 4;
+            doc.text('FECHA', x, yPos + 3); x += colW.fecha;
+            doc.text('TIPO DOC', x, yPos + 3); x += colW.tipoDoc;
+            doc.text('NÚMERO', x, yPos + 3); x += colW.numero;
+            doc.text('CONDICIÓN', x, yPos + 3); x += colW.condicion;
+            doc.text('GRAVADA', x, yPos + 3, { width: colW.gravada, align: 'right' }); x += colW.gravada;
+            doc.text('EXENTA', x, yPos + 3, { width: colW.exenta, align: 'right' }); x += colW.exenta;
+            doc.text('IVA', x, yPos + 3, { width: colW.iva, align: 'right' }); x += colW.iva;
+            doc.text('RET.', x, yPos + 3, { width: colW.ret, align: 'right' }); x += colW.ret;
+            doc.text('PER.', x, yPos + 3, { width: colW.per, align: 'right' }); x += colW.per;
+            doc.text('FOV.', x, yPos + 3, { width: colW.fov, align: 'right' }); x += colW.fov;
+            doc.text('COT.', x, yPos + 3, { width: colW.cot, align: 'right' }); x += colW.cot;
+            doc.text('TOTAL', x, yPos + 3, { width: colW.total - 6, align: 'right' });
+            return yPos + 16;
+        };
 
-        let currentProvider = null;
-        let pTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
-        let gTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+        let currentY = drawTableHeader(doc.y + 4);
 
-        rows.forEach((row, index) => {
-            // Check for page break
-            if (currentY > 550) {
-                doc.addPage();
-                currentY = drawTableHeader(30);
-            }
+        if (rows.length === 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+            doc.text('No se encontraron compras en el período seleccionado.', startX, currentY + 10);
+            currentY += 30;
+        } else {
+            let currentProvider = null;
+            let pTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+            let gTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
 
-            // Grouping Header
-            if (row.provider_nombre !== currentProvider) {
-                if (currentProvider !== null) {
-                    // Print subtotal
-                    doc.fontSize(7).font('Helvetica-Bold');
-                    doc.text('SUBTOTAL:', startX + 220, currentY, { width: 50, align: 'right' });
-                    doc.text(`$${pTotals.grav.toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${pTotals.exe.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${pTotals.iva.toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${pTotals.ret.toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${pTotals.per.toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${pTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${pTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${pTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
-                    currentY += 15;
-                    pTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+            const printSubtotal = () => {
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX + colW.fecha + colW.tipoDoc + colW.numero, currentY).lineTo(startX + contentWidth, currentY).stroke();
+                currentY += 2;
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text('SUBTOTAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right' });
+                let sx = startX + colW.fecha + colW.tipoDoc + colW.numero + colW.condicion;
+                doc.text(reportPdfHelper.fmt(pTotals.grav), sx, currentY, { width: colW.gravada, align: 'right' }); sx += colW.gravada;
+                doc.text(reportPdfHelper.fmt(pTotals.exe), sx, currentY, { width: colW.exenta, align: 'right' }); sx += colW.exenta;
+                doc.text(reportPdfHelper.fmt(pTotals.iva), sx, currentY, { width: colW.iva, align: 'right' }); sx += colW.iva;
+                doc.text(reportPdfHelper.fmt(pTotals.ret), sx, currentY, { width: colW.ret, align: 'right' }); sx += colW.ret;
+                doc.text(reportPdfHelper.fmt(pTotals.per), sx, currentY, { width: colW.per, align: 'right' }); sx += colW.per;
+                doc.text(reportPdfHelper.fmt(pTotals.fov), sx, currentY, { width: colW.fov, align: 'right' }); sx += colW.fov;
+                doc.text(reportPdfHelper.fmt(pTotals.cot), sx, currentY, { width: colW.cot, align: 'right' }); sx += colW.cot;
+                doc.text(reportPdfHelper.fmt(pTotals.total), sx, currentY, { width: colW.total - 6, align: 'right' });
+                currentY += 15;
+                pTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+            };
+
+            for (const row of rows) {
+                if (currentY > 520) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, 'Reporte de Compras (Detallado)', periodText, 'landscape', subtitle);
+                    currentY = drawTableHeader(doc.y + 4);
                 }
-                
-                doc.fontSize(8).font('Helvetica-Bold').fillColor('#4f46e5');
-                doc.text(`PROVEEDOR: ${row.provider_nombre || 'S/N'}`, startX, currentY);
-                doc.fillColor('black');
+
+                if (row.provider_nombre !== currentProvider) {
+                    if (currentProvider !== null) {
+                        printSubtotal();
+                    }
+                    if (currentY > 520) {
+                        doc.addPage();
+                        reportPdfHelper.renderHeader(doc, company, 'Reporte de Compras (Detallado)', periodText, 'landscape', subtitle);
+                        currentY = drawTableHeader(doc.y + 4);
+                    }
+                    doc.rect(startX, currentY, contentWidth, 14).fill('#e2e8f0');
+                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(`PROVEEDOR: ${row.provider_nombre || 'S/N'}`, startX + 4, currentY + 3);
+                    currentY += 16;
+                    currentProvider = row.provider_nombre;
+                }
+
+                doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
+                let lx = startX + 4;
+                doc.text(reportPdfHelper.formatDate(row.fecha), lx, currentY, { width: colW.fecha }); lx += colW.fecha;
+                doc.text((row.tipo_doc_nombre || '---').substring(0, 16), lx, currentY, { width: colW.tipoDoc }); lx += colW.tipoDoc;
+                doc.text(String(row.numero_documento || '---'), lx, currentY, { width: colW.numero }); lx += colW.numero;
+                doc.text((row.condicion_nombre || 'CONTADO').substring(0, 10), lx, currentY, { width: colW.condicion }); lx += colW.condicion;
+
+                const grav = parseFloat(row.total_gravada || 0);
+                const exe = parseFloat(row.total_exenta || 0);
+                const iva = parseFloat(row.iva || 0);
+                const ret = parseFloat(row.retencion || 0);
+                const per = parseFloat(row.percepcion || 0);
+                const fov = parseFloat(row.fovial || 0);
+                const cot = parseFloat(row.cotrans || 0);
+                const tot = parseFloat(row.monto_total || 0);
+
+                doc.text(reportPdfHelper.fmt(grav), lx, currentY, { width: colW.gravada, align: 'right' }); lx += colW.gravada;
+                doc.text(reportPdfHelper.fmt(exe), lx, currentY, { width: colW.exenta, align: 'right' }); lx += colW.exenta;
+                doc.text(reportPdfHelper.fmt(iva), lx, currentY, { width: colW.iva, align: 'right' }); lx += colW.iva;
+                doc.text(reportPdfHelper.fmt(ret), lx, currentY, { width: colW.ret, align: 'right' }); lx += colW.ret;
+                doc.text(reportPdfHelper.fmt(per), lx, currentY, { width: colW.per, align: 'right' }); lx += colW.per;
+                doc.text(reportPdfHelper.fmt(fov), lx, currentY, { width: colW.fov, align: 'right' }); lx += colW.fov;
+                doc.text(reportPdfHelper.fmt(cot), lx, currentY, { width: colW.cot, align: 'right' }); lx += colW.cot;
+                doc.text(reportPdfHelper.fmt(tot), lx, currentY, { width: colW.total - 6, align: 'right' });
+
+                pTotals.grav += grav;
+                pTotals.exe += exe;
+                pTotals.iva += iva;
+                pTotals.ret += ret;
+                pTotals.per += per;
+                pTotals.fov += fov;
+                pTotals.cot += cot;
+                pTotals.total += tot;
+
+                gTotals.grav += grav;
+                gTotals.exe += exe;
+                gTotals.iva += iva;
+                gTotals.ret += ret;
+                gTotals.per += per;
+                gTotals.fov += fov;
+                gTotals.cot += cot;
+                gTotals.total += tot;
+
                 currentY += 12;
-                currentProvider = row.provider_nombre;
             }
 
-            // Row Data
-            doc.fontSize(7).font('Helvetica');
-            const fechaVal = new Date(row.fecha).toLocaleDateString();
-            doc.text(fechaVal, startX, currentY);
-            doc.text(row.tipo_doc_nombre || '---', startX + 45, currentY, { width: 100, truncate: true });
-            doc.text(row.numero_documento || '---', startX + 150, currentY, { width: 65 });
-            doc.text(row.condicion_nombre || 'CONTADO', startX + 220, currentY, { width: 50 });
-            doc.text(`$${parseFloat(row.total_gravada || 0).toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-            doc.text(`$${parseFloat(row.total_exenta || 0).toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-            doc.text(`$${parseFloat(row.iva || 0).toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.retencion || 0).toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-            doc.text(`$${parseFloat(row.percepcion || 0).toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-            doc.text(`$${parseFloat(row.fovial || 0).toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.cotrans || 0).toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.monto_total || 0).toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
-
-            // Sum pTotals
-            pTotals.grav += parseFloat(row.total_gravada || 0);
-            pTotals.exe += parseFloat(row.total_exenta || 0);
-            pTotals.iva += parseFloat(row.iva || 0);
-            pTotals.ret += parseFloat(row.retencion || 0);
-            pTotals.per += parseFloat(row.percepcion || 0);
-            pTotals.fov += parseFloat(row.fovial || 0);
-            pTotals.cot += parseFloat(row.cotrans || 0);
-            pTotals.total += parseFloat(row.monto_total || 0);
-
-            // Sum gTotals
-            gTotals.grav += parseFloat(row.total_gravada || 0);
-            gTotals.exe += parseFloat(row.total_exenta || 0);
-            gTotals.iva += parseFloat(row.iva || 0);
-            gTotals.ret += parseFloat(row.retencion || 0);
-            gTotals.per += parseFloat(row.percepcion || 0);
-            gTotals.fov += parseFloat(row.fovial || 0);
-            gTotals.cot += parseFloat(row.cotrans || 0);
-            gTotals.total += parseFloat(row.monto_total || 0);
-
-            currentY += 12;
-
-            // Last subtotal
-            if (index === rows.length - 1) {
-                doc.fontSize(7).font('Helvetica-Bold');
-                doc.text('SUBTOTAL:', startX + 220, currentY, { width: 50, align: 'right' });
-                doc.text(`$${pTotals.grav.toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-                doc.text(`$${pTotals.exe.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-                doc.text(`$${pTotals.iva.toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-                doc.text(`$${pTotals.ret.toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-                doc.text(`$${pTotals.per.toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-                doc.text(`$${pTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-                doc.text(`$${pTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-                doc.text(`$${pTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
-                currentY += 20;
+            if (currentProvider !== null) {
+                printSubtotal();
             }
-        });
 
-        // Grand Total Section
-        doc.moveTo(startX, currentY).lineTo(740, currentY).stroke();
-        currentY += 10;
-        doc.fontSize(9).font('Helvetica-Bold');
-        doc.text('TOTAL GENERAL:', startX + 115, currentY, { width: 155, align: 'right' });
-        doc.text(`$${gTotals.grav.toFixed(2)}`, startX + 275, currentY, { width: 55, align: 'right' });
-        doc.text(`$${gTotals.exe.toFixed(2)}`, startX + 335, currentY, { width: 55, align: 'right' });
-        doc.text(`$${gTotals.iva.toFixed(2)}`, startX + 395, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.ret.toFixed(2)}`, startX + 445, currentY, { width: 40, align: 'right' });
-        doc.text(`$${gTotals.per.toFixed(2)}`, startX + 490, currentY, { width: 40, align: 'right' });
-        doc.text(`$${gTotals.fov.toFixed(2)}`, startX + 535, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.cot.toFixed(2)}`, startX + 585, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.total.toFixed(2)}`, startX + 635, currentY, { width: 70, align: 'right' });
+            if (currentY > 520) {
+                doc.addPage();
+                reportPdfHelper.renderHeader(doc, company, 'Reporte de Compras (Detallado)', periodText, 'landscape', subtitle);
+                currentY = doc.y + 10;
+            }
 
+            doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+            currentY += 4;
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('TOTAL GENERAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right' });
+            let gx = startX + colW.fecha + colW.tipoDoc + colW.numero + colW.condicion;
+            doc.text(reportPdfHelper.fmt(gTotals.grav), gx, currentY, { width: colW.gravada, align: 'right' }); gx += colW.gravada;
+            doc.text(reportPdfHelper.fmt(gTotals.exe), gx, currentY, { width: colW.exenta, align: 'right' }); gx += colW.exenta;
+            doc.text(reportPdfHelper.fmt(gTotals.iva), gx, currentY, { width: colW.iva, align: 'right' }); gx += colW.iva;
+            doc.text(reportPdfHelper.fmt(gTotals.ret), gx, currentY, { width: colW.ret, align: 'right' }); gx += colW.ret;
+            doc.text(reportPdfHelper.fmt(gTotals.per), gx, currentY, { width: colW.per, align: 'right' }); gx += colW.per;
+            doc.text(reportPdfHelper.fmt(gTotals.fov), gx, currentY, { width: colW.fov, align: 'right' }); gx += colW.fov;
+            doc.text(reportPdfHelper.fmt(gTotals.cot), gx, currentY, { width: colW.cot, align: 'right' }); gx += colW.cot;
+            doc.text(reportPdfHelper.fmt(gTotals.total), gx, currentY, { width: colW.total - 6, align: 'right' });
+            currentY += 18;
+        }
+
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY, rows.length, 'Compras');
+        reportPdfHelper.renderPageNumbers(doc);
         doc.end();
+
+        const buffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.send(buffer);
 
     } catch (error) {
         console.error('Error al generar reporte de compras:', error);

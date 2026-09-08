@@ -772,6 +772,10 @@ ORDER BY gc.fecha_turno DESC
 - comentarios TEXT, created_at, updated_at
 - UNIQUE(company_id, codigo)
 
+### rh_descuentos_programados (Catálogo de descuentos programados)
+- id, company_id, cuenta_id FK -> rh_cuentas_planillas
+- codigo VARCHAR(20), descripcion VARCHAR(255), created_at
+
 ### rh_empleado_descuentos (Descuentos programados asignados por empleado)
 - id, company_id, empleado_id FK -> rh_empleados
 - descuento_id FK -> rh_descuentos_programados
@@ -794,6 +798,18 @@ ORDER BY gc.fecha_turno DESC
 - fecha_inicial DATE, fecha_final DATE, dias_transcurridos INT
 - vacaciones_monto DECIMAL, descuento_isss DECIMAL, descuento_afp DECIMAL, descuento_renta DECIMAL
 - total_devengado DECIMAL, total_deducciones DECIMAL, monto_recibir DECIMAL
+- created_at, updated_at
+
+### rh_acciones_personal (Acciones de personal y amonestaciones)
+- id, company_id, empleado_id FK -> rh_empleados
+- codigo VARCHAR(30) (AP-YYYY-XXXX), fecha DATE, jefe_inmediato VARCHAR(150), lugar_trabajo VARCHAR(150)
+- tiempo_laborado ENUM('0_a_1', '1_a_5', '5_a_10', 'mas_10'), tipo_accion VARCHAR(50)
+- infracciones JSON (array de causales marcadas), infraccion_otra VARCHAR(255)
+- descripcion_causa TEXT, articulo_codigo_trabajo VARCHAR(255)
+- accion_tomar ENUM('llamado_verbal', 'llamado_escrito_1', 'llamado_escrito_2', 'suspension', 'terminacion_sin_responsabilidad', 'despido', 'otro')
+- dias_suspension INT, fecha_inicio_suspension DATE, fecha_fin_suspension DATE, accion_otra VARCHAR(255)
+- recursos_humanos VARCHAR(150), estado_firma ENUM('pendiente', 'firmado', 'se_nego_a_firmar')
+- testigo_nombre VARCHAR(150), observaciones TEXT, estado ENUM('borrador', 'aplicada', 'anulada')
 - created_at, updated_at
 
 `;

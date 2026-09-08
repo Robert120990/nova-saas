@@ -32,15 +32,22 @@ Mismo endpoint del PDF aceptando `?format=excel`:
    ```
    (`server/src/services/excel.service.js`)
 
-## Backend PDF (`server/src/services/pdf.service.js`)
+## Backend PDF (`server/src/utils/reportPdfHelper.js` y `server/src/services/pdf.service.js`)
 
-- Orientación `landscape` si >4 columnas.
-- **Salto de página CRÍTICO**: verificar `doc.y > 500` antes de cada fila; si salta, `doc.addPage()` + redibujar encabezado de tabla; capturar `y = doc.y` DESPUÉS del posible salto.
-- Datos de empresa: usar `razon_social` de la tabla `companies` (NO la columna `nombre`).
-- Montos dentro del PDF: `$` + `toFixed(2)`; totales en negrita al final.
+TODO reporte nuevo en PDF debe usar obligatoriamente `reportPdfHelper.js`:
+- Inicializar con `reportPdfHelper.createPdfDocument('landscape' | 'portrait')` (`size: 'LETTER'`, márgenes 30pt).
+- Encabezado contable unificado con `reportPdfHelper.renderHeader(doc, company, title, periodText, orientation, subtitle)`: timestamp superior izquierda, razón social en mayúsculas negrita, título, identificación fiscal (NRC y NIT), período, leyenda de moneda en dólares y línea divisoria `#e2e8f0`.
+- Tablas: barra de encabezado `#f1f5f9` (14pt altura), texto `#0f172a` negrita 7pt, línea inferior `#cbd5e1`.
+- Formato monetario: usar `reportPdfHelper.fmt(valor)` (`$ -` para 0, `$(X.XX)` para negativos).
+- **Salto de página CRÍTICO**: verificar `doc.y > 510` (landscape) o `doc.y > 700` (portrait) antes de cada fila; si salta, `doc.addPage()` + `drawHeader()` + `drawTableHeader()`; capturar `y = doc.y` DESPUÉS del posible salto.
+- Totales generales con línea superior de 1pt `#0f172a` y línea inferior de cierre de 1pt.
+- Pie de cierre con `reportPdfHelper.renderClosingFooter(doc, startX, doc.y, items.length, 'Entidad')`.
+- Paginación dinámica `Página X de Y` centrada en el pie con `reportPdfHelper.renderPageNumbers(doc)`.
+- **REGLA ESTRICTA DE FIRMAS: SIN FIRMAS en reportes operacionales** (ventas, compras, inventario, gastos, cxc, cxp). Las firmas son exclusivas para balances/estados contables.
 
-> Nota: el formato `$X.XX` aplica SOLO al PDF generado en backend. En la interfaz React los montos SIEMPRE usan `<Money>` (permiso `view_amounts`) según AGENTS.md.
+> Nota: el formato numérico contable aplica SOLO al PDF generado en backend. En la interfaz React los montos SIEMPRE usan `<Money>` (permiso `view_amounts`) según AGENTS.md.
 
 ## Cierre obligatorio
 
 Responsividad (skill `responsive-check`), `npm run lint && npm run build` en client, lint en server, y `node scripts/generate-project-structure.js`.
+

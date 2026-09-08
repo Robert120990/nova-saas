@@ -1,15 +1,16 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../../components/ui/Table';
-import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, Users, X, Loader2, User, CheckCircle, Zap, Download, Trash2, Lock } from 'lucide-react';
+import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText } from 'lucide-react';
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
+import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
+import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
 
-const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
+const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
 
 const yearNow = new Date().getFullYear();
@@ -22,12 +23,69 @@ const months = [
     { value: 10, label: 'Octubre' }, { value: 11, label: 'Noviembre' }, { value: 12, label: 'Diciembre' }
 ];
 
+const calcularTarifaDetalle = (d, sueldoBase) => {
+    const sueldo = parseFloat(sueldoBase || 0);
+    const sueldoDiario = sueldo / 30;
+    const valorHoraOrdinaria = sueldoDiario / 8;
+
+    if (d.tipo_valor === 'horas') {
+        let factor = 2.0;
+        const descUpper = (d.descripcion || '').toUpperCase();
+        if (d.valor_base_config && parseFloat(d.valor_base_config) > 0) {
+            const vb = parseFloat(d.valor_base_config);
+            if (vb <= 5) factor = vb;
+            else return vb;
+        } else if (descUpper.includes('NOCTURNA')) {
+            factor = 2.5;
+        } else if (d.operacion === 'restar') {
+            factor = 1.0;
+        } else {
+            factor = 2.0;
+        }
+        return valorHoraOrdinaria * factor;
+    }
+
+    if (d.tipo_valor === 'dias') {
+        let factor = 1.0;
+        if (d.valor_base_config && parseFloat(d.valor_base_config) > 0) {
+            const vb = parseFloat(d.valor_base_config);
+            if (vb <= 5) factor = vb;
+        }
+        return sueldoDiario * factor;
+    }
+
+    return 1;
+};
+
+const calcularMontoDetalle = (d, cantidad, sueldoBase) => {
+    const qty = parseFloat(cantidad) || 0;
+    const sueldo = parseFloat(sueldoBase || 0);
+
+    if (d.tipo_valor === 'horas') {
+        const tarifa = calcularTarifaDetalle(d, sueldo);
+        return Math.round(qty * tarifa * 100) / 100;
+    }
+
+    if (d.tipo_valor === 'dias') {
+        const tarifa = calcularTarifaDetalle(d, sueldo);
+        return Math.round(qty * tarifa * 100) / 100;
+    }
+
+    if (d.tipo_valor === 'porcentaje') {
+        const pct = qty > 0 ? qty : parseFloat(d.valor_base_config || d.valor_base || 0);
+        return Math.round(sueldo * (pct / 100) * 100) / 100;
+    }
+
+    // tipo_valor === 'valor'
+    return Math.round(qty * 100) / 100;
+};
+
 const Planillas = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const employeeInputRef = useRef(null);
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('historial'); // 'historial' | 'nuevo'
     const [selected, setSelected] = useState(null);
     const [filterAnio, setFilterAnio] = useState(yearNow);
     const [filterMes, setFilterMes] = useState(monthNow);
@@ -35,7 +93,7 @@ const Planillas = () => {
     const [page, setPage] = useState(1);
 
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
-    const [empSearch, setEmpSearch] = useState('');
+    const [previewPeriodo, setPreviewPeriodo] = useState(null);
 
     const [empleadoId, setEmpleadoId] = useState('');
     const [empleadoData, setEmpleadoData] = useState(null);
@@ -53,27 +111,20 @@ const Planillas = () => {
     const autoSaveRef = useRef(false);
     const savingRef = useRef(false);
 
-    useDirtyTracker('planillas', empleadoId && detalles.length > 0);
+    useDirtyTracker('planillas', activeTab === 'nuevo' && empleadoId && detalles.length > 0);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'F3') {
                 e.preventDefault();
-                if (isModalOpen) {
+                if (activeTab === 'nuevo') {
                     setIsEmpModalOpen(true);
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isModalOpen]);
-
-    const { data: empResponse = { data: [] }, isLoading: empLoading } = useQuery({
-        queryKey: ['rh-empleados-search', empSearch],
-        queryFn: async () => (await axios.get('/api/rh/empleados', { params: { search: empSearch, limit: 200, solo_activos: 1 } })).data,
-        enabled: isEmpModalOpen,
-        staleTime: 0
-    });
+    }, [activeTab]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['rh-planillas-grupos', page, filterAnio, filterMes, filterQuincena],
@@ -87,7 +138,7 @@ const Planillas = () => {
     const { data: cuentasActivas = [] } = useQuery({
         queryKey: ['rh-cuentas-activas'],
         queryFn: async () => (await axios.get('/api/rh/planillas/cuentas-activas')).data,
-        enabled: isModalOpen
+        enabled: activeTab === 'nuevo'
     });
 
     // Auto-calculate with 500ms debounce + auto-save when dirty
@@ -211,18 +262,62 @@ const Planillas = () => {
                 setSelected(cachedPlanillaId ? { id: cachedPlanillaId, empleado_id: id } : null);
             } else if (data.planilla_id) {
                 setSelected({ id: data.planilla_id, empleado_id: id });
-                setDetalles(data.detalles || []);
+                const sueldoBase = parseFloat(data.sueldo_base || 0);
+                const sueldoDiario = sueldoBase / 30;
+
+                const parsedDetalles = (data.detalles || []).map(d => {
+                    let cantidad = 0;
+                    if (d.cantidad !== undefined) {
+                        cantidad = d.cantidad;
+                    } else if (d.valor_base !== null && d.valor_base !== undefined && parseFloat(d.valor_base) > 0) {
+                        cantidad = parseFloat(d.valor_base);
+                    } else {
+                        if (d.tipo_valor === 'dias') {
+                            cantidad = sueldoDiario > 0 ? Math.round(parseFloat(d.valor_ingresado || 0) / sueldoDiario) : 0;
+                        } else if (d.tipo_valor === 'horas') {
+                            const tarifa = calcularTarifaDetalle(d, sueldoBase);
+                            const val = parseFloat(d.valor_ingresado || 0);
+                            if (val > 0 && val <= 40 && tarifa > 0 && Math.abs(val - Math.round(val * tarifa * 100) / 100) > 0.01) {
+                                cantidad = val;
+                            } else if (tarifa > 0) {
+                                cantidad = Math.round((val / tarifa) * 100) / 100;
+                            } else {
+                                cantidad = val;
+                            }
+                        } else if (d.tipo_valor === 'porcentaje') {
+                            cantidad = sueldoBase > 0 ? Math.round((parseFloat(d.valor_ingresado || 0) / sueldoBase) * 10000) / 100 : 0;
+                        } else {
+                            cantidad = parseFloat(d.valor_ingresado || 0);
+                        }
+                    }
+                    const monto = calcularMontoDetalle(d, cantidad, sueldoBase);
+                    return {
+                        ...d,
+                        cantidad: cantidad,
+                        valor_base: cantidad,
+                        valor_ingresado: monto
+                    };
+                });
+
+                setDetalles(parsedDetalles);
                 const tot = data.totales;
+                const otrasDed = parsedDetalles.filter(d => d.operacion === 'restar').reduce((s, d) => s + parseFloat(d.valor_ingresado || 0), 0);
+                const isss = parseFloat(tot?.descuento_isss || 0);
+                const afp = parseFloat(tot?.descuento_afp || 0);
+                const renta = parseFloat(tot?.descuento_renta || 0);
+                const totalDed = tot ? Math.round((isss + afp + renta + otrasDed) * 100) / 100 : 0;
+                const totPercep = parseFloat(tot?.total_percepciones || 0);
                 const calc = tot ? {
-                    total_percepciones: parseFloat(tot.total_percepciones || 0),
-                    descuento_isss: parseFloat(tot.descuento_isss || 0),
-                    descuento_afp: parseFloat(tot.descuento_afp || 0),
-                    descuento_renta: parseFloat(tot.descuento_renta || 0),
-                    total_deducciones: parseFloat(tot.total_deducciones || 0),
-                    monto_recibir: parseFloat(tot.monto_recibir || 0)
+                    total_percepciones: totPercep,
+                    total_deducciones_cuentas: otrasDed,
+                    descuento_isss: isss,
+                    descuento_afp: afp,
+                    descuento_renta: renta,
+                    total_deducciones: totalDed,
+                    monto_recibir: Math.round((totPercep - totalDed) * 100) / 100
                 } : null;
                 setCalculo(calc);
-                cacheRef.current[id] = { detalles: data.detalles || [], calculo: calc, planilla_id: data.planilla_id };
+                cacheRef.current[id] = { detalles: parsedDetalles, calculo: calc, planilla_id: data.planilla_id };
             } else {
                 setSelected(null);
                 setCalculo(null);
@@ -235,25 +330,50 @@ const Planillas = () => {
 
     const buildDetalles = (emp) => {
         if (!cuentasActivas || cuentasActivas.length === 0) return;
-        const sueldoBase = parseFloat(emp.sueldo_base || 0);
-        const sueldoDiario = sueldoBase / 30;
+        const sueldoBase = parseFloat(emp?.sueldo_base || 0);
+
+        const activeDiscounts = (emp?.descuentos_programados || []).filter(d => {
+            const q = d.quincena || d.aplicar_en;
+            if (quincena === 'primera' && q === 'segunda') return false;
+            if (quincena === 'segunda' && q === 'primera') return false;
+            return true;
+        });
+
         const list = cuentasActivas.map(c => {
-            let valor = 0;
-            if (c.tipo_valor === 'dias') {
-                if (c.codigo === '01') valor = sueldoDiario * diasTrabajados;
-            } else if (c.tipo_valor === 'valor') {
-                valor = parseFloat(c.valor_base || 0);
-            } else if (c.tipo_valor === 'porcentaje') {
-                valor = sueldoBase * (parseFloat(c.valor_base || 0) / 100);
+            let cantidad = 0;
+            if (c.tipo_valor === 'dias' && c.codigo === '01') {
+                cantidad = diasTrabajados;
+            } else {
+                // Check if account matches any active scheduled discount
+                const matchDiscount = activeDiscounts.find(d => {
+                    if (d.cuenta_id && Number(d.cuenta_id) === Number(c.id)) return true;
+                    if (d.cuenta_codigo && d.cuenta_codigo === c.codigo) return true;
+                    const desc = (c.descripcion || '').toLowerCase();
+                    const nom = (d.desc_nombre || d.nombre || d.descripcion || '').toLowerCase();
+                    if (nom.includes('prestamo') && desc.includes('prestamo')) return true;
+                    if (nom.includes('procuraduria') && desc.includes('procuraduria')) return true;
+                    if ((nom.includes('fsv') || nom.includes('fondo social')) && (desc.includes('fsv') || desc.includes('vivienda') || desc.includes('fondo social'))) return true;
+                    if (nom.includes('anticipo') && desc.includes('anticipo')) return true;
+                    return false;
+                });
+
+                if (matchDiscount) {
+                    cantidad = parseFloat(matchDiscount.valor !== undefined ? matchDiscount.valor : (matchDiscount.monto_cuota || 0));
+                } else if (c.tipo_valor === 'valor' || c.tipo_valor === 'porcentaje' || c.tipo_valor === 'horas') {
+                    cantidad = parseFloat(c.valor_base || 0);
+                }
             }
+            const monto = calcularMontoDetalle(c, cantidad, sueldoBase);
             return {
                 cuenta_id: c.id,
                 codigo: c.codigo,
                 descripcion: c.descripcion,
                 operacion: c.operacion,
                 tipo_valor: c.tipo_valor,
-                valor_base: c.valor_base,
-                valor_ingresado: Math.round(valor * 100) / 100,
+                valor_base_config: c.valor_base,
+                valor_base: cantidad,
+                cantidad: cantidad,
+                valor_ingresado: monto,
                 orden: c.orden || 0
             };
         });
@@ -261,10 +381,10 @@ const Planillas = () => {
     };
 
     useEffect(() => {
-        if (isModalOpen && !selected && empleadoData && detalles.length === 0) {
+        if (activeTab === 'nuevo' && !selected && empleadoData && detalles.length === 0) {
             buildDetalles(empleadoData);
         }
-    }, [cuentasActivas, isModalOpen]);
+    }, [cuentasActivas, activeTab]);
 
     const handleCodigoSearch = async () => {
         if (!codigoInput.trim()) return;
@@ -284,26 +404,19 @@ const Planillas = () => {
     const handleSelectEmployee = (emp) => {
         loadEmpleado(emp.id);
         setIsEmpModalOpen(false);
-        setEmpSearch('');
     };
-
-    const filteredEmployees = useMemo(() => {
-        let list = empResponse.data || [];
-        if (!empSearch) return list.slice(0, 20);
-        const s = empSearch.toLowerCase();
-        return list.filter(e => e.codigo?.toLowerCase().includes(s) || e.nombres?.toLowerCase().includes(s) || e.apellidos?.toLowerCase().includes(s)).slice(0, 30);
-    }, [empResponse.data, empSearch]);
 
     const handleValorChange = (index, value) => {
         const updated = [...detalles];
-        const d = updated[index];
+        const d = { ...updated[index] };
         const raw = parseFloat(value) || 0;
-        if (d.codigo === '01' && d.tipo_valor === 'dias') {
-            const sueldoDiario = parseFloat(empleadoData?.sueldo_base || 0) / 30;
-            d.valor_ingresado = Math.round(sueldoDiario * raw * 100) / 100;
-        } else {
-            d.valor_ingresado = raw;
-        }
+        const sueldoBase = parseFloat(empleadoData?.sueldo_base || 0);
+
+        d.cantidad = raw;
+        d.valor_base = raw;
+        d.valor_ingresado = calcularMontoDetalle(d, raw, sueldoBase);
+        updated[index] = d;
+
         setDetalles(updated);
         autoSaveRef.current = true;
         if (empleadoId) {
@@ -311,22 +424,21 @@ const Planillas = () => {
         }
     };
 
-    const handleDownloadRecibosMasivos = async (anio, mes, quincena) => {
-        try {
-            const res = await axios.get('/api/rh/planillas/recibos-masivos', {
-                params: { anio, mes, quincena },
-                responseType: 'blob'
+    const handleDiasTrabajadosChange = (newDias) => {
+        setDiasTrabajados(newDias);
+        if (detalles && detalles.length > 0 && empleadoData) {
+            const updated = detalles.map(d => {
+                if (d.codigo === '01' && d.tipo_valor === 'dias') {
+                    const monto = calcularMontoDetalle(d, newDias, empleadoData.sueldo_base);
+                    return { ...d, cantidad: newDias, valor_base: newDias, valor_ingresado: monto };
+                }
+                return d;
             });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Recibos_Planilla_${anio}_${mes}_${quincena}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            toast.success('Recibos masivos generados');
-        } catch { toast.error('Error al generar recibos masivos'); }
+            setDetalles(updated);
+            autoSaveRef.current = true;
+        }
     };
+
 
     const handleDownloadCSV = async (anio, mes, quincena) => {
         try {
@@ -401,6 +513,86 @@ const Planillas = () => {
         }
     };
 
+    const handleVerPlanillaActual = async () => {
+        if (autoSaveRef.current && !savingRef.current && empleadoId && calculo) {
+            autoSaveRef.current = false;
+            savingRef.current = true;
+            try {
+                const data = {
+                    empleado_id: empleadoId,
+                    periodo_anio: periodoAnio,
+                    periodo_mes: periodoMes,
+                    quincena,
+                    dias_trabajados: diasTrabajados,
+                    detalles: detalles,
+                    total_percepciones: calculo.total_percepciones,
+                    total_deducciones: calculo.total_deducciones,
+                    descuento_isss: calculo.descuento_isss,
+                    descuento_afp: calculo.descuento_afp,
+                    descuento_renta: calculo.descuento_renta,
+                    monto_recibir: calculo.monto_recibir
+                };
+                if (selected?.id) {
+                    await axios.put(`/api/rh/planillas/${selected.id}`, data);
+                } else {
+                    await axios.post('/api/rh/planillas', data);
+                }
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            } catch (e) {
+                console.error('Error saving before preview:', e);
+            } finally {
+                savingRef.current = false;
+            }
+        }
+
+        setPreviewPeriodo({
+            anio: periodoAnio,
+            mes: periodoMes,
+            quincena: quincena,
+            tipo: 'planilla'
+        });
+    };
+
+    const handleVerRecibosActual = async () => {
+        if (autoSaveRef.current && !savingRef.current && empleadoId && calculo) {
+            autoSaveRef.current = false;
+            savingRef.current = true;
+            try {
+                const data = {
+                    empleado_id: empleadoId,
+                    periodo_anio: periodoAnio,
+                    periodo_mes: periodoMes,
+                    quincena,
+                    dias_trabajados: diasTrabajados,
+                    detalles: detalles,
+                    total_percepciones: calculo.total_percepciones,
+                    total_deducciones: calculo.total_deducciones,
+                    descuento_isss: calculo.descuento_isss,
+                    descuento_afp: calculo.descuento_afp,
+                    descuento_renta: calculo.descuento_renta,
+                    monto_recibir: calculo.monto_recibir
+                };
+                if (selected?.id) {
+                    await axios.put(`/api/rh/planillas/${selected.id}`, data);
+                } else {
+                    await axios.post('/api/rh/planillas', data);
+                }
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            } catch (e) {
+                console.error('Error saving before preview:', e);
+            } finally {
+                savingRef.current = false;
+            }
+        }
+
+        setPreviewPeriodo({
+            anio: periodoAnio,
+            mes: periodoMes,
+            quincena: quincena,
+            tipo: 'recibos'
+        });
+    };
+
     const resetForm = () => {
         setSelected(null);
         setEmpleadoId('');
@@ -417,18 +609,13 @@ const Planillas = () => {
     };
 
     const handleVerDetalle = (item) => {
-        setSelected(null);
-        setEmpleadoId('');
-        setEmpleadoData(null);
-        setCodigoInput('');
+        resetForm();
         setPeriodoAnio(item.periodo_anio);
         setPeriodoMes(item.periodo_mes);
         setQuincena(item.quincena);
         setDiasTrabajados(15);
-        setDetalles([]);
-        setCalculo(null);
         setPeriodoBloqueado(true);
-        setIsModalOpen(true);
+        setActiveTab('nuevo');
     };
 
     const estadoBadge = (item) => {
@@ -437,221 +624,464 @@ const Planillas = () => {
     };
 
     const percTotal = detalles.reduce((s, d) => s + (d.operacion === 'sumar' ? parseFloat(d.valor_ingresado || 0) : 0), 0);
-
+    const otrasDedActual = detalles.reduce((s, d) => s + (d.operacion === 'restar' ? parseFloat(d.valor_ingresado || 0) : 0), 0);
+    const sueldoQuincActual = empleadoData
+        ? (detalles.find(d => d.codigo === '01')?.valor_ingresado !== undefined
+            ? parseFloat(detalles.find(d => d.codigo === '01')?.valor_ingresado || 0)
+            : ((parseFloat(empleadoData.sueldo_base || 0) / 30) * diasTrabajados))
+        : 0;
+    const ingresosAdicActual = Math.max(0, Math.round((percTotal - sueldoQuincActual) * 100) / 100);
     const sinEmpleado = !empleadoId;
 
     return (
-        <div className="space-y-3 text-slate-900">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-xl font-bold tracking-tight">Planillas</h2>
-                    <p className="text-slate-500 text-[11px] font-medium">Gestión de planillas quincenales</p>
-                </div>
-                <button onClick={() => { resetForm(); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
-                    <Plus size={20} /><span>Nueva Planilla</span>
-                </button>
-            </div>
-
-            <div className="flex gap-3 items-end">
-                <div>
-                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">Año</label>
-                    <select value={filterAnio} onChange={e => { setFilterAnio(parseInt(e.target.value)); setPage(1); }}
-                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/10">
-                        {years.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">Mes</label>
-                    <select value={filterMes} onChange={e => { setFilterMes(parseInt(e.target.value)); setPage(1); }}
-                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/10">
-                        <option value="">Todos</option>
-                        {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">Quincena</label>
-                    <select value={filterQuincena} onChange={e => { setFilterQuincena(e.target.value); setPage(1); }}
-                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/10">
-                        <option value="">Todas</option>
-                        <option value="primera">Primera</option>
-                        <option value="segunda">Segunda</option>
-                    </select>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <Table headers={['Periodo', 'Q', '# Emp', 'Sueldos', 'Perc.', 'ISSS', 'AFP', 'Renta', 'Ded.', 'Neto', 'Estado', 'Acciones']}
-                    data={items} isLoading={isLoading}
-                    renderRow={(item) => (
-                        <tr key={`${item.periodo_anio}-${item.periodo_mes}-${item.quincena}`} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                            <td className="px-3 py-1">
-                                <span className="text-xs font-bold text-slate-700">{months.find(m => m.value === item.periodo_mes)?.label} {item.periodo_anio}</span>
-                            </td>
-                            <td className="px-3 py-1">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">{item.quincena === 'primera' ? '1ra' : '2da'}</span>
-                            </td>
-                            <td className="px-3 py-1">
-                                <span className="text-xs font-bold text-slate-800">{item.total_empleados}</span>
-                            </td>
-                            <td className="px-3 py-1 text-xs text-slate-700">${parseFloat(item.total_sueldos || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-indigo-600">${parseFloat(item.total_percepciones || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs text-slate-600">${parseFloat(item.total_isss || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs text-slate-600">${parseFloat(item.total_afp || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs text-slate-600">${parseFloat(item.total_renta || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-red-600">${parseFloat(item.total_deducciones || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-emerald-600">${parseFloat(item.total_neto || 0).toFixed(2)}</td>
-                            <td className="px-3 py-1">{estadoBadge(item)}</td>
-                            <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleVerDetalle(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar"><Edit size={15} /></button>
-                                <button onClick={() => handleDownloadRecibosMasivos(item.periodo_anio, item.periodo_mes, item.quincena)} className="p-1 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Recibos Masivos">
-                                    <Download size={15} />
-                                </button>
-                                <button onClick={() => handleDownloadCSV(item.periodo_anio, item.periodo_mes, item.quincena)} className="p-1 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="CSV">
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                </button>
-                                <button onClick={() => handleCerrarPeriodo(item)} className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Cerrar"><Lock size={15} /></button>
-                                <button onClick={() => handleEliminarPeriodo(item)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
-                            </td>
-                        </tr>
-                    )} />
-            </div>
-
-            <Pagination currentPage={page} totalPages={response.totalPages} totalItems={response.total}
-                onPageChange={setPage} itemsOnPage={items.length} isLoading={isLoading} />
-
-            {/* --- Creation/Edit Modal --- */}
-            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }}
-                title="Planilla Quincenal" maxWidth="max-w-6xl">
-                <div className="space-y-4 pb-4">
-                    {/* Header: Periodo + Generar */}
-                    <div className="grid grid-cols-8 gap-3">
+        <div className="space-y-4 text-slate-900 pb-12">
+            {activeTab === 'historial' ? (
+                <>
+                    {/* Header List View */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                         <div>
-                            <label className={labelCls}>Año</label>
-                            <select value={periodoAnio} onChange={e => setPeriodoAnio(parseInt(e.target.value))} disabled={periodoBloqueado} className={fieldCls}>
+                            <h2 className="text-xl font-bold tracking-tight text-slate-900">Planillas</h2>
+                            <p className="text-slate-500 text-xs font-medium">Gestión y control de planillas quincenales</p>
+                        </div>
+                        <button
+                            onClick={() => { resetForm(); setActiveTab('nuevo'); }}
+                            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                        >
+                            <Plus size={18} />
+                            <span>Nueva Planilla</span>
+                        </button>
+                    </div>
+
+                    {/* Filter Bar */}
+                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Año</label>
+                            <select
+                                value={filterAnio}
+                                onChange={e => { setFilterAnio(parseInt(e.target.value)); setPage(1); }}
+                                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
                                 {years.map(y => <option key={y} value={y}>{y}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className={labelCls}>Mes</label>
-                            <select value={periodoMes} onChange={e => setPeriodoMes(parseInt(e.target.value))} disabled={periodoBloqueado} className={fieldCls}>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Mes</label>
+                            <select
+                                value={filterMes}
+                                onChange={e => { setFilterMes(parseInt(e.target.value)); setPage(1); }}
+                                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="">Todos</option>
                                 {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className={labelCls}>Quincena</label>
-                            <select value={quincena} onChange={e => setQuincena(e.target.value)} disabled={periodoBloqueado} className={fieldCls}>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Quincena</label>
+                            <select
+                                value={filterQuincena}
+                                onChange={e => { setFilterQuincena(e.target.value); setPage(1); }}
+                                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="">Todas</option>
                                 <option value="primera">Primera</option>
                                 <option value="segunda">Segunda</option>
                             </select>
                         </div>
-                        <div>
-                            <label className={labelCls}>Días Trab.</label>
-                            <input type="number" min="1" max="30" value={diasTrabajados}
-                                onChange={e => setDiasTrabajados(parseInt(e.target.value) || 15)} disabled={periodoBloqueado} className={fieldCls} />
+                    </div>
+
+                    {/* Table View */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <Table
+                            headers={['Periodo', 'Q', '# Emp', 'Sueldo Quinc.', 'Ing. Adic.', 'Total Dev.', 'ISSS', 'AFP', 'Renta', 'Ded.', 'Neto', 'Estado', 'Acciones']}
+                            data={items}
+                            isLoading={isLoading}
+                            renderRow={(item) => (
+                                <tr key={`${item.periodo_anio}-${item.periodo_mes}-${item.quincena}`} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-700">{months.find(m => m.value === item.periodo_mes)?.label} {item.periodo_anio}</span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">{item.quincena === 'primera' ? '1ra' : '2da'}</span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <span className="text-xs font-bold text-slate-800">{item.total_empleados}</span>
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-slate-700 font-medium">${parseFloat(item.total_sueldos_quincenal || (parseFloat(item.total_sueldos || 0) / 2)).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs font-semibold text-slate-600">${parseFloat(item.total_ingresos_adic || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs font-bold text-indigo-600">${parseFloat(item.total_percepciones || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs text-slate-600">${parseFloat(item.total_isss || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs text-slate-600">${parseFloat(item.total_afp || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs text-slate-600">${parseFloat(item.total_renta || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs font-bold text-red-600">${parseFloat(item.total_deducciones || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2 text-xs font-bold text-emerald-600">${parseFloat(item.total_neto || 0).toFixed(2)}</td>
+                                    <td className="px-3 py-2">{estadoBadge(item)}</td>
+                                    <td className="px-3 py-2 flex items-center gap-1">
+                                        <button
+                                            onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'planilla' })}
+                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Ver Planilla Oficial (PDF)"
+                                        >
+                                            <FileText size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleVerDetalle(item)}
+                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Editar planilla"
+                                        >
+                                            <Edit size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'recibos' })}
+                                            className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                            title="Ver Recibos Masivos (PDF)"
+                                        >
+                                            <ReceiptText size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDownloadCSV(item.periodo_anio, item.periodo_mes, item.quincena)}
+                                            className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
+                                            title="Exportar CSV bancario"
+                                        >
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                        </button>
+                                        <button
+                                            onClick={() => handleCerrarPeriodo(item)}
+                                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            title="Cerrar período (Marcar pagada)"
+                                        >
+                                            <Lock size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleEliminarPeriodo(item)}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Eliminar período"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            )}
+                        />
+                    </div>
+
+                    <Pagination
+                        currentPage={page}
+                        totalPages={response.totalPages}
+                        totalItems={response.total}
+                        onPageChange={setPage}
+                        itemsOnPage={items.length}
+                        isLoading={isLoading}
+                    />
+                </>
+            ) : (
+                /* --- Full Normal Screen Form (Nueva / Edición de Planilla) --- */
+                <div className="space-y-4">
+                    {/* Form Top Navigation Bar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => { resetForm(); setActiveTab('historial'); }}
+                                className="p-2 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-xl transition-colors border border-slate-200 shadow-sm flex items-center justify-center"
+                                title="Volver a la lista de planillas"
+                            >
+                                <ArrowLeft size={18} />
+                            </button>
+                            <div>
+                                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+                                    {periodoBloqueado ? 'Planilla Quincenal' : 'Nueva Planilla Quincenal'}
+                                </h2>
+                                <p className="text-slate-500 text-xs font-medium">
+                                    {months.find(m => m.value === periodoMes)?.label} {periodoAnio} — {quincena === 'primera' ? '1ra Quincena' : '2da Quincena'}
+                                </p>
+                            </div>
                         </div>
-                        <div className="col-span-4 flex items-end">
-                            {periodoBloqueado ? (
-                                <div className="w-full flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-bold text-sm border border-emerald-200">
-                                    <CheckCircle size={16} /> Planilla generada
-                                </div>
-                            ) : (
-                                <button type="button" onClick={handleGenerar} disabled={generando}
-                                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50">
-                                    {generando ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                                    {generando ? 'Generando...' : 'Generar'}
+
+                        <div className="flex items-center gap-2">
+                            {periodoBloqueado && (
+                                <button
+                                    type="button"
+                                    onClick={handleVerPlanillaActual}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 rounded-xl transition-all shadow-sm active:scale-95"
+                                    title="Ver planilla en formato oficial"
+                                >
+                                    <FileText size={14} />
+                                    <span>Ver Planilla</span>
                                 </button>
                             )}
+                            {periodoBloqueado && (
+                                <button
+                                    type="button"
+                                    onClick={handleVerRecibosActual}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200/60 rounded-xl transition-all shadow-sm active:scale-95"
+                                    title="Ver recibos de pago masivos"
+                                >
+                                    <ReceiptText size={14} />
+                                    <span>Ver Recibos</span>
+                                </button>
+                            )}
+                            {periodoBloqueado ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-3 py-1.5 rounded-xl">
+                                    <CheckCircle size={14} /> Período Generado
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200/60 px-3 py-1.5 rounded-xl">
+                                    <Zap size={14} /> Pendiente de Generar
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => { resetForm(); setActiveTab('historial'); }}
+                                className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+                            >
+                                Volver al Listado
+                            </button>
                         </div>
                     </div>
 
-                    {/* Employee Search */}
-                    <div>
-                        <label className={labelCls}>Código Empleado <span className="text-[9px] text-indigo-400">(F3 para buscar)</span></label>
-                        <div className="flex gap-2">
-                            <input ref={employeeInputRef} type="text" value={codigoInput}
-                                onChange={e => setCodigoInput(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCodigoSearch(); } }}
-                                placeholder="Código"
-                                className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-mono" />
-                            <button type="button" onClick={handleCodigoSearch}
-                                className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors">
-                                <Search size={16} />
-                            </button>
-                            <button type="button" onClick={() => setIsEmpModalOpen(true)}
-                                className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors">
-                                <Users size={16} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Employee Info (always visible) */}
-                    {empleadoData ? (
-                        <div className="flex items-center gap-4 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 text-xs">
-                            <User size={14} className="text-indigo-400 shrink-0" />
-                            <span className="font-bold text-slate-700">{empleadoData.nombres} {empleadoData.apellidos}</span>
-                            <span className="text-slate-400">|</span>
-                            <span className="text-slate-500">{empleadoData.cargo_nombre || <span className="italic">Sin cargo</span>}</span>
-                            <span className="text-slate-400">|</span>
-                            <span className="text-slate-500">{empleadoData.departamento_nombre || <span className="italic">Sin depto.</span>}</span>
-                            <span className="ml-auto font-bold text-indigo-600">Sueldo: ${parseFloat(empleadoData.sueldo_base || 0).toFixed(2)}</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-4 bg-slate-50/50 px-3 py-2 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400">
-                            <User size={14} className="text-slate-300 shrink-0" />
-                            <span className="italic">Sin empleado seleccionado</span>
-                        </div>
-                    )}
-
-                    {/* Two-column layout: always visible */}
-                    <div className="flex gap-4">
-                        {/* Left: Cuentas Table */}
-                        <div className="flex-1 min-w-0 bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
-                                <span className="text-[11px] font-bold text-slate-500 uppercase">Cuentas de Planilla</span>
+                    {/* Period Parameters Card */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 items-end">
+                            <div>
+                                <label className={labelCls}>Año</label>
+                                <select
+                                    value={periodoAnio}
+                                    onChange={e => setPeriodoAnio(parseInt(e.target.value))}
+                                    disabled={periodoBloqueado}
+                                    className={fieldCls}
+                                >
+                                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
                             </div>
-                            <div className="overflow-x-auto" style={{ maxHeight: sinEmpleado ? '120px' : '420px' }}>
+                            <div>
+                                <label className={labelCls}>Mes</label>
+                                <select
+                                    value={periodoMes}
+                                    onChange={e => setPeriodoMes(parseInt(e.target.value))}
+                                    disabled={periodoBloqueado}
+                                    className={fieldCls}
+                                >
+                                    {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className={labelCls}>Quincena</label>
+                                <select
+                                    value={quincena}
+                                    onChange={e => setQuincena(e.target.value)}
+                                    disabled={periodoBloqueado}
+                                    className={fieldCls}
+                                >
+                                    <option value="primera">Primera</option>
+                                    <option value="segunda">Segunda</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className={labelCls}>Días Trab.</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="30"
+                                    value={diasTrabajados}
+                                    onChange={e => handleDiasTrabajadosChange(parseInt(e.target.value) || 15)}
+                                    disabled={periodoBloqueado}
+                                    className={fieldCls}
+                                />
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-2 flex items-end">
+                                {periodoBloqueado ? (
+                                    <div className="w-full flex items-center justify-between gap-2 bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200">
+                                        <span className="flex items-center gap-1.5 text-emerald-600 font-bold">
+                                            <CheckCircle size={14} /> Planilla activa
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPeriodoBloqueado(false)}
+                                            className="text-[11px] text-slate-500 hover:text-slate-800 font-bold underline"
+                                        >
+                                            Cambiar período
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={handleGenerar}
+                                        disabled={generando}
+                                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                                    >
+                                        {generando ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                                        {generando ? 'Generando para todos...' : 'Generar Planilla'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Employee Search & Banner */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+                            <div className="lg:col-span-5">
+                                <label className={labelCls}>
+                                    Código de Empleado <span className="text-[9px] text-indigo-500 font-normal lowercase">(F3 para buscar en catálogo)</span>
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        ref={employeeInputRef}
+                                        type="text"
+                                        value={codigoInput}
+                                        onChange={e => setCodigoInput(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCodigoSearch(); } }}
+                                        placeholder="Ej: 0001"
+                                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-mono"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleCodigoSearch}
+                                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors font-medium text-xs flex items-center gap-1.5"
+                                        title="Buscar por código"
+                                    >
+                                        <Search size={15} />
+                                        <span>Buscar</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEmpModalOpen(true)}
+                                        className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors font-bold text-xs flex items-center gap-1.5"
+                                        title="Ver lista de empleados (F3)"
+                                    >
+                                        <Users size={15} />
+                                        <span>Lista (F3)</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="lg:col-span-7">
+                                {empleadoData ? (
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                                                <User size={15} />
+                                            </div>
+                                            <div>
+                                                <span className="font-bold text-slate-800 text-sm block">
+                                                    {empleadoData.nombres} {empleadoData.apellidos}
+                                                </span>
+                                                <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                    CÓD: {empleadoData.codigo}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                        <div>
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold block">Cargo</span>
+                                            <span className="text-slate-700 font-medium">{empleadoData.cargo_nombre || 'Sin cargo'}</span>
+                                        </div>
+                                        <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                        <div>
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold block">Depto</span>
+                                            <span className="text-slate-700 font-medium">{empleadoData.departamento_nombre || 'Sin depto.'}</span>
+                                        </div>
+                                        <div className="ml-auto text-right">
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold block">Sueldo Quincenal</span>
+                                            <span className="text-sm font-black text-indigo-600">
+                                                ${((parseFloat(empleadoData.sueldo_base || 0) / 30) * diasTrabajados).toFixed(2)}
+                                            </span>
+                                            <span className="text-[9px] text-slate-400 block font-medium">
+                                                Base: ${parseFloat(empleadoData.sueldo_base || 0).toFixed(2)}/mes
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-3 bg-slate-50/70 p-3 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400">
+                                        <User size={16} className="text-slate-300 shrink-0" />
+                                        <span>Seleccione un empleado del listado o escriba su código para comenzar a editar cuentas.</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Two-Column View: Cuentas Table & Summary Panel */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                        {/* Cuentas Table (Left) */}
+                        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                                <div>
+                                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">Cuentas de Planilla</span>
+                                    <span className="text-[10px] text-slate-400">Conceptos de percepciones y deducciones</span>
+                                </div>
+                                {autoSaveRef.current && (
+                                    <span className="text-[10px] text-indigo-600 font-medium animate-pulse">Guardando cambios...</span>
+                                )}
+                            </div>
+
+                            <div className="overflow-x-auto">
                                 {sinEmpleado ? (
-                                    <div className="flex items-center justify-center h-[100px] text-slate-300 text-xs italic">
-                                        Seleccione un empleado para ver sus cuentas
+                                    <div className="flex flex-col items-center justify-center py-10 text-slate-300 text-xs italic gap-1.5">
+                                        <Users size={28} className="opacity-30" />
+                                        <span>Seleccione un empleado para ver y editar sus cuentas</span>
                                     </div>
                                 ) : detalles.length === 0 ? (
-                                    <div className="flex items-center justify-center h-[100px] text-slate-300 text-xs italic">
-                                        Cargando cuentas...
+                                    <div className="flex flex-col items-center justify-center py-10 text-slate-400 text-xs gap-1.5">
+                                        <Loader2 size={20} className="animate-spin text-indigo-500" />
+                                        <span>Cargando cuentas de planilla...</span>
                                     </div>
                                 ) : (
                                     <table className="w-full text-xs">
-                                        <thead className="sticky top-0 z-10 bg-white">
-                                            <tr className="border-b border-slate-100">
-                                                <th className="text-left px-2 py-1.5 text-[10px] font-bold text-slate-500 uppercase w-12">Cód.</th>
-                                                <th className="text-left px-2 py-1.5 text-[10px] font-bold text-slate-500 uppercase">Descripción</th>
-                                                <th className="text-center px-2 py-1.5 text-[10px] font-bold text-slate-500 uppercase w-10">Op.</th>
-                                                <th className="text-center px-2 py-1.5 text-[10px] font-bold text-slate-500 uppercase w-14">Tipo</th>
-                                                <th className="text-right px-2 py-1.5 text-[10px] font-bold text-slate-500 uppercase w-20">
-                                                    {detalles.some(d => d.codigo === '01' && d.tipo_valor === 'dias') ? 'Días' : 'Valor'}
-                                                </th>
+                                        <thead>
+                                            <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-bold text-slate-500 uppercase">
+                                                <th className="text-left px-3 py-1.5 w-12">Cód.</th>
+                                                <th className="text-left px-3 py-1.5">Descripción</th>
+                                                <th className="text-center px-2 py-1.5 w-16">Operación</th>
+                                                <th className="text-center px-2 py-1.5 w-16">Tipo</th>
+                                                <th className="text-right px-3 py-1.5 w-32">Cant. / Base</th>
+                                                <th className="text-right px-3 py-1.5 w-28">Total ($)</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
+                                        <tbody className="divide-y divide-slate-100">
                                             {detalles.map((d, i) => (
-                                                <tr key={i} className={`border-b border-slate-50 hover:bg-slate-50/50 ${d.operacion === 'sumar' ? '' : 'bg-red-50/20'}`}>
-                                                    <td className="px-2 py-1 font-bold text-slate-800">{d.codigo}</td>
-                                                    <td className="px-2 py-1 text-slate-600 truncate max-w-[200px]">{d.descripcion}</td>
+                                                <tr key={i} className={`hover:bg-slate-50/70 transition-colors ${d.operacion === 'sumar' ? '' : 'bg-red-50/15'}`}>
+                                                    <td className="px-3 py-1 font-bold font-mono text-slate-700">{d.codigo}</td>
+                                                    <td className="px-3 py-1 text-slate-700 font-medium text-xs">
+                                                        <div>{d.descripcion}</div>
+                                                        {d.tipo_valor === 'horas' && empleadoData?.sueldo_base && (
+                                                            <div className="text-[10px] text-slate-400 font-normal">
+                                                                Tarifa: ${(calcularTarifaDetalle(d, empleadoData.sueldo_base)).toFixed(2)}/hr
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td className="px-2 py-1 text-center">
-                                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${d.operacion === 'sumar' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                                                            {d.operacion === 'sumar' ? '+' : '−'}
+                                                        <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                            d.operacion === 'sumar' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' : 'bg-rose-50 text-rose-700 border border-rose-200/50'
+                                                        }`}>
+                                                            {d.operacion === 'sumar' ? '+ Suma' : '− Resta'}
                                                         </span>
                                                     </td>
-                                                    <td className="px-2 py-1 text-center text-slate-400 text-[10px]">{d.tipo_valor}</td>
-                                                    <td className="px-2 py-1 text-right">
-                                                        <input type="number"
-                                                            step={d.codigo === '01' && d.tipo_valor === 'dias' ? '1' : '0.01'}
-                                                            min="0"
-                                                            value={d.codigo === '01' && d.tipo_valor === 'dias'
-                                                                ? Math.round(d.valor_ingresado / (parseFloat(empleadoData?.sueldo_base || 1) / 30))
-                                                                : d.valor_ingresado}
-                                                            onChange={e => handleValorChange(i, e.target.value)}
-                                                            className="w-full max-w-[90px] px-2 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium text-right" />
+                                                    <td className="px-2 py-1 text-center">
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 capitalize">
+                                                            {d.tipo_valor}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-1 text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <input
+                                                                type="number"
+                                                                step={d.tipo_valor === 'dias' ? '1' : (d.tipo_valor === 'horas' ? '0.5' : '0.01')}
+                                                                min="0"
+                                                                value={d.cantidad !== undefined ? d.cantidad : ''}
+                                                                onChange={e => handleValorChange(i, e.target.value)}
+                                                                placeholder="0"
+                                                                className="w-full max-w-[80px] px-2 py-0.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-xs font-bold text-right shadow-sm"
+                                                            />
+                                                            <span className="text-[10px] text-slate-400 font-medium w-7 text-left">
+                                                                {d.tipo_valor === 'horas' ? 'hrs' : (d.tipo_valor === 'dias' ? 'días' : (d.tipo_valor === 'porcentaje' ? '%' : '$'))}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-1 text-right font-bold text-slate-900 text-xs">
+                                                        <span className={d.operacion === 'sumar' ? 'text-slate-900' : 'text-rose-600'}>
+                                                            ${parseFloat(d.valor_ingresado || 0).toFixed(2)}
+                                                        </span>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -661,69 +1091,99 @@ const Planillas = () => {
                             </div>
                         </div>
 
-                        {/* Right: Summary Panel */}
-                        <div className="w-72 shrink-0">
-                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase">Resumen</span>
+                        {/* Summary Panel (Right) */}
+                        <div className="lg:col-span-4">
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden sticky top-4">
+                                <div className="px-4 py-3 bg-slate-50/80 border-b border-slate-200">
+                                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">Resumen del Cálculo</span>
+                                    <span className="text-[10px] text-slate-400">Totalizaciones y retenciones de ley</span>
                                 </div>
+
                                 <div className="p-4 space-y-4">
                                     {sinEmpleado ? (
-                                        <div className="text-slate-300 text-xs italic text-center py-4">Seleccione un empleado</div>
+                                        <div className="text-slate-300 text-xs italic text-center py-8">
+                                            Seleccione un empleado para visualizar el resumen
+                                        </div>
                                     ) : (
                                         <>
-                                            <div>
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor Devengado</label>
-                                                <div className="text-2xl font-black text-indigo-600 mt-1">${percTotal.toFixed(2)}</div>
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-500 font-medium">Sueldo Quincenal</span>
+                                                    <span className="font-semibold text-slate-700">${sueldoQuincActual.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-500 font-medium">Ingresos Adicionales</span>
+                                                    <span className="font-semibold text-slate-700">${ingresosAdicActual.toFixed(2)}</span>
+                                                </div>
+                                                <div className="border-t border-slate-100 pt-2 flex justify-between items-baseline">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                        Total Devengado
+                                                    </label>
+                                                    <div className="text-xl font-black text-indigo-600">
+                                                        ${percTotal.toFixed(2)}
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            <div className="border-t border-slate-100 pt-4 space-y-2">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Deducciones de Ley</label>
+                                            <div className="border-t border-slate-100 pt-4 space-y-2.5">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                    Retenciones y Deducciones
+                                                </label>
                                                 {calculando ? (
                                                     <div className="flex items-center gap-2 text-slate-400 text-xs py-2">
-                                                        <Loader2 size={14} className="animate-spin" /> Calculando...
+                                                        <Loader2 size={14} className="animate-spin" /> Calculando retenciones...
                                                     </div>
                                                 ) : calculo ? (
-                                                    <div className="space-y-1.5">
-                                                        <div className="flex justify-between text-xs">
-                                                            <span className="text-slate-600">ISSS {calculo.isss_info?.porcentaje ? `(${calculo.isss_info.porcentaje}%)` : ''}</span>
-                                                            <span className="font-bold text-red-500">$ {calculo.descuento_isss.toFixed(2)}</span>
+                                                    <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                                        <div className="flex justify-between items-center text-xs">
+                                                            <span className="text-slate-600 font-medium">ISSS {calculo.isss_info?.porcentaje ? `(${calculo.isss_info.porcentaje}%)` : ''}</span>
+                                                            <span className="font-bold text-rose-600">${calculo.descuento_isss.toFixed(2)}</span>
                                                         </div>
-                                                        <div className="flex justify-between text-xs">
-                                                            <span className="text-slate-600">AFP {calculo.afp_info?.porcentaje ? `(${calculo.afp_info.porcentaje}%)` : ''}</span>
-                                                            <span className="font-bold text-red-500">$ {calculo.descuento_afp.toFixed(2)}</span>
+                                                        <div className="flex justify-between items-center text-xs">
+                                                            <span className="text-slate-600 font-medium">AFP {calculo.afp_info?.porcentaje ? `(${calculo.afp_info.porcentaje}%)` : ''}</span>
+                                                            <span className="font-bold text-rose-600">${calculo.descuento_afp.toFixed(2)}</span>
                                                         </div>
-                                                        <div className="flex justify-between text-xs">
-                                                            <span className="text-slate-600">Renta</span>
-                                                            <span className="font-bold text-red-500">$ {calculo.descuento_renta.toFixed(2)}</span>
+                                                        <div className="flex justify-between items-center text-xs">
+                                                            <span className="text-slate-600 font-medium">Renta</span>
+                                                            <span className="font-bold text-rose-600">${calculo.descuento_renta.toFixed(2)}</span>
                                                         </div>
+                                                        {((calculo.total_deducciones_cuentas !== undefined ? calculo.total_deducciones_cuentas : otrasDedActual) > 0) && (
+                                                            <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-1.5">
+                                                                <span className="text-slate-600 font-medium">Otras Deducciones</span>
+                                                                <span className="font-bold text-rose-600">${parseFloat(calculo.total_deducciones_cuentas !== undefined ? calculo.total_deducciones_cuentas : otrasDedActual).toFixed(2)}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ) : (
-                                                    <p className="text-[11px] text-slate-300 italic">Ajuste los valores para calcular</p>
+                                                    <p className="text-[11px] text-slate-400 italic">Sin cálculo disponible</p>
                                                 )}
                                             </div>
 
-                                            <div className="border-t border-slate-100 pt-4">
+                                            <div className="border-t border-slate-100 pt-4 space-y-2">
                                                 {calculando ? (
                                                     <div>
-                                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total a Pagar</label>
-                                                        <div className="text-slate-300 text-lg font-black mt-1">—</div>
+                                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total a Pagar</label>
+                                                        <div className="text-slate-300 text-xl font-black mt-1">—</div>
                                                     </div>
                                                 ) : calculo ? (
                                                     <>
-                                                        <div className="flex justify-between text-xs mb-2">
-                                                            <span className="text-slate-500">Deducciones</span>
-                                                            <span className="font-bold text-red-500">$ {calculo.total_deducciones.toFixed(2)}</span>
+                                                        <div className="flex justify-between items-center text-xs text-slate-500">
+                                                            <span>Total Deducciones</span>
+                                                            <span className="font-bold text-rose-600">${calculo.total_deducciones.toFixed(2)}</span>
                                                         </div>
-                                                        <div className="border-t border-slate-200 pt-2">
-                                                            <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total a Pagar</label>
-                                                            <div className="text-xl font-black text-emerald-600 mt-1">$ {calculo.monto_recibir.toFixed(2)}</div>
+                                                        <div className="border-t border-slate-200 pt-3 bg-emerald-50/50 p-3 rounded-xl border border-emerald-100">
+                                                            <label className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                                                                Neto a Recibir (Total a Pagar)
+                                                            </label>
+                                                            <div className="text-2xl font-black text-emerald-600 mt-1">
+                                                                ${calculo.monto_recibir.toFixed(2)}
+                                                            </div>
                                                         </div>
                                                     </>
                                                 ) : (
                                                     <div>
-                                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total a Pagar</label>
-                                                        <div className="text-slate-300 text-lg font-black mt-1">—</div>
+                                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total a Pagar</label>
+                                                        <div className="text-slate-300 text-xl font-black mt-1">—</div>
                                                     </div>
                                                 )}
                                             </div>
@@ -733,75 +1193,22 @@ const Planillas = () => {
                             </div>
                         </div>
                     </div>
-
-                </div>
-            </Modal>
-
-            {/* --- Employee Search Modal (F3) --- */}
-            {isEmpModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-                    onClick={() => { setIsEmpModalOpen(false); setEmpSearch(''); }}>
-                    <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
-                        onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900">Seleccionar Empleado</h3>
-                                <p className="text-xs text-slate-500 font-medium uppercase tracking-widest mt-1">Busque por código o nombre</p>
-                            </div>
-                            <button onClick={() => { setIsEmpModalOpen(false); setEmpSearch(''); }}
-                                className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                                <X size={20} className="text-slate-400" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 bg-slate-50/50 border-b border-slate-100">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                                <input autoFocus type="text" placeholder="Buscar por nombre o código..."
-                                    value={empSearch} onChange={e => setEmpSearch(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-medium" />
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4">
-                            <div className="grid grid-cols-1 gap-2">
-                                {filteredEmployees.map(emp => (
-                                    <button key={emp.id} type="button" onClick={() => handleSelectEmployee(emp)}
-                                        className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all text-left group">
-                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm group-hover:shadow-indigo-100 transition-all">
-                                            <User size={20} className="text-slate-400 group-hover:text-indigo-500" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-bold text-slate-900 truncate">{emp.nombres} {emp.apellidos}</div>
-                                            <div className="flex gap-3 mt-1">
-                                                <span className="text-[10px] font-mono font-bold text-indigo-500">{emp.codigo}</span>
-                                                {emp.cargo_nombre && <span className="text-[10px] text-slate-400">{emp.cargo_nombre}</span>}
-                                                {emp.departamento_nombre && <span className="text-[10px] text-slate-400">{emp.departamento_nombre}</span>}
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                                {empLoading && (
-                                    <div className="py-12 text-center text-slate-400">
-                                        <Loader2 size={40} className="mx-auto opacity-40 mb-2 animate-spin" />
-                                        <p className="font-bold uppercase tracking-widest text-xs italic">Cargando empleados...</p>
-                                    </div>
-                                )}
-                                {!empLoading && filteredEmployees.length === 0 && (
-                                    <div className="py-12 text-center text-slate-400">
-                                        <Users size={40} className="mx-auto opacity-20 mb-2" />
-                                        <p className="font-bold uppercase tracking-widest text-xs italic">No se encontraron empleados</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-center">
-                            <span className="text-[10px] text-slate-400 font-medium">Presione <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-600">F3</kbd> para abrir esta ventana desde el formulario</span>
-                        </div>
-                    </div>
                 </div>
             )}
+
+            {/* --- Modern Employee Search Modal (F3) --- */}
+            <EmployeeSearchModal
+                isOpen={isEmpModalOpen}
+                onClose={() => setIsEmpModalOpen(false)}
+                onSelect={handleSelectEmployee}
+            />
+
+            {/* --- Official Planilla Report Modal --- */}
+            <PlanillaReportModal
+                isOpen={!!previewPeriodo}
+                onClose={() => setPreviewPeriodo(null)}
+                periodo={previewPeriodo}
+            />
         </div>
     );
 };

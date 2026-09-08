@@ -63,6 +63,8 @@ const rhHonorariosController = require('../controllers/rhHonorarios.controller')
 const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinaldos.controller');
 const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.controller');
 const rhPlanillaController = require('../controllers/rhPlanilla.controller');
+const rhReportesController = require('../controllers/rhReportes.controller');
+const rhAccionPersonalController = require('../controllers/rhAccionPersonal.controller');
 const changelogController = require('../controllers/changelog.controller');
 const crmAgreementsController = require('../controllers/crmAgreements.controller');
 
@@ -886,6 +888,15 @@ router.post('/rh/empleados/:id/ausencias', rhEmpleadoController.createAusencia);
 router.put('/rh/empleados/:id/ausencias/:aid', rhEmpleadoController.updateAusencia);
 router.delete('/rh/empleados/:id/ausencias/:aid', rhEmpleadoController.deleteAusencia);
 
+// RRHH - Acciones de Personal / Amonestaciones
+router.get('/rh/acciones-personal/infracciones', rhAccionPersonalController.getInfraccionesCatalogo);
+router.get('/rh/acciones-personal', rhAccionPersonalController.getAcciones);
+router.post('/rh/acciones-personal', rhAccionPersonalController.createAccion);
+router.get('/rh/acciones-personal/:id', rhAccionPersonalController.getAccion);
+router.put('/rh/acciones-personal/:id', rhAccionPersonalController.updateAccion);
+router.delete('/rh/acciones-personal/:id', rhAccionPersonalController.deleteAccion);
+router.get('/rh/acciones-personal/:id/pdf', rhAccionPersonalController.exportPDF);
+
 // RRHH - Planilla de Vacaciones
 router.get('/rh/planilla-vacaciones/calcular', rhPlanillaVacacionesController.calcular);
 router.get('/rh/planilla-vacaciones/empleado/:id', rhPlanillaVacacionesController.getEmpleadoData);
@@ -936,6 +947,7 @@ router.get('/rh/planillas/recibos-masivos', rhPlanillaController.exportRecibosMa
 router.post('/rh/planillas/cerrar-periodo', rhPlanillaController.cerrarPeriodo);
 router.post('/rh/planillas/eliminar-periodo', rhPlanillaController.eliminarPeriodo);
 router.get('/rh/planillas/empleado/:id', rhPlanillaController.getEmpleadoData);
+router.get('/rh/planillas/reporte-pdf', rhPlanillaController.exportPlanillaReportePDF);
 router.get('/rh/planillas', rhPlanillaController.getPlanillas);
 router.post('/rh/planillas', rhPlanillaController.createPlanilla);
 router.get('/rh/planillas/:id/pdf', rhPlanillaController.exportPDF);
@@ -944,6 +956,15 @@ router.get('/rh/planillas/:id', rhPlanillaController.getPlanilla);
 router.put('/rh/planillas/:id', rhPlanillaController.updatePlanilla);
 router.delete('/rh/planillas/:id', rhPlanillaController.deletePlanilla);
 router.post('/rh/planillas/:id/pagar', rhPlanillaController.pagarPlanilla);
+
+// RRHH - Reportes
+router.get('/rh/reportes/catalogos', rhReportesController.getReportesCatalogos);
+router.get('/rh/reportes/isss', rhReportesController.getPlanillaIsssReport);
+router.get('/rh/reportes/afp', rhReportesController.getPlanillaAfpReport);
+router.get('/rh/reportes/renta', rhReportesController.getInformeRentaReport);
+router.get('/rh/reportes/constancia-sueldo', rhReportesController.getConstanciaSueldo);
+router.get('/rh/reportes/carta-renta', rhReportesController.getCartaRenta);
+router.get('/rh/reportes/empleados', rhReportesController.getListadoEmpleadosReport);
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
 

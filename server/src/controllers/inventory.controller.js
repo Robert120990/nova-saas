@@ -618,7 +618,7 @@ const getInventoryStockReport = async (req, res) => {
         }
 
         // Fetch company and branch info for header (safe pattern)
-        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [company_id]);
+        const [companyRows] = await pool.query('SELECT razon_social as nombre, nit, nrc FROM companies WHERE id = ?', [company_id]);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
 
         if (!companyRows || companyRows.length === 0) {
@@ -673,7 +673,11 @@ const getInventoryStockReport = async (req, res) => {
         const [rows] = await pool.query(query, params);
 
         const reportData = {
+            company_id: company_id,
+            company: company,
             company_name: company.nombre,
+            company_nit: company.nit,
+            company_nrc: company.nrc,
             branch_name: branch.nombre,
             as_of: as_of || null,
             products: rows
@@ -726,7 +730,7 @@ const getInventoryMovementsReport = async (req, res) => {
         }
 
         // Fetch company and branch info for header
-        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [company_id]);
+        const [companyRows] = await pool.query('SELECT razon_social as nombre, nit, nrc FROM companies WHERE id = ?', [company_id]);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
 
         if (!companyRows.length || !branchRows.length) {
@@ -802,7 +806,11 @@ const getInventoryMovementsReport = async (req, res) => {
         );
 
         const reportData = {
+            company_id: company_id,
+            company: companyRows[0],
             company_name: companyRows[0].nombre,
+            company_nit: companyRows[0].nit,
+            company_nrc: companyRows[0].nrc,
             branch_name: branchRows[0].nombre,
             startDate,
             endDate,

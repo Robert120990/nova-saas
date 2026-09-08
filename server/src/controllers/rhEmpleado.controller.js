@@ -214,9 +214,11 @@ const getDescuentos = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(
-            `SELECT ed.*, d.codigo as descuento_codigo, d.descripcion as descuento_nombre
+            `SELECT ed.*, d.codigo as descuento_codigo, d.descripcion as descuento_nombre,
+                    d.cuenta_id, cp.codigo as cuenta_codigo, cp.descripcion as cuenta_descripcion
              FROM rh_empleado_descuentos ed
              JOIN rh_descuentos_programados d ON ed.descuento_id = d.id
+             LEFT JOIN rh_cuentas_planillas cp ON d.cuenta_id = cp.id
              WHERE ed.empleado_id = ? AND ed.company_id = ?
              ORDER BY ed.id`,
             [id, req.company_id]

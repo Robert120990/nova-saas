@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../../components/ui/Table';
@@ -6,7 +6,8 @@ import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Search, Users, Umbrella, X, Loader2, User } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Users, Umbrella, Loader2, User } from 'lucide-react';
+import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
 const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
@@ -38,7 +39,6 @@ const Vacaciones = () => {
 
     // Employee search modal
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
-    const [empSearch, setEmpSearch] = useState('');
 
     // Form state
     const [empleadoId, setEmpleadoId] = useState('');
@@ -77,14 +77,6 @@ const Vacaciones = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isModalOpen]);
 
-    // Fetch employees for search modal
-    const { data: empResponse = { data: [] } } = useQuery({
-        queryKey: ['rh-empleados-search', empSearch],
-        queryFn: async () => (await axios.get('/api/rh/empleados', { params: { search: empSearch, limit: 50, solo_activos: 1 } })).data,
-        enabled: isEmpModalOpen,
-        staleTime: 0
-    });
-
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['rh-planilla-vacaciones', debouncedSearch, page, filterAño, filterMes],
         queryFn: async () => (await axios.get('/api/rh/planilla-vacaciones', {
@@ -106,18 +98,17 @@ const Vacaciones = () => {
         }
     }, [fechaInicial, fechaFinal]);
 
-    // Auto-calculate vacaciones: 15 days of salary + 30% if > 365 days since last vacation
+    // Auto-calculate vacaciones: 15 days of salary + 30% recargo de ley
     useEffect(() => {
         if (selected) return; // preserve stored values when editing
         if (empleadoData?.sueldo_base && diasTranscurridos > 0) {
-            if (diasTranscurridos >= 365) {
-                const quinceDias = (parseFloat(empleadoData.sueldo_base) / 30) * 15;
-                const total = quinceDias * 1.30;
-                setVacacionesMonto(Math.round(total * 100) / 100);
-            } else {
-                setVacacionesMonto(0);
-            }
-        } else {
+            // Standard vacation in El Salvador is 15 continuous calendar days
+            const diasVac = (diasTranscurridos > 0 && diasTranscurridos <= 31) ? diasTranscurridos : 15;
+            const sueldoDiario = parseFloat(empleadoData.sueldo_base) / 30;
+            const montoBase = sueldoDiario * diasVac;
+            const total = montoBase * 1.30;
+            setVacacionesMonto(Math.round(total * 100) / 100);
+        } else if (!selected) {
             setVacacionesMonto(0);
         }
     }, [empleadoData?.sueldo_base, diasTranscurridos, selected]);
@@ -175,15 +166,7 @@ const Vacaciones = () => {
     const handleSelectEmployee = (emp) => {
         loadEmpleado(emp.id);
         setIsEmpModalOpen(false);
-        setEmpSearch('');
     };
-
-    const filteredEmployees = useMemo(() => {
-        let list = empResponse.data || [];
-        if (!empSearch) return list.slice(0, 20);
-        const s = empSearch.toLowerCase();
-        return list.filter(e => e.codigo?.toLowerCase().includes(s) || e.nombres?.toLowerCase().includes(s) || e.apellidos?.toLowerCase().includes(s)).slice(0, 30);
-    }, [empResponse.data, empSearch]);
 
     const mutation = useMutation({
         mutationFn: (data) => {
@@ -454,12 +437,15 @@ const Vacaciones = () => {
                             </div>
                             <div>
                                 <label className={labelCls}>Vacaciones ($)</label>
-                                <div className={`${roCls} font-bold flex items-center gap-2 ${diasTranscurridos >= 365 ? 'text-indigo-600' : 'text-slate-300'}`}>
-                                    ${vacacionesMonto.toFixed(2)}
-                                    {diasTranscurridos > 0 && diasTranscurridos < 365 && (
-                                        <span className="text-[9px] font-normal text-amber-500 italic">Requiere +365 días</span>
-                                    )}
-                                </div>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={vacacionesMonto || ''}
+                                    onChange={e => setVacacionesMonto(parseFloat(e.target.value) || 0)}
+                                    className={`${fieldCls} font-bold text-indigo-600`}
+                                    placeholder="0.00"
+                                />
                             </div>
                         </div>
                     </div>
@@ -541,65 +527,12 @@ const Vacaciones = () => {
                 </form>
             </Modal>
 
-            {/* --- Employee Search Modal (F3) --- */}
-            {isEmpModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-                    onClick={() => { setIsEmpModalOpen(false); setEmpSearch(''); }}>
-                    <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
-                        onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900">Seleccionar Empleado</h3>
-                                <p className="text-xs text-slate-500 font-medium uppercase tracking-widest mt-1">Busque por código o nombre</p>
-                            </div>
-                            <button onClick={() => { setIsEmpModalOpen(false); setEmpSearch(''); }}
-                                className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                                <X size={20} className="text-slate-400" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 bg-slate-50/50 border-b border-slate-100">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                                <input autoFocus type="text" placeholder="Buscar por nombre o código..."
-                                    value={empSearch} onChange={e => setEmpSearch(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-medium" />
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4">
-                            <div className="grid grid-cols-1 gap-2">
-                                {filteredEmployees.map(emp => (
-                                    <button key={emp.id} type="button" onClick={() => handleSelectEmployee(emp)}
-                                        className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all text-left group">
-                                        <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm group-hover:shadow-indigo-100 transition-all">
-                                            <User size={20} className="text-slate-400 group-hover:text-indigo-500" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-bold text-slate-900 truncate">{emp.nombres} {emp.apellidos}</div>
-                                            <div className="flex gap-3 mt-1">
-                                                <span className="text-[10px] font-mono font-bold text-indigo-500">{emp.codigo}</span>
-                                                {emp.cargo_nombre && <span className="text-[10px] text-slate-400">{emp.cargo_nombre}</span>}
-                                                {emp.departamento_nombre && <span className="text-[10px] text-slate-400">{emp.departamento_nombre}</span>}
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                                {filteredEmployees.length === 0 && (
-                                    <div className="py-12 text-center text-slate-400">
-                                        <Users size={40} className="mx-auto opacity-20 mb-2" />
-                                        <p className="font-bold uppercase tracking-widest text-xs italic">No se encontraron empleados</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-center">
-                            <span className="text-[10px] text-slate-400 font-medium">Presione <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-600">F3</kbd> para abrir esta ventana desde el formulario</span>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* --- Modern Employee Search Modal (F3) --- */}
+            <EmployeeSearchModal
+                isOpen={isEmpModalOpen}
+                onClose={() => setIsEmpModalOpen(false)}
+                onSelect={handleSelectEmployee}
+            />
         </div>
     );
 };

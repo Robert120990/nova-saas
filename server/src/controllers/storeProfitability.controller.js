@@ -211,8 +211,11 @@ const fetchStoreProfitabilityData = async ({ companyId, branchId, startDate, end
     const rentabilidadGeneralPorcentaje = totalCosto > 0 ? ((totalGanancia / totalCosto) * 100) : 0;
 
     return {
+        company_id: companyId,
+        company: company,
         company_name: company.razon_social,
         company_nit: company.nit,
+        company_nrc: company.nrc,
         branch_name: branchName,
         startDateFormatted: formatDDMMYYYY(startDate),
         endDateFormatted: formatDDMMYYYY(endDate),

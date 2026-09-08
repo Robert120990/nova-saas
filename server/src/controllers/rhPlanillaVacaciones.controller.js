@@ -199,8 +199,10 @@ const calcular = async (req, res) => {
             );
             if (isssRows.length > 0) {
                 const tasa = isssRows[0];
-                isssInfo = { porcentaje: tasa.porcentaje_empleado, tope: tasa.tope_mensual };
-                descuentoISSS = Math.min(vacacionesMonto * tasa.porcentaje_empleado / 100, tasa.tope_mensual || Infinity);
+                const tope = tasa.tope_mensual ? parseFloat(tasa.tope_mensual) : Infinity;
+                isssInfo = { porcentaje: tasa.porcentaje_empleado, tope: tope };
+                const base = Math.min(vacacionesMonto, tope);
+                descuentoISSS = Math.round(base * tasa.porcentaje_empleado / 100 * 100) / 100;
             }
         }
 
@@ -218,8 +220,10 @@ const calcular = async (req, res) => {
             );
             if (afpRows.length > 0) {
                 const tasa = afpRows[0];
-                afpInfo = { nombre: tasa.afp_nombre, porcentaje: tasa.porcentaje_empleado, tope: tasa.tope_mensual };
-                descuentoAFP = Math.min(vacacionesMonto * tasa.porcentaje_empleado / 100, tasa.tope_mensual || Infinity);
+                const tope = tasa.tope_mensual ? parseFloat(tasa.tope_mensual) : Infinity;
+                afpInfo = { nombre: tasa.afp_nombre, porcentaje: tasa.porcentaje_empleado, tope: tope };
+                const base = Math.min(vacacionesMonto, tope);
+                descuentoAFP = Math.round(base * tasa.porcentaje_empleado / 100 * 100) / 100;
             }
         }
 

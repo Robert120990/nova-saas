@@ -145,6 +145,8 @@ import Honorarios from './pages/rh/Honorarios';
 import Aguinaldos from './pages/rh/Aguinaldos';
 import CuentasPlanillas from './pages/rh/CuentasPlanillas';
 import Planillas from './pages/rh/Planillas';
+import ReportesRh from './pages/rh/ReportesRh';
+import AccionesPersonal from './pages/rh/AccionesPersonal';
 
 import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
 import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
@@ -342,7 +344,10 @@ function App() {
                         <Route path="/rh/honorarios" element={<Honorarios />} />
                         <Route path="/rh/aguinaldos" element={<Aguinaldos />} />
                         <Route path="/rh/cuentas-planillas" element={<CuentasPlanillas />} />
-<Route path="/rh/planillas" element={<Planillas />} />
+                        <Route path="/rh/planillas" element={<Planillas />} />
+                        <Route path="/rh/acciones-personal" element={<AccionesPersonal />} />
+                        <Route path="/rh/reportes" element={<Navigate to="/rh/reportes/isss" replace />} />
+<Route path="/rh/reportes/:tipo" element={<ReportesRh />} />
 
                         {/* Contabilidad */}
                         <Route path="/contabilidad/cuentas" element={<ChartOfAccounts />} />

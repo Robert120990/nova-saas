@@ -8,19 +8,24 @@ const getDescuentos = async (req, res) => {
         const { search, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
 
-        let query = `SELECT * FROM ${TABLE} WHERE company_id = ?`;
+        let query = `
+            SELECT dp.*, cp.codigo as cuenta_codigo, cp.descripcion as cuenta_descripcion
+            FROM ${TABLE} dp
+            LEFT JOIN rh_cuentas_planillas cp ON dp.cuenta_id = cp.id
+            WHERE dp.company_id = ?
+        `;
         let params = [req.company_id];
 
         if (search) {
-            query += ` AND (codigo LIKE ? OR descripcion LIKE ?)`;
+            query += ` AND (dp.codigo LIKE ? OR dp.descripcion LIKE ? OR cp.descripcion LIKE ?)`;
             const s = `%${search}%`;
-            params.push(s, s);
+            params.push(s, s, s);
         }
 
         const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM (${query}) as sub`, params);
         const total = countResult[0].total;
 
-        query += ` ORDER BY codigo ASC LIMIT ? OFFSET ?`;
+        query += ` ORDER BY dp.codigo ASC LIMIT ? OFFSET ?`;
         params.push(parseInt(limit), parseInt(offset));
 
         const [rows] = await pool.query(query, params);
@@ -32,12 +37,12 @@ const getDescuentos = async (req, res) => {
 
 const createDescuento = async (req, res) => {
     try {
-        const { codigo, descripcion } = req.body;
+        const { codigo, descripcion, cuenta_id } = req.body;
         const [result] = await pool.query(
-            `INSERT INTO ${TABLE} (codigo, descripcion, company_id) VALUES (?, ?, ?)`,
-            [codigo, descripcion, req.company_id]
+            `INSERT INTO ${TABLE} (codigo, descripcion, cuenta_id, company_id) VALUES (?, ?, ?, ?)`,
+            [codigo, descripcion, cuenta_id ? parseInt(cuenta_id) : null, req.company_id]
         );
-        res.status(201).json({ id: result.insertId, codigo, descripcion });
+        res.status(201).json({ id: result.insertId, codigo, descripcion, cuenta_id });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ message: `El código de ${LABEL} ya existe en esta empresa` });
@@ -49,13 +54,13 @@ const createDescuento = async (req, res) => {
 const updateDescuento = async (req, res) => {
     try {
         const { id } = req.params;
-        const { codigo, descripcion } = req.body;
+        const { codigo, descripcion, cuenta_id } = req.body;
         const [result] = await pool.query(
-            `UPDATE ${TABLE} SET codigo = ?, descripcion = ? WHERE id = ? AND company_id = ?`,
-            [codigo, descripcion, id, req.company_id]
+            `UPDATE ${TABLE} SET codigo = ?, descripcion = ?, cuenta_id = ? WHERE id = ? AND company_id = ?`,
+            [codigo, descripcion, cuenta_id ? parseInt(cuenta_id) : null, id, req.company_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
-        res.json({ id, codigo, descripcion });
+        res.json({ id, codigo, descripcion, cuenta_id });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ message: `El código de ${LABEL} ya existe en esta empresa` });

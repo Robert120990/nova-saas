@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { getRrsPool } = require('../config/rrsDb');
 const PDFDocument = require('pdfkit');
 const excelService = require('../services/excel.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 const getQuedans = async (req, res) => {
     try {
@@ -505,10 +506,7 @@ const getQuedanReportPDF = async (req, res) => {
         }
 
         // Company info
-        const [company] = await pool.query(
-            'SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]
-        );
-        const comp = company[0] || { razon_social: 'EMPRESA', nit: '---' };
+        const comp = await reportPdfHelper.getCompanyInfo(companyId);
 
         // Query quedans
         let sql = `
@@ -563,115 +561,106 @@ const getQuedanReportPDF = async (req, res) => {
         }
 
         // Generate PDF
-        const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
-        const chunks = [];
-        doc.on('data', chunk => chunks.push(chunk));
-        doc.on('end', () => {
-            const result = Buffer.concat(chunks);
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="Reporte_Quedanes_${start_date}_al_${end_date}.pdf"`);
-            res.send(result);
-        });
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-        // Header
-        doc.fontSize(16).font('Helvetica-Bold').text(comp.razon_social?.toUpperCase() || 'EMPRESA', { align: 'center' });
-        doc.fontSize(9).font('Helvetica').text(`NIT: ${comp.nit || '---'}`, { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(13).font('Helvetica-Bold').text('REPORTE DE QUEDANES EMITIDOS', { align: 'center' });
-        doc.fontSize(9).font('Helvetica').text(`Periodo: ${start_date} al ${end_date}`, { align: 'center' });
-
-        let branchName = 'Todas las sucursales';
+        let branchSubtitle = null;
         if (branch_id && branch_id !== 'all' && rows.length > 0) {
-            branchName = rows[0].branch_nombre;
+            branchSubtitle = `SUCURSAL: ${rows[0].branch_nombre}`;
         }
-        doc.text(`Sucursal: ${branchName}`, { align: 'center' });
-        doc.moveDown(1.5);
 
-        // Table
-        const startX = 40;
-        const tableWidth = 520;
-        let currentY = doc.y;
+        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+
+        const startX = 30;
+        const colWidths = {
+            num: 60,
+            fecha: 52,
+            venc: 52,
+            dias: 30,
+            proveedor: 195,
+            total: 85,
+            estado: 78
+        };
+        const colX = {
+            num: startX,
+            fecha: startX + colWidths.num,
+            venc: startX + colWidths.num + colWidths.fecha,
+            dias: startX + colWidths.num + colWidths.fecha + colWidths.venc,
+            proveedor: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias,
+            total: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor,
+            estado: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor + colWidths.total
+        };
+        const tableWidth = 552;
 
         const drawTableHeader = (y) => {
-            doc.fontSize(7).font('Helvetica-Bold');
-            const colX = {
-                num: startX,
-                fecha: startX + 55,
-                venc: startX + 103,
-                dias: startX + 151,
-                proveedor: startX + 181,
-                total: startX + 365,
-                estado: startX + 455
-            };
-            doc.text('N. QUEDAN', colX.num, y);
-            doc.text('FECHA', colX.fecha, y);
-            doc.text('VENCE', colX.venc, y);
-            doc.text('DÍAS', colX.dias, y);
-            doc.text('PROVEEDOR', colX.proveedor, y);
-            doc.text('TOTAL', colX.total, y, { width: 80, align: 'right' });
-            doc.text('ESTADO', colX.estado, y);
-            doc.moveTo(startX, y + 10).lineTo(startX + tableWidth, y + 10).stroke();
-            return y + 15;
+            doc.rect(startX, y, tableWidth, 14).fill('#f1f5f9');
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('N. QUEDAN', colX.num + 2, y + 3, { width: colWidths.num - 4 });
+            doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+            doc.text('VENCE', colX.venc + 2, y + 3, { width: colWidths.venc - 4 });
+            doc.text('DÍAS', colX.dias, y + 3, { width: colWidths.dias, align: 'center' });
+            doc.text('PROVEEDOR', colX.proveedor + 2, y + 3, { width: colWidths.proveedor - 4 });
+            doc.text('TOTAL', colX.total, y + 3, { width: colWidths.total - 4, align: 'right' });
+            doc.text('ESTADO', colX.estado + 4, y + 3, { width: colWidths.estado - 4 });
+            return y + 17;
         };
 
+        let currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', branchSubtitle);
         currentY = drawTableHeader(currentY);
 
         let grandTotal = 0;
         let rowCount = 0;
 
         rows.forEach(row => {
-            if (currentY > 700) {
+            if (currentY > 710) {
                 doc.addPage();
-                currentY = drawTableHeader(40);
+                currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', branchSubtitle);
+                currentY = drawTableHeader(currentY);
             }
 
-            doc.fontSize(7).font('Helvetica');
-            const colX = {
-                num: startX,
-                fecha: startX + 55,
-                venc: startX + 103,
-                dias: startX + 151,
-                proveedor: startX + 181,
-                total: startX + 365,
-                estado: startX + 455
-            };
-
-            doc.text(row.num_quedan || '---', colX.num, currentY, { width: 50 });
-            doc.text(row.fecha ? new Date(row.fecha).toLocaleDateString('es-SV') : '---', colX.fecha, currentY, { width: 46 });
-            doc.text(row.fecha_vencimiento ? new Date(row.fecha_vencimiento).toLocaleDateString('es-SV') : '---', colX.venc, currentY, { width: 46 });
+            const rowVal = parseFloat(row.total || 0);
+            doc.fontSize(7).font('Helvetica').fillColor('#334155');
+            doc.text(row.num_quedan || '---', colX.num + 2, currentY, { width: colWidths.num - 4 });
+            doc.text(reportPdfHelper.formatDate(row.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+            doc.text(reportPdfHelper.formatDate(row.fecha_vencimiento), colX.venc + 2, currentY, { width: colWidths.venc - 4 });
             const dias = parseInt(row.dias_credito) || 0;
-            doc.text(dias > 0 ? String(dias) : '—', colX.dias, currentY, { width: 28, align: 'center' });
-            doc.text(row.provider_nombre?.toUpperCase() || '---', colX.proveedor, currentY, { width: 180, truncate: true });
-            doc.text(`$${parseFloat(row.total || 0).toFixed(2)}`, colX.total, currentY, { width: 80, align: 'right' });
+            doc.text(dias > 0 ? String(dias) : '—', colX.dias, currentY, { width: colWidths.dias, align: 'center' });
+            doc.text((row.provider_nombre || '---').toUpperCase(), colX.proveedor + 2, currentY, { width: colWidths.proveedor - 6, truncate: true });
+            doc.text(reportPdfHelper.fmt(rowVal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
 
-            // Estado badge
             const statusColors = {
-                'PENDIENTE': '#f59e0b',
-                'SOLICITADO': '#3b82f6',
-                'ENTREGADO': '#22c55e'
+                'PENDIENTE': '#b45309',
+                'SOLICITADO': '#1d4ed8',
+                'ENTREGADO': '#15803d'
             };
-            doc.font('Helvetica-Bold').fillColor(statusColors[row.status] || '#6b7280');
-            doc.text(row.status || '---', colX.estado, currentY);
-            doc.fillColor('black');
-            doc.font('Helvetica');
+            doc.font('Helvetica-Bold').fillColor(statusColors[row.status] || '#475569');
+            doc.text(row.status || '---', colX.estado + 4, currentY, { width: colWidths.estado - 4 });
 
-            grandTotal += parseFloat(row.total || 0);
+            grandTotal += rowVal;
             rowCount++;
-            currentY += 14;
+            currentY += 13;
         });
 
-        // Total row
-        doc.moveTo(startX, currentY).lineTo(startX + tableWidth, currentY).stroke();
-        currentY += 10;
-        doc.fontSize(9).font('Helvetica-Bold');
-        doc.text('TOTAL GENERAL:', startX + 320, currentY, { width: 50, align: 'right' });
-        doc.text(`$${grandTotal.toFixed(2)}`, startX + 400, currentY, { width: 110, align: 'right' });
-        currentY += 15;
-        doc.fontSize(7).font('Helvetica').fillColor('#6b7280');
-        doc.text(`Total de quedanes: ${rowCount}`, startX, currentY);
-        doc.fillColor('black');
+        if (currentY > 690) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', branchSubtitle);
+        }
+
+        // Línea de gran total
+        doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + tableWidth, currentY).stroke();
+        currentY += 4;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL GENERAL:', colX.proveedor, currentY, { width: colWidths.proveedor - 6, align: 'right' });
+        doc.text(reportPdfHelper.fmt(grandTotal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
+        currentY += 18;
+
+        currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, rowCount, 'Quedanes');
+        reportPdfHelper.renderPageNumbers(doc);
 
         doc.end();
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Reporte_Quedanes_${start_date}_al_${end_date}.pdf"`);
+        res.send(pdfBuffer);
 
     } catch (error) {
         console.error('Error al generar reporte de quedanes:', error);

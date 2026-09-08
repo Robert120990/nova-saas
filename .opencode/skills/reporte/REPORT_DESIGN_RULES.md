@@ -65,33 +65,168 @@ const buffer = await excelService.createExcelBuffer({
 return excelService.sendExcelResponse(res, buffer, 'reporte.xlsx');
 ```
 
-## 3. Generación de PDF (Backend)
+## 3. Generación de PDF (Backend) — Estándar Contable Unificado (OBLIGATORIO)
 
-Ubicado en `server/src/services/pdf.service.js`.
+Todos los reportes nuevos en PDF (tanto operacionales como contables) deben generarse utilizando el helper centralizado `server/src/utils/reportPdfHelper.js` para mantener una identidad visual 100% idéntica, profesional y consistente en todo el sistema.
 
-### Estándares Técnicos
-- **Orientación**: Preferiblemente `landscape` para reportes con más de 4 columnas.
-- **Manejo de Páginas (CRÍTICO)**:
-    - **Verificación de Posición**: Antes de dibujar una fila, verificar si `doc.y` supera el límite (ej: `500` en landscape).
-    - **Salto de Página**: Si es necesario, llamar a `doc.addPage()` y **redibujar el encabezado de la tabla** inmediatamente.
-    - **Captura de Y**: Capturar la variable `y = doc.y` **después** de cualquier posible salto de página para asegurar que el texto no se dibuje fuera del área visible.
-- **Datos de Empresa**: Siempre consultar `razon_social` de la tabla `companies` (no usar la columna `nombre`).
+### Helper Central: `server/src/utils/reportPdfHelper.js`
 
-### Formateo
-- **Monedas**: Usar prefijo `$` y `toFixed(2)`.
-- **Totales**: Formatear en negrita al final de la tabla con líneas de separación claras.
+El helper provee las funciones requeridas para todo el ciclo de vida del reporte:
+- `getCompanyInfo(companyId)`: Obtiene `razon_social`, `nit`, `nrc`, y sucursal de la empresa.
+- `createPdfDocument(orientation, options)`: Inicializa el `PDFDocument` con `size: 'LETTER'`, margen de `30pt` y `bufferPages: true`. Retorna `{ doc, getBuffer }`.
+- `renderHeader(doc, company, title, periodText, orientation, subtitle)`: Renderiza el encabezado institucional contable estandarizado.
+- `fmt(val)`: Formateo contable de divisas (`$ -` para ceros/nulos, `$(X.XX)` para negativos, `$ X.XX` para positivos).
+- `formatDate(date)`: Formato de fecha uniforme `DD/MM/YYYY`.
+- `renderClosingFooter(doc, startX, currentY, count, entityName)`: Renderiza el conteo de registros ("Número de {Entidad} Impresas : N") y la leyenda "FIN DEL REPORTE.".
+- `renderPageNumbers(doc)`: Paginación dinámica "Página X de Y" centrada en el pie de página de todo el documento.
 
-## 4. Ejemplo de Implementación (Backend)
+### Reglas de Diseño Visual
+
+1. **Orientación y Dimensiones**:
+   - `landscape` (apaisada): Para reportes con 5 o más columnas. Ancho útil: **732pt** (`startX = 30`, margen derecho `30`).
+   - `portrait` (vertical): Para reportes con 1 a 4 columnas. Ancho útil: **552pt** (`startX = 30`, margen derecho `30`).
+2. **Encabezado Institucional Contable (`renderHeader`)**:
+   - Estampa de tiempo superior izquierda: `DD/MM/YYYY HH:mm:ss` (`Helvetica-Bold`, 7pt, `#475569`).
+   - Razón social en negrita mayúscula (`Helvetica-Bold`, 11pt, `#0f172a`).
+   - Título del reporte en mayúsculas (`Helvetica-Bold`, 9.5pt, `#0f172a`).
+   - Subtítulo opcional (sucursal, filtros específicos, vendedor, etc.).
+   - Identificación tributaria centrada: `NUMERO DE REGISTRO DE I.V.A. : {NRC}   |   NIT : {NIT}`.
+   - Período centrado (ej: `DEL 01/01/2026 AL 31/01/2026` o `AL 31/01/2026`).
+   - Leyenda monetaria obligatoria: `(CIFRAS EXPRESADAS EN DOLARES DE LOS ESTADOS UNIDOS DE AMERICA)`.
+   - Línea divisoria sutil inferior (`#e2e8f0`, 0.75pt).
+3. **Tablas y Encabezados de Columna**:
+   - Barra de fondo `#f1f5f9` (altura `14pt` a `15pt`).
+   - Texto de columnas en `Helvetica-Bold`, 6.5pt a 7.5pt, color `#0f172a`.
+   - Línea inferior sutil `#cbd5e1` (0.5pt).
+   - Columnas numéricas/monetarias siempre alineadas a la derecha (`align: 'right'`).
+4. **Filas de Datos y Montos**:
+   - Tipografía regular `Helvetica` (6.5pt a 7.5pt, `#0f172a`).
+   - Textos largos truncados con elipsis para evitar desalineación de filas.
+   - TODOS los montos monetarios formateados con `reportPdfHelper.fmt(valor)`.
+5. **Totales y Resumen**:
+   - Línea superior del total general: `1pt` color `#0f172a`.
+   - Textos y valores en negrita `Helvetica-Bold`.
+   - Línea inferior de cierre: `1pt` color `#0f172a`.
+6. **Manejo de Salto de Página (CRÍTICO)**:
+   - En landscape: verificar si `doc.y > 510` antes de dibujar una fila.
+   - En portrait: verificar si `doc.y > 700` antes de dibujar una fila.
+   - Si se supera el límite:
+     ```javascript
+     doc.addPage();
+     drawHeader();      // Llama a reportPdfHelper.renderHeader(...)
+     drawTableHeader(); // Dibuja la barra gris #f1f5f9 con las columnas
+     ```
+7. **Pie de Cierre y Paginación**:
+   - Al finalizar todas las tablas y totales:
+     ```javascript
+     reportPdfHelper.renderClosingFooter(doc, startX, doc.y, items.length, 'Registros');
+     reportPdfHelper.renderPageNumbers(doc);
+     doc.end();
+     return await getBuffer();
+     ```
+8. **REGLA ESTRICTA: SIN FIRMAS EN REPORTES OPERACIONALES**:
+   - Los reportes operacionales (Ventas, Inventario, Compras, Gastos, CXC, CXP, Arqueos, etc.) **NUNCA DEBEN INCLUIR FIRMAS** (no llamar a ningún método de firmas). Las firmas quedan reservadas única y exclusivamente para los estados financieros formales de contabilidad (Balance General, Estado de Resultados, etc.).
+
+---
+
+## 4. Patrón Estándar de Implementación (Backend)
 
 ```javascript
-// Patrón de loop robusto
-data.products.forEach((p) => {
+const reportPdfHelper = require('../utils/reportPdfHelper');
+
+const generateCustomReportPDF = async (data) => {
+    // 1. Resolver información de la empresa
+    const company = await reportPdfHelper.getCompanyInfo(data.company_id);
+
+    // 2. Crear documento PDF estandarizado
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+    const periodText = (data.start_date && data.end_date)
+        ? `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`
+        : 'TODOS LOS REGISTROS';
+    const subtitle = data.branch_name ? `SUCURSAL: ${String(data.branch_name).toUpperCase()}` : null;
+
+    const startX = 30;
+    const totalWidth = 732; // 732 en landscape, 552 en portrait
+    const colWidths = {
+        fecha: 80,
+        documento: 100,
+        descripcion: 252,
+        cantidad: 70,
+        precio: 70,
+        total: 160
+    };
+
+    const drawHeader = () => {
+        reportPdfHelper.renderHeader(doc, company, 'TÍTULO DEL REPORTE', periodText, 'landscape', subtitle);
+    };
+
+    const drawTableHeader = () => {
+        const y = doc.y;
+        doc.rect(startX, y, totalWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        let x = startX;
+        doc.text('FECHA', x, y + 3, { width: colWidths.fecha }); x += colWidths.fecha;
+        doc.text('DOCUMENTO', x, y + 3, { width: colWidths.documento }); x += colWidths.documento;
+        doc.text('DESCRIPCIÓN', x, y + 3, { width: colWidths.descripcion }); x += colWidths.descripcion;
+        doc.text('CANTIDAD', x, y + 3, { align: 'right', width: colWidths.cantidad }); x += colWidths.cantidad;
+        doc.text('PRECIO', x, y + 3, { align: 'right', width: colWidths.precio }); x += colWidths.precio;
+        doc.text('TOTAL', x, y + 3, { align: 'right', width: colWidths.total });
+        doc.moveTo(startX, y + 14).lineTo(startX + totalWidth, y + 14).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        doc.y = y + 18;
+    };
+
+    // Dibujar primera página
+    drawHeader();
+    drawTableHeader();
+
+    // Loop de filas con paginación defensiva
+    const items = data.items || [];
+    let totalAcumulado = 0;
+
+    items.forEach((item) => {
+        if (doc.y > 510) { // 510 en landscape, 700 en portrait
+            doc.addPage();
+            drawHeader();
+            drawTableHeader();
+        }
+
+        const y = doc.y;
+        let x = startX;
+        doc.font('Helvetica').fontSize(7).fillColor('#0f172a');
+
+        doc.text(reportPdfHelper.formatDate(item.fecha), x, y, { width: colWidths.fecha, lineBreak: false }); x += colWidths.fecha;
+        doc.text(String(item.documento || '---'), x, y, { width: colWidths.documento, lineBreak: false }); x += colWidths.documento;
+        doc.text(String(item.descripcion || '---'), x, y, { width: colWidths.descripcion, lineBreak: false, ellipsis: true }); x += colWidths.descripcion;
+        doc.text(parseFloat(item.cantidad || 0).toFixed(2), x, y, { align: 'right', width: colWidths.cantidad }); x += colWidths.cantidad;
+        doc.text(reportPdfHelper.fmt(item.precio), x, y, { align: 'right', width: colWidths.precio }); x += colWidths.precio;
+        doc.text(reportPdfHelper.fmt(item.total), x, y, { align: 'right', width: colWidths.total });
+
+        totalAcumulado += parseFloat(item.total || 0);
+        doc.y = y + 11;
+    });
+
+    // Totales finales
     if (doc.y > 500) {
         doc.addPage();
-        drawTableHeader(); // Función que dibuja los nombres de las columnas
+        drawHeader();
+        drawTableHeader();
     }
-    const y = doc.y;
-    doc.text(p.nombre, startX, y);
-    doc.moveDown(1.2);
-});
+
+    const totalsY = doc.y + 4;
+    doc.moveTo(startX, totalsY).lineTo(startX + totalWidth, totalsY).lineWidth(1).strokeColor('#0f172a').stroke();
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a');
+    doc.text('TOTAL GENERAL:', startX, totalsY + 3, { width: colWidths.fecha + colWidths.documento + colWidths.descripcion });
+    doc.text(reportPdfHelper.fmt(totalAcumulado), startX + totalWidth - colWidths.total, totalsY + 3, { align: 'right', width: colWidths.total });
+    doc.moveTo(startX, totalsY + 15).lineTo(startX + totalWidth, totalsY + 15).lineWidth(1).strokeColor('#0f172a').stroke();
+    doc.y = totalsY + 22;
+
+    // Cierre y paginación (SIN FIRMAS)
+    reportPdfHelper.renderClosingFooter(doc, startX, doc.y, items.length, 'Registros');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
 ```
+

@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-08-26
+> Última generación: 2026-09-08
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -165,6 +165,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `crypto.js` | Cifrado/descifrado simétrico de credenciales almacenadas (SMTP, certificados). |
 | `inventoryUtils.js` | Helpers de kardex: inserción de movimientos y actualización de existencias. |
 | `numberToWords.js` | Conversión de montos numéricos a letras (requerido en documentos legales). |
+| `reportPdfHelper.js` | Report Pdf Helper. |
 
 #### `server/src/controllers/`
 | Archivo | Descripción |
@@ -183,6 +184,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `changelog.controller.js` | Changelog visible en la UI: novedades por versión. |
 | `combo.controller.js` | Combos/promociones: agrupaciones de productos con precio especial. |
 | `company.controller.js` | CRUD de empresas (tenants) con datos fiscales NIT/NRC y logo. |
+| `crmAgreements.controller.js` | Crm Agreements.controller. |
 | `customer.controller.js` | CRUD de clientes con crédito, límites y datos DTE. |
 | `customerBranch.controller.js` | Asignación de clientes permitidos por sucursal. |
 | `customerDiscount.controller.js` | Descuentos especiales manuales por cliente/producto. |
@@ -190,6 +192,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `cxp.controller.js` | Cuentas por pagar a proveedores: saldos y abonos. |
 | `dashboard.controller.js` | KPIs del panel principal: ventas del día, top productos, alertas. |
 | `discountRules.controller.js` | Reglas automáticas de descuento evaluadas al facturar. |
+| `eggCosteoLibra.controller.js` | Egg Costeo Libra.controller. |
 | `eggIndustrial.controller.js` | Módulo industrial de huevo: recepción, producción, empaque, costos y trazabilidad. |
 | `expense.controller.js` | Gastos y sus categorías por sucursal. |
 | `gasAdvance.controller.js` | Anticipos/suplidos en efectivo de despachadores de gasolinera. |
@@ -197,9 +200,11 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `gasConfig.controller.js` | Configuración global de la estación de servicio (productos combustibles, márgenes). |
 | `gasDespachador.controller.js` | CRUD de despachadores (operadores de isla). |
 | `gasDistributor.controller.js` | CRUD de distribuidores mayoristas de combustible. |
+| `gasOrder.controller.js` | Gas Order.controller. |
 | `gasPosType.controller.js` | Tipos de POS de gasolinera y su comportamiento en cierres. |
 | `gasRemesaDelivery.controller.js` | Entrega de remesas de efectivo del cierre de gasolinera. |
 | `gasReporte.controller.js` | Reportes operativos de gasolinera (galonaje, acumulados, detalle de cierres). |
+| `gasTrupput.controller.js` | Gas Trupput.controller. |
 | `inventory.controller.js` | Inventario: existencias por sucursal, movimientos y kardex. |
 | `inventoryAdjustment.controller.js` | Ajustes de inventario (entradas/salidas justificadas). |
 | `inventoryScan.controller.js` | Toma de inventario físico con escáner/cámara y comparativo vs sistema. |
@@ -242,6 +247,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `settings.controller.js` | Configuración global multi-empresa (moneda, formato, features). |
 | `shift.controller.js` | Turnos de caja: apertura, cierre y arqueo con denominaciones. |
 | `smtp.controller.js` | Configuración SMTP por empresa para envío de correos. |
+| `storeProfitability.controller.js` | Store Profitability.controller. |
 | `tank.controller.js` | Tanques de almacenamiento de combustible y su capacidad/inventario. |
 | `tax.controller.js` | Impuestos: IVA, percepciones, retenciones y libros fiscales (IVA ventas/compras). |
 | `telegram.controller.js` | Integración bot Telegram: alertas y notificaciones push. |
@@ -278,6 +284,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 #### `client/src/hooks/`
 | Archivo | Descripción |
 |---|---|
+| `useDirtyTracker.js` | Use Dirty Tracker. |
 | `useMenuItems.js` | Construye el menú visible según permisos del rol autenticado. |
 | `useWebSocket.js` | Suscripción WebSocket: notificaciones y usuarios conectados en vivo. |
 
@@ -315,6 +322,19 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | Archivo | Descripción |
 |---|---|
 | `ProductLabelModal.jsx` | Modal de impresión de etiquetas/códigos de barras de productos. |
+
+**`client/src/components/providers/`**
+
+| Archivo | Descripción |
+|---|---|
+| `ProviderModal.jsx` | Provider Modal. |
+
+**`client/src/components/rh/`**
+
+| Archivo | Descripción |
+|---|---|
+| `EmployeeSearchModal.jsx` | Employee Search Modal. |
+| `PlanillaReportModal.jsx` | Planilla Report Modal. |
 
 **`client/src/components/sales/`**
 
@@ -365,6 +385,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `ChartOfAccounts.jsx` | Catálogo de cuentas contables jerárquico. |
 | `Combos.jsx` | Catálogo de combos/promociones de productos. |
 | `Companies.jsx` | Administración de empresas (tenants). |
+| `CompanyModules.jsx` | Página de ruta Company Modules. |
 | `ConnectedUsers.jsx` | Usuarios conectados en tiempo real (WebSocket) y forzado de sesión. |
 | `Contingency.jsx` | Emisión masiva de DTE en contingencia y reenvío posterior. |
 | `CustomerBalancesReport.jsx` | Reporte de saldos pendientes de clientes. |
@@ -389,15 +410,18 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `GasDespachadorNozzles.jsx` | Asignación de surtidores a cada despachador. |
 | `GasDistributors.jsx` | Catálogo de distribuidores de combustible. |
 | `GasExpenseCategories.jsx` | Categorías de gasto exclusivas de gasolinera. |
+| `GasOrders.jsx` | Página de ruta Gas Orders. |
 | `GasPosTypes.jsx` | Tipos de POS de gasolinera. |
 | `GasReadingHistory.jsx` | Historial de lecturas de bombas/surtidores. |
 | `GasRemesaDeliveries.jsx` | Entrega de remesas de efectivo de gasolinera. |
 | `GasStationConfig.jsx` | Configuración general de la estación de servicio. |
+| `GasTrupput.jsx` | Página de ruta Gas Trupput. |
 | `InventoryAdjustments.jsx` | Ajustes de inventario con justificación. |
 | `InventoryMovementsReport.jsx` | Movimientos de inventario por producto/período. |
 | `InventoryStockReport.jsx` | Existencias actuales por sucursal/producto. |
 | `Islands.jsx` | Catálogo de islas de despacho. |
 | `Kardex.jsx` | Kardex por producto: entradas, saldas y saldo corrido. |
+| `KeyboardShortcuts.jsx` | Página de ruta Keyboard Shortcuts. |
 | `Login.jsx` | Inicio de sesión con selección de empresa. |
 | `LogViewer.jsx` | Visor de logs técnicos del servidor. |
 | `MenuItems.jsx` | Editor del menú lateral: ítems, orden, iconos y roles. |
@@ -438,6 +462,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `Sellers.jsx` | Catálogo de vendedores. |
 | `ShiftDTEs.jsx` | DTEs emitidos dentro de un turno específico. |
 | `SmtpConfig.jsx` | Configuración de servidores SMTP por empresa. |
+| `StoreProfitabilityReport.jsx` | Página de ruta Store Profitability Report. |
 | `SystemSettings.jsx` | Parámetros globales del sistema. |
 | `Tanks.jsx` | Tanques de combustible con capacidad y alarmas. |
 | `Transfers.jsx` | Traspasos de inventario entre sucursales. |
@@ -467,15 +492,23 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `ListadoPartidas.jsx` | Listado de partidas contables con filtros. |
 | `Retenciones.jsx` | Reporte de retenciones (renta/IVA). |
 
+**`client/src/pages/CRM/`**
+
+| Archivo | Descripción |
+|---|---|
+| `CustomerAgreements.jsx` | Customer Agreements. |
+
 **`client/src/pages/EggIndustrial/`**
 
 | Archivo | Descripción |
 |---|---|
 | `Config.jsx` | Configuración del módulo industrial de huevo. |
+| `CosteoPorLibra.jsx` | Módulo industrial de huevo: Costeo Por Libra. |
 | `CostsMaintenance.jsx` | Costos y mantenimiento de equipos del módulo huevo. |
 | `Dashboard.jsx` | Panel del módulo industrial de huevo. |
 | `Packaging.jsx` | Empaque de huevo procesado. |
 | `Production.jsx` | Producción del proceso industrial. |
+| `ProductionCalendar.jsx` | Módulo industrial de huevo: Production Calendar. |
 | `Reception.jsx` | Recepción de huevo en planta. |
 | `Traceability.jsx` | Trazabilidad de lotes de recepción a empaque. |
 
@@ -626,8 +659,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v151**
-- Total de archivos: **264** (138 .sql · 26 .js migración · 98 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v165**
+- Total de archivos: **296** (145 .sql · 39 .js migración · 110 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,

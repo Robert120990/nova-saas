@@ -9,6 +9,7 @@ const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 const dteTypeNames = {
     '01': 'Factura',
@@ -689,8 +690,7 @@ const exportSalesByCategoryPDF = async (req, res) => {
         // (En una app real, esto podría estar en un service para evitar redundancia)
         
         // 1. Info de Empresa
-        const [companyRows] = await pool.query('SELECT razon_social, logo_url FROM companies WHERE id = ?', [companyId]);
-        const companyInfo = companyRows[0] || { razon_social: 'Empresa' };
+        const companyInfo = await reportPdfHelper.getCompanyInfo(companyId);
 
         let branchName = 'Todas las sucursales';
         if (branch_id && branch_id !== 'all') {
@@ -730,7 +730,11 @@ const exportSalesByCategoryPDF = async (req, res) => {
         const [categories] = await pool.query(sql, params);
 
         let reportData = {
+            company_id: companyId,
             company: companyInfo,
+            company_name: companyInfo.razon_social,
+            company_nit: companyInfo.nit,
+            company_nrc: companyInfo.nrc,
             branch: branchName,
             period: `${start_date} al ${end_date}`,
             grand_total: grandTotal,
@@ -839,7 +843,7 @@ const getDailySales = async (req, res) => {
                     WHEN '11' THEN 'Factura de Exportación'
                     ELSE h.tipo_documento 
                 END as tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(d.numero_control, h.numero_control, CONCAT('VTA-', h.id)) as documento,
                 CASE h.condicion_operacion 
                     WHEN 1 THEN 'Contado'
                     WHEN 2 THEN 'Crédito'
@@ -902,8 +906,8 @@ const exportDailySalesPDF = async (req, res) => {
         }
 
         // 1. Info de Empresa y Sucursal
-        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [companyId]);
-        const companyName = companyRows.length > 0 ? companyRows[0].nombre : 'Empresa';
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+        const companyName = company.razon_social || company.nombre_comercial || 'Empresa';
 
         let branchName = 'Todas las sucursales';
         if (branch_id && branch_id !== 'all') {
@@ -924,7 +928,7 @@ const exportDailySalesPDF = async (req, res) => {
                     WHEN '11' THEN 'Factura de Exportación'
                     ELSE h.tipo_documento 
                 END as tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento,
+                COALESCE(d.numero_control, h.numero_control, CONCAT('VTA-', h.id)) as documento,
                 CASE h.condicion_operacion 
                     WHEN 1 THEN 'Contado'
                     WHEN 2 THEN 'Crédito'
@@ -975,7 +979,11 @@ const exportDailySalesPDF = async (req, res) => {
 
         // 4. Generar PDF
         const reportData = {
+            company_id: companyId,
+            company: company,
             company_name: companyName,
+            company_nit: company.nit,
+            company_nrc: company.nrc,
             branch_name: branchName,
             startDate: start_date,
             endDate: end_date,
@@ -996,10 +1004,10 @@ const exportDailySalesPDF = async (req, res) => {
                     name: 'Ventas Diarias',
                     columns: [
                         { header: 'Fecha', key: 'fecha', width: 14 },
-                        { header: 'Cliente', key: 'cliente', width: 30 },
+                        { header: 'Cliente', key: 'cliente', width: 35 },
                         { header: 'Tipo Doc', key: 'tipo', width: 16 },
-                        { header: 'Documento', key: 'documento', width: 20 },
-                        { header: 'Condición', key: 'condicion', width: 12 },
+                        { header: 'Documento', key: 'documento', width: 34 },
+                        { header: 'Condición', key: 'condicion', width: 14 },
                         { header: 'Gravadas', key: 'gravadas', width: 14 },
                         { header: 'Exentas', key: 'exentas', width: 14 },
                         { header: 'IVA', key: 'iva', width: 14 },
@@ -1073,8 +1081,8 @@ const exportSalesByCustomerPDF = async (req, res) => {
         const customer = customerRows[0];
 
         // 2. Info de Empresa y Sucursal
-        const [companyRows] = await pool.query('SELECT razon_social as nombre FROM companies WHERE id = ?', [companyId]);
-        const companyName = companyRows.length > 0 ? companyRows[0].nombre : 'Empresa';
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+        const companyName = company.razon_social || company.nombre_comercial || 'Empresa';
 
         let branchName = 'Todas las sucursales';
         if (branch_id && branch_id !== 'all') {
@@ -1148,7 +1156,11 @@ const exportSalesByCustomerPDF = async (req, res) => {
         // 5. Datos para el reporte
         const total_cantidad = rows.reduce((acc, r) => acc + parseFloat(r.cantidad || 0), 0);
         const reportData = {
+            company_id: companyId,
+            company: company,
             company_name: companyName,
+            company_nit: company.nit,
+            company_nrc: company.nrc,
             branch_name: branchName,
             startDate: start_date,
             endDate: end_date,
@@ -1224,8 +1236,7 @@ const getSalesReportPDF = async (req, res) => {
         }
 
         // 1. Obtener datos de la empresa
-        const [company] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
-        const comp = company[0] || { razon_social: 'EMPRESA', nit: '---' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
 
         // 2. Construir Query de Ventas
         let sql = `
@@ -1309,152 +1320,188 @@ const getSalesReportPDF = async (req, res) => {
             return excelService.sendExcelResponse(res, buffer, `Reporte_Ventas_${req.query.start_date}_al_${req.query.end_date}.xlsx`);
         }
 
-        const PDFDocument = require('pdfkit');
-        const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
-        const chunks = [];
-        doc.on('data', chunk => chunks.push(chunk));
-        doc.on('end', () => {
-            const result = Buffer.concat(chunks);
-            res.setHeader('Content-Type', 'application/pdf');
-            res.send(result);
-        });
+        let branchName = 'TODAS LAS SUCURSALES';
+        if (branch_id && branch_id !== 'all' && rows.length > 0) {
+            branchName = (rows[0].branch_nombre || '').toUpperCase();
+        } else if (branch_id && branch_id !== 'all') {
+            const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (bRows.length > 0) branchName = (bRows[0].nombre || '').toUpperCase();
+        }
 
-        // Header
-        doc.fontSize(16).font('Helvetica-Bold').text(comp.razon_social.toUpperCase(), { align: 'center' });
-        doc.fontSize(10).font('Helvetica').text(`NIT: ${comp.nit}`, { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DE VENTAS (DETALLADO)', { align: 'center' });
-        doc.fontSize(9).font('Helvetica').text(`Periodo: ${start_date} al ${end_date}`, { align: 'center' });
-        
-        let branchName = 'Todas las sucursales';
-        if (branch_id !== 'all' && rows.length > 0) branchName = rows[0].branch_nombre;
-        doc.text(`Sucursal: ${branchName}`, { align: 'center' });
-        doc.moveDown(1.5);
+        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+        const subtitle = `SUCURSAL: ${branchName}`;
 
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
         const startX = 30;
-        let currentY = doc.y;
+        const contentWidth = 732; // 792 - 60
 
-        const drawTableHeader = (y) => {
-            doc.fontSize(7).font('Helvetica-Bold');
-            doc.text('FECHA', startX, y);
-            doc.text('TIPO DOC', startX + 38, y);
-            doc.text('NÚMERO', startX + 120, y);
-            doc.text('CONDICIÓN', startX + 248, y);
-            doc.text('GRAVADA', startX + 298, y, { width: 55, align: 'right' });
-            doc.text('EXENTA', startX + 358, y, { width: 55, align: 'right' });
-            doc.text('IVA', startX + 418, y, { width: 45, align: 'right' });
-            doc.text('RET.', startX + 468, y, { width: 40, align: 'right' });
-            doc.text('PER.', startX + 513, y, { width: 40, align: 'right' });
-            doc.text('FOV.', startX + 558, y, { width: 45, align: 'right' });
-            doc.text('COT.', startX + 608, y, { width: 45, align: 'right' });
-            doc.text('TOTAL', startX + 658, y, { width: 70, align: 'right' });
-            doc.moveTo(startX, y + 10).lineTo(758, y + 10).stroke();
-            return y + 15;
+        reportPdfHelper.renderHeader(doc, company, 'Reporte de Ventas (Detallado)', periodText, 'landscape', subtitle);
+
+        const colW = {
+            fecha: 46,
+            tipoDoc: 66,
+            numero: 105,
+            condicion: 48,
+            gravada: 52,
+            exenta: 50,
+            iva: 45,
+            ret: 42,
+            per: 42,
+            fov: 44,
+            cot: 44,
+            total: 66
         };
 
-        currentY = drawTableHeader(currentY);
+        const drawTableHeader = (yPos) => {
+            doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX + 4;
+            doc.text('FECHA', x, yPos + 3); x += colW.fecha;
+            doc.text('TIPO DOC', x, yPos + 3); x += colW.tipoDoc;
+            doc.text('NÚMERO', x, yPos + 3); x += colW.numero;
+            doc.text('CONDICIÓN', x, yPos + 3); x += colW.condicion;
+            doc.text('GRAVADA', x, yPos + 3, { width: colW.gravada, align: 'right' }); x += colW.gravada;
+            doc.text('EXENTA', x, yPos + 3, { width: colW.exenta, align: 'right' }); x += colW.exenta;
+            doc.text('IVA', x, yPos + 3, { width: colW.iva, align: 'right' }); x += colW.iva;
+            doc.text('RET.', x, yPos + 3, { width: colW.ret, align: 'right' }); x += colW.ret;
+            doc.text('PER.', x, yPos + 3, { width: colW.per, align: 'right' }); x += colW.per;
+            doc.text('FOV.', x, yPos + 3, { width: colW.fov, align: 'right' }); x += colW.fov;
+            doc.text('COT.', x, yPos + 3, { width: colW.cot, align: 'right' }); x += colW.cot;
+            doc.text('TOTAL', x, yPos + 3, { width: colW.total - 6, align: 'right' });
+            return yPos + 16;
+        };
 
-        let currentCustomer = null;
-        let cTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
-        let gTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+        let currentY = drawTableHeader(doc.y + 4);
 
-        rows.forEach((row, index) => {
-            if (currentY > 550) {
-                doc.addPage();
-                currentY = drawTableHeader(30);
-            }
+        if (rows.length === 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+            doc.text('No se encontraron ventas en el período seleccionado.', startX, currentY + 10);
+            currentY += 30;
+        } else {
+            let currentCustomer = null;
+            let cTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+            let gTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
 
-            // Grouping Header
-            if (row.customer_name !== currentCustomer) {
-                if (currentCustomer !== null) {
-                    doc.fontSize(7).font('Helvetica-Bold');
-                    doc.text('SUBTOTAL:', startX + 240, currentY, { width: 53, align: 'right' });
-                    doc.text(`$${cTotals.grav.toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${cTotals.exe.toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
-                    doc.text(`$${cTotals.iva.toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${cTotals.ret.toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${cTotals.per.toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
-                    doc.text(`$${cTotals.fov.toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${cTotals.cot.toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
-                    doc.text(`$${cTotals.total.toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
-                    currentY += 15;
-                    cTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+            const printSubtotal = () => {
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX + colW.fecha + colW.tipoDoc + colW.numero, currentY).lineTo(startX + contentWidth, currentY).stroke();
+                currentY += 2;
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text('SUBTOTAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right' });
+                let sx = startX + colW.fecha + colW.tipoDoc + colW.numero + colW.condicion;
+                doc.text(reportPdfHelper.fmt(cTotals.grav), sx, currentY, { width: colW.gravada, align: 'right' }); sx += colW.gravada;
+                doc.text(reportPdfHelper.fmt(cTotals.exe), sx, currentY, { width: colW.exenta, align: 'right' }); sx += colW.exenta;
+                doc.text(reportPdfHelper.fmt(cTotals.iva), sx, currentY, { width: colW.iva, align: 'right' }); sx += colW.iva;
+                doc.text(reportPdfHelper.fmt(cTotals.ret), sx, currentY, { width: colW.ret, align: 'right' }); sx += colW.ret;
+                doc.text(reportPdfHelper.fmt(cTotals.per), sx, currentY, { width: colW.per, align: 'right' }); sx += colW.per;
+                doc.text(reportPdfHelper.fmt(cTotals.fov), sx, currentY, { width: colW.fov, align: 'right' }); sx += colW.fov;
+                doc.text(reportPdfHelper.fmt(cTotals.cot), sx, currentY, { width: colW.cot, align: 'right' }); sx += colW.cot;
+                doc.text(reportPdfHelper.fmt(cTotals.total), sx, currentY, { width: colW.total - 6, align: 'right' });
+                currentY += 15;
+                cTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
+            };
+
+            for (const row of rows) {
+                if (currentY > 520) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, 'Reporte de Ventas (Detallado)', periodText, 'landscape', subtitle);
+                    currentY = drawTableHeader(doc.y + 4);
                 }
-                
-                doc.fontSize(8).font('Helvetica-Bold').fillColor('#4f46e5');
-                doc.text(`CLIENTE: ${row.customer_name}`, startX, currentY);
-                doc.fillColor('black');
+
+                if (row.customer_name !== currentCustomer) {
+                    if (currentCustomer !== null) {
+                        printSubtotal();
+                    }
+                    if (currentY > 520) {
+                        doc.addPage();
+                        reportPdfHelper.renderHeader(doc, company, 'Reporte de Ventas (Detallado)', periodText, 'landscape', subtitle);
+                        currentY = drawTableHeader(doc.y + 4);
+                    }
+                    doc.rect(startX, currentY, contentWidth, 14).fill('#e2e8f0');
+                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(`CLIENTE: ${row.customer_name}`, startX + 4, currentY + 3);
+                    currentY += 16;
+                    currentCustomer = row.customer_name;
+                }
+
+                doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
+                let lx = startX + 4;
+                doc.text(reportPdfHelper.formatDate(row.fecha_emision), lx, currentY, { width: colW.fecha }); lx += colW.fecha;
+                doc.text((row.tipo_doc_nombre || '---').substring(0, 16), lx, currentY, { width: colW.tipoDoc }); lx += colW.tipoDoc;
+                doc.text(String(row.numero_control || `VTA-${row.id}`), lx, currentY, { width: colW.numero }); lx += colW.numero;
+                doc.text((row.condicion_nombre || 'CONTADO').substring(0, 10), lx, currentY, { width: colW.condicion }); lx += colW.condicion;
+
+                const grav = parseFloat(row.total_gravado || 0);
+                const exe = parseFloat(row.total_exento || 0);
+                const iva = parseFloat(row.total_iva || 0);
+                const ret = parseFloat(row.iva_retenido || 0);
+                const per = parseFloat(row.iva_percibido || 0);
+                const fov = parseFloat(row.fovial || 0);
+                const cot = parseFloat(row.cotrans || 0);
+                const tot = parseFloat(row.total_pagar || 0);
+
+                doc.text(reportPdfHelper.fmt(grav), lx, currentY, { width: colW.gravada, align: 'right' }); lx += colW.gravada;
+                doc.text(reportPdfHelper.fmt(exe), lx, currentY, { width: colW.exenta, align: 'right' }); lx += colW.exenta;
+                doc.text(reportPdfHelper.fmt(iva), lx, currentY, { width: colW.iva, align: 'right' }); lx += colW.iva;
+                doc.text(reportPdfHelper.fmt(ret), lx, currentY, { width: colW.ret, align: 'right' }); lx += colW.ret;
+                doc.text(reportPdfHelper.fmt(per), lx, currentY, { width: colW.per, align: 'right' }); lx += colW.per;
+                doc.text(reportPdfHelper.fmt(fov), lx, currentY, { width: colW.fov, align: 'right' }); lx += colW.fov;
+                doc.text(reportPdfHelper.fmt(cot), lx, currentY, { width: colW.cot, align: 'right' }); lx += colW.cot;
+                doc.text(reportPdfHelper.fmt(tot), lx, currentY, { width: colW.total - 6, align: 'right' });
+
+                cTotals.grav += grav;
+                cTotals.exe += exe;
+                cTotals.iva += iva;
+                cTotals.ret += ret;
+                cTotals.per += per;
+                cTotals.fov += fov;
+                cTotals.cot += cot;
+                cTotals.total += tot;
+
+                gTotals.grav += grav;
+                gTotals.exe += exe;
+                gTotals.iva += iva;
+                gTotals.ret += ret;
+                gTotals.per += per;
+                gTotals.fov += fov;
+                gTotals.cot += cot;
+                gTotals.total += tot;
+
                 currentY += 12;
-                currentCustomer = row.customer_name;
             }
 
-            // Row Data
-            doc.fontSize(7).font('Helvetica');
-            const fechaVal = new Date(row.fecha_emision).toLocaleDateString();
-            doc.text(fechaVal, startX, currentY);
-            doc.text(row.tipo_doc_nombre || '---', startX + 38, currentY, { width: 80, truncate: true });
-            doc.text(row.numero_control || `VTA-${row.id}`, startX + 120, currentY, { width: 125 });
-            doc.text(row.condicion_nombre || 'CONTADO', startX + 248, currentY, { width: 48 });
-            doc.text(`$${parseFloat(row.total_gravado || 0).toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
-            doc.text(`$${parseFloat(row.total_exento || 0).toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
-            doc.text(`$${parseFloat(row.total_iva || 0).toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.iva_retenido || 0).toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
-            doc.text(`$${parseFloat(row.iva_percibido || 0).toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
-            doc.text(`$${parseFloat(row.fovial || 0).toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.cotrans || 0).toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
-            doc.text(`$${parseFloat(row.total_pagar || 0).toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
-
-            // Sum cTotals
-            cTotals.grav += parseFloat(row.total_gravado || 0);
-            cTotals.exe += parseFloat(row.total_exento || 0);
-            cTotals.iva += parseFloat(row.total_iva || 0);
-            cTotals.ret += parseFloat(row.iva_retenido || 0);
-            cTotals.per += parseFloat(row.iva_percibido || 0);
-            cTotals.fov += parseFloat(row.fovial || 0);
-            cTotals.cot += parseFloat(row.cotrans || 0);
-            cTotals.total += parseFloat(row.total_pagar || 0);
-
-            // Sum gTotals
-            gTotals.grav += parseFloat(row.total_gravado || 0);
-            gTotals.exe += parseFloat(row.total_exento || 0);
-            gTotals.iva += parseFloat(row.total_iva || 0);
-            gTotals.ret += parseFloat(row.iva_retenido || 0);
-            gTotals.per += parseFloat(row.iva_percibido || 0);
-            gTotals.fov += parseFloat(row.fovial || 0);
-            gTotals.cot += parseFloat(row.cotrans || 0);
-            gTotals.total += parseFloat(row.total_pagar || 0);
-
-            currentY += 12;
-
-            if (index === rows.length - 1) {
-                doc.fontSize(7).font('Helvetica-Bold');
-                doc.text('SUBTOTAL:', startX + 240, currentY, { width: 53, align: 'right' });
-                doc.text(`$${cTotals.grav.toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
-                doc.text(`$${cTotals.exe.toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
-                doc.text(`$${cTotals.iva.toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
-                doc.text(`$${cTotals.ret.toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
-                doc.text(`$${cTotals.per.toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
-                doc.text(`$${cTotals.fov.toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
-                doc.text(`$${cTotals.cot.toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
-                doc.text(`$${cTotals.total.toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
-                currentY += 20;
+            if (currentCustomer !== null) {
+                printSubtotal();
             }
-        });
 
-        // Grand Total
-        doc.moveTo(startX, currentY).lineTo(758, currentY).stroke();
-        currentY += 10;
-        doc.fontSize(9).font('Helvetica-Bold');
-        doc.text('TOTAL GENERAL:', startX + 138, currentY, { width: 155, align: 'right' });
-        doc.text(`$${gTotals.grav.toFixed(2)}`, startX + 298, currentY, { width: 55, align: 'right' });
-        doc.text(`$${gTotals.exe.toFixed(2)}`, startX + 358, currentY, { width: 55, align: 'right' });
-        doc.text(`$${gTotals.iva.toFixed(2)}`, startX + 418, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.ret.toFixed(2)}`, startX + 468, currentY, { width: 40, align: 'right' });
-        doc.text(`$${gTotals.per.toFixed(2)}`, startX + 513, currentY, { width: 40, align: 'right' });
-        doc.text(`$${gTotals.fov.toFixed(2)}`, startX + 558, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.cot.toFixed(2)}`, startX + 608, currentY, { width: 45, align: 'right' });
-        doc.text(`$${gTotals.total.toFixed(2)}`, startX + 658, currentY, { width: 70, align: 'right' });
+            if (currentY > 520) {
+                doc.addPage();
+                reportPdfHelper.renderHeader(doc, company, 'Reporte de Ventas (Detallado)', periodText, 'landscape', subtitle);
+                currentY = doc.y + 10;
+            }
+
+            doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+            currentY += 4;
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('TOTAL GENERAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right' });
+            let gx = startX + colW.fecha + colW.tipoDoc + colW.numero + colW.condicion;
+            doc.text(reportPdfHelper.fmt(gTotals.grav), gx, currentY, { width: colW.gravada, align: 'right' }); gx += colW.gravada;
+            doc.text(reportPdfHelper.fmt(gTotals.exe), gx, currentY, { width: colW.exenta, align: 'right' }); gx += colW.exenta;
+            doc.text(reportPdfHelper.fmt(gTotals.iva), gx, currentY, { width: colW.iva, align: 'right' }); gx += colW.iva;
+            doc.text(reportPdfHelper.fmt(gTotals.ret), gx, currentY, { width: colW.ret, align: 'right' }); gx += colW.ret;
+            doc.text(reportPdfHelper.fmt(gTotals.per), gx, currentY, { width: colW.per, align: 'right' }); gx += colW.per;
+            doc.text(reportPdfHelper.fmt(gTotals.fov), gx, currentY, { width: colW.fov, align: 'right' }); gx += colW.fov;
+            doc.text(reportPdfHelper.fmt(gTotals.cot), gx, currentY, { width: colW.cot, align: 'right' }); gx += colW.cot;
+            doc.text(reportPdfHelper.fmt(gTotals.total), gx, currentY, { width: colW.total - 6, align: 'right' });
+            currentY += 18;
+        }
+
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY, rows.length, 'Ventas');
+        reportPdfHelper.renderPageNumbers(doc);
         doc.end();
+
+        const buffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.send(buffer);
 
     } catch (error) {
         console.error('Error al generar reporte de ventas:', error);
@@ -1529,8 +1576,7 @@ const exportSalesByPOSPDF = async (req, res) => {
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
-        const [companyRows] = await pool.query('SELECT razon_social, nit FROM companies WHERE id = ?', [companyId]);
-        const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '' };
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
 
         let branchName = 'Todas las sucursales';
         if (branch_id && branch_id !== 'all') {
@@ -1573,8 +1619,11 @@ const exportSalesByPOSPDF = async (req, res) => {
         const [rows] = await pool.query(sql, params);
 
         const reportData = {
+            company_id: companyId,
+            company: company,
             company_name: company.razon_social,
             company_nit: company.nit,
+            company_nrc: company.nrc,
             branch_name: branchName,
             startDate: start_date,
             endDate: end_date,
@@ -1816,93 +1865,118 @@ const exportSalesDetailPDF = async (req, res) => {
             return excelService.sendExcelResponse(res, buffer, `Detalle_Facturacion_${start_date}_al_${end_date}.xlsx`);
         }
 
-        const PDFDocument = require('pdfkit');
-        const doc = new PDFDocument({ margin: 30, size: 'LETTER', layout: 'landscape' });
-        const chunks = [];
-        doc.on('data', chunk => chunks.push(chunk));
-        doc.on('end', () => {
-            const result = Buffer.concat(chunks);
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `inline; filename=Detalle_Facturacion_${start_date}_al_${end_date}.pdf`);
-            res.send(result);
-        });
-
-        // Cabecera del documento
-        doc.fontSize(15).font('Helvetica-Bold').text(String(company.razon_social).toUpperCase(), { align: 'center' });
-        doc.fontSize(9).font('Helvetica').text(`NIT: ${String(company.nit || '')}`, { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(12).font('Helvetica-Bold').text('DETALLE DE FACTURACIÓN', { align: 'center' });
-        doc.fontSize(9).font('Helvetica').text(`PERIODO: ${start_date} AL ${end_date}`, { align: 'center' });
-        doc.text(`SUCURSAL: ${branchName}`, { align: 'center' });
-        doc.text(`PUNTOS DE VENTA: ${posLabel}`, { align: 'center' });
-        doc.moveDown(1.2);
-
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
         const startX = 30;
-        let currentY = doc.y;
+        const contentWidth = 732;
 
-        const drawTableHeader = (y) => {
-            doc.fontSize(7).font('Helvetica-Bold');
-            doc.text('FECHA', startX, y);
-            doc.text('TIPO DTE', startX + 44, y, { width: 50 });
-            doc.text('N° CONTROL', startX + 96, y, { width: 121 });
-            doc.text('CLIENTE', startX + 219, y, { width: 86 });
-            doc.text('CÓDIGO', startX + 307, y, { width: 44 });
-            doc.text('DESCRIPCIÓN', startX + 353, y, { width: 87 });
-            doc.text('CANT.', startX + 440, y, { width: 46, align: 'right' });
-            doc.text('PRECIO', startX + 488, y, { width: 48, align: 'right' });
-            doc.text('IVA', startX + 538, y, { width: 42, align: 'right' });
-            doc.text('FOVIAL', startX + 582, y, { width: 40, align: 'right' });
-            doc.text('COTRANS', startX + 624, y, { width: 40, align: 'right' });
-            doc.text('TOTAL', startX + 666, y, { width: 58, align: 'right' });
-            doc.moveTo(startX, y + 10).lineTo(startX + 724, y + 10).stroke();
-            return y + 14;
+        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+        const subtitle = `SUCURSAL: ${branchName}   |   PUNTOS DE VENTA: ${posLabel}`;
+
+        reportPdfHelper.renderHeader(doc, company, 'Detalle de Facturación', periodText, 'landscape', subtitle);
+
+        const colW = {
+            fecha: 46,
+            tipoDte: 62,
+            control: 110,
+            cliente: 115,
+            codigo: 55,
+            desc: 110,
+            cant: 44,
+            precio: 46,
+            iva: 44,
+            fov: 38,
+            cot: 38,
+            tot: 54
         };
 
-        currentY = drawTableHeader(currentY);
+        const drawTableHeader = (yPos) => {
+            doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX + 4;
+            doc.text('FECHA', x, yPos + 3); x += colW.fecha;
+            doc.text('TIPO DTE', x, yPos + 3); x += colW.tipoDte;
+            doc.text('N° CONTROL', x, yPos + 3); x += colW.control;
+            doc.text('CLIENTE', x, yPos + 3); x += colW.cliente;
+            doc.text('CÓDIGO', x, yPos + 3); x += colW.codigo;
+            doc.text('DESCRIPCIÓN', x, yPos + 3); x += colW.desc;
+            doc.text('CANT.', x, yPos + 3, { width: colW.cant, align: 'right' }); x += colW.cant;
+            doc.text('PRECIO', x, yPos + 3, { width: colW.precio, align: 'right' }); x += colW.precio;
+            doc.text('IVA', x, yPos + 3, { width: colW.iva, align: 'right' }); x += colW.iva;
+            doc.text('FOV.', x, yPos + 3, { width: colW.fov, align: 'right' }); x += colW.fov;
+            doc.text('COT.', x, yPos + 3, { width: colW.cot, align: 'right' }); x += colW.cot;
+            doc.text('TOTAL', x, yPos + 3, { width: colW.tot - 6, align: 'right' });
+            return yPos + 16;
+        };
 
-        details.forEach((r) => {
-            if (currentY > 545) {
+        let currentY = drawTableHeader(doc.y + 4);
+
+        if (details.length === 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+            doc.text('No se encontraron registros de facturación en el período seleccionado.', startX, currentY + 10);
+            currentY += 30;
+        } else {
+            details.forEach((r) => {
+                if (currentY > 520) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, 'Detalle de Facturación', periodText, 'landscape', subtitle);
+                    currentY = drawTableHeader(doc.y + 4);
+                }
+
+                doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+                let lx = startX + 4;
+                doc.text(r.fecha, lx, currentY, { width: colW.fecha, truncate: true }); lx += colW.fecha;
+                doc.text(r.tipo_dte, lx, currentY, { width: colW.tipoDte, truncate: true }); lx += colW.tipoDte;
+                doc.text(r.numero_control, lx, currentY, { width: colW.control, truncate: true }); lx += colW.control;
+                doc.text(r.cliente, lx, currentY, { width: colW.cliente, truncate: true }); lx += colW.cliente;
+                doc.text(r.codigo_producto, lx, currentY, { width: colW.codigo, truncate: true }); lx += colW.codigo;
+                doc.text(r.descripcion, lx, currentY, { width: colW.desc, truncate: true }); lx += colW.desc;
+                doc.text(r.cantidad.toFixed(2), lx, currentY, { width: colW.cant, align: 'right' }); lx += colW.cant;
+                doc.text(reportPdfHelper.fmt(r.precio), lx, currentY, { width: colW.precio, align: 'right' }); lx += colW.precio;
+                doc.text(reportPdfHelper.fmt(r.iva), lx, currentY, { width: colW.iva, align: 'right' }); lx += colW.iva;
+                doc.text(reportPdfHelper.fmt(r.fovial), lx, currentY, { width: colW.fov, align: 'right' }); lx += colW.fov;
+                doc.text(reportPdfHelper.fmt(r.cotrans), lx, currentY, { width: colW.cot, align: 'right' }); lx += colW.cot;
+                doc.text(reportPdfHelper.fmt(r.total), lx, currentY, { width: colW.tot - 6, align: 'right' });
+                currentY += 11;
+            });
+
+            // Fila de totales por línea
+            if (currentY > 510) {
                 doc.addPage();
-                currentY = drawTableHeader(30);
+                reportPdfHelper.renderHeader(doc, company, 'Detalle de Facturación', periodText, 'landscape', subtitle);
+                currentY = drawTableHeader(doc.y + 4);
             }
 
-            doc.fontSize(7).font('Helvetica');
-            doc.text(r.fecha, startX, currentY, { width: 42, height: 10, truncate: true });
-            doc.text(r.tipo_dte, startX + 44, currentY, { width: 50, height: 10, truncate: true });
-            doc.text(r.numero_control, startX + 96, currentY, { width: 121, height: 10, truncate: true });
-            doc.text(r.cliente, startX + 219, currentY, { width: 86, height: 10, truncate: true });
-            doc.text(r.codigo_producto, startX + 307, currentY, { width: 44, height: 10, truncate: true });
-            doc.text(r.descripcion, startX + 353, currentY, { width: 87, height: 10, truncate: true });
-            doc.text(r.cantidad.toFixed(5), startX + 440, currentY, { width: 46, height: 10, align: 'right' });
-            doc.text(fmtMoney(r.precio), startX + 488, currentY, { width: 48, height: 10, align: 'right' });
-            doc.text(fmtMoney(r.iva), startX + 538, currentY, { width: 42, height: 10, align: 'right' });
-            doc.text(fmtMoney(r.fovial), startX + 582, currentY, { width: 40, height: 10, align: 'right' });
-            doc.text(fmtMoney(r.cotrans), startX + 624, currentY, { width: 40, height: 10, align: 'right' });
-            doc.text(fmtMoney(r.total), startX + 666, currentY, { width: 58, height: 10, align: 'right' });
-            currentY += 11;
-        });
+            doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY + 1).lineTo(startX + contentWidth, currentY + 1).stroke();
+            currentY += 4;
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text(`TOTALES (${details.length} LÍNEAS):`, startX + 4, currentY, { width: colW.fecha + colW.tipoDte + colW.control + colW.cliente + colW.codigo + colW.desc, align: 'right' });
+            let tx = startX + colW.fecha + colW.tipoDte + colW.control + colW.cliente + colW.codigo + colW.desc + 4;
+            doc.text(lineTotals.cantidad.toFixed(2), tx, currentY, { width: colW.cant, align: 'right' }); tx += colW.cant;
+            tx += colW.precio; // Salta precio unitario
+            doc.text(reportPdfHelper.fmt(lineTotals.iva), tx, currentY, { width: colW.iva, align: 'right' }); tx += colW.iva;
+            doc.text(reportPdfHelper.fmt(lineTotals.fovial), tx, currentY, { width: colW.fov, align: 'right' }); tx += colW.fov;
+            doc.text(reportPdfHelper.fmt(lineTotals.cotrans), tx, currentY, { width: colW.cot, align: 'right' }); tx += colW.cot;
+            doc.text(reportPdfHelper.fmt(lineTotals.total), tx, currentY, { width: colW.tot - 6, align: 'right' });
+            currentY += 16;
 
-        // Fila de totales por línea
-        currentY += 3;
-        doc.fontSize(7.5).font('Helvetica-Bold');
-        doc.text(`TOTALES (${details.length} LÍNEAS)`, startX + 260, currentY, { width: 178, height: 10, align: 'right' });
-        doc.text(lineTotals.cantidad.toFixed(5), startX + 440, currentY, { width: 46, height: 10, align: 'right' });
-        doc.text(fmtMoney(lineTotals.iva), startX + 538, currentY, { width: 42, height: 10, align: 'right' });
-        doc.text(fmtMoney(lineTotals.fovial), startX + 582, currentY, { width: 40, height: 10, align: 'right' });
-        doc.text(fmtMoney(lineTotals.cotrans), startX + 624, currentY, { width: 40, height: 10, align: 'right' });
-        doc.text(fmtMoney(lineTotals.total), startX + 666, currentY, { width: 58, height: 10, align: 'right' });
-        currentY += 14;
-        doc.moveTo(startX, currentY - 3).lineTo(startX + 724, currentY - 3).stroke();
+            // Totales de cabeceras (autoritativos)
+            doc.rect(startX, currentY, contentWidth, 16).fill('#f1f5f9');
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text(
+                `RESUMEN DE CABECERAS: ${parseInt(totals.num_documentos || 0, 10)} DOCUMENTOS | IVA: ${reportPdfHelper.fmt(totals.iva)} | FOVIAL: ${reportPdfHelper.fmt(totals.fovial)} | COTRANS: ${reportPdfHelper.fmt(totals.cotrans)} | TOTAL: ${reportPdfHelper.fmt(totals.total)}`,
+                startX + 6, currentY + 4, { width: contentWidth - 12 }
+            );
+            currentY += 22;
+        }
 
-        // Totales de cabeceras (autoritativos)
-        currentY += 4;
-        doc.fontSize(8).font('Helvetica-Bold');
-        doc.text(
-            `RESUMEN DE CABECERAS: ${parseInt(totals.num_documentos || 0, 10)} DOCUMENTOS | IVA: ${fmtMoney(totals.iva)} | FOVIAL: ${fmtMoney(totals.fovial)} | COTRANS: ${fmtMoney(totals.cotrans)} | TOTAL: ${fmtMoney(totals.total)}`,
-            startX, currentY, { width: 724 }
-        );
-
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY, details.length, 'Líneas');
+        reportPdfHelper.renderPageNumbers(doc);
         doc.end();
+
+        const buffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Detalle_Facturacion_${start_date}_al_${end_date}.pdf`);
+        res.send(buffer);
     } catch (error) {
         console.error('Error in exportSalesDetailPDF:', error);
         res.status(500).json({ message: 'Error al generar el detalle de facturación', error: error.message });

@@ -2,6 +2,58 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 const QRCode = require('qrcode');
+const reportPdfHelper = require('../utils/reportPdfHelper');
+
+function isValidTaxVal(val) {
+    return Boolean(val && val !== '---' && val !== 'N/A' && val !== '0000-000000-000-0' && val !== '000000-0');
+}
+
+/**
+ * Resuelve la información de la empresa para encabezados de reportes.
+ */
+async function resolveCompanyInfo(data) {
+    // 1. Si ya se proporcionó un objeto company con nit o nrc válidos
+    if (data.company && typeof data.company === 'object' && (isValidTaxVal(data.company.nit) || isValidTaxVal(data.company.nrc))) {
+        return data.company;
+    }
+    // 2. Si company es un objeto con id o si se pasó company_id
+    const compId = data.company_id || (data.company && typeof data.company === 'object' ? data.company.id : null);
+    if (compId) {
+        const compById = await reportPdfHelper.getCompanyInfo(compId);
+        if (compById && (isValidTaxVal(compById.nit) || isValidTaxVal(compById.nrc))) {
+            return compById;
+        }
+    }
+    // 3. Si se proporcionó company_name o data.company es un string, buscar por nombre en la base de datos
+    const compName = data.company_name || (typeof data.company === 'string' ? data.company : null);
+    if (compName) {
+        const compByName = await reportPdfHelper.getCompanyByName(compName);
+        if (compByName && (isValidTaxVal(compByName.nit) || isValidTaxVal(compByName.nrc))) {
+            return compByName;
+        }
+    }
+    // 4. Si se proporcionaron nit/nrc explícitos en data
+    if (isValidTaxVal(data.company_nit) || isValidTaxVal(data.company_nrc)) {
+        return {
+            razon_social: compName || data.company?.razon_social || 'EMPRESA REGISTRADA',
+            nombre_comercial: data.company?.nombre_comercial || 'EMPRESA',
+            nit: data.company_nit || '---',
+            nrc: data.company_nrc || '---'
+        };
+    }
+    // 5. Fallback por defecto: primera empresa de la base de datos
+    const defaultComp = await reportPdfHelper.getDefaultCompany();
+    if (defaultComp && (isValidTaxVal(defaultComp.nit) || isValidTaxVal(defaultComp.nrc))) {
+        return defaultComp;
+    }
+
+    return defaultComp || {
+        razon_social: compName || 'EMPRESA REGISTRADA',
+        nombre_comercial: 'EMPRESA',
+        nit: '---',
+        nrc: '---'
+    };
+}
 
 /**
  * Formatea una fecha a DD/MM/YYYY sin desfase de zona horaria.
@@ -87,79 +139,102 @@ const generateTransferPDF = (data) => {
 /**
  * Generates a PDF buffer for a customer/provider statement
  */
-const generateStatementPDF = (data, isProvider = false) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 50 });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateStatementPDF = async (data, isProvider = false) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-            doc.fontSize(18).text(data.company_name || 'EMPRESA', { align: 'left' });
-            doc.fontSize(10).text(data.branch_name || 'SUCURSAL', { align: 'left' });
-            doc.fontSize(10).text(`Fecha: ${new Date().toLocaleDateString('es-SV')}`, { align: 'right' });
-            doc.moveDown();
+    const title = data.title || (isProvider ? 'ESTADO DE CUENTA DE PROVEEDOR' : 'ESTADO DE CUENTA DE CLIENTE');
+    const subtitle = data.branch_name ? `SUCURSAL: ${data.branch_name}` : null;
+    const periodText = data.startDate && data.endDate 
+        ? `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`
+        : `AL ${reportPdfHelper.formatDate(new Date())}`;
 
-            const title = data.title || (isProvider ? 'ESTADO DE CUENTA DE PROVEEDOR' : 'ESTADO DE CUENTA DE CLIENTE');
-            doc.fontSize(16).text(title, { align: 'center', underline: true });
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 
-            doc.fontSize(12).font('Helvetica-Bold').text(isProvider ? 'INFORMACIÓN DEL PROVEEDOR' : 'INFORMACIÓN DEL CLIENTE');
-            doc.fontSize(10).font('Helvetica');
-            doc.text(`Nombre: ${isProvider ? (data.provider_name || 'N/A') : (data.customer_name || 'N/A')}`);
-            doc.text(`Correo: ${isProvider ? (data.provider_email || 'N/A') : (data.customer_email || 'N/A')}`);
-            doc.moveDown();
+    const startX = 30;
+    const contentWidth = 552;
 
-            const summaryY = doc.y;
-            doc.rect(50, summaryY, 500, 40).fill('#f3f4f6').stroke('#e5e7eb');
-            doc.fill('#4f46e5').fontSize(12).font('Helvetica-Bold').text(data.balance_label || 'SALDO TOTAL PENDIENTE:', 70, summaryY + 12);
-            doc.fontSize(14).text(`$${parseFloat(data.total_balance || 0).toFixed(2)}`, 350, summaryY + 12, { align: 'right', width: 150 });
-            doc.fill('black');
-            doc.moveDown(3);
+    // Entity Info Box
+    const entityTitle = isProvider ? 'INFORMACIÓN DEL PROVEEDOR' : 'INFORMACIÓN DEL CLIENTE';
+    const entityName = isProvider ? (data.provider_name || 'N/A') : (data.customer_name || 'N/A');
+    const entityEmail = isProvider ? (data.provider_email || 'N/A') : (data.customer_email || 'N/A');
 
-            const tableTop = doc.y;
-            doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('Fecha', 50, tableTop);
-            doc.text('Documento', 130, tableTop);
-            doc.text('Concepto', 250, tableTop);
-            doc.text('Cargo (+)', 340, tableTop, { align: 'right', width: 60 });
-            doc.text('Abono (-)', 410, tableTop, { align: 'right', width: 60 });
-            doc.text('Saldo', 490, tableTop, { align: 'right', width: 60 });
-            doc.moveDown(0.5);
-            doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-            doc.moveDown(0.5);
+    doc.rect(startX, currentY, contentWidth, 34).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text(entityTitle, startX + 8, currentY + 6);
+    doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+    doc.text(`Nombre: ${entityName}    |    Correo: ${entityEmail}`, startX + 8, currentY + 18, { width: 330 });
 
-            doc.font('Helvetica');
-            (data.movements || []).forEach(m => {
-                const y = doc.y;
-                if (y > 700) doc.addPage();
-                
-                const cargo = parseFloat(m.cargo || 0);
-                const abono = parseFloat(m.abono || 0);
-                const balance = parseFloat(m.balance || 0);
+    const balLabel = (data.balance_label || 'SALDO PENDIENTE:').toUpperCase();
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text(balLabel, startX + 350, currentY + 6, { width: 194, align: 'right' });
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#0f172a').text(reportPdfHelper.fmt(data.total_balance), startX + 350, currentY + 16, { width: 194, align: 'right' });
 
-                // Todas las celdas de la fila en la MISMA línea base (evita filas diagonales)
-                const rowY = doc.y;
-                doc.fontSize(9);
-                doc.text(fmtDateDDMMYYYY(m.fecha), 50, rowY, { width: 70 });
-                const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
-                doc.text(docText, 125, rowY, { width: 120 });
-                doc.text(String(m.concepto || '—'), 250, rowY, { width: 90 });
-                doc.text(cargo > 0 ? `$${cargo.toFixed(2)}` : '-', 340, rowY, { align: 'right', width: 60 });
-                doc.text(abono > 0 ? `$${abono.toFixed(2)}` : '-', 410, rowY, { align: 'right', width: 60 });
-                doc.text(`$${balance.toFixed(2)}`, 490, rowY, { align: 'right', width: 60 });
-                doc.moveDown(1.5);
-            });
+    currentY += 42;
 
-            doc.moveDown(2);
-            doc.fontSize(8).text('Este documento es un resumen informativo.', { align: 'center', color: 'grey' });
+    const colWidths = { fecha: 65, doc: 110, concepto: 157, cargo: 70, abono: 70, saldo: 80 };
+    const colX = {
+        fecha: startX,
+        doc: startX + colWidths.fecha,
+        concepto: startX + colWidths.fecha + colWidths.doc,
+        cargo: startX + colWidths.fecha + colWidths.doc + colWidths.concepto,
+        abono: startX + colWidths.fecha + colWidths.doc + colWidths.concepto + colWidths.cargo,
+        saldo: startX + colWidths.fecha + colWidths.doc + colWidths.concepto + colWidths.cargo + colWidths.abono
+    };
 
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('CONCEPTO', colX.concepto + 2, y + 3, { width: colWidths.concepto - 4 });
+        doc.text('CARGO (+)', colX.cargo, y + 3, { width: colWidths.cargo - 4, align: 'right' });
+        doc.text('ABONO (-)', colX.abono, y + 3, { width: colWidths.abono - 4, align: 'right' });
+        doc.text('SALDO', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
+
+    currentY = drawTableHeader(currentY);
+
+    const movements = data.movements || [];
+    movements.forEach(m => {
+        if (currentY > 710) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
         }
+
+        const cargo = parseFloat(m.cargo || 0);
+        const abono = parseFloat(m.abono || 0);
+        const balance = parseFloat(m.balance || 0);
+        const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
+
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.formatDate(m.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
+        doc.text(String(m.concepto || '—'), colX.concepto + 2, currentY, { width: colWidths.concepto - 4, truncate: true });
+        doc.text(reportPdfHelper.fmt(cargo), colX.cargo, currentY, { width: colWidths.cargo - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(abono), colX.abono, currentY, { width: colWidths.abono - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(balance), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+
+        currentY += 12;
     });
+
+    if (currentY > 690) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('SALDO FINAL:', colX.concepto, currentY, { width: colWidths.concepto - 4, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.total_balance), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, movements.length, 'Movimientos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 const generateProviderStatementPDF = (data) => generateStatementPDF(data, true);
@@ -170,158 +245,190 @@ const generateProviderStatementPDF = (data) => generateStatementPDF(data, true);
  * Abonos: despachos de galones en cierres (gas_station_closeout_trupput_despachos).
  * Cada movimiento incluye galones y monto.
  */
-const generateTrupputStatementPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 50 });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateTrupputStatementPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-            doc.fontSize(18).text(data.company_name || 'EMPRESA', { align: 'left' });
-            doc.fontSize(10).text(data.branch_name || 'SUCURSAL', { align: 'left' });
-            doc.fontSize(10).text(`Fecha: ${new Date().toLocaleDateString('es-SV')}`, { align: 'right' });
-            doc.moveDown();
+    const title = 'ESTADO DE CUENTA TRUPPUT (PREPAGO POR GALONAJE)';
+    const subtitle = data.branch_name ? `SUCURSAL: ${data.branch_name}` : null;
+    const periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
 
-            doc.fontSize(16).text('ESTADO DE CUENTA TRUPPUT (PREPAGO POR GALONAJE)', { align: 'center', underline: true });
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 
-            doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN DEL CLIENTE');
-            doc.fontSize(10).font('Helvetica');
-            doc.text(`Nombre: ${data.customer_name || 'N/A'}`);
-            doc.text(`Correo: ${data.customer_email || 'N/A'}`);
-            doc.moveDown();
+    const startX = 30;
+    const contentWidth = 552;
 
-            const summaryY = doc.y;
-            doc.rect(50, summaryY, 500, 40).fill('#f3f4f6').stroke('#e5e7eb');
-            doc.fill('#4f46e5').fontSize(12).font('Helvetica-Bold').text('SALDO DISPONIBLE EN GALONES:', 70, summaryY + 12);
-            doc.fontSize(14).text(`${parseFloat(data.total_balance_galones || 0).toFixed(4)} gal.`, 350, summaryY + 12, { align: 'right', width: 150 });
-            doc.fill('black');
-            doc.moveDown(3);
+    // Info Box
+    doc.rect(startX, currentY, contentWidth, 34).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text('INFORMACIÓN DEL CLIENTE', startX + 8, currentY + 6);
+    doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+    doc.text(`Nombre: ${data.customer_name || 'N/A'}    |    Correo: ${data.customer_email || 'N/A'}`, startX + 8, currentY + 18, { width: 330 });
 
-            const tableTop = doc.y;
-            doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('Fecha', 50, tableTop);
-            doc.text('Documento', 130, tableTop);
-            doc.text('Concepto', 235, tableTop);
-            doc.text('Galones', 300, tableTop, { align: 'right', width: 50 });
-            doc.text('Gal+', 360, tableTop, { align: 'right', width: 45 });
-            doc.text('Gal-', 415, tableTop, { align: 'right', width: 45 });
-            doc.text('Saldo Gal', 470, tableTop, { align: 'right', width: 60 });
-            doc.moveDown(0.5);
-            doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-            doc.moveDown(0.5);
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('SALDO DISPONIBLE EN GALONES:', startX + 350, currentY + 6, { width: 194, align: 'right' });
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#0f172a').text(`${parseFloat(data.total_balance_galones || 0).toFixed(4)} gal.`, startX + 350, currentY + 16, { width: 194, align: 'right' });
 
-            doc.font('Helvetica');
-            (data.movements || []).forEach(m => {
-                const rowY = doc.y;
-                if (rowY > 700) doc.addPage();
+    currentY += 42;
 
-                const cargoGal = parseFloat(m.galones_cargo || 0);
-                const abonoGal = parseFloat(m.galones_abono || 0);
-                const balanceGal = parseFloat(m.balance_galones || 0);
-                const galones = parseFloat(m.galones || 0);
+    const colWidths = { fecha: 65, doc: 105, concepto: 112, galones: 65, cargo: 65, abono: 65, saldo: 75 };
+    const colX = {
+        fecha: startX,
+        doc: startX + colWidths.fecha,
+        concepto: startX + colWidths.fecha + colWidths.doc,
+        galones: startX + colWidths.fecha + colWidths.doc + colWidths.concepto,
+        cargo: startX + colWidths.fecha + colWidths.doc + colWidths.concepto + colWidths.galones,
+        abono: startX + colWidths.fecha + colWidths.doc + colWidths.concepto + colWidths.galones + colWidths.cargo,
+        saldo: startX + colWidths.fecha + colWidths.doc + colWidths.concepto + colWidths.galones + colWidths.cargo + colWidths.abono
+    };
 
-                doc.fontSize(9);
-                doc.text(fmtDateDDMMYYYY(m.fecha), 50, rowY, { width: 70 });
-                const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
-                doc.text(docText, 125, rowY, { width: 105 });
-                doc.text(String(m.concepto || '—'), 235, rowY, { width: 65 });
-                doc.text(galones > 0 ? `${galones.toFixed(4)}` : '-', 300, rowY, { align: 'right', width: 50 });
-                doc.text(cargoGal > 0 ? `${cargoGal.toFixed(4)}` : '-', 360, rowY, { align: 'right', width: 45 });
-                doc.text(abonoGal > 0 ? `${abonoGal.toFixed(4)}` : '-', 415, rowY, { align: 'right', width: 45 });
-                doc.text(`${balanceGal.toFixed(4)}`, 470, rowY, { align: 'right', width: 60 });
-                doc.moveDown(1.5);
-            });
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('CONCEPTO', colX.concepto + 2, y + 3, { width: colWidths.concepto - 4 });
+        doc.text('GALONES', colX.galones, y + 3, { width: colWidths.galones - 4, align: 'right' });
+        doc.text('GAL (+)', colX.cargo, y + 3, { width: colWidths.cargo - 4, align: 'right' });
+        doc.text('GAL (-)', colX.abono, y + 3, { width: colWidths.abono - 4, align: 'right' });
+        doc.text('SALDO GAL', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
 
-            doc.moveDown(2);
-            doc.fontSize(10).font('Helvetica-Bold').text('Resumen de montos', { align: 'left' });
-            doc.font('Helvetica');
-            doc.fontSize(9).text(`Total recargado: $${parseFloat(data.total_recargado || 0).toFixed(2)}`);
-            doc.fontSize(9).text(`Total despachado: $${parseFloat(data.total_despachado || 0).toFixed(2)}`);
+    currentY = drawTableHeader(currentY);
 
-            doc.moveDown(2);
-            doc.fontSize(8).text('Este documento es un resumen informativo.', { align: 'center', color: 'grey' });
-
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const movements = data.movements || [];
+    movements.forEach(m => {
+        if (currentY > 710) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
         }
+
+        const cargoGal = parseFloat(m.galones_cargo || 0);
+        const abonoGal = parseFloat(m.galones_abono || 0);
+        const balanceGal = parseFloat(m.balance_galones || 0);
+        const galones = parseFloat(m.galones || 0);
+        const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
+
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.formatDate(m.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
+        doc.text(String(m.concepto || '—'), colX.concepto + 2, currentY, { width: colWidths.concepto - 4, truncate: true });
+        doc.text(galones > 0 ? galones.toFixed(4) : '-', colX.galones, currentY, { width: colWidths.galones - 4, align: 'right' });
+        doc.text(cargoGal > 0 ? cargoGal.toFixed(4) : '-', colX.cargo, currentY, { width: colWidths.cargo - 4, align: 'right' });
+        doc.text(abonoGal > 0 ? abonoGal.toFixed(4) : '-', colX.abono, currentY, { width: colWidths.abono - 4, align: 'right' });
+        doc.text(balanceGal.toFixed(4), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+
+        currentY += 12;
     });
+
+    if (currentY > 660) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 6;
+
+    // Resumen de montos
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a').text('RESUMEN DE MONTOS MONETARIOS:', startX, currentY);
+    currentY += 11;
+    doc.fontSize(7).font('Helvetica').fillColor('#334155');
+    doc.text(`Total recargado: ${reportPdfHelper.fmt(data.total_recargado)}    |    Total despachado: ${reportPdfHelper.fmt(data.total_despachado)}`, startX, currentY);
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, movements.length, 'Movimientos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF buffer for a customer/provider aging report
  */
-const generateAgingPDF = (data, isProvider = false) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateAgingPDF = async (data, isProvider = false) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            doc.fontSize(16).text(data.company_name, { align: 'left' });
-            doc.fontSize(9).text(isProvider ? (data.provider_name || 'N/A') : (data.customer_name || 'N/A'), { align: 'left' });
-            doc.fontSize(9).text(`Fecha: ${new Date().toLocaleDateString()}`, { align: 'right' });
-            doc.moveDown();
+    const title = isProvider ? 'ANTIGÜEDAD DE SALDOS (PROVEEDORES)' : 'ANTIGÜEDAD DE SALDOS (CLIENTES)';
+    const entityLabel = isProvider ? 'PROVEEDOR' : 'CLIENTE';
+    const entityName = isProvider ? (data.provider_name || 'N/A') : (data.customer_name || 'N/A');
+    const subtitle = `${entityLabel}: ${entityName}`;
+    const periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
 
-            const title = isProvider ? 'ANTIGÜEDAD DE SALDOS (PROVEEDORES)' : 'ANTIGÜEDAD DE SALDOS (CLIENTES)';
-            doc.fontSize(14).font('Helvetica-Bold').text(title, { align: 'center', underline: true });
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const tableTop = doc.y;
-            const colWidths = { fecha: 60, doc: 80, tipo: 80, b1: 70, b2: 70, b3: 70, b4: 70, b5: 70, b6: 70 };
-            const startX = 30;
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = { fecha: 65, doc: 90, tipo: 85, b1: 82, b2: 82, b3: 82, b4: 82, b5: 82, b6: 82 };
+    const colX = {
+        fecha: startX,
+        doc: startX + colWidths.fecha,
+        tipo: startX + colWidths.fecha + colWidths.doc,
+        b1: startX + colWidths.fecha + colWidths.doc + colWidths.tipo,
+        b2: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.b1,
+        b3: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.b1 + colWidths.b2,
+        b4: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.b1 + colWidths.b2 + colWidths.b3,
+        b5: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.b1 + colWidths.b2 + colWidths.b3 + colWidths.b4,
+        b6: startX + colWidths.fecha + colWidths.doc + colWidths.tipo + colWidths.b1 + colWidths.b2 + colWidths.b3 + colWidths.b4 + colWidths.b5
+    };
 
-            doc.fontSize(8).font('Helvetica-Bold');
-            doc.text('Fecha', startX, tableTop);
-            doc.text('Documento', startX + colWidths.fecha, tableTop);
-            doc.text('Tipo', startX + colWidths.fecha + colWidths.doc, tableTop);
-            doc.text('0-30 Días', startX + 220, tableTop, { align: 'right', width: colWidths.b1 });
-            doc.text('31-60 Días', startX + 290, tableTop, { align: 'right', width: colWidths.b2 });
-            doc.text('61-90 Días', startX + 360, tableTop, { align: 'right', width: colWidths.b3 });
-            doc.text('91-180 Días', startX + 430, tableTop, { align: 'right', width: colWidths.b4 });
-            doc.text('181-365 Días', startX + 500, tableTop, { align: 'right', width: colWidths.b5 });
-            doc.text('+365 Días', startX + 570, tableTop, { align: 'right', width: colWidths.b6 });
-            
-            doc.moveDown(0.5);
-            doc.moveTo(startX, doc.y).lineTo(startX + 740, doc.y).stroke();
-            doc.moveDown(0.5);
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('TIPO', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4 });
+        doc.text('0-30 DÍAS', colX.b1, y + 3, { width: colWidths.b1 - 4, align: 'right' });
+        doc.text('31-60 DÍAS', colX.b2, y + 3, { width: colWidths.b2 - 4, align: 'right' });
+        doc.text('61-90 DÍAS', colX.b3, y + 3, { width: colWidths.b3 - 4, align: 'right' });
+        doc.text('91-180 DÍAS', colX.b4, y + 3, { width: colWidths.b4 - 4, align: 'right' });
+        doc.text('181-365 DÍAS', colX.b5, y + 3, { width: colWidths.b5 - 4, align: 'right' });
+        doc.text('+365 DÍAS', colX.b6, y + 3, { width: colWidths.b6 - 4, align: 'right' });
+        return y + 17;
+    };
 
-            doc.font('Helvetica');
-            data.documents.forEach(docRow => {
-                const y = doc.y;
-                if (y > 500) doc.addPage();
+    currentY = drawTableHeader(currentY);
 
-                // Todas las celdas de la fila en la MISMA línea base
-                const rowY = doc.y;
-                doc.fontSize(8);
-                doc.text(fmtDateDDMMYYYY(docRow.fecha), startX, rowY, { width: colWidths.fecha });
-                doc.text(docRow.documento, startX + colWidths.fecha, rowY, { width: colWidths.doc });
-                doc.text(docRow.tipo, startX + colWidths.fecha + colWidths.doc, rowY, { width: colWidths.tipo });
-                
-                doc.text(docRow.d0_30 > 0 ? `$${parseFloat(docRow.d0_30).toFixed(2)}` : '-', startX + 220, rowY, { align: 'right', width: colWidths.b1 });
-                doc.text(docRow.d31_60 > 0 ? `$${parseFloat(docRow.d31_60).toFixed(2)}` : '-', startX + 290, rowY, { align: 'right', width: colWidths.b2 });
-                doc.text(docRow.d61_90 > 0 ? `$${parseFloat(docRow.d61_90).toFixed(2)}` : '-', startX + 360, rowY, { align: 'right', width: colWidths.b3 });
-                doc.text(docRow.d91_180 > 0 ? `$${parseFloat(docRow.d91_180).toFixed(2)}` : '-', startX + 430, rowY, { align: 'right', width: colWidths.b4 });
-                doc.text(docRow.d181_365 > 0 ? `$${parseFloat(docRow.d181_365).toFixed(2)}` : '-', startX + 500, rowY, { align: 'right', width: colWidths.b5 });
-                doc.text(docRow.d365_plus > 0 ? `$${parseFloat(docRow.d365_plus).toFixed(2)}` : '-', startX + 570, rowY, { align: 'right', width: colWidths.b6 });
-                doc.moveDown(1.5);
-            });
-
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 740, doc.y).stroke();
-            doc.moveDown(2);
-
-            doc.fontSize(12).font('Helvetica-Bold').text(`SALDO TOTAL PENDIENTE: $${parseFloat(data.total_balance).toFixed(2)}`, { align: 'right' });
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const documents = data.documents || [];
+    documents.forEach(docRow => {
+        if (currentY > 540) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
         }
+
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.formatDate(docRow.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+        doc.text(String(docRow.documento || '—'), colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
+        doc.text(String(docRow.tipo || '—'), colX.tipo + 2, currentY, { width: colWidths.tipo - 4, truncate: true });
+        doc.text(reportPdfHelper.fmt(docRow.d0_30), colX.b1, currentY, { width: colWidths.b1 - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(docRow.d31_60), colX.b2, currentY, { width: colWidths.b2 - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(docRow.d61_90), colX.b3, currentY, { width: colWidths.b3 - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(docRow.d91_180), colX.b4, currentY, { width: colWidths.b4 - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(docRow.d181_365), colX.b5, currentY, { width: colWidths.b5 - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(docRow.d365_plus), colX.b6, currentY, { width: colWidths.b6 - 4, align: 'right' });
+
+        currentY += 12;
     });
+
+    if (currentY > 520) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('SALDO TOTAL PENDIENTE:', colX.tipo, currentY, { width: colWidths.tipo - 4, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.total_balance), colX.b6, currentY, { width: colWidths.b6 - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, documents.length, 'Documentos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 const generateProviderAgingPDF = (data) => generateAgingPDF(data, true);
@@ -329,336 +436,351 @@ const generateProviderAgingPDF = (data) => generateAgingPDF(data, true);
 /**
  * Generates a PDF buffer for a stock report
  */
-const generateStockReportPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateStockReportPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
-            doc.fontSize(10).text(`Sucursal: ${data.branch_name}${data.as_of ? `   |   Al: ${data.as_of}` : ''}`);
-            doc.moveDown();
+    const title = 'REPORTE DE STOCK DE INVENTARIO';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = data.as_of ? `AL ${data.as_of}` : `AL ${reportPdfHelper.formatDate(new Date())}`;
 
-            doc.fontSize(14).text('REPORTE DE STOCK DE INVENTARIO', { align: 'center', underline: true });
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const startX = 30;
-            const tableTop = doc.y;
-            const colWidths = { codigo: 80, producto: 220, categoria: 100, stock: 60, costo: 70, precio: 70, total: 80 };
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = { codigo: 80, producto: 232, categoria: 110, stock: 70, costo: 75, precio: 75, total: 90 };
+    const colX = {
+        codigo: startX,
+        producto: startX + colWidths.codigo,
+        categoria: startX + colWidths.codigo + colWidths.producto,
+        stock: startX + colWidths.codigo + colWidths.producto + colWidths.categoria,
+        costo: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock,
+        precio: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo,
+        total: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.precio
+    };
 
-            doc.fontSize(9).font('Helvetica-Bold');
-            doc.text('Código', startX, tableTop);
-            doc.text('Producto', startX + 80, tableTop);
-            doc.text('Categoría', startX + 300, tableTop);
-            doc.text('Stock', startX + 400, tableTop, { align: 'right', width: 60 });
-            doc.text('Costo', startX + 460, tableTop, { align: 'right', width: 70 });
-            doc.text('Precio', startX + 530, tableTop, { align: 'right', width: 70 });
-            doc.text('V. Total', startX + 600, tableTop, { align: 'right', width: 80 });
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CÓDIGO', colX.codigo + 2, y + 3, { width: colWidths.codigo - 4 });
+        doc.text('PRODUCTO', colX.producto + 2, y + 3, { width: colWidths.producto - 4 });
+        doc.text('CATEGORÍA', colX.categoria + 2, y + 3, { width: colWidths.categoria - 4 });
+        doc.text('STOCK', colX.stock, y + 3, { width: colWidths.stock - 4, align: 'right' });
+        doc.text('COSTO', colX.costo, y + 3, { width: colWidths.costo - 4, align: 'right' });
+        doc.text('PRECIO', colX.precio, y + 3, { width: colWidths.precio - 4, align: 'right' });
+        doc.text('V. TOTAL', colX.total, y + 3, { width: colWidths.total - 4, align: 'right' });
+        return y + 17;
+    };
 
-            doc.moveDown(0.5);
-            doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-            doc.moveDown(0.5);
+    currentY = drawTableHeader(currentY);
 
-            doc.font('Helvetica').fontSize(8);
-            let grandTotalCost = 0;
-            let grandTotalItems = 0;
+    let grandTotalCost = 0;
+    let grandTotalItems = 0;
+    const products = data.products || [];
 
-            const drawTableHeader = () => {
-                const hY = doc.y;
-                doc.fontSize(9).font('Helvetica-Bold');
-                doc.text('Código', startX, hY);
-                doc.text('Producto', startX + 80, hY);
-                doc.text('Categoría', startX + 300, hY);
-                doc.text('Stock', startX + 400, hY, { align: 'right', width: 60 });
-                doc.text('Costo', startX + 460, hY, { align: 'right', width: 70 });
-                doc.text('Precio', startX + 530, hY, { align: 'right', width: 70 });
-                doc.text('V. Total', startX + 600, hY, { align: 'right', width: 80 });
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(8);
-            };
+    products.forEach((p) => {
+        if (currentY > 540) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
 
-            data.products.forEach((p) => {
-                // Check page break BEFORE capturing y
-                if (doc.y > 500) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
+        const stock = parseFloat(p.stock || 0);
+        const costo = parseFloat(p.costo || 0);
+        const precio = parseFloat(p.precio_venta || 0);
+        const valorTotal = stock * costo;
+        grandTotalCost += valorTotal;
+        grandTotalItems += stock;
 
-                // Capture y AFTER possible page break
-                const y = doc.y;
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(p.codigo || 'N/A', colX.codigo + 2, currentY, { width: colWidths.codigo - 4 });
+        doc.text(p.nombre || '—', colX.producto + 2, currentY, { width: colWidths.producto - 4, truncate: true });
+        doc.text(p.categoria || '—', colX.categoria + 2, currentY, { width: colWidths.categoria - 4, truncate: true });
+        doc.text(stock.toFixed(2), colX.stock, currentY, { width: colWidths.stock - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(costo), colX.costo, currentY, { width: colWidths.costo - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(precio), colX.precio, currentY, { width: colWidths.precio - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(valorTotal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
 
-                const stock = parseFloat(p.stock || 0);
-                const costo = parseFloat(p.costo || 0);
-                const precio = parseFloat(p.precio_venta || 0);
-                const valorTotal = stock * costo;
-                grandTotalCost += valorTotal;
-                grandTotalItems += stock;
-
-                doc.text(p.codigo || 'N/A', startX, y);
-                doc.text(p.nombre, startX + 80, y, { width: 210 });
-                doc.text(p.categoria || '-', startX + 300, y);
-                doc.text(stock.toFixed(2), startX + 400, y, { align: 'right', width: 60 });
-                doc.text(`$${costo.toFixed(2)}`, startX + 460, y, { align: 'right', width: 70 });
-                doc.text(`$${precio.toFixed(2)}`, startX + 530, y, { align: 'right', width: 70 });
-                doc.text(`$${valorTotal.toFixed(2)}`, startX + 600, y, { align: 'right', width: 80 });
-                doc.moveDown(1.2);
-            });
-
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-            doc.moveDown(1);
-            doc.fontSize(10).font('Helvetica-Bold').text(`TOTAL UNIDADES: ${grandTotalItems.toFixed(2)}`, { align: 'right' });
-            doc.text(`VALOR TOTAL INVENTARIO: $${grandTotalCost.toFixed(2)}`, { align: 'right' });
-            doc.end();
-        } catch (err) { reject(err); }
+        currentY += 12;
     });
+
+    if (currentY > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTAL UNIDADES: ${grandTotalItems.toFixed(2)}`, colX.categoria, currentY, { width: colWidths.categoria + colWidths.stock, align: 'right' });
+    doc.text(`VALOR TOTAL INVENTARIO: ${reportPdfHelper.fmt(grandTotalCost)}`, colX.costo, currentY, { width: colWidths.costo + colWidths.precio + colWidths.total, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, products.length, 'Productos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF buffer for an inventory movements report
  */
-/**
- * Generates a PDF buffer for an inventory movements report
- */
-const generateMovementsReportPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => {
-                const finalBuffer = Buffer.concat(buffers);
-                if (finalBuffer.length === 0) {
-                    reject(new Error('PDF generation produced empty buffer'));
-                    return;
-                }
-                resolve(finalBuffer);
-            });
-            doc.on('error', (err) => reject(err));
+const generateMovementsReportPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            const drawHeader = () => {
-                doc.fontSize(16).font('Helvetica-Bold').fillColor('black').text(data.company_name, { align: 'left' });
-                doc.fontSize(10).text(`Sucursal: ${data.branch_name}`, { align: 'left' });
-                doc.fontSize(10).text(`Periodo: ${new Date(data.startDate).toLocaleDateString()} al ${new Date(data.endDate).toLocaleDateString()}`, { align: 'left' });
-                doc.moveDown();
-                doc.fontSize(14).text('REPORTE DE MOVIMIENTOS DE INVENTARIO', { align: 'center', underline: true });
-                doc.moveDown();
-            };
+    const title = 'REPORTE DE MOVIMIENTOS DE INVENTARIO';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`;
 
-            drawHeader();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const tableTop = doc.y;
-            const colWidths = { codigo: 70, producto: 220, costo: 60, inicial: 60, entradas: 60, salidas: 60, final: 60, monto: 80 };
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = { codigo: 72, producto: 210, costo: 65, inicial: 65, entradas: 65, salidas: 65, final: 65, monto: 130 };
+    const colX = {
+        codigo: startX,
+        producto: startX + colWidths.codigo,
+        costo: startX + colWidths.codigo + colWidths.producto,
+        inicial: startX + colWidths.codigo + colWidths.producto + colWidths.costo,
+        entradas: startX + colWidths.codigo + colWidths.producto + colWidths.costo + colWidths.inicial,
+        salidas: startX + colWidths.codigo + colWidths.producto + colWidths.costo + colWidths.inicial + colWidths.entradas,
+        final: startX + colWidths.codigo + colWidths.producto + colWidths.costo + colWidths.inicial + colWidths.entradas + colWidths.salidas,
+        monto: startX + colWidths.codigo + colWidths.producto + colWidths.costo + colWidths.inicial + colWidths.entradas + colWidths.salidas + colWidths.final
+    };
 
-            const drawTableHeader = () => {
-                const hY = doc.y;
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('black');
-                doc.text('Código', startX, hY, { align: 'left' });
-                doc.text('Producto', startX + 70, hY, { align: 'left' });
-                doc.text('Costo', startX + 290, hY, { align: 'right', width: 60 });
-                doc.text('Inicial', startX + 350, hY, { align: 'right', width: 60 });
-                doc.text('Entradas', startX + 410, hY, { align: 'right', width: 60 });
-                doc.text('Salidas', startX + 470, hY, { align: 'right', width: 60 });
-                doc.text('Final', startX + 530, hY, { align: 'right', width: 60 });
-                doc.text('Monto', startX + 590, hY, { align: 'right', width: 80 });
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(8).fillColor('black');
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CÓDIGO', colX.codigo + 2, y + 3, { width: colWidths.codigo - 4 });
+        doc.text('PRODUCTO', colX.producto + 2, y + 3, { width: colWidths.producto - 4 });
+        doc.text('COSTO', colX.costo, y + 3, { width: colWidths.costo - 4, align: 'right' });
+        doc.text('INICIAL', colX.inicial, y + 3, { width: colWidths.inicial - 4, align: 'right' });
+        doc.text('ENTRADAS', colX.entradas, y + 3, { width: colWidths.entradas - 4, align: 'right' });
+        doc.text('SALIDAS', colX.salidas, y + 3, { width: colWidths.salidas - 4, align: 'right' });
+        doc.text('FINAL', colX.final, y + 3, { width: colWidths.final - 4, align: 'right' });
+        doc.text('VALOR FINAL', colX.monto, y + 3, { width: colWidths.monto - 4, align: 'right' });
+        return y + 17;
+    };
 
-            drawTableHeader();
+    currentY = drawTableHeader(currentY);
 
-            let currentCategory = null;
-            let grandTotalMonto = 0;
+    let currentCategory = null;
+    let grandTotalMonto = 0;
+    let count = 0;
+    const products = data.products || [];
 
-            data.products.forEach((p) => {
-                // Grouping by category
-                if (p.categoria !== currentCategory) {
-                    if (doc.y > 450) {
-                        doc.addPage();
-                        drawTableHeader();
-                    }
-                    currentCategory = p.categoria;
-                    doc.moveDown(0.5);
-                    doc.fontSize(10).font('Helvetica-Bold').fillColor('#4f46e5').text(`CATEGORÍA: ${currentCategory.toUpperCase()}`, startX, doc.y, { align: 'left' });
-                    doc.fillColor('black').moveDown(0.2);
-                    doc.moveTo(startX, doc.y).lineTo(startX + 300, doc.y).stroke();
-                    doc.moveDown(0.5);
-                }
+    products.forEach((p) => {
+        // Grouping by category
+        if (p.categoria !== currentCategory) {
+            if (currentY > 520) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+                currentY = drawTableHeader(currentY);
+            }
+            currentCategory = p.categoria;
+            doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b').text(`CATEGORÍA: ${(currentCategory || 'SIN CATEGORÍA').toUpperCase()}`, startX + 4, currentY + 3);
+            currentY += 16;
+        }
 
-                // Check page break during item list
-                if (doc.y > 500) {
-                    doc.addPage();
-                    drawTableHeader();
-                    // Remind of current category on new page if it continues
-                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#4f46e5').text(`CATEGORÍA: ${currentCategory.toUpperCase()} (cont.)`, startX, doc.y, { align: 'left' });
-                    doc.fillColor('black').moveDown(0.5);
-                }
+        if (currentY > 540) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+            doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b').text(`CATEGORÍA: ${(currentCategory || 'SIN CATEGORÍA').toUpperCase()} (cont.)`, startX + 4, currentY + 3);
+            currentY += 16;
+        }
 
-                const y = doc.y;
-                const inicial = parseFloat(p.inicial || 0);
-                const entradas = parseFloat(p.entradas || 0);
-                const salidas = parseFloat(p.salidas || 0);
-                const final = parseFloat(p.final || 0);
-                const costo = parseFloat(p.costo || 0);
-                const monto = final * costo;
-                grandTotalMonto += monto;
+        const inicial = parseFloat(p.inicial || 0);
+        const entradas = parseFloat(p.entradas || 0);
+        const salidas = parseFloat(p.salidas || 0);
+        const final = parseFloat(p.final || 0);
+        const costo = parseFloat(p.costo || 0);
+        const monto = final * costo;
+        grandTotalMonto += monto;
+        count++;
 
-                doc.font('Helvetica').fontSize(8).fillColor('black');
-                doc.text(p.codigo || 'N/A', startX, y, { align: 'left' });
-                doc.text(p.nombre, startX + 70, y, { width: 210, align: 'left' });
-                doc.text(`$${costo.toFixed(2)}`, startX + 290, y, { align: 'right', width: 60 });
-                doc.text(inicial.toFixed(2), startX + 350, y, { align: 'right', width: 60 });
-                doc.text(entradas.toFixed(2), startX + 410, y, { align: 'right', width: 60 });
-                doc.text(salidas.toFixed(2), startX + 470, y, { align: 'right', width: 60 });
-                doc.text(final.toFixed(2), startX + 530, y, { align: 'right', width: 60 });
-                doc.text(`$${monto.toFixed(2)}`, startX + 590, y, { align: 'right', width: 80 });
-                doc.moveDown(1.2);
-            });
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(p.codigo || 'N/A', colX.codigo + 2, currentY, { width: colWidths.codigo - 4 });
+        doc.text(p.nombre || '—', colX.producto + 2, currentY, { width: colWidths.producto - 4, truncate: true });
+        doc.text(reportPdfHelper.fmt(costo), colX.costo, currentY, { width: colWidths.costo - 4, align: 'right' });
+        doc.text(inicial.toFixed(2), colX.inicial, currentY, { width: colWidths.inicial - 4, align: 'right' });
+        doc.text(entradas.toFixed(2), colX.entradas, currentY, { width: colWidths.entradas - 4, align: 'right' });
+        doc.text(salidas.toFixed(2), colX.salidas, currentY, { width: colWidths.salidas - 4, align: 'right' });
+        doc.text(final.toFixed(2), colX.final, currentY, { width: colWidths.final - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(monto), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
 
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-            doc.moveDown(1);
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('black').text(`VALOR TOTAL FINAL DEL INVENTARIO: $${grandTotalMonto.toFixed(2)}`, { align: 'right' });
-            
-            doc.end();
-        } catch (err) { reject(err); }
+        currentY += 12;
     });
+
+    if (currentY > 520) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('VALOR TOTAL FINAL DEL INVENTARIO:', colX.producto, currentY, { width: colWidths.producto + colWidths.costo + colWidths.inicial + colWidths.entradas + colWidths.salidas + colWidths.final, align: 'right' });
+    doc.text(reportPdfHelper.fmt(grandTotalMonto), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, count, 'Movimientos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF for Customer Balances Report
  */
-const generateCustomerBalancesPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateCustomerBalancesPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            const drawHeader = () => {
-                doc.fontSize(16).font('Helvetica-Bold').fillColor('black').text(data.company_name, { align: 'left' });
-                doc.fontSize(10).text(`Sucursal: ${data.branch_name}`, { align: 'left' });
-                doc.fontSize(10).text(`Fecha de Corte: ${new Date(data.endDate).toLocaleDateString()}`, { align: 'left' });
-                doc.moveDown();
-                doc.fontSize(14).text('REPORTE DE SALDOS DE CLIENTES', { align: 'center', underline: true });
-                doc.moveDown();
-            };
+    const title = 'REPORTE DE SALDOS DE CLIENTES';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `FECHA DE CORTE: ${reportPdfHelper.formatDate(data.endDate || new Date())}`;
 
-            drawHeader();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const drawTableHeader = () => {
-                const hY = doc.y;
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('black');
-                doc.text('ID', startX, hY, { align: 'left' });
-                doc.text('Cliente', startX + 50, hY, { align: 'left' });
-                doc.text('DUI / NIT', startX + 350, hY, { align: 'left' });
-                doc.text('NRC', startX + 500, hY, { align: 'left' });
-                doc.text('Saldo Pendiente', startX + 600, hY, { align: 'right', width: 120 });
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(9).fillColor('black');
-            };
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = { id: 45, nombre: 327, doc: 130, nrc: 100, saldo: 130 };
+    const colX = {
+        id: startX,
+        nombre: startX + colWidths.id,
+        doc: startX + colWidths.id + colWidths.nombre,
+        nrc: startX + colWidths.id + colWidths.nombre + colWidths.doc,
+        saldo: startX + colWidths.id + colWidths.nombre + colWidths.doc + colWidths.nrc
+    };
 
-            drawTableHeader();
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('ID', colX.id + 2, y + 3, { width: colWidths.id - 4 });
+        doc.text('CLIENTE', colX.nombre + 2, y + 3, { width: colWidths.nombre - 4 });
+        doc.text('DUI / NIT', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('NRC', colX.nrc + 2, y + 3, { width: colWidths.nrc - 4 });
+        doc.text('SALDO PENDIENTE', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
 
-            data.items.forEach(item => {
-                if (doc.y > 520) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                doc.text(item.id.toString(), startX, y, { align: 'left' });
-                doc.text(item.nombre, startX + 50, y, { width: 290, align: 'left' });
-                doc.text(item.dui_nit, startX + 350, y, { align: 'left' });
-                doc.text(item.nrc, startX + 500, y, { align: 'left' });
-                doc.font('Helvetica-Bold').text(`$${parseFloat(item.saldo).toFixed(2)}`, startX + 600, y, { align: 'right', width: 120 });
-                doc.font('Helvetica').moveDown(1.2);
-            });
+    currentY = drawTableHeader(currentY);
 
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-            doc.moveDown(1);
-            doc.fontSize(12).font('Helvetica-Bold').text(`TOTAL CARTERA CLIENTES: $${parseFloat(data.total_general).toFixed(2)}`, { align: 'right' });
-            
-            doc.end();
-        } catch (err) { reject(err); }
+    const items = data.items || [];
+    items.forEach(item => {
+        if (currentY > 540) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(String(item.id || ''), colX.id + 2, currentY, { width: colWidths.id - 4 });
+        doc.text(String(item.nombre || '—'), colX.nombre + 2, currentY, { width: colWidths.nombre - 4, truncate: true });
+        doc.text(String(item.dui_nit || '—'), colX.doc + 2, currentY, { width: colWidths.doc - 4 });
+        doc.text(String(item.nrc || '—'), colX.nrc + 2, currentY, { width: colWidths.nrc - 4 });
+        doc.text(reportPdfHelper.fmt(item.saldo), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+
+        currentY += 12;
     });
+
+    if (currentY > 520) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL CARTERA CLIENTES:', colX.nrc, currentY, { width: colWidths.nrc - 4, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.total_general), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, items.length, 'Clientes');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF for Provider Balances Report
  */
-const generateProviderBalancesPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateProviderBalancesPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const startX = 30;
-            const drawHeader = () => {
-                doc.fontSize(16).font('Helvetica-Bold').fillColor('black').text(data.company_name, { align: 'left' });
-                doc.fontSize(10).text(`Sucursal: ${data.branch_name}`, { align: 'left' });
-                doc.fontSize(10).text(`Fecha de Corte: ${new Date(data.endDate).toLocaleDateString()}`, { align: 'left' });
-                doc.moveDown();
-                doc.fontSize(14).text('REPORTE DE SALDOS DE PROVEEDORES', { align: 'center', underline: true });
-                doc.moveDown();
-            };
+    const title = 'REPORTE DE SALDOS DE PROVEEDORES';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `FECHA DE CORTE: ${reportPdfHelper.formatDate(data.endDate || new Date())}`;
 
-            drawHeader();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const drawTableHeader = () => {
-                const hY = doc.y;
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('black');
-                doc.text('ID', startX, hY, { align: 'left' });
-                doc.text('Proveedor', startX + 50, hY, { align: 'left' });
-                doc.text('NIT / DUI', startX + 350, hY, { align: 'left' });
-                doc.text('NRC', startX + 500, hY, { align: 'left' });
-                doc.text('Saldo Pendiente', startX + 600, hY, { align: 'right', width: 120 });
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(9).fillColor('black');
-            };
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = { id: 45, nombre: 327, doc: 130, nrc: 100, saldo: 130 };
+    const colX = {
+        id: startX,
+        nombre: startX + colWidths.id,
+        doc: startX + colWidths.id + colWidths.nombre,
+        nrc: startX + colWidths.id + colWidths.nombre + colWidths.doc,
+        saldo: startX + colWidths.id + colWidths.nombre + colWidths.doc + colWidths.nrc
+    };
 
-            drawTableHeader();
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('ID', colX.id + 2, y + 3, { width: colWidths.id - 4 });
+        doc.text('PROVEEDOR', colX.nombre + 2, y + 3, { width: colWidths.nombre - 4 });
+        doc.text('NIT / DUI', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('NRC', colX.nrc + 2, y + 3, { width: colWidths.nrc - 4 });
+        doc.text('SALDO PENDIENTE', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
 
-            data.items.forEach(item => {
-                if (doc.y > 520) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                doc.text(item.id.toString(), startX, y, { align: 'left' });
-                doc.text(item.nombre, startX + 50, y, { width: 290, align: 'left' });
-                doc.text(item.dui_nit, startX + 350, y, { align: 'left' });
-                doc.text(item.nrc, startX + 500, y, { align: 'left' });
-                doc.font('Helvetica-Bold').text(`$${parseFloat(item.saldo).toFixed(2)}`, startX + 600, y, { align: 'right', width: 120 });
-                doc.font('Helvetica').moveDown(1.2);
-            });
+    currentY = drawTableHeader(currentY);
 
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 720, doc.y).stroke();
-            doc.moveDown(1);
-            doc.fontSize(12).font('Helvetica-Bold').text(`TOTAL DEUDA PROVEEDORES: $${parseFloat(data.total_general).toFixed(2)}`, { align: 'right' });
-            
-            doc.end();
-        } catch (err) { reject(err); }
+    const items = data.items || [];
+    items.forEach(item => {
+        if (currentY > 540) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(String(item.id || ''), colX.id + 2, currentY, { width: colWidths.id - 4 });
+        doc.text(String(item.nombre || '—'), colX.nombre + 2, currentY, { width: colWidths.nombre - 4, truncate: true });
+        doc.text(String(item.dui_nit || '—'), colX.doc + 2, currentY, { width: colWidths.doc - 4 });
+        doc.text(String(item.nrc || '—'), colX.nrc + 2, currentY, { width: colWidths.nrc - 4 });
+        doc.text(reportPdfHelper.fmt(item.saldo), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+
+        currentY += 12;
     });
+
+    if (currentY > 520) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL DEUDA PROVEEDORES:', colX.nrc, currentY, { width: colWidths.nrc - 4, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.total_general), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, items.length, 'Proveedores');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
@@ -789,747 +911,674 @@ const generatePaymentReceiptPDF = (data) => {
 /**
  * Generates a PDF buffer for a daily sales report
  */
-const generateDailySalesReportPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateDailySalesReportPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            // Header
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`);
-            doc.text(`Período: ${data.startDate} al ${data.endDate}`);
-            doc.moveDown();
+    const title = 'REPORTE DE VENTAS DIARIAS';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`;
 
-            doc.fontSize(14).font('Helvetica-Bold').text('REPORTE DE VENTAS DIARIAS', { align: 'center', underline: true });
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const startX = 20;
-            const tableTop = doc.y;
-            const colWidths = {
-                fecha: 42, tipo: 55, doc: 170, cond: 30, cliente: 255,
-                grav: 30, exen: 30, iva: 22, fov: 20, cot: 20, ret: 22, perc: 22, total: 32
-            };
-            const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = {
+        fecha: 44, tipo: 48, doc: 130, cond: 32, cliente: 170,
+        grav: 45, exen: 40, iva: 37, fov: 32, cot: 32, ret: 35, perc: 35, total: 52
+    };
+    const colX = {
+        fecha: startX,
+        tipo: startX + colWidths.fecha,
+        doc: startX + colWidths.fecha + colWidths.tipo,
+        cond: startX + colWidths.fecha + colWidths.tipo + colWidths.doc,
+        cliente: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond,
+        grav: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente,
+        exen: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav,
+        iva: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav + colWidths.exen,
+        fov: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav + colWidths.exen + colWidths.iva,
+        cot: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav + colWidths.exen + colWidths.iva + colWidths.fov,
+        ret: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav + colWidths.exen + colWidths.iva + colWidths.fov + colWidths.cot,
+        perc: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav + colWidths.exen + colWidths.iva + colWidths.fov + colWidths.cot + colWidths.ret,
+        total: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente + colWidths.grav + colWidths.exen + colWidths.iva + colWidths.fov + colWidths.cot + colWidths.ret + colWidths.perc
+    };
 
-            const drawTableHeader = () => {
-                const y = doc.y;
-                doc.fontSize(8).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('Fecha', x, y); x += colWidths.fecha;
-                doc.text('Tipo', x, y); x += colWidths.tipo;
-                doc.text('Doc', x, y); x += colWidths.doc;
-                doc.text('Cond.', x, y); x += colWidths.cond;
-                doc.text('Cliente', x, y); x += colWidths.cliente;
-                doc.text('Grav.', x, y, { align: 'right', width: colWidths.grav }); x += colWidths.grav;
-                doc.text('Exen.', x, y, { align: 'right', width: colWidths.exen }); x += colWidths.exen;
-                doc.text('IVA', x, y, { align: 'right', width: colWidths.iva }); x += colWidths.iva;
-                doc.text('FOV', x, y, { align: 'right', width: colWidths.fov }); x += colWidths.fov;
-                doc.text('COT', x, y, { align: 'right', width: colWidths.cot }); x += colWidths.cot;
-                doc.text('Ret.', x, y, { align: 'right', width: colWidths.ret }); x += colWidths.ret;
-                doc.text('Perc.', x, y, { align: 'right', width: colWidths.perc }); x += colWidths.perc;
-                doc.text('Total', x, y, { align: 'right', width: colWidths.total });
-                
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(7);
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4, lineBreak: false });
+        doc.text('TIPO', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4, lineBreak: false });
+        doc.text('N° DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4, lineBreak: false });
+        doc.text('COND.', colX.cond + 2, y + 3, { width: colWidths.cond - 4, lineBreak: false });
+        doc.text('CLIENTE', colX.cliente + 2, y + 3, { width: colWidths.cliente - 4, lineBreak: false });
+        doc.text('GRAV.', colX.grav, y + 3, { width: colWidths.grav - 4, align: 'right', lineBreak: false });
+        doc.text('EXEN.', colX.exen, y + 3, { width: colWidths.exen - 4, align: 'right', lineBreak: false });
+        doc.text('IVA', colX.iva, y + 3, { width: colWidths.iva - 4, align: 'right', lineBreak: false });
+        doc.text('FOV', colX.fov, y + 3, { width: colWidths.fov - 4, align: 'right', lineBreak: false });
+        doc.text('COT', colX.cot, y + 3, { width: colWidths.cot - 4, align: 'right', lineBreak: false });
+        doc.text('RET.', colX.ret, y + 3, { width: colWidths.ret - 4, align: 'right', lineBreak: false });
+        doc.text('PERC.', colX.perc, y + 3, { width: colWidths.perc - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL', colX.total, y + 3, { width: colWidths.total - 4, align: 'right', lineBreak: false });
+        doc.moveTo(startX, y + 14).lineTo(startX + contentWidth, y + 14).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        return y + 17;
+    };
 
-            drawTableHeader();
+    currentY = drawTableHeader(currentY);
 
-            const formatDate = (dateStr) => {
-                if (!dateStr) return '---';
-                const d = new Date(dateStr);
-                // Adjust for UTC/Local mismatch if necessary, but fecha_emision is usually YYYY-MM-DD
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const year = d.getUTCFullYear();
-                return `${day}/${month}/${year}`;
-            };
+    const sales = data.sales || [];
+    sales.forEach((s, idx) => {
+        if (currentY > 530) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
 
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 2, contentWidth, 12).fill('#f8fafc');
+        }
 
-            data.sales.forEach(s => {
-                if (doc.y > 520) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
+        doc.fontSize(6.5).font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.formatDate(s.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.tipo || '---', colWidths.tipo - 4), colX.tipo + 2, currentY, { width: colWidths.tipo - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.documento || '---', colWidths.doc - 4), colX.doc + 2, currentY, { width: colWidths.doc - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.condicion || '---', colWidths.cond - 4), colX.cond + 2, currentY, { width: colWidths.cond - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.cliente || '---', colWidths.cliente - 4), colX.cliente + 2, currentY, { width: colWidths.cliente - 4, lineBreak: false });
+        
+        doc.text(reportPdfHelper.fmt(s.gravadas), colX.grav, currentY, { width: colWidths.grav - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.exentas), colX.exen, currentY, { width: colWidths.exen - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.iva), colX.iva, currentY, { width: colWidths.iva - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.fovial), colX.fov, currentY, { width: colWidths.fov - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.cotrans), colX.cot, currentY, { width: colWidths.cot - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.retencion), colX.ret, currentY, { width: colWidths.ret - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.percepcion), colX.perc, currentY, { width: colWidths.perc - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.total), colX.total, currentY, { width: colWidths.total - 4, align: 'right', lineBreak: false });
 
-                const y = doc.y;
-                let x = startX;
-                
-                doc.text(formatDate(s.fecha), x, y, { width: colWidths.fecha }); x += colWidths.fecha;
-                doc.text(s.tipo || '---', x, y, { width: colWidths.tipo }); x += colWidths.tipo;
-                doc.text(s.documento || '---', x, y, { width: colWidths.doc }); x += colWidths.doc;
-                doc.text(s.condicion || '---', x, y, { width: colWidths.cond }); x += colWidths.cond;
-                doc.text(s.cliente || '---', x, y, { width: colWidths.cliente }); x += colWidths.cliente;
-                
-                doc.text(formatVal(s.gravadas), x, y, { align: 'right', width: colWidths.grav }); x += colWidths.grav;
-                doc.text(formatVal(s.exentas), x, y, { align: 'right', width: colWidths.exen }); x += colWidths.exen;
-                doc.text(formatVal(s.iva), x, y, { align: 'right', width: colWidths.iva }); x += colWidths.iva;
-                doc.text(formatVal(s.fovial), x, y, { align: 'right', width: colWidths.fov }); x += colWidths.fov;
-                doc.text(formatVal(s.cotrans), x, y, { align: 'right', width: colWidths.cot }); x += colWidths.cot;
-                doc.text(formatVal(s.retencion), x, y, { align: 'right', width: colWidths.ret }); x += colWidths.ret;
-                doc.text(formatVal(s.percepcion), x, y, { align: 'right', width: colWidths.perc }); x += colWidths.perc;
-                doc.text(formatVal(s.total), x, y, { align: 'right', width: colWidths.total });
-                
-                doc.moveDown(0.7);
-            });
-
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-            doc.moveDown(1);
-            
-            // Totals row
-            doc.font('Helvetica-Bold');
-            const totalsY = doc.y;
-            let tX = startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.cond + colWidths.cliente;
-
-            doc.text(formatVal(data.total_gravadas), tX, totalsY, { align: 'right', width: colWidths.grav }); tX += colWidths.grav;
-            doc.text(formatVal(data.total_exentas), tX, totalsY, { align: 'right', width: colWidths.exen }); tX += colWidths.exen;
-            doc.text(formatVal(data.total_iva), tX, totalsY, { align: 'right', width: colWidths.iva }); tX += colWidths.iva;
-            doc.text(formatVal(data.total_fovial), tX, totalsY, { align: 'right', width: colWidths.fov }); tX += colWidths.fov;
-            doc.text(formatVal(data.total_cotrans), tX, totalsY, { align: 'right', width: colWidths.cot }); tX += colWidths.cot;
-            doc.text(formatVal(data.total_retencion), tX, totalsY, { align: 'right', width: colWidths.ret }); tX += colWidths.ret;
-            doc.text(formatVal(data.total_percepcion), tX, totalsY, { align: 'right', width: colWidths.perc }); tX += colWidths.perc;
-            doc.text(formatVal(data.total_general), tX, totalsY, { align: 'right', width: colWidths.total });
-            
-            doc.end();
-        } catch (err) { reject(err); }
+        currentY += 12;
     });
+
+    if (currentY > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTALES GENERALES:', colX.cliente, currentY, { width: colWidths.cliente - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_gravadas), colX.grav, currentY, { width: colWidths.grav - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_exentas), colX.exen, currentY, { width: colWidths.exen - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_iva), colX.iva, currentY, { width: colWidths.iva - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_fovial), colX.fov, currentY, { width: colWidths.fov - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_cotrans), colX.cot, currentY, { width: colWidths.cot - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_retencion), colX.ret, currentY, { width: colWidths.ret - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_percepcion), colX.perc, currentY, { width: colWidths.perc - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_general), colX.total, currentY, { width: colWidths.total - 4, align: 'right', lineBreak: false });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, sales.length, 'Ventas');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF report for sales by customer (detalle de productos).
- * Formato similar a ventas diarias pero filtrado por cliente,
- * con los datos del cliente en el encabezado.
  */
-const generateSalesByCustomerPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateSalesByCustomerPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-            // Header
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`);
-            doc.text(`Período: ${data.startDate} al ${data.endDate}`);
-            doc.moveDown();
+    const title = 'REPORTE DE VENTAS POR CLIENTE';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`;
 
-            doc.fontSize(14).font('Helvetica-Bold').text('REPORTE DE VENTAS POR CLIENTE', { align: 'center', underline: true });
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 
-            // Bloque de datos del cliente
-            const c = data.customer || {};
-            doc.fontSize(9).font('Helvetica-Bold').text('CLIENTE:', { underline: true });
-            doc.font('Helvetica');
-            doc.text(`Nombre: ${c.nombre || '---'}${c.nombre_comercial ? ` (${c.nombre_comercial})` : ''}`);
-            doc.text(`NIT: ${c.nit || '---'}  |  NRC: ${c.nrc || '---'}  |  Tel: ${c.telefono || '---'}`);
-            doc.text(`Correo: ${c.correo || '---'}`);
-            const dirParts = [c.direccion, c.departamento, c.municipio].filter(Boolean).join(', ');
-            doc.text(`Dirección: ${dirParts || '---'}`);
-            doc.moveDown();
+    const startX = 30;
+    const contentWidth = 552;
 
-            const startX = 20;
-            const colWidths = {
-                fecha: 40, tipo: 50, doc: 130, producto: 230, cant: 35, total: 45
-            };
-            const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
+    // Card de datos del cliente
+    const c = data.customer || {};
+    const dirParts = [c.direccion, c.departamento, c.municipio].filter(Boolean).join(', ');
 
-            const drawTableHeader = () => {
-                const y = doc.y;
-                doc.fontSize(8).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('Fecha', x, y); x += colWidths.fecha;
-                doc.text('Tipo', x, y); x += colWidths.tipo;
-                doc.text('Doc', x, y); x += colWidths.doc;
-                doc.text('Producto', x, y); x += colWidths.producto;
-                doc.text('Cant.', x, y, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
-                doc.text('Total', x, y, { align: 'right', width: colWidths.total });
+    doc.rect(startX, currentY, contentWidth, 36).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text('DATOS DEL CLIENTE', startX + 8, currentY + 6);
+    doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+    const clientLine1 = `Nombre: ${c.nombre || '---'}${c.nombre_comercial ? ` (${c.nombre_comercial})` : ''}    |    NIT: ${c.nit || '---'}    |    NRC: ${c.nrc || '---'}`;
+    const clientLine2 = `Tel: ${c.telefono || '---'}    |    Correo: ${c.correo || '---'}    |    Dirección: ${dirParts || '---'}`;
+    doc.text(reportPdfHelper.fitText(doc, clientLine1, contentWidth - 16), startX + 8, currentY + 16, { width: contentWidth - 16, lineBreak: false });
+    doc.text(reportPdfHelper.fitText(doc, clientLine2, contentWidth - 16), startX + 8, currentY + 25, { width: contentWidth - 16, lineBreak: false });
 
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(7);
-            };
+    currentY += 44;
 
-            drawTableHeader();
+    const colWidths = { fecha: 45, tipo: 50, doc: 130, producto: 197, cant: 45, total: 85 };
+    const colX = {
+        fecha: startX,
+        tipo: startX + colWidths.fecha,
+        doc: startX + colWidths.fecha + colWidths.tipo,
+        producto: startX + colWidths.fecha + colWidths.tipo + colWidths.doc,
+        cant: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.producto,
+        total: startX + colWidths.fecha + colWidths.tipo + colWidths.doc + colWidths.producto + colWidths.cant
+    };
 
-            const formatDate = (dateStr) => {
-                if (!dateStr) return '---';
-                const d = new Date(dateStr);
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const year = d.getUTCFullYear();
-                return `${day}/${month}/${year}`;
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4, lineBreak: false });
+        doc.text('TIPO', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4, lineBreak: false });
+        doc.text('N° DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4, lineBreak: false });
+        doc.text('PRODUCTO', colX.producto + 2, y + 3, { width: colWidths.producto - 4, lineBreak: false });
+        doc.text('CANT.', colX.cant, y + 3, { width: colWidths.cant - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL', colX.total, y + 3, { width: colWidths.total - 4, align: 'right', lineBreak: false });
+        doc.moveTo(startX, y + 14).lineTo(startX + contentWidth, y + 14).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        return y + 17;
+    };
 
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
-            const formatQty = (val) => {
-                const n = parseFloat(val || 0);
-                return Number.isInteger(n) ? String(n) : n.toFixed(2);
-            };
+    currentY = drawTableHeader(currentY);
 
-            data.sales.forEach(s => {
-                if (doc.y > 740) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
+    const formatQty = (val) => {
+        const n = parseFloat(val || 0);
+        return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    };
 
-                const y = doc.y;
-                let x = startX;
+    const sales = data.sales || [];
+    sales.forEach((s, idx) => {
+        if (currentY > 700) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
 
-                doc.text(formatDate(s.fecha), x, y, { width: colWidths.fecha }); x += colWidths.fecha;
-                doc.text(s.tipo || '---', x, y, { width: colWidths.tipo }); x += colWidths.tipo;
-                doc.text(s.documento || '---', x, y, { width: colWidths.doc }); x += colWidths.doc;
-                doc.text(s.producto || '---', x, y, { width: colWidths.producto }); x += colWidths.producto;
-                doc.text(formatQty(s.cantidad), x, y, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
-                doc.text(formatVal(s.total), x, y, { align: 'right', width: colWidths.total });
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 2, contentWidth, 12).fill('#f8fafc');
+        }
 
-                doc.moveDown(0.7);
-            });
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.formatDate(s.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.tipo || '---', colWidths.tipo - 4), colX.tipo + 2, currentY, { width: colWidths.tipo - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.documento || '---', colWidths.doc - 4), colX.doc + 2, currentY, { width: colWidths.doc - 4, lineBreak: false });
+        doc.text(reportPdfHelper.fitText(doc, s.producto || '---', colWidths.producto - 4), colX.producto + 2, currentY, { width: colWidths.producto - 4, lineBreak: false });
+        doc.text(formatQty(s.cantidad), colX.cant, currentY, { width: colWidths.cant - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.total), colX.total, currentY, { width: colWidths.total - 4, align: 'right', lineBreak: false });
 
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-            doc.moveDown(1);
-
-            // Fila de totales
-            doc.font('Helvetica-Bold');
-            const totalsY = doc.y;
-            let tX = startX + colWidths.fecha + colWidths.tipo + colWidths.doc;
-
-            doc.text('TOTAL', tX, totalsY, { align: 'right', width: colWidths.producto }); tX += colWidths.producto;
-            doc.text(formatQty(data.total_cantidad), tX, totalsY, { align: 'right', width: colWidths.cant }); tX += colWidths.cant;
-            doc.text(formatVal(data.total_general), tX, totalsY, { align: 'right', width: colWidths.total });
-
-            doc.end();
-        } catch (err) { reject(err); }
+        currentY += 12;
     });
+
+    if (currentY > 680) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL:', colX.producto, currentY, { width: colWidths.producto - 4, align: 'right', lineBreak: false });
+    doc.text(formatQty(data.total_cantidad), colX.cant, currentY, { width: colWidths.cant - 4, align: 'right', lineBreak: false });
+    doc.text(reportPdfHelper.fmt(data.total_general), colX.total, currentY, { width: colWidths.total - 4, align: 'right', lineBreak: false });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, sales.length, 'Detalles de Venta');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF report for sales by category
  */
-const generateSalesByCategoryPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 40, layout: 'landscape', size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateSalesByCategoryPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const formatDate = (dateStr) => {
-                if (!dateStr) return '---';
-                const d = new Date(dateStr);
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const year = d.getUTCFullYear();
-                return `${day}/${month}/${year}`;
-            };
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+    const title = 'REPORTE DE VENTAS POR CATEGORÍA';
+    const subtitle = `SUCURSAL: ${data.branch || 'TODAS'}`;
+    const periodText = data.period || (data.startDate && data.endDate 
+        ? `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`
+        : `AL ${reportPdfHelper.formatDate(new Date())}`);
 
-            // Header
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company.razon_social, { align: 'left' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch}`);
-            doc.text(`Período: ${data.period}`);
-            doc.moveDown();
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            doc.fontSize(14).font('Helvetica-Bold').text('REPORTE DE VENTAS POR CATEGORÍA', { align: 'center', underline: true });
-            doc.moveDown();
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = { cat: 272, unidades: 100, monto: 120, rendimiento: 120, porcentaje: 120 };
+    const colX = {
+        cat: startX,
+        unidades: startX + colWidths.cat,
+        monto: startX + colWidths.cat + colWidths.unidades,
+        rendimiento: startX + colWidths.cat + colWidths.unidades + colWidths.monto,
+        porcentaje: startX + colWidths.cat + colWidths.unidades + colWidths.monto + colWidths.rendimiento
+    };
 
-            const startX = 40;
-            const colWidths = {
-                cat: 200, unidades: 100, monto: 120, rendimiento: 120, porcentaje: 100
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CATEGORÍA / PRODUCTO', colX.cat + 2, y + 3, { width: colWidths.cat - 4 });
+        doc.text('UNIDADES', colX.unidades, y + 3, { width: colWidths.unidades - 4, align: 'right' });
+        doc.text('MONTO ($)', colX.monto, y + 3, { width: colWidths.monto - 4, align: 'right' });
+        doc.text('RENDIMIENTO ($)', colX.rendimiento, y + 3, { width: colWidths.rendimiento - 4, align: 'right' });
+        doc.text('% PART.', colX.porcentaje, y + 3, { width: colWidths.porcentaje - 4, align: 'right' });
+        return y + 17;
+    };
 
-            const drawTableHeader = () => {
-                const y = doc.y;
-                doc.fontSize(10).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('Categoría / Producto', x, y); x += colWidths.cat;
-                doc.text('Unidades', x, y, { align: 'right', width: colWidths.unidades }); x += colWidths.unidades;
-                doc.text('Monto ($)', x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
-                doc.text('Rendimiento ($)', x, y, { align: 'right', width: colWidths.rendimiento }); x += colWidths.rendimiento;
-                doc.text('% Part.', x, y, { align: 'right', width: colWidths.porcentaje });
-                
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + 650, doc.y).stroke();
-                doc.moveDown(0.5);
-            };
+    currentY = drawTableHeader(currentY);
 
-            drawTableHeader();
+    const categories = data.categories || [];
+    let count = 0;
 
-            data.categories.forEach(cat => {
-                if (doc.y > 500) {
+    categories.forEach(cat => {
+        if (currentY > 530) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        // Fila de categoría
+        doc.rect(startX, currentY, contentWidth, 13).fill('#f8fafc');
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a');
+        doc.text(cat.categoria || 'SIN CATEGORÍA', colX.cat + 2, currentY + 3, { width: colWidths.cat - 4, truncate: true });
+        doc.text(String(cat.total_unidades || 0), colX.unidades, currentY + 3, { width: colWidths.unidades - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(cat.total_venta), colX.monto, currentY + 3, { width: colWidths.monto - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(cat.rendimiento), colX.rendimiento, currentY + 3, { width: colWidths.rendimiento - 4, align: 'right' });
+        doc.text(`${parseFloat(cat.porcentaje_ventas || 0).toFixed(2)}%`, colX.porcentaje, currentY + 3, { width: colWidths.porcentaje - 4, align: 'right' });
+        currentY += 15;
+        count++;
+
+        // Productos si es detallado
+        if (data.isDetailed && cat.productos && cat.productos.length > 0) {
+            cat.productos.forEach(p => {
+                if (currentY > 540) {
                     doc.addPage();
-                    drawTableHeader();
+                    currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+                    currentY = drawTableHeader(currentY);
                 }
-
-                // Category Row
-                const y = doc.y;
-                let x = startX;
-                doc.font('Helvetica-Bold').fontSize(10);
-                doc.text(cat.categoria, x, y, { width: colWidths.cat }); x += colWidths.cat;
-                doc.text(cat.total_unidades, x, y, { align: 'right', width: colWidths.unidades }); x += colWidths.unidades;
-                doc.text(formatVal(cat.total_venta), x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
-                doc.text(formatVal(cat.rendimiento), x, y, { align: 'right', width: colWidths.rendimiento }); x += colWidths.rendimiento;
-                doc.text(`${parseFloat(cat.porcentaje_ventas || 0).toFixed(2)}%`, x, y, { align: 'right', width: colWidths.porcentaje });
-                doc.moveDown(0.8);
-
-
-                // Products if detailed
-                if (data.isDetailed && cat.productos && cat.productos.length > 0) {
-                    doc.font('Helvetica').fontSize(9);
-                    cat.productos.forEach(p => {
-                        if (doc.y > 520) {
-                            doc.addPage();
-                            drawTableHeader();
-                        }
-                        const py = doc.y;
-                        let px = startX + 20; // Indent
-                        doc.text(p.producto, px, py, { width: colWidths.cat - 20 }); px += colWidths.cat - 20;
-                        doc.text(p.unidades, px, py, { align: 'right', width: colWidths.unidades }); px += colWidths.unidades;
-                        doc.text(formatVal(p.monto), px, py, { align: 'right', width: colWidths.monto }); px += colWidths.monto;
-                        doc.text(formatVal(p.rendimiento), px, py, { align: 'right', width: colWidths.rendimiento }); px += colWidths.rendimiento;
-                        doc.moveDown(0.8);
-                    });
-                    doc.moveDown(0.5);
-                }
+                doc.font('Helvetica').fontSize(7).fillColor('#475569');
+                doc.text(p.producto || '—', colX.cat + 16, currentY, { width: colWidths.cat - 18, truncate: true });
+                doc.text(String(p.unidades || 0), colX.unidades, currentY, { width: colWidths.unidades - 4, align: 'right' });
+                doc.text(reportPdfHelper.fmt(p.monto), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+                doc.text(reportPdfHelper.fmt(p.rendimiento), colX.rendimiento, currentY, { width: colWidths.rendimiento - 4, align: 'right' });
+                currentY += 11;
             });
-
-            // Grand Total
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + 650, doc.y).stroke();
-            doc.moveDown(0.5);
-            const tY = doc.y;
-            doc.font('Helvetica-Bold').fontSize(11);
-            doc.text('TOTAL GENERAL:', startX, tY);
-            doc.text(formatVal(data.grand_total), startX + colWidths.cat + colWidths.unidades, tY, { align: 'right', width: colWidths.monto });
-
-            doc.end();
-        } catch (err) { reject(err); }
+            currentY += 3;
+        }
     });
+
+    if (currentY > 520) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a');
+    doc.text('TOTAL GENERAL:', colX.cat, currentY, { width: colWidths.cat - 4, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.grand_total), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, count, 'Categorías');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a detailed itemized PDF for Sales by POS Report
  */
-const generateSalesByPOSPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'LETTER' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateSalesByPOSPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const formatDate = (dateStr) => {
-                if (!dateStr) return '---';
-                const d = new Date(dateStr);
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const year = d.getUTCFullYear();
-                return `${day}/${month}/${year}`;
-            };
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
-            // Truncado manual confiable (PDFKit truncate/ellipsis no aplican de forma consistente)
-            const fitText = (text, maxWidth) => {
-                const str = text || '';
-                if (doc.widthOfString(str) <= maxWidth) return str;
-                let truncated = str;
-                while (truncated.length > 0 && doc.widthOfString(truncated + '...') > maxWidth) {
-                    truncated = truncated.slice(0, -1);
-                }
-                return truncated + '...';
-            };
+    const title = 'REPORTE DETALLADO DE VENTAS POR POS';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`;
 
-            // Header
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
-            if (data.company_nit) doc.fontSize(10).font('Helvetica').text(`NIT: ${data.company_nit}`, { align: 'center' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`, { align: 'center' });
-            doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DETALLADO DE VENTAS POR POS', { align: 'center' });
-            doc.fontSize(9).font('Helvetica').text(`Periodo: ${formatDate(data.startDate)} al ${formatDate(data.endDate)}`, { align: 'center' });
-            doc.moveDown(1.5);
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
 
-            const startX = 30;
-            const totalWidth = 710;
-            const colWidths = {
-                fecha: 40,
-                tipo: 55,
-                numero: 130,
-                cond: 40,
-                cliente: 250,
-                fiscal: 130,
-                total: 65
-            };
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = {
+        fecha: 45,
+        tipo: 60,
+        numero: 130,
+        cond: 42,
+        cliente: 220,
+        fiscal: 155,
+        total: 80
+    };
+    const colX = {
+        fecha: startX,
+        tipo: startX + colWidths.fecha,
+        numero: startX + colWidths.fecha + colWidths.tipo,
+        cond: startX + colWidths.fecha + colWidths.tipo + colWidths.numero,
+        cliente: startX + colWidths.fecha + colWidths.tipo + colWidths.numero + colWidths.cond,
+        fiscal: startX + colWidths.fecha + colWidths.tipo + colWidths.numero + colWidths.cond + colWidths.cliente,
+        total: startX + colWidths.fecha + colWidths.tipo + colWidths.numero + colWidths.cond + colWidths.cliente + colWidths.fiscal
+    };
 
-            const drawTableHeader = (y) => {
-                doc.fontSize(8).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('FECHA', x, y); x += colWidths.fecha;
-                doc.text('TIPO DOC', x, y); x += colWidths.tipo;
-                doc.text('NUMERO', x, y); x += colWidths.numero;
-                doc.text('COND.', x, y); x += colWidths.cond;
-                doc.text('CLIENTE', x, y); x += colWidths.cliente;
-                doc.text('FISCAL/VENDEDOR', x, y); x += colWidths.fiscal;
-                doc.text('TOTAL', x, y, { align: 'right', width: colWidths.total });
-                
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(7);
-                return doc.y;
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('TIPO DOC', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4 });
+        doc.text('NÚMERO', colX.numero + 2, y + 3, { width: colWidths.numero - 4 });
+        doc.text('COND.', colX.cond + 2, y + 3, { width: colWidths.cond - 4 });
+        doc.text('CLIENTE', colX.cliente + 2, y + 3, { width: colWidths.cliente - 4 });
+        doc.text('FISCAL / VENDEDOR', colX.fiscal + 2, y + 3, { width: colWidths.fiscal - 4 });
+        doc.text('TOTAL', colX.total, y + 3, { width: colWidths.total - 4, align: 'right' });
+        return y + 17;
+    };
 
-            let currentY = drawTableHeader(doc.y);
-            let currentPOS = null;
-            let posTotal = 0;
-            let grandTotal = 0;
+    currentY = drawTableHeader(currentY);
+    let currentPOS = null;
+    let posTotal = 0;
+    let grandTotal = 0;
+    let rowCount = 0;
+    const rows = data.data || [];
 
-            data.data.forEach((row, index) => {
-                // POS Grouping Header
-                if (row.pos_name !== currentPOS) {
-                    if (currentPOS !== null) {
-                        // Print POS Subtotal
-                        doc.font('Helvetica-Bold').fontSize(8);
-                        doc.text(`SUBTOTAL ${currentPOS}:`, startX + totalWidth - colWidths.total - 150, doc.y, { width: 150, align: 'right' });
-                        doc.text(formatVal(posTotal), startX + totalWidth - colWidths.total, doc.y - 8, { width: colWidths.total, align: 'right' });
-                        doc.moveDown(1);
-                        posTotal = 0;
-                    }
+    rows.forEach((row, index) => {
+        // Agrupación por POS
+        if (row.pos_name !== currentPOS) {
+            if (currentPOS !== null) {
+                // Subtotal del POS anterior
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+                currentY += 3;
+                doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+                doc.text(`SUBTOTAL ${currentPOS}:`, colX.cliente, currentY, { width: colWidths.cliente + colWidths.fiscal - 6, align: 'right' });
+                doc.text(reportPdfHelper.fmt(posTotal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
+                currentY += 14;
+                posTotal = 0;
+            }
 
-                    if (doc.y > 500) {
-                        doc.addPage();
-                        currentY = drawTableHeader(30);
-                    }
+            if (currentY > 520) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+                currentY = drawTableHeader(currentY);
+            }
 
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor('#4f46e5');
-                    doc.text(`TERMINAL POS: ${row.pos_name || 'SIN POS'}`, startX, doc.y);
-                    doc.fillColor('black').moveDown(0.5);
-                    currentPOS = row.pos_name;
-                }
+            doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#1e293b');
+            doc.text(`TERMINAL POS: ${(row.pos_name || 'SIN POS').toUpperCase()}`, startX + 4, currentY + 3);
+            currentPOS = row.pos_name;
+            currentY += 16;
+        }
 
-                if (doc.y > 540) {
-                    doc.addPage();
-                    currentY = drawTableHeader(30);
-                    doc.font('Helvetica-Bold').fontSize(8).text(`TERMINAL POS: ${currentPOS} (cont.)`, startX, doc.y);
-                    doc.moveDown(0.5);
-                }
+        if (currentY > 540) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+            doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#1e293b');
+            doc.text(`TERMINAL POS: ${(currentPOS || 'SIN POS').toUpperCase()} (cont.)`, startX + 4, currentY + 3);
+            currentY += 16;
+        }
 
-                const y = doc.y;
-                let x = startX;
-                doc.font('Helvetica').fontSize(7);
+        let tipoLabel = row.tipo_documento;
+        if (tipoLabel === '01') tipoLabel = 'Factura';
+        else if (tipoLabel === '03') tipoLabel = 'Crédito Fiscal';
+        else if (tipoLabel === '04') tipoLabel = 'Nota de Remisión';
+        else if (tipoLabel === '05') tipoLabel = 'Nota de Crédito';
+        else if (tipoLabel === '11') tipoLabel = 'F. Exportación';
 
-                // Row Data
-                doc.text(formatDate(row.fecha_emision), x, y); x += colWidths.fecha;
-                
-                let tipoLabel = row.tipo_documento;
-                if (tipoLabel === '01') tipoLabel = 'Factura';
-                else if (tipoLabel === '03') tipoLabel = 'Crédito Fiscal';
-                else if (tipoLabel === '04') tipoLabel = 'Nota de Remisión';
-                else if (tipoLabel === '05') tipoLabel = 'Nota de Crédito';
-                else if (tipoLabel === '11') tipoLabel = 'F. Exportación';
-                
-                doc.text(tipoLabel, x, y, { width: colWidths.tipo }); x += colWidths.tipo;
-                doc.text(row.numero_control || 'N/A', x, y, { width: colWidths.numero }); x += colWidths.numero;
-                
-                let condLabel = row.condicion_operacion === 1 ? 'Contado' : 'Crédito';
-                doc.text(condLabel, x, y); x += colWidths.cond;
-                
-                doc.text(fitText(row.cliente_nombre || 'Consumidor Final', colWidths.cliente), x, y, { width: colWidths.cliente }); x += colWidths.cliente;
-                
-                const fiscalInfo = `${row.cliente_nit || row.cliente_nrc || ''} / ${row.vendedor_nombre || ''}`.trim();
-                doc.text(fitText(fiscalInfo || '---', colWidths.fiscal), x, y, { width: colWidths.fiscal }); x += colWidths.fiscal;
-                
-                doc.text(formatVal(row.total_pagar), x, y, { align: 'right', width: colWidths.total });
+        const condLabel = row.condicion_operacion === 1 ? 'Contado' : 'Crédito';
+        const fiscalInfo = `${row.cliente_nit || row.cliente_nrc || ''} / ${row.vendedor_nombre || ''}`.trim();
+        const totalPagar = parseFloat(row.total_pagar || 0);
 
-                posTotal += parseFloat(row.total_pagar || 0);
-                grandTotal += parseFloat(row.total_pagar || 0);
-                doc.moveDown(0.8);
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(reportPdfHelper.formatDate(row.fecha_emision), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+        doc.text(tipoLabel || '---', colX.tipo + 2, currentY, { width: colWidths.tipo - 4 });
+        doc.text(row.numero_control || 'N/A', colX.numero + 2, currentY, { width: colWidths.numero - 4, truncate: true });
+        doc.text(condLabel, colX.cond + 2, currentY, { width: colWidths.cond - 4 });
+        doc.text(row.cliente_nombre || 'Consumidor Final', colX.cliente + 2, currentY, { width: colWidths.cliente - 4, truncate: true });
+        doc.text(fiscalInfo || '---', colX.fiscal + 2, currentY, { width: colWidths.fiscal - 4, truncate: true });
+        doc.text(reportPdfHelper.fmt(totalPagar), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
 
-                // Last row subtotal
-                if (index === data.data.length - 1) {
-                    doc.moveDown(0.5);
-                    doc.font('Helvetica-Bold').fontSize(8);
-                    doc.text(`SUBTOTAL ${currentPOS}:`, startX + totalWidth - colWidths.total - 150, doc.y, { width: 150, align: 'right' });
-                    doc.text(formatVal(posTotal), startX + totalWidth - colWidths.total, doc.y - 8, { width: colWidths.total, align: 'right' });
-                }
-            });
+        posTotal += totalPagar;
+        grandTotal += totalPagar;
+        rowCount++;
+        currentY += 12;
 
-            // Grand Total Footer
-            doc.moveDown(1.5);
-            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-            doc.moveDown(0.5);
-            doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('TOTAL GENERAL:', startX + totalWidth - colWidths.total - 150, doc.y, { width: 150, align: 'right' });
-            doc.text(formatVal(grandTotal), startX + totalWidth - colWidths.total, doc.y - 10, { width: colWidths.total, align: 'right' });
-
-            doc.end();
-        } catch (err) { reject(err); }
+        if (index === rows.length - 1) {
+            doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+            currentY += 3;
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+            doc.text(`SUBTOTAL ${currentPOS}:`, colX.cliente, currentY, { width: colWidths.cliente + colWidths.fiscal - 6, align: 'right' });
+            doc.text(reportPdfHelper.fmt(posTotal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
+            currentY += 14;
+        }
     });
+
+    if (currentY > 520) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL GENERAL:', colX.cliente, currentY, { width: colWidths.cliente + colWidths.fiscal - 6, align: 'right' });
+    doc.text(reportPdfHelper.fmt(grandTotal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, rowCount, 'Ventas');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a detailed PDF of pending documents grouped by customer
  */
-const generatePendingDocumentsDetailedPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 40, size: 'LETTER', layout: 'portrait' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generatePendingDocumentsDetailedPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-            const formatDate = (dateStr) => {
-                if (!dateStr) return '---';
-                const d = new Date(dateStr);
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const year = d.getUTCFullYear();
-                return `${day}/${month}/${year}`;
-            };
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+    const title = 'REPORTE DETALLADO DE DOCUMENTOS PENDIENTES';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `FECHA DE CORTE: ${reportPdfHelper.formatDate(data.cutoffDate || new Date())}`;
 
-            // Header (Standard format)
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
-            if (data.company_nit) doc.fontSize(10).font('Helvetica').text(`NIT: ${data.company_nit}`, { align: 'center' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`, { align: 'center' });
-            doc.moveDown(0.5);
-            doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DETALLADO DE DOCUMENTOS PENDIENTES', { align: 'center', underline: true });
-            doc.fontSize(9).font('Helvetica').text(`Fecha de Corte: ${formatDate(data.cutoffDate)}`, { align: 'center' });
-            doc.moveDown(1.5);
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 
-            const startX = 40;
-            const colWidths = {
-                fecha: 70,
-                dias: 40,
-                tipo: 100,
-                doc: 120,
-                monto: 90,
-                saldo: 90
-            };
+    const startX = 30;
+    const contentWidth = 552;
+    const colWidths = { fecha: 65, dias: 40, tipo: 100, doc: 147, monto: 100, saldo: 100 };
+    const colX = {
+        fecha: startX,
+        dias: startX + colWidths.fecha,
+        tipo: startX + colWidths.fecha + colWidths.dias,
+        doc: startX + colWidths.fecha + colWidths.dias + colWidths.tipo,
+        monto: startX + colWidths.fecha + colWidths.dias + colWidths.tipo + colWidths.doc,
+        saldo: startX + colWidths.fecha + colWidths.dias + colWidths.tipo + colWidths.doc + colWidths.monto
+    };
 
-            const drawTableHeader = (y) => {
-                doc.fontSize(9).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('FECHA', x, y); x += colWidths.fecha;
-                doc.text('DÍAS', x, y); x += colWidths.dias;
-                doc.text('TIPO', x, y); x += colWidths.tipo;
-                doc.text('DOCUMENTO', x, y); x += colWidths.doc;
-                doc.text('MONTO ORIG.', x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
-                doc.text('SALDO PEND.', x, y, { align: 'right', width: colWidths.saldo });
-                
-                doc.moveDown(0.4);
-                doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).strokeColor('#333').stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(8);
-                return doc.y;
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('DÍAS', colX.dias, y + 3, { width: colWidths.dias, align: 'center' });
+        doc.text('TIPO', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4 });
+        doc.text('DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('MONTO ORIG.', colX.monto, y + 3, { width: colWidths.monto - 4, align: 'right' });
+        doc.text('SALDO PEND.', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
 
-            drawTableHeader(doc.y);
+    currentY = drawTableHeader(currentY);
 
-            data.customers.forEach((customer, cIndex) => {
-                // Check page break for customer header
-                if (doc.y > 650) {
-                    doc.addPage();
-                    drawTableHeader(40);
-                }
+    const customers = data.customers || [];
+    let count = 0;
 
-                doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e40af');
-                doc.text(`CLIENTE: ${customer.customer_name}`, startX, doc.y);
-                doc.fillColor('black').moveDown(0.5);
+    customers.forEach((customer) => {
+        if (currentY > 690) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
 
-                customer.documents.forEach(row => {
-                    // Check page break for row
-                    if (doc.y > 700) {
-                        doc.addPage();
-                        drawTableHeader(40);
-                        doc.fontSize(9).font('Helvetica-Bold').text(`CLIENTE: ${customer.customer_name} (cont.)`, startX, doc.y);
-                        doc.moveDown(0.5);
-                    }
+        doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text(`CLIENTE: ${(customer.customer_name || 'SIN NOMBRE').toUpperCase()}`, startX + 4, currentY + 3);
+        currentY += 16;
 
-                    const y = doc.y;
-                    let x = startX;
-                    doc.font('Helvetica').fontSize(8);
-                    
-                    doc.text(formatDate(row.fecha), x, y); x += colWidths.fecha;
-                    doc.text(row.dias.toString(), x, y); x += colWidths.dias;
-                    doc.text(row.tipo, x, y, { width: colWidths.tipo, truncate: true }); x += colWidths.tipo;
-                    doc.text(row.documento, x, y, { width: colWidths.doc, truncate: true }); x += colWidths.doc;
-                    doc.text(formatVal(row.monto), x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
-                    doc.text(formatVal(row.saldo), x, y, { align: 'right', width: colWidths.saldo });
-                    doc.moveDown(0.8);
-                });
-
-                // Customer Subtotal
-                doc.moveDown(0.2);
-                doc.fontSize(9).font('Helvetica-Bold');
-                doc.text(`Subtotal ${customer.customer_name}:`, startX + 250, doc.y, { width: 170, align: 'right' });
-                doc.text(formatVal(customer.subtotal), startX + 430, doc.y - 10, { width: colWidths.saldo, align: 'right' });
-                doc.moveDown(1.5);
-            });
-
-            // Grand Total
-            if (doc.y > 650) doc.addPage();
-            doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).stroke();
-            doc.moveDown(0.5);
-            doc.fontSize(11).font('Helvetica-Bold');
-            doc.text('TOTAL GENERAL PENDIENTE:', startX + 200, doc.y, { width: 220, align: 'right' });
-            doc.text(formatVal(data.grandTotal), startX + 430, doc.y - 12, { width: colWidths.saldo, align: 'right' });
-
-            // Footer
-            const pageCount = doc.bufferedPageRange().count;
-            for (let i = 0; i < pageCount; i++) {
-                doc.switchToPage(i);
-                doc.fontSize(8).fillColor('grey').text(
-                    `Página ${i + 1} de ${pageCount} - Generado el ${new Date().toLocaleString()}`,
-                    startX,
-                    doc.page.height - 30,
-                    { align: 'center' }
-                );
+        (customer.documents || []).forEach(row => {
+            if (currentY > 710) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+                currentY = drawTableHeader(currentY);
+                doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+                doc.text(`CLIENTE: ${(customer.customer_name || 'SIN NOMBRE').toUpperCase()} (cont.)`, startX + 4, currentY + 3);
+                currentY += 16;
             }
 
-            doc.end();
-        } catch (err) { reject(err); }
+            doc.fontSize(7).font('Helvetica').fillColor('#334155');
+            doc.text(reportPdfHelper.formatDate(row.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+            doc.text(String(row.dias || 0), colX.dias, currentY, { width: colWidths.dias, align: 'center' });
+            doc.text(String(row.tipo || '—'), colX.tipo + 2, currentY, { width: colWidths.tipo - 4, truncate: true });
+            doc.text(String(row.documento || '—'), colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
+            doc.text(reportPdfHelper.fmt(row.monto), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+            doc.text(reportPdfHelper.fmt(row.saldo), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+
+            count++;
+            currentY += 12;
+        });
+
+        // Subtotal cliente
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+        currentY += 3;
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(`Subtotal ${customer.customer_name}:`, colX.tipo, currentY, { width: colWidths.tipo + colWidths.doc + colWidths.monto - 6, align: 'right' });
+        doc.text(reportPdfHelper.fmt(customer.subtotal), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+        currentY += 14;
     });
+
+    if (currentY > 690) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL GENERAL PENDIENTE:', colX.tipo, currentY, { width: colWidths.tipo + colWidths.doc + colWidths.monto - 6, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.grandTotal), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, count, 'Documentos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a detailed PDF of pending documents for providers grouped by provider
  */
-const generateProviderPendingDocumentsDetailedPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 40, size: 'LETTER', layout: 'portrait' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateProviderPendingDocumentsDetailedPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-            const formatDate = (dateStr) => {
-                if (!dateStr) return '---';
-                const d = new Date(dateStr);
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const year = d.getUTCFullYear();
-                return `${day}/${month}/${year}`;
-            };
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+    const title = 'REPORTE DETALLADO DE DOCUMENTOS POR PAGAR';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = `FECHA DE CORTE: ${reportPdfHelper.formatDate(data.cutoffDate || new Date())}`;
 
-            // Header (Standard format)
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name.toUpperCase(), { align: 'center' });
-            if (data.company_nit) doc.fontSize(10).font('Helvetica').text(`NIT: ${data.company_nit}`, { align: 'center' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`, { align: 'center' });
-            doc.moveDown(0.5);
-            doc.fontSize(12).font('Helvetica-Bold').text('REPORTE DETALLADO DE DOCUMENTOS POR PAGAR', { align: 'center', underline: true });
-            doc.fontSize(9).font('Helvetica').text(`Fecha de Corte: ${formatDate(data.cutoffDate)}`, { align: 'center' });
-            doc.moveDown(1.5);
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 
-            const startX = 40;
-            const colWidths = {
-                fecha: 65,
-                origen: 55,
-                dias: 35,
-                tipo: 85,
-                doc: 110,
-                monto: 85,
-                saldo: 85
-            };
+    const startX = 30;
+    const contentWidth = 552;
+    const colWidths = { fecha: 65, origen: 55, dias: 35, tipo: 95, doc: 112, monto: 95, saldo: 95 };
+    const colX = {
+        fecha: startX,
+        origen: startX + colWidths.fecha,
+        dias: startX + colWidths.fecha + colWidths.origen,
+        tipo: startX + colWidths.fecha + colWidths.origen + colWidths.dias,
+        doc: startX + colWidths.fecha + colWidths.origen + colWidths.dias + colWidths.tipo,
+        monto: startX + colWidths.fecha + colWidths.origen + colWidths.dias + colWidths.tipo + colWidths.doc,
+        saldo: startX + colWidths.fecha + colWidths.origen + colWidths.dias + colWidths.tipo + colWidths.doc + colWidths.monto
+    };
 
-            const drawTableHeader = (y) => {
-                doc.fontSize(8).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('FECHA', x, y); x += colWidths.fecha;
-                doc.text('ORIGEN', x, y); x += colWidths.origen;
-                doc.text('DÍAS', x, y); x += colWidths.dias;
-                doc.text('TIPO', x, y); x += colWidths.tipo;
-                doc.text('DOCUMENTO', x, y); x += colWidths.doc;
-                doc.text('MONTO ORIG.', x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
-                doc.text('SALDO PEND.', x, y, { align: 'right', width: colWidths.saldo });
-                
-                doc.moveDown(0.4);
-                doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).strokeColor('#333').stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(7);
-                return doc.y;
-            };
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+        doc.text('ORIGEN', colX.origen + 2, y + 3, { width: colWidths.origen - 4 });
+        doc.text('DÍAS', colX.dias, y + 3, { width: colWidths.dias, align: 'center' });
+        doc.text('TIPO', colX.tipo + 2, y + 3, { width: colWidths.tipo - 4 });
+        doc.text('DOCUMENTO', colX.doc + 2, y + 3, { width: colWidths.doc - 4 });
+        doc.text('MONTO ORIG.', colX.monto, y + 3, { width: colWidths.monto - 4, align: 'right' });
+        doc.text('SALDO PEND.', colX.saldo, y + 3, { width: colWidths.saldo - 4, align: 'right' });
+        return y + 17;
+    };
 
-            drawTableHeader(doc.y);
+    currentY = drawTableHeader(currentY);
 
-            data.providers.forEach((provider, pIndex) => {
-                // Check page break for provider header
-                if (doc.y > 650) {
-                    doc.addPage();
-                    drawTableHeader(40);
-                }
+    const providers = data.providers || [];
+    let count = 0;
 
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e40af');
-                doc.text(`PROVEEDOR: ${provider.provider_name}`, startX, doc.y);
-                doc.fillColor('black').moveDown(0.5);
+    providers.forEach((provider) => {
+        if (currentY > 690) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
 
-                provider.documents.forEach(row => {
-                    // Check page break for row
-                    if (doc.y > 700) {
-                        doc.addPage();
-                        drawTableHeader(40);
-                        doc.fontSize(8).font('Helvetica-Bold').text(`PROVEEDOR: ${provider.provider_name} (cont.)`, startX, doc.y);
-                        doc.moveDown(0.5);
-                    }
+        doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text(`PROVEEDOR: ${(provider.provider_name || 'SIN NOMBRE').toUpperCase()}`, startX + 4, currentY + 3);
+        currentY += 16;
 
-                    const y = doc.y;
-                    let x = startX;
-                    doc.font('Helvetica').fontSize(7);
-                    
-                    doc.text(formatDate(row.fecha), x, y); x += colWidths.fecha;
-                    doc.text(row.origen || '---', x, y); x += colWidths.origen;
-                    doc.text(row.dias.toString(), x, y); x += colWidths.dias;
-                    doc.text(row.tipo, x, y, { width: colWidths.tipo, truncate: true }); x += colWidths.tipo;
-                    doc.text(row.documento, x, y, { width: colWidths.doc, truncate: true }); x += colWidths.doc;
-                    doc.text(formatVal(row.monto), x, y, { align: 'right', width: colWidths.monto }); x += colWidths.monto;
-                    doc.text(formatVal(row.saldo), x, y, { align: 'right', width: colWidths.saldo });
-                    doc.moveDown(0.8);
-                });
-
-                // Provider Subtotal
-                doc.moveDown(0.2);
-                doc.fontSize(9).font('Helvetica-Bold');
-                doc.text(`Subtotal ${provider.provider_name}:`, startX + 250, doc.y, { width: 170, align: 'right' });
-                doc.text(formatVal(provider.subtotal), startX + 430, doc.y - 10, { width: colWidths.saldo, align: 'right' });
-                doc.moveDown(1.5);
-            });
-
-            // Grand Total
-            if (doc.y > 650) doc.addPage();
-            doc.moveTo(startX, doc.y).lineTo(startX + 520, doc.y).stroke();
-            doc.moveDown(0.5);
-            doc.fontSize(11).font('Helvetica-Bold');
-            doc.text('TOTAL GENERAL PENDIENTE:', startX + 200, doc.y, { width: 220, align: 'right' });
-            doc.text(formatVal(data.grandTotal), startX + 430, doc.y - 12, { width: colWidths.saldo, align: 'right' });
-
-            // Footer
-            const pageCount = doc.bufferedPageRange().count;
-            for (let i = 0; i < pageCount; i++) {
-                doc.switchToPage(i);
-                doc.fontSize(8).fillColor('grey').text(
-                    `Página ${i + 1} de ${pageCount} - Generado el ${new Date().toLocaleString()}`,
-                    startX,
-                    doc.page.height - 30,
-                    { align: 'center' }
-                );
+        (provider.documents || []).forEach(row => {
+            if (currentY > 710) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+                currentY = drawTableHeader(currentY);
+                doc.rect(startX, currentY, contentWidth, 13).fill('#e2e8f0');
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+                doc.text(`PROVEEDOR: ${(provider.provider_name || 'SIN NOMBRE').toUpperCase()} (cont.)`, startX + 4, currentY + 3);
+                currentY += 16;
             }
 
-            doc.end();
-        } catch (err) { reject(err); }
+            doc.fontSize(7).font('Helvetica').fillColor('#334155');
+            doc.text(reportPdfHelper.formatDate(row.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+            doc.text(row.origen || '---', colX.origen + 2, currentY, { width: colWidths.origen - 4 });
+            doc.text(String(row.dias || 0), colX.dias, currentY, { width: colWidths.dias, align: 'center' });
+            doc.text(String(row.tipo || '—'), colX.tipo + 2, currentY, { width: colWidths.tipo - 4, truncate: true });
+            doc.text(String(row.documento || '—'), colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
+            doc.text(reportPdfHelper.fmt(row.monto), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+            doc.text(reportPdfHelper.fmt(row.saldo), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+
+            count++;
+            currentY += 12;
+        });
+
+        // Subtotal proveedor
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+        currentY += 3;
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(`Subtotal ${provider.provider_name}:`, colX.tipo, currentY, { width: colWidths.tipo + colWidths.doc + colWidths.monto - 6, align: 'right' });
+        doc.text(reportPdfHelper.fmt(provider.subtotal), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+        currentY += 14;
     });
+
+    if (currentY > 690) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 4;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL GENERAL PENDIENTE:', colX.tipo, currentY, { width: colWidths.tipo + colWidths.doc + colWidths.monto - 6, align: 'right' });
+    doc.text(reportPdfHelper.fmt(data.grandTotal), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, count, 'Documentos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 /**
@@ -2808,528 +2857,625 @@ const generateAguinaldoRecibosPDF = (data) => {
     });
 };
 
-const generateCloseoutDetailPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateCloseoutDetailPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const title = `DETALLE DE ${data.tipo_nombre?.toUpperCase() || data.tipo_reporte?.toUpperCase() || 'CIERRE'}`;
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
 
-            const fmtDate = (d) => {
-                if (!d) return '—';
-                if (typeof d === 'string' && d.length >= 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
-                const dt = new Date(d);
-                return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-            };
-            const fmtVal = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
+    const startX = 30;
+    const pageW = 732;
 
-            // Header
-            doc.fontSize(14).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
-            doc.fontSize(9).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
-            doc.fontSize(9).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
-            doc.moveDown(0.3);
+    const rawCols = data.columns || [];
+    const rawSum = rawCols.reduce((s, c) => s + (c.w || 100), 0);
+    let accumulatedW = 0;
+    const colDefs = rawCols.map((c, i) => {
+        let w;
+        if (i === rawCols.length - 1) {
+            w = pageW - accumulatedW;
+        } else {
+            w = Math.round((c.w / rawSum) * pageW);
+            accumulatedW += w;
+        }
+        return { ...c, w };
+    });
 
-            doc.fontSize(12).font('Helvetica-Bold').text(`DETALLE DE ${data.tipo_nombre?.toUpperCase() || data.tipo_reporte?.toUpperCase()}`, { align: 'center', underline: true });
-            doc.moveDown(0.5);
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        let x = startX;
+        colDefs.forEach(c => {
+            const align = c.align || (c.format === 'money' ? 'right' : c.format === 'date' ? 'center' : 'left');
+            const padX = align === 'right' ? x : x + 2;
+            const w = align === 'right' ? c.w - 2 : c.w - 4;
+            doc.text(c.label, padX, y + 3, { width: w, align });
+            x += c.w;
+        });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
 
-            const startX = 30;
-            const pageW = 780;
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = drawTableHeader(currentY);
 
-            const colDefs = data.columns || [];
-            const colTotal = colDefs.reduce((s, c) => s + c.w, 0);
-            const drawTableHeader = () => {
-                const y = doc.y;
-                doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b');
-                let x = startX;
-                colDefs.forEach(c => {
-                    doc.text(c.label, x, y, { width: c.w, align: c.align || 'left' });
-                    x += c.w;
-                });
-                doc.fillColor('#1e293b');
-                doc.moveDown(0.3);
-                doc.moveTo(startX, doc.y).lineTo(startX + pageW, doc.y).stroke('#e2e8f0');
-                doc.moveDown(0.3);
-            };
+    let rowIndex = 0;
+    const renderRow = (row) => {
+        if (currentY > 515) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
 
-            drawTableHeader();
+        if (rowIndex % 2 === 1) {
+            doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+        }
+        rowIndex++;
 
-            let rowIndex = 0;
-            const renderRow = (row) => {
-                if (doc.y > 520) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                let x = startX;
-                doc.fontSize(8).font('Helvetica');
-                if (rowIndex % 2 === 0) {
-                    doc.rect(startX, y - 2, pageW, 14).fill('#f8fafc');
-                }
-                rowIndex++;
-                colDefs.forEach(c => {
-                    const val = c.accessor ? row[c.accessor] : row[c.label];
-                    doc.fillColor('#1e293b').fontSize(8);
-                    if (c.format === 'money') {
-                        doc.text(fmtVal(val), x, y, { width: c.w, align: 'right' });
-                    } else if (c.format === 'date') {
-                        doc.text(fmtDate(val), x, y, { width: c.w, align: 'center' });
-                    } else {
-                        doc.text(String(val ?? '—'), x, y, { width: c.w, align: c.align || 'left' });
-                    }
-                    x += c.w;
-                });
-                doc.moveDown(0.9);
-            };
+        doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+        let x = startX;
+        colDefs.forEach(c => {
+            const val = c.accessor ? row[c.accessor] : row[c.label];
+            const align = c.align || (c.format === 'money' ? 'right' : c.format === 'date' ? 'center' : 'left');
+            const padX = align === 'right' ? x : x + 2;
+            const w = align === 'right' ? c.w - 2 : c.w - 4;
 
-            const renderGroupHeader = (group) => {
-                if (doc.y > 520) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                let x = startX;
-                doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155');
-                doc.rect(startX, y - 2, pageW, 14).fill('#e2e8f0');
-                colDefs.forEach(c => {
-                    const isMoney = c.format === 'money';
-                    const text = isMoney ? fmtVal(group.subtotal || 0) : (x === startX ? String(group.label ?? '—') : '');
-                    doc.text(text, x, y, { width: c.w, align: isMoney ? 'right' : 'left' });
-                    x += c.w;
-                });
-                doc.fillColor('#1e293b').font('Helvetica');
-                doc.moveDown(0.9);
-            };
-
-            if (data.groups && data.groups.length) {
-                data.groups.forEach(g => {
-                    renderGroupHeader(g);
-                    g.rows.forEach(renderRow);
-                });
+            if (c.format === 'money') {
+                doc.text(reportPdfHelper.fmt(val), padX, currentY + 1, { width: w, align: 'right' });
+            } else if (c.format === 'date') {
+                doc.text(reportPdfHelper.formatDate(val), padX, currentY + 1, { width: w, align: 'center' });
             } else {
-                (data.rows || []).forEach(renderRow);
+                const textStr = reportPdfHelper.fitText(doc, String(val ?? '—'), w);
+                doc.text(textStr, padX, currentY + 1, { width: w, align, lineBreak: false });
             }
+            x += c.w;
+        });
 
-            // Totals
-            doc.moveDown(0.3);
-            doc.moveTo(startX, doc.y).lineTo(startX + pageW, doc.y).stroke();
-            doc.moveDown(0.3);
-            const ty = doc.y;
-            let tx = startX;
-            doc.font('Helvetica-Bold').fontSize(9);
-            colDefs.forEach((c, i) => {
-                if (i === 0) {
-                    doc.text('TOTALES', tx, ty, { width: c.w, align: 'left' });
-                } else if (c.format === 'money') {
-                    const total = data.rows.reduce((s, r) => s + (parseFloat(r[c.accessor || c.label]) || 0), 0);
-                    doc.text(fmtVal(total), tx, ty, { width: c.w, align: 'right' });
-                }
-                tx += c.w;
-            });
+        currentY += 12;
+    };
 
-            doc.moveDown(2);
-            doc.fontSize(7).fillColor('#94a3b8').font('Helvetica').text(
-                `Generado el ${new Date().toLocaleString('es-SV')}`, { align: 'center' }
-            );
-
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const renderGroupHeader = (group) => {
+        if (currentY > 515) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
         }
+
+        doc.rect(startX, currentY - 1, pageW, 13).fill('#e2e8f0');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        let x = startX;
+        colDefs.forEach((c, idx) => {
+            const align = c.align || (c.format === 'money' ? 'right' : 'left');
+            const padX = align === 'right' ? x : x + 2;
+            const w = align === 'right' ? c.w - 2 : c.w - 4;
+
+            if (c.format === 'money') {
+                doc.text(reportPdfHelper.fmt(group.subtotal || 0), padX, currentY + 2, { width: w, align: 'right' });
+            } else if (idx === 0) {
+                doc.text(`TIPO DE POS: ${String(group.label ?? '—').toUpperCase()}`, padX, currentY + 2, { width: w, align: 'left', lineBreak: false });
+            }
+            x += c.w;
+        });
+
+        currentY += 14;
+    };
+
+    if (data.groups && data.groups.length) {
+        data.groups.forEach(g => {
+            renderGroupHeader(g);
+            g.rows.forEach(renderRow);
+        });
+    } else {
+        (data.rows || []).forEach(renderRow);
+    }
+
+    if (currentY > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totales
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    currentY += 2;
+    doc.rect(startX, currentY - 1, pageW, 14).fill('#f1f5f9');
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+
+    let tx = startX;
+    colDefs.forEach((c, idx) => {
+        const align = c.align || (c.format === 'money' ? 'right' : 'left');
+        const padX = align === 'right' ? tx : tx + 2;
+        const w = align === 'right' ? c.w - 2 : c.w - 4;
+
+        if (idx === 0) {
+            doc.text('TOTALES GENERALES:', padX, currentY + 2, { width: w, align: 'left' });
+        } else if (c.format === 'money') {
+            const total = (data.rows || []).reduce((s, r) => s + (parseFloat(r[c.accessor || c.label]) || 0), 0);
+            doc.text(reportPdfHelper.fmt(total), padX, currentY + 2, { width: w, align: 'right' });
+        } else if (c.accessor === 'cantidad') {
+            const totalQty = (data.rows || []).reduce((s, r) => s + (parseFloat(r[c.accessor || c.label]) || 0), 0);
+            doc.text(Number(totalQty).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), padX, currentY + 2, { width: w, align: 'right' });
+        }
+        tx += c.w;
     });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+    currentY += 22;
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, data.rows?.length || 0, 'Registros');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
-const generateFuelInventoryPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 20, layout: 'landscape', size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateFuelInventoryPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const title = `INVENTARIO DE ${data.fuel_label?.toUpperCase() || 'COMBUSTIBLE'}`;
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
 
-            const fmtDate = (d) => {
-                if (!d) return '—';
-                if (typeof d === 'string' && d.length >= 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
-                const dt = new Date(d);
-                return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-            };
-            const fmtVal = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
-            const fmtGal = (v) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const startX = 30;
+    const pageW = 732;
 
-            // Header
-            doc.fontSize(13).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
-            doc.fontSize(8).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
-            doc.fontSize(8).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
-            doc.fontSize(8).text(`Inventario Inicial: ${fmtGal(data.inventario_inicial || 0)} gal`);
-            doc.moveDown(0.2);
-            doc.fontSize(11).font('Helvetica-Bold').text(`INVENTARIO ${data.fuel_label || 'COMBUSTIBLE'}`, { align: 'center', underline: true });
-            doc.moveDown(0.3);
+    const fmtGal = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            const startX = 20;
-            const pageW = 802;
+    const colDefs = [
+        { label: 'FECHA', w: 48, accessor: 'fecha', format: 'date', align: 'center', group: 'FECHA' },
+        { label: 'V.AUTO', w: 34, accessor: 'venta_auto', format: 'gal', align: 'right', group: 'VENTA' },
+        { label: 'V.FULL', w: 34, accessor: 'venta_full', format: 'gal', align: 'right', group: 'VENTA' },
+        { label: 'V.MSTR', w: 34, accessor: 'venta_master', format: 'gal', align: 'right', group: 'VENTA' },
+        { label: 'INVENTARIO', w: 46, accessor: 'inventario', format: 'gal', align: 'right', group: 'INV.' },
+        { label: 'P.AUTO', w: 31, accessor: 'precio_auto', format: 'money', align: 'right', group: 'PRECIOS' },
+        { label: 'P.FULL', w: 31, accessor: 'precio_full', format: 'money', align: 'right', group: 'PRECIOS' },
+        { label: 'P.MSTR', w: 31, accessor: 'precio_master', format: 'money', align: 'right', group: 'PRECIOS' },
+        { label: 'COSTO', w: 30, accessor: 'costo', format: 'money', align: 'right', group: 'COSTO' },
+        { label: 'M.AUTO', w: 30, accessor: 'margen_auto', format: 'money', align: 'right', group: 'MARGEN' },
+        { label: 'M.FULL', w: 30, accessor: 'margen_full', format: 'money', align: 'right', group: 'MARGEN' },
+        { label: 'M.MSTR', w: 30, accessor: 'margen_master', format: 'money', align: 'right', group: 'MARGEN' },
+        { label: 'UTIL.TOT', w: 34, accessor: 'utilidad_total', format: 'money', align: 'right', group: 'UTILIDAD' },
+        { label: 'U.AUTO', w: 30, accessor: 'utilidad_auto', format: 'money', align: 'right', group: 'UTILIDAD' },
+        { label: 'U.FULL', w: 30, accessor: 'utilidad_full', format: 'money', align: 'right', group: 'UTILIDAD' },
+        { label: 'U.MSTR', w: 30, accessor: 'utilidad_master', format: 'money', align: 'right', group: 'UTILIDAD' },
+        { label: 'M.TOTAL', w: 30, accessor: 'margen_total', format: 'money', align: 'right', group: 'MG.TOT' },
+        { label: 'REC.MAN', w: 33, accessor: 'recarga_manual', format: 'gal', align: 'right', group: 'RECARGA' },
+        { label: 'REC.COM', w: 33, accessor: 'recarga_compra', format: 'gal', align: 'right', group: 'RECARGA' },
+        { label: 'DIF.DIA', w: 33, accessor: 'dif_diaria', format: 'gal', align: 'right', group: 'DIF.DIA' },
+        { label: 'T.VENTA', w: 35, accessor: 'total_venta', format: 'gal', align: 'right', group: 'TOTAL' },
+        { label: 'P.PROM', w: 35, accessor: 'precio_promedio', format: 'money', align: 'right', group: 'TOTAL' }
+    ];
 
-            // Column definitions — single-line labels only
-            const colDefs = [
-                { label: 'FECHA', w: 52, accessor: 'fecha', format: 'date', align: 'center', group: 'FECHA' },
-                { label: 'V.AUTO', w: 36, accessor: 'venta_auto', format: 'gal', align: 'right', group: 'VENTA' },
-                { label: 'V.FULL', w: 36, accessor: 'venta_full', format: 'gal', align: 'right', group: 'VENTA' },
-                { label: 'V.MSTR', w: 36, accessor: 'venta_master', format: 'gal', align: 'right', group: 'VENTA' },
-                { label: 'INVENTARIO', w: 46, accessor: 'inventario', format: 'gal', align: 'right', group: 'INV.' },
-                { label: 'P.AUTO', w: 32, accessor: 'precio_auto', format: 'money', align: 'right', group: 'PRECIO' },
-                { label: 'P.FULL', w: 32, accessor: 'precio_full', format: 'money', align: 'right', group: 'PRECIO' },
-                { label: 'P.MSTR', w: 32, accessor: 'precio_master', format: 'money', align: 'right', group: 'PRECIO' },
-                { label: 'COSTO', w: 30, accessor: 'costo', format: 'money', align: 'right', group: 'COSTO' },
-                { label: 'M.AUTO', w: 32, accessor: 'margen_auto', format: 'money', align: 'right', group: 'MARGEN' },
-                { label: 'M.FULL', w: 32, accessor: 'margen_full', format: 'money', align: 'right', group: 'MARGEN' },
-                { label: 'M.MSTR', w: 32, accessor: 'margen_master', format: 'money', align: 'right', group: 'MARGEN' },
-                { label: 'UTIL.TOT', w: 32, accessor: 'utilidad_total', format: 'money', align: 'right', group: 'UTILIDAD' },
-                { label: 'U.AUTO', w: 32, accessor: 'utilidad_auto', format: 'money', align: 'right', group: 'UTILIDAD' },
-                { label: 'U.FULL', w: 32, accessor: 'utilidad_full', format: 'money', align: 'right', group: 'UTILIDAD' },
-                { label: 'U.MSTR', w: 32, accessor: 'utilidad_master', format: 'money', align: 'right', group: 'UTILIDAD' },
-                { label: 'M.TOTAL', w: 32, accessor: 'margen_total', format: 'money', align: 'right', group: 'MG.TOT' },
-                { label: 'REC.MAN', w: 34, accessor: 'recarga_manual', format: 'gal', align: 'right', group: 'RECARGA' },
-                { label: 'REC.COM', w: 34, accessor: 'recarga_compra', format: 'gal', align: 'right', group: 'RECARGA' },
-                { label: 'DIF.DIA', w: 34, accessor: 'dif_diaria', format: 'gal', align: 'right', group: 'DIF.DIA' },
-                { label: 'T.VENTA', w: 38, accessor: 'total_venta', format: 'gal', align: 'right', group: 'TOT.VENTA' },
-                { label: 'P.PROM.', w: 38, accessor: 'precio_promedio', format: 'money', align: 'right', group: 'P.PROM.' }
-            ];
-
-            // Unique groups with span
-            const groups = [];
-            for (const c of colDefs) {
-                if (!groups.find(g => g.label === c.group)) {
-                    const span = colDefs.filter(x => x.group === c.group).reduce((s, x) => s + x.w, 0);
-                    groups.push({ label: c.group, w: span });
-                }
-            }
-
-            const drawTableHeader = () => {
-                const headerY = doc.y;
-
-                // Group header row background
-                doc.rect(startX, headerY, pageW, 16).fill('#f1f5f9');
-                doc.fontSize(6).font('Helvetica-Bold').fillColor('#334155');
-                let gx = startX;
-                groups.forEach(g => {
-                    doc.text(g.label, gx, headerY + 4, { width: g.w, align: 'center' });
-                    gx += g.w;
-                });
-
-                // Divider after groups
-                doc.fillColor('#cbd5e1');
-                doc.moveTo(startX, headerY + 16).lineTo(startX + pageW, headerY + 16).stroke();
-
-                // Column headers row background
-                const colY = headerY + 17;
-                doc.rect(startX, colY, pageW, 16).fill('#f8fafc');
-                doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569');
-                let cx = startX;
-                colDefs.forEach(c => {
-                    doc.text(c.label, cx, colY + 4, { width: c.w, align: 'center' });
-                    cx += c.w;
-                });
-
-                // Bottom divider
-                doc.fillColor('#94a3b8');
-                doc.moveTo(startX, colY + 16).lineTo(startX + pageW, colY + 16).stroke();
-                doc.y = colY + 18;
-            };
-
-            drawTableHeader();
-
-            const rows = data.rows || [];
-
-            rows.forEach((row, i) => {
-                if (doc.y > 495) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                let x = startX;
-                doc.fontSize(6).font('Helvetica');
-                if (i % 2 === 0) {
-                    doc.rect(startX, y, pageW, 13).fill('#f8fafc');
-                }
-                doc.fillColor('#1e293b');
-                colDefs.forEach(c => {
-                    const val = row[c.accessor];
-                    if (c.format === 'money') {
-                        doc.text(fmtVal(val), x, y + 2, { width: c.w, align: 'right' });
-                    } else if (c.format === 'date') {
-                        doc.text(fmtDate(val), x, y + 2, { width: c.w, align: 'center' });
-                    } else {
-                        doc.text(fmtGal(val), x, y + 2, { width: c.w, align: 'right' });
-                    }
-                    x += c.w;
-                });
-                doc.y = y + 13;
-            });
-
-            // Totals
-            if (rows.length > 0) {
-                doc.moveDown(0.2);
-                doc.rect(startX, doc.y, pageW, 1).fill('#64748b');
-                doc.moveDown(0.1);
-                const ty = doc.y;
-                let tx = startX;
-                doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#1e293b');
-                colDefs.forEach((c, i) => {
-                    if (i === 0) {
-                        doc.text('TOTALES', tx, ty + 2, { width: c.w, align: 'left' });
-                    } else if (c.format === 'money') {
-                        const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
-                        doc.text(fmtVal(total), tx, ty + 2, { width: c.w, align: 'right' });
-                    } else {
-                        const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
-                        doc.text(fmtGal(total), tx, ty + 2, { width: c.w, align: 'right' });
-                    }
-                    tx += c.w;
-                });
-                doc.moveDown(1.5);
-            }
-
-            doc.fontSize(6.5).fillColor('#94a3b8').font('Helvetica').text(
-                `Generado el ${new Date().toLocaleString('es-SV')}`, { align: 'center' }
-            );
-
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const groups = [];
+    for (const c of colDefs) {
+        if (!groups.find(g => g.label === c.group)) {
+            const span = colDefs.filter(x => x.group === c.group).reduce((s, x) => s + x.w, 0);
+            groups.push({ label: c.group, w: span });
         }
+    }
+
+    const drawTableHeader = (y) => {
+        // Tier 1: Grupos
+        doc.rect(startX, y, pageW, 12).fill('#f1f5f9');
+        doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#0f172a');
+        let gx = startX;
+        groups.forEach(g => {
+            doc.text(g.label, gx, y + 2.5, { width: g.w, align: 'center' });
+            gx += g.w;
+        });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 12).lineTo(startX + pageW, y + 12).stroke();
+
+        // Tier 2: Columnas
+        const colY = y + 12;
+        doc.rect(startX, colY, pageW, 12).fill('#f8fafc');
+        doc.fontSize(5).font('Helvetica-Bold').fillColor('#334155');
+        let cx = startX;
+        colDefs.forEach(c => {
+            doc.text(c.label, cx, colY + 2.5, { width: c.w, align: 'center' });
+            cx += c.w;
+        });
+        doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, colY + 12).lineTo(startX + pageW, colY + 12).stroke();
+        return colY + 13;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    // Barra de inventario inicial
+    doc.rect(startX, currentY, pageW, 14).fill('#f8fafc');
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`INVENTARIO INICIAL: ${fmtGal(data.inventario_inicial || 0)} GALONES`, startX + 6, currentY + 3, { width: pageW - 12, align: 'left' });
+    doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, currentY + 14).lineTo(startX + pageW, currentY + 14).stroke();
+    currentY += 16;
+
+    currentY = drawTableHeader(currentY);
+
+    const rows = data.rows || [];
+    rows.forEach((row, idx) => {
+        if (currentY > 515) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 1, pageW, 11).fill('#f8fafc');
+        }
+
+        doc.fontSize(5.5).font('Helvetica').fillColor('#1e293b');
+        let x = startX;
+        colDefs.forEach(c => {
+            const val = row[c.accessor];
+            if (c.format === 'money') {
+                doc.text(reportPdfHelper.fmt(val), x, currentY + 1, { width: c.w - 2, align: 'right' });
+            } else if (c.format === 'date') {
+                doc.text(reportPdfHelper.formatDate(val), x, currentY + 1, { width: c.w, align: 'center' });
+            } else {
+                doc.text(fmtGal(val), x, currentY + 1, { width: c.w - 2, align: 'right' });
+            }
+            x += c.w;
+        });
+
+        currentY += 11;
     });
+
+    if (currentY > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totales
+    if (rows.length > 0) {
+        doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 2;
+        doc.rect(startX, currentY - 1, pageW, 13).fill('#f1f5f9');
+        doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#0f172a');
+
+        let tx = startX;
+        colDefs.forEach((c, idx) => {
+            if (idx === 0) {
+                doc.text('TOTALES:', tx, currentY + 2, { width: c.w, align: 'left' });
+            } else if (['precio_auto', 'precio_full', 'precio_master', 'costo', 'margen_auto', 'margen_full', 'margen_master', 'margen_total', 'precio_promedio'].includes(c.accessor)) {
+                // Precios unitarios y márgenes no se totalizan
+            } else if (c.format === 'money') {
+                const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                doc.text(reportPdfHelper.fmt(total), tx, currentY + 2, { width: c.w - 2, align: 'right' });
+            } else {
+                const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                doc.text(fmtGal(total), tx, currentY + 2, { width: c.w - 2, align: 'right' });
+            }
+            tx += c.w;
+        });
+        doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 12).lineTo(startX + pageW, currentY + 12).stroke();
+        currentY += 22;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, rows.length, 'Días');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
-const generateGalonajeVendidoPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 20, layout: 'landscape', size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateGalonajeVendidoPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const title = 'REPORTE DE GALONAJE VENDIDO';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
 
-            const fmtDate = (d) => {
-                if (!d) return '—';
-                if (typeof d === 'string' && d.length >= 10) return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
-                const dt = new Date(d);
-                return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
-            };
-            const fmtGal = (v) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const startX = 30;
+    const pageW = 732;
 
-            doc.fontSize(13).font('Helvetica-Bold').text(data.company?.razon_social || data.company_name || '', { align: 'left' });
-            doc.fontSize(8).font('Helvetica').text(`Sucursal: ${data.branch_name || 'Todas'}`);
-            doc.fontSize(8).text(`Período: ${fmtDate(data.start_date)} — ${fmtDate(data.end_date)}`);
-            doc.moveDown(0.2);
-            doc.fontSize(11).font('Helvetica-Bold').text('GALONAJE VENDIDO', { align: 'center', underline: true });
-            doc.moveDown(0.3);
+    const fmtGal = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            const startX = 20;
-            const pageW = 802;
+    const colDefs = [
+        { label: 'FECHA', w: 60, accessor: 'fecha', format: 'date', align: 'center', group: 'FECHA' },
+        { label: 'LECTURA', w: 56, accessor: 'lect_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
+        { label: 'VENTA', w: 56, accessor: 'vta_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
+        { label: 'DIF.', w: 56, accessor: 'dif_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
+        { label: 'LECTURA', w: 56, accessor: 'lect_regular', format: 'gal', align: 'right', group: 'REGULAR' },
+        { label: 'VENTA', w: 56, accessor: 'vta_regular', format: 'gal', align: 'right', group: 'REGULAR' },
+        { label: 'DIF.', w: 56, accessor: 'dif_regular', format: 'gal', align: 'right', group: 'REGULAR' },
+        { label: 'LECTURA', w: 56, accessor: 'lect_super', format: 'gal', align: 'right', group: 'SUPER' },
+        { label: 'VENTA', w: 56, accessor: 'vta_super', format: 'gal', align: 'right', group: 'SUPER' },
+        { label: 'DIF.', w: 56, accessor: 'dif_super', format: 'gal', align: 'right', group: 'SUPER' },
+        { label: 'LECTURA', w: 56, accessor: 'lect_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
+        { label: 'VENTA', w: 56, accessor: 'vta_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
+        { label: 'DIF.', w: 56, accessor: 'dif_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
+    ];
 
-            const colDefs = [
-                { label: 'FECHA', w: 60, accessor: 'fecha', format: 'date', align: 'center', group: 'FECHA' },
-                { label: 'LECTURA', w: 55, accessor: 'lect_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
-                { label: 'VENTA', w: 55, accessor: 'vta_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
-                { label: 'DIF.', w: 55, accessor: 'dif_diesel', format: 'gal', align: 'right', group: 'DIESEL' },
-                { label: 'LECTURA', w: 55, accessor: 'lect_regular', format: 'gal', align: 'right', group: 'REGULAR' },
-                { label: 'VENTA', w: 55, accessor: 'vta_regular', format: 'gal', align: 'right', group: 'REGULAR' },
-                { label: 'DIF.', w: 55, accessor: 'dif_regular', format: 'gal', align: 'right', group: 'REGULAR' },
-                { label: 'LECTURA', w: 55, accessor: 'lect_super', format: 'gal', align: 'right', group: 'SUPER' },
-                { label: 'VENTA', w: 55, accessor: 'vta_super', format: 'gal', align: 'right', group: 'SUPER' },
-                { label: 'DIF.', w: 55, accessor: 'dif_super', format: 'gal', align: 'right', group: 'SUPER' },
-                { label: 'LECTURA', w: 55, accessor: 'lect_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
-                { label: 'VENTA', w: 55, accessor: 'vta_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
-                { label: 'DIF.', w: 55, accessor: 'dif_ion_diesel', format: 'gal', align: 'right', group: 'ION DIESEL' },
-            ];
+    const groups = [
+        { label: 'FECHA', w: 60, headerBg: '#f1f5f9', textColor: '#0f172a' },
+        { label: 'DIESEL', w: 168, headerBg: '#e0e7ff', textColor: '#3730a3' },
+        { label: 'REGULAR', w: 168, headerBg: '#dcfce7', textColor: '#166534' },
+        { label: 'SUPER', w: 168, headerBg: '#fed7aa', textColor: '#9a3412' },
+        { label: 'ION DIESEL', w: 168, headerBg: '#fae8ff', textColor: '#86198f' },
+    ];
 
-            const groups = [];
-            for (const c of colDefs) {
-                if (!groups.find(g => g.label === c.group)) {
-                    const span = colDefs.filter(x => x.group === c.group).reduce((s, x) => s + x.w, 0);
-                    groups.push({ label: c.group, w: span });
-                }
+    const drawTableHeader = (y) => {
+        // Tier 1: Categorías de combustible
+        let gx = startX;
+        groups.forEach(g => {
+            doc.rect(gx, y, g.w, 14).fill(g.headerBg);
+            doc.fontSize(7).font('Helvetica-Bold').fillColor(g.textColor);
+            doc.text(g.label, gx, y + 3, { width: g.w, align: 'center' });
+            gx += g.w;
+        });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+
+        // Tier 2: Subcolumnas
+        const colY = y + 14;
+        let cx = startX;
+        colDefs.forEach(c => {
+            doc.rect(cx, colY, c.w, 13).fill('#f8fafc');
+            doc.fontSize(6).font('Helvetica-Bold').fillColor('#334155');
+            doc.text(c.label, cx, colY + 2.5, { width: c.w, align: 'center' });
+            cx += c.w;
+        });
+        doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, colY + 13).lineTo(startX + pageW, colY + 13).stroke();
+
+        // Divisores verticales
+        doc.strokeColor('#cbd5e1').lineWidth(0.5);
+        gx = startX;
+        groups.forEach(g => {
+            if (g.label !== 'FECHA') {
+                doc.moveTo(gx, y).lineTo(gx, colY + 13).stroke();
             }
+            gx += g.w;
+        });
 
-            const groupColors = {
-                'FECHA': { headerBg: null, colHeaderBg: null },
-                'DIESEL': { headerBg: '#e0e7ff', colHeaderBg: '#eef2ff', textColor: '#4338ca' },
-                'REGULAR': { headerBg: '#dcfce7', colHeaderBg: '#f0fdf4', textColor: '#15803d' },
-                'SUPER': { headerBg: '#fed7aa', colHeaderBg: '#fff7ed', textColor: '#c2410c' },
-                'ION DIESEL': { headerBg: '#fae8ff', colHeaderBg: '#fdf4ff', textColor: '#a21caf' },
-            };
+        return colY + 14;
+    };
 
-            const drawTableHeader = () => {
-                const headerY = doc.y;
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = drawTableHeader(currentY);
 
-                let gx = startX;
-                groups.forEach(g => {
-                    const colors = groupColors[g.label] || {};
-                    if (colors.headerBg) {
-                        doc.rect(gx, headerY, g.w, 16).fill(colors.headerBg);
-                    }
-                    gx += g.w;
-                });
-                gx = startX;
-                doc.fontSize(7).font('Helvetica-Bold').fillColor('#1e293b');
-                groups.forEach(g => {
-                    doc.text(g.label, gx, headerY + 4, { width: g.w, align: 'center' });
-                    gx += g.w;
-                });
-                doc.fillColor('#94a3b8');
-                doc.moveTo(startX, headerY + 16).lineTo(startX + pageW, headerY + 16).stroke();
-
-                const colY = headerY + 17;
-                let cx = startX;
-                colDefs.forEach(c => {
-                    const colors = groupColors[c.group] || {};
-                    if (colors.colHeaderBg) {
-                        doc.rect(cx, colY, c.w, 16).fill(colors.colHeaderBg);
-                    }
-                    cx += c.w;
-                });
-                cx = startX;
-                doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#1e293b');
-                colDefs.forEach(c => {
-                    doc.text(c.label, cx, colY + 4, { width: c.w, align: 'center' });
-                    cx += c.w;
-                });
-                doc.fillColor('#94a3b8');
-                doc.moveTo(startX, colY + 16).lineTo(startX + pageW, colY + 16).stroke();
-
-                doc.fillColor('#cbd5e1');
-                gx = startX;
-                groups.forEach(g => {
-                    if (g.label !== 'FECHA') {
-                        doc.moveTo(gx, headerY).lineTo(gx, colY + 16).stroke();
-                    }
-                    gx += g.w;
-                });
-
-                doc.y = colY + 18;
-            };
-
-            drawTableHeader();
-
-            const rows = data.rows || [];
-            rows.forEach((row, i) => {
-                if (doc.y > 495) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                doc.fontSize(6.5).font('Helvetica');
-
-                let x = startX;
-                colDefs.forEach(c => {
-                    const colors = groupColors[c.group] || {};
-                    const baseTint = i % 2 === 0 ? 0 : 0;
-                    if (colors.colHeaderBg) {
-                        const alpha = baseTint ? 1 : 0.5;
-                        doc.rect(x, y, c.w, 13).fill(colors.colHeaderBg);
-                    } else if (i % 2 === 0) {
-                        doc.rect(x, y, c.w, 13).fill('#f8fafc');
-                    }
-                    x += c.w;
-                });
-
-                x = startX;
-                doc.fillColor('#1e293b');
-                colDefs.forEach(c => {
-                    const val = row[c.accessor];
-                    const colors = groupColors[c.group] || {};
-                    if (c.accessor.startsWith('dif_')) {
-                        doc.fillColor(colors.textColor || '#1e293b');
-                    } else {
-                        doc.fillColor('#1e293b');
-                    }
-                    if (c.format === 'date') {
-                        doc.text(fmtDate(val), x, y + 2, { width: c.w, align: 'center' });
-                    } else {
-                        doc.text(fmtGal(val), x, y + 2, { width: c.w, align: 'right' });
-                    }
-                    x += c.w;
-                });
-
-                doc.fillColor('#e2e8f0');
-                let sx = startX;
-                groups.forEach(g => {
-                    if (g.label !== 'FECHA') {
-                        doc.moveTo(sx, y).lineTo(sx, y + 13).stroke();
-                    }
-                    sx += g.w;
-                });
-
-                doc.y = y + 13;
-            });
-
-            if (rows.length > 0) {
-                doc.moveDown(0.2);
-                doc.rect(startX, doc.y, pageW, 1).fill('#64748b');
-                doc.moveDown(0.1);
-
-                const ty = doc.y;
-
-                let tx = startX;
-                colDefs.forEach(c => {
-                    const colors = groupColors[c.group] || {};
-                    if (colors.colHeaderBg) {
-                        doc.rect(tx, ty, c.w, 16).fill(colors.colHeaderBg);
-                    } else {
-                        doc.rect(tx, ty, c.w, 16).fill('#f8fafc');
-                    }
-                    tx += c.w;
-                });
-
-                tx = startX;
-                doc.font('Helvetica-Bold').fontSize(7);
-                colDefs.forEach((c, i) => {
-                    const colors = groupColors[c.group] || {};
-                    if (c.accessor && c.accessor.startsWith('dif_')) {
-                        doc.fillColor(colors.textColor || '#1e293b');
-                    } else {
-                        doc.fillColor('#1e293b');
-                    }
-                    if (i === 0) {
-                        doc.text('TOTALES', tx, ty + 2, { width: c.w, align: 'left' });
-                    } else {
-                        const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
-                        doc.text(fmtGal(total), tx, ty + 2, { width: c.w, align: 'right' });
-                    }
-                    tx += c.w;
-                });
-
-                doc.fillColor('#cbd5e1');
-                let sxt = startX;
-                groups.forEach(g => {
-                    if (g.label !== 'FECHA') {
-                        doc.moveTo(sxt, ty).lineTo(sxt, ty + 16).stroke();
-                    }
-                    sxt += g.w;
-                });
-
-                doc.y = ty + 16;
-
-                doc.moveDown(0.6);
-                doc.rect(startX, doc.y, pageW, 1).fill('#e2e8f0');
-                doc.moveDown(0.4);
-
-                const tdTotal = (data.diferencias?.total || 0);
-                doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a');
-                doc.text(`DIFERENCIA TOTAL: ${fmtGal(tdTotal)} galones`, startX, doc.y, { width: pageW, align: 'center' });
-                doc.moveDown(1.5);
-            }
-
-            doc.fontSize(6.5).fillColor('#94a3b8').font('Helvetica').text(
-                `Generado el ${new Date().toLocaleString('es-SV')}`, { align: 'center' }
-            );
-
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const rows = data.rows || [];
+    rows.forEach((row, idx) => {
+        if (currentY > 515) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
         }
+
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+        let x = startX;
+        colDefs.forEach(c => {
+            const val = row[c.accessor];
+            if (c.format === 'date') {
+                doc.text(reportPdfHelper.formatDate(val), x, currentY + 1, { width: c.w, align: 'center' });
+            } else {
+                if (c.accessor.startsWith('dif_')) {
+                    const numVal = parseFloat(val) || 0;
+                    if (Math.abs(numVal) > 0.001) {
+                        doc.font('Helvetica-Bold');
+                        if (numVal < 0) doc.fillColor('#dc2626');
+                        else doc.fillColor('#15803d');
+                    } else {
+                        doc.font('Helvetica').fillColor('#1e293b');
+                    }
+                } else {
+                    doc.font('Helvetica').fillColor('#1e293b');
+                }
+                doc.text(fmtGal(val), x, currentY + 1, { width: c.w - 3, align: 'right' });
+            }
+            x += c.w;
+        });
+
+        // Divisor vertical sutil entre grupos
+        doc.strokeColor('#e2e8f0').lineWidth(0.5);
+        let gx = startX;
+        groups.forEach(g => {
+            if (g.label !== 'FECHA') {
+                doc.moveTo(gx, currentY - 1).lineTo(gx, currentY + 11).stroke();
+            }
+            gx += g.w;
+        });
+
+        currentY += 12;
     });
+
+    if (currentY > 480) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Totales
+    if (rows.length > 0) {
+        doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 2;
+        doc.rect(startX, currentY - 1, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+
+        let tx = startX;
+        colDefs.forEach((c, idx) => {
+            if (idx === 0) {
+                doc.text('TOTALES:', tx, currentY + 2, { width: c.w, align: 'left' });
+            } else {
+                const total = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                if (c.accessor.startsWith('dif_')) {
+                    if (total < 0) doc.fillColor('#dc2626');
+                    else if (total > 0) doc.fillColor('#15803d');
+                    else doc.fillColor('#0f172a');
+                } else {
+                    doc.fillColor('#0f172a');
+                }
+                doc.text(fmtGal(total), tx, currentY + 2, { width: c.w - 3, align: 'right' });
+            }
+            tx += c.w;
+        });
+
+        doc.strokeColor('#cbd5e1').lineWidth(0.5);
+        let gx = startX;
+        groups.forEach(g => {
+            if (g.label !== 'FECHA') {
+                doc.moveTo(gx, currentY - 1).lineTo(gx, currentY + 13).stroke();
+            }
+            gx += g.w;
+        });
+
+        doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+        currentY += 20;
+
+        // Cuadro resumen de diferencias
+        const difData = data.diferencias || {};
+        const tdTotal = difData.total || 0;
+
+        if (currentY > 500) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+
+        doc.rect(startX, currentY, pageW, 32).fillAndStroke('#f8fafc', '#cbd5e1');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('RESUMEN DE DIFERENCIAS POR COMBUSTIBLE (GALONES):', startX + 10, currentY + 4);
+
+        const summaryText = `DIESEL: ${fmtGal(difData.diesel)} gal.    |    REGULAR: ${fmtGal(difData.regular)} gal.    |    SUPER: ${fmtGal(difData.super)} gal.    |    ION DIESEL: ${fmtGal(difData.ion_diesel)} gal.`;
+        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.text(summaryText, startX + 10, currentY + 14);
+
+        doc.fontSize(7.5).font('Helvetica-Bold');
+        if (tdTotal < 0) doc.fillColor('#dc2626');
+        else if (tdTotal > 0) doc.fillColor('#15803d');
+        else doc.fillColor('#0f172a');
+        doc.text(`DIFERENCIA TOTAL ACUMULADA: ${fmtGal(tdTotal)} GALONES`, startX + 10, currentY + 23);
+
+        currentY += 40;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, rows.length, 'Días');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
+const generateFuelSalesSummaryPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
+    const company = await resolveCompanyInfo(data);
+    const title = 'RESUMEN DE GLN VENDIDOS';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+
+    const startX = 30;
+    const pageW = 552;
+
+    const colX = {
+        fecha: 30,
+        codigo: 95,
+        descripcion: 160,
+        galones: 402,
+        monto: 487
+    };
+    const colW = {
+        fecha: 65,
+        codigo: 65,
+        descripcion: 242,
+        galones: 85,
+        monto: 95
+    };
+
+    const fmtGal = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha, y + 3, { width: colW.fecha, align: 'center' });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
+        doc.text('DESCRIPCIÓN', colX.descripcion, y + 3, { width: colW.descripcion });
+        doc.text('GALONES', colX.galones, y + 3, { width: colW.galones - 2, align: 'right' });
+        doc.text('MONTO', colX.monto, y + 3, { width: colW.monto - 2, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    currentY = drawTableHeader(currentY);
+
+    const grouped = data.grouped || {};
+    const allEntries = Object.entries(grouped);
+    let grandGalones = 0;
+    let grandMonto = 0;
+    let totalItemsCount = 0;
+
+    for (let di = 0; di < allEntries.length; di++) {
+        const [fecha, items] = allEntries[di];
+        let dayGalones = 0;
+        let dayMonto = 0;
+
+        for (let i = 0; i < items.length; i++) {
+            const r = items[i];
+            if (currentY > 695) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+                currentY = drawTableHeader(currentY);
+            }
+
+            if (i % 2 === 1) {
+                doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+            }
+
+            const gal = parseFloat(r.galones || 0);
+            const mto = parseFloat(r.monto || 0);
+            dayGalones += gal;
+            dayMonto += mto;
+            totalItemsCount++;
+
+            doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+            doc.text(reportPdfHelper.formatDate(r.fecha_turno || fecha), colX.fecha, currentY + 1, { width: colW.fecha, align: 'center' });
+            doc.text(r.codigo_producto || '', colX.codigo, currentY + 1, { width: colW.codigo });
+            const desc = reportPdfHelper.fitText(doc, r.descripcion_producto || '', colW.descripcion - 4);
+            doc.text(desc, colX.descripcion, currentY + 1, { width: colW.descripcion, lineBreak: false });
+            doc.text(fmtGal(gal), colX.galones, currentY + 1, { width: colW.galones - 2, align: 'right' });
+            doc.text(reportPdfHelper.fmt(mto), colX.monto, currentY + 1, { width: colW.monto - 2, align: 'right' });
+
+            currentY += 12;
+        }
+
+        grandGalones += dayGalones;
+        grandMonto += dayMonto;
+
+        // Subtotal diario
+        if (currentY > 695) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#334155');
+        doc.text(`TOTAL DIARIO (${reportPdfHelper.formatDate(fecha)}):`, colX.fecha + 2, currentY + 2, { width: 300 });
+        doc.text(fmtGal(dayGalones), colX.galones, currentY + 2, { width: colW.galones - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(dayMonto), colX.monto, currentY + 2, { width: colW.monto - 2, align: 'right' });
+        doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+
+        currentY += 16;
+    }
+
+    if (currentY > 680) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    }
+
+    // Gran Total
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    currentY += 2;
+    doc.rect(startX, currentY - 1, pageW, 15).fill('#f1f5f9');
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL GENERAL:', colX.fecha + 2, currentY + 3, { width: 300 });
+    doc.text(fmtGal(grandGalones), colX.galones, currentY + 3, { width: colW.galones - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(grandMonto), colX.monto, currentY + 3, { width: colW.monto - 2, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 14).lineTo(startX + pageW, currentY + 14).stroke();
+    currentY += 24;
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsCount, 'Registros');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
 };
 
 const generatePlanillaPDF = (data) => {
@@ -3477,23 +3623,23 @@ const generatePlanillaPDF = (data) => {
 const generatePlanillaReciboPDF = (data) => {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ margin: 30, size: 'LETTER' });
+            const doc = new PDFDocument({ margin: 24, size: 'LETTER' });
             const buffers = [];
             doc.on('data', buffers.push.bind(buffers));
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', (err) => reject(err));
 
-            const M = 30;
-            const W = 552;
+            const M = 28;
+            const W = 556;
             const quincenaLabel = data.quincena === 'primera' ? '1ra' : '2da';
             const mesLabel = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][(data.periodo_mes || 1) - 1] || '';
             const mesAnio = `${mesLabel} ${data.periodo_anio}`;
-            const empName = `${data.empleado_nombres || ''} ${data.empleado_apellidos || ''}`;
+            const empName = `${data.empleado_nombres || ''} ${data.empleado_apellidos || ''}`.trim();
             const logoPath = data.logo_url;
             const firmaPath = data.firma_url || '';
             const selloPath = data.sello_url || '';
             const responsable = data.responsable_nombre || 'RECURSOS HUMANOS';
-            const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : '';
+            const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : 'N/A';
 
             const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
             const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
@@ -3501,190 +3647,226 @@ const generatePlanillaReciboPDF = (data) => {
             const drawCopy = (yStart, label) => {
                 let y = yStart;
 
-                // Logo + company
+                // --- 1. Header (Logo / Company / Title) ---
+                let logoRendered = false;
                 if (logoPath) {
                     try {
                         const f = logoPath.split('/').pop();
                         const p = path.join(__dirname, '..', '..', 'uploads', f);
-                        if (fs.existsSync(p)) doc.image(p, M, y, { width: 65 });
+                        if (fs.existsSync(p)) {
+                            doc.image(p, M, y, { fit: [60, 26] });
+                            logoRendered = true;
+                        }
                     } catch (e) { /* ignore */ }
                 }
-                const hx = logoPath ? 105 : M;
-                doc.fontSize(10).font('Helvetica-Bold');
-                doc.text(data.company_name?.toUpperCase() || '', hx, y);
-                doc.fontSize(7).font('Helvetica');
-                doc.text(data.company_nit ? `NIT: ${data.company_nit}` : '', hx, y + 11);
-                y += 22;
 
-                // Title
-                doc.fontSize(9).font('Helvetica-Bold');
-                doc.text('RECIBO DE PLANILLA QUINCENAL', M, y, { width: W, align: 'center' });
-                y += 11;
-                doc.moveTo(M, y).lineTo(M + W, y).stroke('#4f46e5');
-                y += 6;
+                const companyX = logoRendered ? M + 68 : M;
+                const companyMaxW = logoRendered ? 270 : 330;
 
-                // Employee info
-                doc.fontSize(7).font('Helvetica');
-                doc.text('EMPLEADO:', M, y);
-                doc.text('PERIODO:', M + 200, y);
-                doc.text('MONTO A RECIBIR:', M + 370, y);
-                y += 9;
-                doc.font('Helvetica-Bold');
-                doc.text(empName, M, y);
-                doc.text(`${mesAnio} - ${quincenaLabel} Q.`, M + 200, y);
-                doc.fillColor('#4f46e5');
-                doc.text(`$ ${parseFloat(data.monto_recibir).toFixed(2)}`, M + 370, y, { align: 'right', width: 180 });
-                doc.fillColor('black');
-                y += 10;
-                doc.font('Helvetica');
-                doc.text(`CARGO: ${data.cargo_nombre || ''}`, M, y);
-                doc.text(`DIAS: ${data.dias_trabajados || 0}`, M + 200, y);
-                y += 9;
-                doc.text(`DPTO: ${data.departamento_nombre || ''}`, M, y);
-                doc.text(`SUELDO BASE: $ ${parseFloat(data.sueldo_base || 0).toFixed(2)}`, M + 200, y);
-                y += 9;
-                doc.text(`DUI: ${data.num_dui || ''}`, M, y);
-                doc.text(`INGRESO: ${fmt(data.fecha_ingreso)}`, M + 200, y);
-                y += 9;
-                doc.text(`NIT: ${data.num_nit || ''}`, M, y);
+                doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text(data.company_name?.toUpperCase() || 'EMPRESA', companyX, y, { width: companyMaxW, ellipsis: true });
+                doc.fontSize(6.5).font('Helvetica').fillColor('#64748b');
+                doc.text(data.company_nit ? `NIT: ${data.company_nit}` : '', companyX, y + 11);
+
+                // Right header pill: Titulo & Periodo
+                const rightPillW = 210;
+                const rightPillX = M + W - rightPillW;
+                doc.fontSize(8).font('Helvetica-Bold').fillColor('#312e81');
+                doc.text('RECIBO DE PLANILLA QUINCENAL', rightPillX, y, { width: rightPillW, align: 'right' });
+                doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#4338ca');
+                doc.text(`${quincenaLabel.toUpperCase()} QUINCENA • ${mesAnio.toUpperCase()}`, rightPillX, y + 11, { width: rightPillW, align: 'right' });
+
+                y += 24;
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(M, y).lineTo(M + W, y).stroke();
                 y += 4;
 
-                // Seccionador
-                doc.moveTo(M, y).lineTo(M + W, y).stroke('#e5e7eb');
-                y += 6;
+                // --- 2. Employee Info Card ---
+                const cardH = 34;
+                doc.rect(M, y, W, cardH).fill('#f8fafc').stroke('#e2e8f0');
 
-                // Two columns: left=PERCEPCIONES, right=DEDUCCIONES
-                const leftX = M + 5;
-                const rightX = M + 290;
-                const leftValX = M + 250;
-                const rightValX = M + W - 5;
+                // Card Row 1
+                doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                doc.text('EMPLEADO:', M + 8, y + 3.5);
+                doc.fontSize(7.2).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text(empName.substring(0, 32), M + 8, y + 11.5, { width: 175, ellipsis: true });
+
+                doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                doc.text('CARGO / DEPTO:', M + 190, y + 3.5);
+                doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+                const cargoDepto = `${data.cargo_nombre || 'GENERAL'} • ${data.departamento_nombre || 'GENERAL'}`;
+                doc.text(cargoDepto.substring(0, 32), M + 190, y + 11.5, { width: 175, ellipsis: true });
+
+                doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                doc.text('DÍAS TRAB.:', M + 375, y + 3.5);
+                doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#1e293b');
+                doc.text(`${data.dias_trabajados || 0} DÍAS`, M + 375, y + 11.5);
+
+                doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                doc.text('SUELDO BASE:', M + 450, y + 3.5);
+                doc.fontSize(7.2).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text(`$ ${parseFloat(data.sueldo_base || 0).toFixed(2)}`, M + 450, y + 11.5);
+
+                // Card Row 2 (Metadata badges line)
+                doc.fontSize(6.2).font('Helvetica').fillColor('#64748b');
+                const metaLine = `CÓD: ${data.empleado_codigo || data.codigo || '—'}    |    DUI: ${data.num_dui || '—'}    |    NIT: ${data.num_nit || '—'}    |    INGRESO: ${fmt(data.fecha_ingreso)}`;
+                doc.text(metaLine, M + 8, y + 23);
+
+                y += cardH + 5;
+
+                // --- 3. Two Columns: PERCEPCIONES & DEDUCCIONES ---
                 const colW = 270;
-                const rowH = 11;
+                const colGutter = 16;
+                const leftX = M;
+                const rightX = M + colW + colGutter;
+                const headerH = 12;
+                const rowH = 9.5;
 
-                // Column headers
-                doc.fontSize(8).font('Helvetica-Bold').fillColor('#4f46e5');
-                doc.text('PERCEPCIONES', leftX, y);
-                doc.text('DEDUCCIONES', rightX, y);
-                doc.fillColor('black');
-                y += 10;
-                doc.moveTo(leftX, y).lineTo(leftValX, y).stroke('#e5e7eb');
-                doc.moveTo(rightX, y).lineTo(rightValX, y).stroke('#e5e7eb');
-                y += 3;
+                // Table Column Headers
+                doc.rect(leftX, y, colW, headerH).fill('#f1f5f9');
+                doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#1e293b');
+                doc.text('PERCEPCIONES (INGRESOS)', leftX + 4, y + 3, { width: 180 });
+                doc.text('VALOR', leftX + 190, y + 3, { width: 75, align: 'right' });
 
-                doc.fontSize(7).font('Helvetica');
+                doc.rect(rightX, y, colW, headerH).fill('#f1f5f9');
+                doc.text('DEDUCCIONES Y RETENCIONES', rightX + 4, y + 3, { width: 180 });
+                doc.text('VALOR', rightX + 190, y + 3, { width: 75, align: 'right' });
 
-                // Left: percepciones
+                y += headerH + 2;
+
+                // Render Left Column (Percepciones)
                 let percY = y;
                 for (const p of percepciones) {
-                    doc.text(`${p.codigo} - ${p.descripcion}`, leftX, percY);
-                    doc.text(`$ ${parseFloat(p.valor_ingresado || 0).toFixed(2)}`, leftValX, percY, { align: 'right' });
+                    const val = parseFloat(p.valor_ingresado || 0);
+                    doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
+                    doc.text(`${p.codigo} - ${p.descripcion}`, leftX + 4, percY, { width: 185, ellipsis: true });
+                    doc.text(`$ ${val.toFixed(2)}`, leftX + 190, percY, { width: 75, align: 'right' });
                     percY += rowH;
                 }
-                doc.moveTo(leftX, percY).lineTo(leftValX, percY).stroke('#e5e7eb');
-                percY += 3;
-                doc.font('Helvetica-Bold');
-                doc.text('TOTAL PERCEPCIONES', leftX, percY);
-                doc.text(`$ ${parseFloat(data.total_percepciones || 0).toFixed(2)}`, leftValX, percY, { align: 'right' });
-                percY += 14;
 
-                // Right: deducciones de ley section
+                // Render Right Column (Deducciones)
                 let dedY = y;
-                doc.font('Helvetica-Bold');
-                doc.text('RETENCIONES DE LEY:', rightX, dedY);
-                doc.font('Helvetica');
-                dedY += rowH;
                 const isssPct = data.isss_porcentaje || 0;
                 const afpPct = data.afp_porcentaje || 0;
-                doc.text(`ISSS (${isssPct}%)`, rightX, dedY);
-                doc.text(`$ ${parseFloat(data.descuento_isss || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+
+                doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#475569');
+                doc.text('RETENCIONES DE LEY:', rightX + 4, dedY, { width: 185 });
                 dedY += rowH;
-                doc.text(`AFP (${afpPct}%)`, rightX, dedY);
-                doc.text(`$ ${parseFloat(data.descuento_afp || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+
+                doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
+                doc.text(`ISSS (${isssPct}%)`, rightX + 10, dedY, { width: 175 });
+                doc.text(`$ ${parseFloat(data.descuento_isss || 0).toFixed(2)}`, rightX + 190, dedY, { width: 75, align: 'right' });
                 dedY += rowH;
-                doc.text('RENTA', rightX, dedY);
-                doc.text(`$ ${parseFloat(data.descuento_renta || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
-                dedY += rowH + 1;
-                doc.moveTo(rightX, dedY).lineTo(rightValX, dedY).stroke('#e5e7eb');
-                dedY += 3;
+
+                doc.text(`AFP (${afpPct}%)`, rightX + 10, dedY, { width: 175 });
+                doc.text(`$ ${parseFloat(data.descuento_afp || 0).toFixed(2)}`, rightX + 190, dedY, { width: 75, align: 'right' });
+                dedY += rowH;
+
+                doc.text('Impuesto sobre la Renta', rightX + 10, dedY, { width: 175 });
+                doc.text(`$ ${parseFloat(data.descuento_renta || 0).toFixed(2)}`, rightX + 190, dedY, { width: 75, align: 'right' });
+                dedY += rowH;
 
                 if (deducciones.length > 0) {
-                    doc.font('Helvetica-Bold');
-                    doc.text('OTRAS DEDUCCIONES:', rightX, dedY);
-                    doc.font('Helvetica');
+                    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#475569');
+                    doc.text('OTRAS DEDUCCIONES:', rightX + 4, dedY, { width: 185 });
                     dedY += rowH;
                     for (const d of deducciones) {
-                        doc.text(`${d.codigo} - ${d.descripcion}`, rightX, dedY);
-                        doc.text(`$ ${parseFloat(d.valor_ingresado || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
+                        const val = parseFloat(d.valor_ingresado || 0);
+                        doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
+                        doc.text(`${d.codigo} - ${d.descripcion}`, rightX + 10, dedY, { width: 175, ellipsis: true });
+                        doc.text(`$ ${val.toFixed(2)}`, rightX + 190, dedY, { width: 75, align: 'right' });
                         dedY += rowH;
                     }
-                    dedY += 1;
-                    doc.moveTo(rightX, dedY).lineTo(rightValX, dedY).stroke('#e5e7eb');
-                    dedY += 3;
                 }
-                doc.font('Helvetica-Bold');
-                doc.text('TOTAL DEDUCCIONES', rightX, dedY);
-                doc.text(`$ ${parseFloat(data.total_deducciones || 0).toFixed(2)}`, rightValX, dedY, { align: 'right' });
-                dedY += 14;
 
-                // Total general
-                y = Math.max(percY, dedY) + 4;
-                doc.moveTo(M, y).lineTo(M + W, y).stroke('#4f46e5');
-                y += 6;
-                doc.fontSize(10).font('Helvetica-Bold').fillColor('#4f46e5');
-                doc.text('MONTO A RECIBIR', leftX, y);
-                doc.text(`$ ${parseFloat(data.monto_recibir || 0).toFixed(2)}`, leftValX, y, { align: 'right' });
-                doc.fillColor('black');
-                y += 12;
-                doc.fontSize(7).font('Helvetica-Oblique');
-                doc.text(`Son: ${data.monto_letras}`, leftX, y, { width: W - 10 });
-                y += 16;
+                // Subtotales / Totales de columna
+                const maxRowY = Math.max(percY, dedY) + 2;
 
-                // Signatures
-                doc.fontSize(7).font('Helvetica');
+                // Total Percepciones
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(leftX, maxRowY).lineTo(leftX + colW, maxRowY).stroke();
+                doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+                doc.text('TOTAL PERCEPCIONES', leftX + 4, maxRowY + 3, { width: 180 });
+                doc.text(`$ ${parseFloat(data.total_percepciones || 0).toFixed(2)}`, leftX + 190, maxRowY + 3, { width: 75, align: 'right' });
+
+                // Total Deducciones
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(rightX, maxRowY).lineTo(rightX + colW, maxRowY).stroke();
+                doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+                doc.text('TOTAL DEDUCCIONES', rightX + 4, maxRowY + 3, { width: 180 });
+                doc.text(`$ ${parseFloat(data.total_deducciones || 0).toFixed(2)}`, rightX + 190, maxRowY + 3, { width: 75, align: 'right' });
+
+                y = maxRowY + 16;
+
+                // --- 4. Líquido a Recibir ---
+                const netH = 17;
+                doc.rect(M, y, W, netH).fill('#eef2ff').stroke('#c7d2fe');
+                doc.fontSize(7.8).font('Helvetica-Bold').fillColor('#3730a3');
+                doc.text('LÍQUIDO A RECIBIR (NETO A PAGAR):', M + 8, y + 4.5);
+                doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e1b4b');
+                doc.text(`$ ${parseFloat(data.monto_recibir || 0).toFixed(2)}`, M + W - 140, y + 4, { width: 130, align: 'right' });
+
+                y += netH + 3;
+                doc.fontSize(6.2).font('Helvetica-Oblique').fillColor('#475569');
+                doc.text(`Son: ${data.monto_letras || ''}`, M + 4, y, { width: W - 8 });
+
+                // --- 5. Signatures (Generous spacing so signatures NEVER overlap with Monto / Letras) ---
+                y += 36;
+                const sigLineY = y;
                 const sigW = 200;
-                doc.moveTo(M + 20, y).lineTo(M + 20 + sigW, y).stroke('#e5e7eb');
-                doc.fontSize(6).font('Helvetica-Bold').text('RECIBI CONFORME', M + 20, y + 4, { width: sigW, align: 'center' });
-                doc.fontSize(7).font('Helvetica-Bold').text(empName, M, y + 20, { width: sigW + 40, align: 'center' });
 
+                // Empleado
+                doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(M + 15, sigLineY).lineTo(M + 15 + sigW, sigLineY).stroke();
+                doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#334155');
+                doc.text('RECIBÍ CONFORME', M + 15, sigLineY + 2.5, { width: sigW, align: 'center' });
+                doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text(empName, M + 15, sigLineY + 10.5, { width: sigW, align: 'center' });
+                doc.fontSize(5.8).font('Helvetica').fillColor('#64748b');
+                doc.text(`DUI: ${data.num_dui || 'N/A'}`, M + 15, sigLineY + 18.5, { width: sigW, align: 'center' });
+
+                // Empresa / RRHH
+                const rightSigX = M + W - sigW - 15;
+
+                // Firma y Sello images placed cleanly above the line
                 if (firmaPath) {
                     try {
                         const fFile = firmaPath.split('/').pop();
                         const fAbs = path.join(__dirname, '..', '..', 'uploads', fFile);
-                        if (fs.existsSync(fAbs)) doc.image(fAbs, M + W - sigW - 10, y - 50, { width: 90, height: 35 });
-                    } catch (e) { /* ignore */ }
+                        if (fs.existsSync(fAbs)) {
+                            doc.image(fAbs, rightSigX + 15, sigLineY - 30, { fit: [90, 28] });
+                        }
+                    } catch (e) {}
                 }
                 if (selloPath) {
                     try {
                         const sFile = selloPath.split('/').pop();
                         const sAbs = path.join(__dirname, '..', '..', 'uploads', sFile);
-                        if (fs.existsSync(sAbs)) doc.image(sAbs, M + W - 120, y - 50, { width: 80, height: 40 });
-                    } catch (e) { /* ignore */ }
+                        if (fs.existsSync(sAbs)) {
+                            doc.image(sAbs, rightSigX + 115, sigLineY - 30, { fit: [75, 28] });
+                        }
+                    } catch (e) {}
                 }
 
-                doc.fontSize(7).font('Helvetica');
-                doc.moveTo(M + W - sigW - 20, y).lineTo(M + W - 20, y).stroke('#e5e7eb');
-                doc.fontSize(6).font('Helvetica-Bold').text(responsable.toUpperCase(), M + W - sigW - 20, y + 4, { width: sigW, align: 'center' });
-                doc.fontSize(7).font('Helvetica').text('RECURSOS HUMANOS', M + W - sigW - 20, y + 20, { width: sigW, align: 'center' });
+                doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(rightSigX, sigLineY).lineTo(rightSigX + sigW, sigLineY).stroke();
+                doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#334155');
+                doc.text(responsable.toUpperCase(), rightSigX, sigLineY + 2.5, { width: sigW, align: 'center' });
+                doc.fontSize(6.2).font('Helvetica').fillColor('#64748b');
+                doc.text('RECURSOS HUMANOS', rightSigX, sigLineY + 10.5, { width: sigW, align: 'center' });
 
-                y += 45;
-
-                // Copy label
-                doc.fontSize(7).font('Helvetica-Bold').fillColor('#4f46e5');
-                doc.text(label, M, y, { width: W, align: 'center' });
-                doc.fillColor('black');
+                // Copy tag
+                doc.fontSize(5.8).font('Helvetica-Bold').fillColor('#94a3b8');
+                doc.text(`[ ${label} ]`, M, sigLineY + 22, { width: W, align: 'center' });
 
                 return y;
             };
 
             // Top copy - Empleado
-            drawCopy(30, 'COPIA EMPLEADO');
+            drawCopy(22, 'COPIA EMPLEADO');
 
-            // Page middle divider
+            // Page middle divider (clean dashed or light line)
             const PAGE_MID = 396;
-            doc.moveTo(30, PAGE_MID - 4).lineTo(30 + 552, PAGE_MID - 4).stroke('#e5e7eb');
+            doc.strokeColor('#cbd5e1').lineWidth(0.5).dash(4, { space: 3 })
+               .moveTo(28, PAGE_MID).lineTo(28 + 556, PAGE_MID).stroke().undash();
 
             // Bottom copy - Empresa
-            drawCopy(PAGE_MID, 'ORIGINAL EMPRESA');
+            drawCopy(PAGE_MID + 14, 'ORIGINAL EMPRESA');
 
             doc.end();
         } catch (err) {
@@ -3807,420 +3989,399 @@ const generateInvalidationPDF = (invalidationJson) => {
 /**
  * Generates a PDF buffer for the arqueos report (cortes de caja por turno POS)
  */
-const generateArqueosReportPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'A4' });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
+const generateArqueosReportPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            doc.fontSize(16).font('Helvetica-Bold').text(data.company_name, { align: 'left' });
-            doc.fontSize(10).font('Helvetica').text(`Sucursal: ${data.branch_name}`);
-            doc.text(`Período: ${data.start_date} al ${data.end_date}`);
-            doc.moveDown();
+    const periodText = (data.start_date && data.end_date)
+        ? `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`
+        : 'TODOS LOS REGISTROS';
+    const subtitle = data.branch_name ? `SUCURSAL: ${String(data.branch_name).toUpperCase()}` : null;
 
-            doc.fontSize(14).font('Helvetica-Bold').text('REPORTE DE ARQUEOS (CORTES DE CAJA)', { align: 'center', underline: true });
-            doc.moveDown();
+    const startX = 30;
+    const totalWidth = 732;
+    const colWidths = {
+        fecha: 56, turno: 24, sucursal: 81, pos: 60, vendedor: 81, estado: 46,
+        fondo: 45, ventas: 52, ingresos: 42, gastos: 42, remesas: 42, puntos: 38,
+        esperado: 57, contado: 57, diferencia: 57
+    };
 
-            const startX = 20;
-            const colWidths = {
-                fecha: 62, turno: 25, sucursal: 75, pos: 65, vendedor: 70, estado: 42,
-                fondo: 45, ventas: 50, ingresos: 38, gastos: 38, remesas: 38, puntos: 32,
-                esperado: 55, contado: 55, diferencia: 50
-            };
-            const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
+    const drawHeader = () => {
+        reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE ARQUEOS (CORTES DE CAJA)', periodText, 'landscape', subtitle);
+    };
 
-            const drawTableHeader = () => {
-                const y = doc.y;
-                doc.fontSize(7).font('Helvetica-Bold');
-                let x = startX;
-                doc.text('Fecha', x, y); x += colWidths.fecha;
-                doc.text('#', x, y); x += colWidths.turno;
-                doc.text('Sucursal', x, y); x += colWidths.sucursal;
-                doc.text('POS', x, y); x += colWidths.pos;
-                doc.text('Vendedor', x, y); x += colWidths.vendedor;
-                doc.text('Estado', x, y); x += colWidths.estado;
-                doc.text('Fondo', x, y, { align: 'right', width: colWidths.fondo }); x += colWidths.fondo;
-                doc.text('Ventas', x, y, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
-                doc.text('Ingresos', x, y, { align: 'right', width: colWidths.ingresos }); x += colWidths.ingresos;
-                doc.text('Gastos', x, y, { align: 'right', width: colWidths.gastos }); x += colWidths.gastos;
-                doc.text('Remesas', x, y, { align: 'right', width: colWidths.remesas }); x += colWidths.remesas;
-                doc.text('Puntos', x, y, { align: 'right', width: colWidths.puntos }); x += colWidths.puntos;
-                doc.text('Esperado', x, y, { align: 'right', width: colWidths.esperado }); x += colWidths.esperado;
-                doc.text('Contado', x, y, { align: 'right', width: colWidths.contado }); x += colWidths.contado;
-                doc.text('Diferencia', x, y, { align: 'right', width: colWidths.diferencia });
-                doc.moveDown(0.5);
-                doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-                doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(6.5);
-            };
+    const drawTableHeader = () => {
+        const y = doc.y;
+        doc.rect(startX, y, totalWidth, 14).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        let x = startX;
+        doc.text('FECHA', x, y + 3, { width: colWidths.fecha }); x += colWidths.fecha;
+        doc.text('#', x, y + 3, { width: colWidths.turno }); x += colWidths.turno;
+        doc.text('SUCURSAL', x, y + 3, { width: colWidths.sucursal }); x += colWidths.sucursal;
+        doc.text('POS', x, y + 3, { width: colWidths.pos }); x += colWidths.pos;
+        doc.text('VENDEDOR', x, y + 3, { width: colWidths.vendedor }); x += colWidths.vendedor;
+        doc.text('ESTADO', x, y + 3, { width: colWidths.estado }); x += colWidths.estado;
+        doc.text('FONDO', x, y + 3, { align: 'right', width: colWidths.fondo }); x += colWidths.fondo;
+        doc.text('VENTAS', x, y + 3, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
+        doc.text('INGRESOS', x, y + 3, { align: 'right', width: colWidths.ingresos }); x += colWidths.ingresos;
+        doc.text('GASTOS', x, y + 3, { align: 'right', width: colWidths.gastos }); x += colWidths.gastos;
+        doc.text('REMESAS', x, y + 3, { align: 'right', width: colWidths.remesas }); x += colWidths.remesas;
+        doc.text('PUNTOS', x, y + 3, { align: 'right', width: colWidths.puntos }); x += colWidths.puntos;
+        doc.text('ESPERADO', x, y + 3, { align: 'right', width: colWidths.esperado }); x += colWidths.esperado;
+        doc.text('CONTADO', x, y + 3, { align: 'right', width: colWidths.contado }); x += colWidths.contado;
+        doc.text('DIFERENCIA', x, y + 3, { align: 'right', width: colWidths.diferencia });
+        doc.moveTo(startX, y + 14).lineTo(startX + totalWidth, y + 14).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        doc.y = y + 18;
+    };
 
+    drawHeader();
+    drawTableHeader();
+
+    const items = data.data || [];
+    items.forEach(r => {
+        if (doc.y > 510) {
+            doc.addPage();
+            drawHeader();
             drawTableHeader();
+        }
+        const y = doc.y;
+        let x = startX;
+        doc.font('Helvetica').fontSize(6.5).fillColor('#0f172a');
+        doc.text(r.fecha || '---', x, y, { width: colWidths.fecha, lineBreak: false }); x += colWidths.fecha;
+        doc.text(String(r.turno || '---'), x, y, { width: colWidths.turno, lineBreak: false }); x += colWidths.turno;
+        doc.text(r.sucursal || '---', x, y, { width: colWidths.sucursal, lineBreak: false, ellipsis: true }); x += colWidths.sucursal;
+        doc.text(r.pos || '---', x, y, { width: colWidths.pos, lineBreak: false, ellipsis: true }); x += colWidths.pos;
+        doc.text(r.vendedor || '---', x, y, { width: colWidths.vendedor, lineBreak: false, ellipsis: true }); x += colWidths.vendedor;
+        doc.text(r.estado || '---', x, y, { width: colWidths.estado, lineBreak: false }); x += colWidths.estado;
+        doc.text(reportPdfHelper.fmt(r.fondo), x, y, { align: 'right', width: colWidths.fondo }); x += colWidths.fondo;
+        doc.text(reportPdfHelper.fmt(r.ventas), x, y, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
+        doc.text(reportPdfHelper.fmt(r.ingresos), x, y, { align: 'right', width: colWidths.ingresos }); x += colWidths.ingresos;
+        doc.text(reportPdfHelper.fmt(r.gastos), x, y, { align: 'right', width: colWidths.gastos }); x += colWidths.gastos;
+        doc.text(reportPdfHelper.fmt(r.remesas), x, y, { align: 'right', width: colWidths.remesas }); x += colWidths.remesas;
+        doc.text(reportPdfHelper.fmt(r.puntos), x, y, { align: 'right', width: colWidths.puntos }); x += colWidths.puntos;
+        doc.text(reportPdfHelper.fmt(r.esperado), x, y, { align: 'right', width: colWidths.esperado }); x += colWidths.esperado;
+        doc.text(reportPdfHelper.fmt(r.contado), x, y, { align: 'right', width: colWidths.contado }); x += colWidths.contado;
+        doc.text(reportPdfHelper.fmt(r.diferencia), x, y, { align: 'right', width: colWidths.diferencia });
+        doc.y = y + 10;
+    });
 
-            const formatVal = (val) => `$${parseFloat(val || 0).toFixed(2)}`;
+    // Línea de totales
+    if (doc.y > 510) {
+        doc.addPage();
+        drawHeader();
+        drawTableHeader();
+    }
 
-            (data.data || []).forEach(r => {
-                if (doc.y > 520) {
-                    doc.addPage();
-                    drawTableHeader();
-                }
-                const y = doc.y;
-                let x = startX;
-                doc.text(r.fecha || '---', x, y, { width: colWidths.fecha }); x += colWidths.fecha;
-                doc.text(r.turno || '---', x, y, { width: colWidths.turno }); x += colWidths.turno;
-                doc.text(r.sucursal || '---', x, y, { width: colWidths.sucursal }); x += colWidths.sucursal;
-                doc.text(r.pos || '---', x, y, { width: colWidths.pos }); x += colWidths.pos;
-                doc.text(r.vendedor || '---', x, y, { width: colWidths.vendedor }); x += colWidths.vendedor;
-                doc.text(r.estado || '---', x, y, { width: colWidths.estado }); x += colWidths.estado;
-                doc.text(formatVal(r.fondo), x, y, { align: 'right', width: colWidths.fondo }); x += colWidths.fondo;
-                doc.text(formatVal(r.ventas), x, y, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
-                doc.text(formatVal(r.ingresos), x, y, { align: 'right', width: colWidths.ingresos }); x += colWidths.ingresos;
-                doc.text(formatVal(r.gastos), x, y, { align: 'right', width: colWidths.gastos }); x += colWidths.gastos;
-                doc.text(formatVal(r.remesas), x, y, { align: 'right', width: colWidths.remesas }); x += colWidths.remesas;
-                doc.text(formatVal(r.puntos), x, y, { align: 'right', width: colWidths.puntos }); x += colWidths.puntos;
-                doc.text(formatVal(r.esperado), x, y, { align: 'right', width: colWidths.esperado }); x += colWidths.esperado;
-                doc.text(formatVal(r.contado), x, y, { align: 'right', width: colWidths.contado }); x += colWidths.contado;
-                doc.text(formatVal(r.diferencia), x, y, { align: 'right', width: colWidths.diferencia });
-                doc.moveDown(0.7);
-            });
+    const totalsY = doc.y + 4;
+    doc.moveTo(startX, totalsY).lineTo(startX + totalWidth, totalsY).lineWidth(1).strokeColor('#0f172a').stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    const labelW = colWidths.fecha + colWidths.turno + colWidths.sucursal + colWidths.pos + colWidths.vendedor + colWidths.estado;
+    doc.text('TOTALES', startX, totalsY + 3, { width: labelW });
+    let tX = startX + labelW;
+    doc.text(reportPdfHelper.fmt(data.totales?.fondo), tX, totalsY + 3, { align: 'right', width: colWidths.fondo }); tX += colWidths.fondo;
+    doc.text(reportPdfHelper.fmt(data.totales?.ventas), tX, totalsY + 3, { align: 'right', width: colWidths.ventas }); tX += colWidths.ventas;
+    doc.text(reportPdfHelper.fmt(data.totales?.ingresos), tX, totalsY + 3, { align: 'right', width: colWidths.ingresos }); tX += colWidths.ingresos;
+    doc.text(reportPdfHelper.fmt(data.totales?.gastos), tX, totalsY + 3, { align: 'right', width: colWidths.gastos }); tX += colWidths.gastos;
+    doc.text(reportPdfHelper.fmt(data.totales?.remesas), tX, totalsY + 3, { align: 'right', width: colWidths.remesas }); tX += colWidths.remesas;
+    doc.text(reportPdfHelper.fmt(data.totales?.puntos), tX, totalsY + 3, { align: 'right', width: colWidths.puntos }); tX += colWidths.puntos;
+    doc.text(reportPdfHelper.fmt(data.totales?.esperado), tX, totalsY + 3, { align: 'right', width: colWidths.esperado }); tX += colWidths.esperado;
+    doc.text(reportPdfHelper.fmt(data.totales?.contado), tX, totalsY + 3, { align: 'right', width: colWidths.contado }); tX += colWidths.contado;
+    doc.text(reportPdfHelper.fmt(data.totales?.diferencia), tX, totalsY + 3, { align: 'right', width: colWidths.diferencia });
+    doc.moveTo(startX, totalsY + 14).lineTo(startX + totalWidth, totalsY + 14).lineWidth(1).strokeColor('#0f172a').stroke();
+    doc.y = totalsY + 20;
 
-            doc.moveDown();
-            doc.moveTo(startX, doc.y).lineTo(startX + totalWidth, doc.y).stroke();
-            doc.moveDown(1);
+    // Detalle de Gastos y Remesas
+    const gastosList = data.gastos_detalle || [];
+    const remesasList = data.remesas_detalle || [];
+    if (gastosList.length > 0 || remesasList.length > 0) {
+        if (doc.y > 420) {
+            doc.addPage();
+            drawHeader();
+        } else {
+            doc.y += 10;
+        }
 
-            doc.font('Helvetica-Bold').fontSize(7);
-            const totalsY = doc.y;
-            let tX = startX + colWidths.fecha + colWidths.turno + colWidths.sucursal + colWidths.pos + colWidths.vendedor + colWidths.estado;
-            doc.text('TOTALES', startX, totalsY, { width: colWidths.fecha + colWidths.turno + colWidths.sucursal + colWidths.pos + colWidths.vendedor + colWidths.estado });
-            doc.text(formatVal(data.totales?.fondo), tX, totalsY, { align: 'right', width: colWidths.fondo }); tX += colWidths.fondo;
-            doc.text(formatVal(data.totales?.ventas), tX, totalsY, { align: 'right', width: colWidths.ventas }); tX += colWidths.ventas;
-            doc.text(formatVal(data.totales?.ingresos), tX, totalsY, { align: 'right', width: colWidths.ingresos }); tX += colWidths.ingresos;
-            doc.text(formatVal(data.totales?.gastos), tX, totalsY, { align: 'right', width: colWidths.gastos }); tX += colWidths.gastos;
-            doc.text(formatVal(data.totales?.remesas), tX, totalsY, { align: 'right', width: colWidths.remesas }); tX += colWidths.remesas;
-            doc.text(formatVal(data.totales?.puntos), tX, totalsY, { align: 'right', width: colWidths.puntos }); tX += colWidths.puntos;
-            doc.text(formatVal(data.totales?.esperado), tX, totalsY, { align: 'right', width: colWidths.esperado }); tX += colWidths.esperado;
-            doc.text(formatVal(data.totales?.contado), tX, totalsY, { align: 'right', width: colWidths.contado }); tX += colWidths.contado;
-            doc.text(formatVal(data.totales?.diferencia), tX, totalsY, { align: 'right', width: colWidths.diferencia });
+        const leftColX = startX;
+        const colW = 350;
+        const gap = 32;
+        const rightColX = leftColX + colW + gap;
 
-            // DETALLE DE GASTOS Y REMESAS (AL FINAL DEL REPORTE)
-            const gastosList = data.gastos_detalle || [];
-            const remesasList = data.remesas_detalle || [];
-            const hasDetails = gastosList.length > 0 || remesasList.length > 0;
+        const gCols = { fecha: 50, turno: 25, pos: 55, descripcion: 160, monto: 60 };
+        const rCols = { fecha: 48, turno: 25, numero: 32, pos: 50, descripcion: 135, monto: 60 };
 
-            if (hasDetails) {
-                // Si no hay suficiente espacio para cabeceras y algunas filas, saltar de página
-                if (doc.y > 410) {
-                    doc.addPage();
-                } else {
-                    doc.moveDown(1.5);
-                }
+        const drawDetailHeaders = () => {
+            const topY = doc.y;
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('DETALLE DE GASTOS', leftColX, topY, { width: colW });
+            doc.text('DETALLE DE REMESAS', rightColX, topY, { width: colW });
 
-                const leftColX = 20;
-                const colW = 385;
-                const gap = 32;
-                const rightColX = leftColX + colW + gap;
+            const headerY = topY + 12;
+            doc.rect(leftColX, headerY, colW, 12).fill('#f1f5f9');
+            doc.rect(rightColX, headerY, colW, 12).fill('#f1f5f9');
 
-                const gCols = { fecha: 55, turno: 25, pos: 55, descripcion: 190, monto: 60 };
-                const rCols = { fecha: 52, turno: 24, numero: 32, pos: 55, descripcion: 162, monto: 60 };
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
 
-                const drawDetailHeaders = () => {
-                    const topY = doc.y;
+            // Gastos
+            let gx = leftColX;
+            doc.text('FECHA', gx, headerY + 2, { width: gCols.fecha }); gx += gCols.fecha;
+            doc.text('TURNO', gx, headerY + 2, { width: gCols.turno }); gx += gCols.turno;
+            doc.text('POS', gx, headerY + 2, { width: gCols.pos }); gx += gCols.pos;
+            doc.text('DESCRIPCIÓN', gx, headerY + 2, { width: gCols.descripcion }); gx += gCols.descripcion;
+            doc.text('MONTO', gx, headerY + 2, { align: 'right', width: gCols.monto });
 
-                    // Títulos de sección
-                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-                    doc.text('DETALLE DE GASTOS', leftColX, topY, { width: colW });
-                    doc.text('DETALLE DE REMESAS', rightColX, topY, { width: colW });
+            // Remesas
+            let rx = rightColX;
+            doc.text('FECHA', rx, headerY + 2, { width: rCols.fecha }); rx += rCols.fecha;
+            doc.text('TURNO', rx, headerY + 2, { width: rCols.turno }); rx += rCols.turno;
+            doc.text('N°', rx, headerY + 2, { width: rCols.numero }); rx += rCols.numero;
+            doc.text('POS', rx, headerY + 2, { width: rCols.pos }); rx += rCols.pos;
+            doc.text('DESCRIPCIÓN', rx, headerY + 2, { width: rCols.descripcion }); rx += rCols.descripcion;
+            doc.text('MONTO', rx, headerY + 2, { align: 'right', width: rCols.monto });
 
-                    const headerY = topY + 12;
-                    doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#475569');
+            const lineY = headerY + 12;
+            doc.moveTo(leftColX, lineY).lineTo(leftColX + colW, lineY).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            doc.moveTo(rightColX, lineY).lineTo(rightColX + colW, lineY).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            return lineY + 4;
+        };
 
-                    // Encabezados Gastos
-                    let gx = leftColX;
-                    doc.text('Fecha', gx, headerY, { width: gCols.fecha }); gx += gCols.fecha;
-                    doc.text('Turno', gx, headerY, { width: gCols.turno }); gx += gCols.turno;
-                    doc.text('POS', gx, headerY, { width: gCols.pos }); gx += gCols.pos;
-                    doc.text('Descripción', gx, headerY, { width: gCols.descripcion }); gx += gCols.descripcion;
-                    doc.text('Monto', gx, headerY, { align: 'right', width: gCols.monto });
+        let curY = drawDetailHeaders();
+        const maxRows = Math.max(gastosList.length, remesasList.length);
 
-                    // Encabezados Remesas
-                    let rx = rightColX;
-                    doc.text('Fecha', rx, headerY, { width: rCols.fecha }); rx += rCols.fecha;
-                    doc.text('Turno', rx, headerY, { width: rCols.turno }); rx += rCols.turno;
-                    doc.text('N°', rx, headerY, { width: rCols.numero }); rx += rCols.numero;
-                    doc.text('POS', rx, headerY, { width: rCols.pos }); rx += rCols.pos;
-                    doc.text('Descripción', rx, headerY, { width: rCols.descripcion }); rx += rCols.descripcion;
-                    doc.text('Monto', rx, headerY, { align: 'right', width: rCols.monto });
-
-                    const lineY = headerY + 10;
-                    doc.moveTo(leftColX, lineY).lineTo(leftColX + colW, lineY).stroke('#94a3b8');
-                    doc.moveTo(rightColX, lineY).lineTo(rightColX + colW, lineY).stroke('#94a3b8');
-
-                    doc.fillColor('#000000');
-                    return lineY + 4;
-                };
-
-                let curY = drawDetailHeaders();
-                const maxRows = Math.max(gastosList.length, remesasList.length);
-
-                for (let i = 0; i < maxRows; i++) {
-                    if (curY > 520) {
-                        doc.addPage();
-                        curY = drawDetailHeaders();
-                    }
-
-                    const rowH = 10;
-                    doc.fontSize(6).font('Helvetica');
-
-                    // Fila Gasto
-                    if (i < gastosList.length) {
-                        const g = gastosList[i];
-                        let gx = leftColX;
-                        doc.text(g.fecha || '---', gx, curY, { width: gCols.fecha, lineBreak: false }); gx += gCols.fecha;
-                        doc.text(g.turno || '---', gx, curY, { width: gCols.turno, lineBreak: false }); gx += gCols.turno;
-                        doc.text(g.pos || '---', gx, curY, { width: gCols.pos, lineBreak: false, ellipsis: true }); gx += gCols.pos;
-                        doc.text(g.descripcion || '---', gx, curY, { width: gCols.descripcion, lineBreak: false, ellipsis: true }); gx += gCols.descripcion;
-                        doc.text(formatVal(g.monto), gx, curY, { align: 'right', width: gCols.monto, lineBreak: false });
-                    } else if (i === 0 && gastosList.length === 0) {
-                        doc.fillColor('#94a3b8').text('Sin gastos registrados', leftColX, curY, { width: colW });
-                        doc.fillColor('#000000');
-                    }
-
-                    // Fila Remesa
-                    if (i < remesasList.length) {
-                        const r = remesasList[i];
-                        let rx = rightColX;
-                        doc.text(r.fecha || '---', rx, curY, { width: rCols.fecha, lineBreak: false }); rx += rCols.fecha;
-                        doc.text(r.turno || '---', rx, curY, { width: rCols.turno, lineBreak: false }); rx += rCols.turno;
-                        doc.text(r.numero || '---', rx, curY, { width: rCols.numero, lineBreak: false }); rx += rCols.numero;
-                        doc.text(r.pos || '---', rx, curY, { width: rCols.pos, lineBreak: false, ellipsis: true }); rx += rCols.pos;
-                        doc.text(r.descripcion || '---', rx, curY, { width: rCols.descripcion, lineBreak: false, ellipsis: true }); rx += rCols.descripcion;
-                        doc.text(formatVal(r.monto), rx, curY, { align: 'right', width: rCols.monto, lineBreak: false });
-                    } else if (i === 0 && remesasList.length === 0) {
-                        doc.fillColor('#94a3b8').text('Sin remesas registradas', rightColX, curY, { width: colW });
-                        doc.fillColor('#000000');
-                    }
-
-                    curY += rowH;
-                }
-
-                // Línea de totales
-                if (curY > 520) {
-                    doc.addPage();
-                    curY = 30;
-                }
-                doc.moveTo(leftColX, curY).lineTo(leftColX + colW, curY).stroke('#94a3b8');
-                doc.moveTo(rightColX, curY).lineTo(rightColX + colW, curY).stroke('#94a3b8');
-                curY += 4;
-
-                doc.fontSize(6.5).font('Helvetica-Bold');
-                const totalGastos = gastosList.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
-                const totalRemesas = remesasList.reduce((acc, r) => acc + (parseFloat(r.monto) || 0), 0);
-
-                doc.text('TOTAL GASTOS', leftColX, curY, { width: colW - gCols.monto });
-                doc.text(formatVal(totalGastos), leftColX + colW - gCols.monto, curY, { align: 'right', width: gCols.monto });
-
-                doc.text('TOTAL REMESAS', rightColX, curY, { width: colW - rCols.monto });
-                doc.text(formatVal(totalRemesas), rightColX + colW - rCols.monto, curY, { align: 'right', width: rCols.monto });
+        for (let i = 0; i < maxRows; i++) {
+            if (curY > 510) {
+                doc.addPage();
+                drawHeader();
+                curY = drawDetailHeaders();
             }
 
-            doc.end();
-        } catch (err) { reject(err); }
-    });
+            const rowH = 10;
+            doc.fontSize(6).font('Helvetica').fillColor('#0f172a');
+
+            if (i < gastosList.length) {
+                const g = gastosList[i];
+                let gx = leftColX;
+                doc.text(g.fecha || '---', gx, curY, { width: gCols.fecha, lineBreak: false }); gx += gCols.fecha;
+                doc.text(String(g.turno || '---'), gx, curY, { width: gCols.turno, lineBreak: false }); gx += gCols.turno;
+                doc.text(g.pos || '---', gx, curY, { width: gCols.pos, lineBreak: false, ellipsis: true }); gx += gCols.pos;
+                doc.text(g.descripcion || '---', gx, curY, { width: gCols.descripcion, lineBreak: false, ellipsis: true }); gx += gCols.descripcion;
+                doc.text(reportPdfHelper.fmt(g.monto), gx, curY, { align: 'right', width: gCols.monto, lineBreak: false });
+            } else if (i === 0 && gastosList.length === 0) {
+                doc.fillColor('#94a3b8').text('Sin gastos registrados', leftColX, curY, { width: colW });
+            }
+
+            if (i < remesasList.length) {
+                const r = remesasList[i];
+                let rx = rightColX;
+                doc.text(r.fecha || '---', rx, curY, { width: rCols.fecha, lineBreak: false }); rx += rCols.fecha;
+                doc.text(String(r.turno || '---'), rx, curY, { width: rCols.turno, lineBreak: false }); rx += rCols.turno;
+                doc.text(String(r.numero || '---'), rx, curY, { width: rCols.numero, lineBreak: false }); rx += rCols.numero;
+                doc.text(r.pos || '---', rx, curY, { width: rCols.pos, lineBreak: false, ellipsis: true }); rx += rCols.pos;
+                doc.text(r.descripcion || '---', rx, curY, { width: rCols.descripcion, lineBreak: false, ellipsis: true }); rx += rCols.descripcion;
+                doc.text(reportPdfHelper.fmt(r.monto), rx, curY, { align: 'right', width: rCols.monto, lineBreak: false });
+            } else if (i === 0 && remesasList.length === 0) {
+                doc.fillColor('#94a3b8').text('Sin remesas registradas', rightColX, curY, { width: colW });
+            }
+
+            curY += rowH;
+        }
+
+        if (curY > 510) {
+            doc.addPage();
+            drawHeader();
+            curY = doc.y;
+        }
+
+        doc.moveTo(leftColX, curY).lineTo(leftColX + colW, curY).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        doc.moveTo(rightColX, curY).lineTo(rightColX + colW, curY).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        curY += 4;
+
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        const totalGastos = gastosList.reduce((acc, g) => acc + (parseFloat(g.monto) || 0), 0);
+        const totalRemesas = remesasList.reduce((acc, r) => acc + (parseFloat(r.monto) || 0), 0);
+
+        doc.text('TOTAL GASTOS', leftColX, curY, { width: colW - gCols.monto });
+        doc.text(reportPdfHelper.fmt(totalGastos), leftColX + colW - gCols.monto, curY, { align: 'right', width: gCols.monto });
+
+        doc.text('TOTAL REMESAS', rightColX, curY, { width: colW - rCols.monto });
+        doc.text(reportPdfHelper.fmt(totalRemesas), rightColX + colW - rCols.monto, curY, { align: 'right', width: rCols.monto });
+        doc.y = curY + 14;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, doc.y, items.length, 'Arqueos');
+    reportPdfHelper.renderPageNumbers(doc);
+    doc.end();
+    return await getBuffer();
 };
 
 /**
  * Generates a PDF buffer for Store Profitability Report (Informe de Ventas y Rentabilidad de Tienda)
  */
-const generateStoreProfitabilityPDF = (data) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, layout: 'landscape', size: 'LETTER', bufferPages: true });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => {
-                const range = doc.bufferedPageRange();
-                for (let i = range.start; i < range.start + range.count; i++) {
-                    doc.switchToPage(i);
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000');
-                    doc.text(`Página ${i + 1} de ${range.count}`, 30, 28, {
-                        align: 'right',
-                        width: 730
-                    });
-                }
-                resolve(Buffer.concat(buffers));
-            });
-            doc.on('error', (err) => reject(err));
+const generateStoreProfitabilityPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
-            const formatMoney = (val) => {
-                if (val === null || val === undefined || isNaN(val)) return '$ -';
-                return `$ ${parseFloat(val).toFixed(2)}`;
-            };
+    const periodText = (data.startDateFormatted && data.endDateFormatted)
+        ? `DEL ${data.startDateFormatted} AL ${data.endDateFormatted}`
+        : 'TODOS LOS REGISTROS';
+    const subtitle = data.branch_name ? `SUCURSAL: ${String(data.branch_name).toUpperCase()}` : null;
 
-            const fitText = (text, maxWidth) => {
-                const str = text || '';
-                if (doc.widthOfString(str) <= maxWidth) return str;
-                let truncated = str;
-                while (truncated.length > 0 && doc.widthOfString(truncated + '...') > maxWidth) {
-                    truncated = truncated.slice(0, -1);
-                }
-                return truncated + '...';
-            };
+    const startX = 30;
+    const totalWidth = 732;
+    const colWidths = {
+        codigo: 75,
+        descripcion: 165,
+        categoria: 100,
+        costo: 45,
+        precio: 45,
+        cant: 42,
+        rentabilidad: 88,
+        costoTot: 56,
+        ventas: 56,
+        ganancia: 60
+    };
 
-            const startX = 30;
-            const totalWidth = 730;
-            const colWidths = {
-                codigo: 75,
-                descripcion: 165,
-                categoria: 100,
-                costo: 45,
-                precio: 45,
-                cant: 42,
-                rentabilidad: 88,
-                costoTot: 55,
-                ventas: 55,
-                ganancia: 60
-            };
+    const drawHeader = () => {
+        reportPdfHelper.renderHeader(doc, comp, 'INFORME DE VENTAS Y RENTABILIDAD DE TIENDA', periodText, 'landscape', subtitle);
+    };
 
-            const drawPageHeader = () => {
-                const topY = 28;
-                doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000');
-                const titleStr = `INFORME DE VENTAS DESDE ${data.startDateFormatted} HASTA ${data.endDateFormatted}`;
-                doc.text(titleStr, startX, topY, { width: 550 });
+    const drawTableHeader = () => {
+        const tableTop = doc.y;
+        doc.rect(startX, tableTop, totalWidth, 14).fill('#f1f5f9');
+        doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+        let x = startX;
+        const headerY = tableTop + 3;
+        doc.text('CÓDIGO', x, headerY, { width: colWidths.codigo }); x += colWidths.codigo;
+        doc.text('DESCRIPCIÓN', x, headerY, { width: colWidths.descripcion }); x += colWidths.descripcion;
+        doc.text('CATEGORÍA', x, headerY, { width: colWidths.categoria }); x += colWidths.categoria;
+        doc.text('COSTO', x, headerY, { align: 'right', width: colWidths.costo }); x += colWidths.costo;
+        doc.text('PRECIO', x, headerY, { align: 'right', width: colWidths.precio }); x += colWidths.precio;
+        doc.text('CANT.', x, headerY, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
+        doc.text('RENTABILIDAD', x, headerY, { align: 'right', width: colWidths.rentabilidad }); x += colWidths.rentabilidad;
+        doc.text('COSTO TOT', x, headerY, { align: 'right', width: colWidths.costoTot }); x += colWidths.costoTot;
+        doc.text('VENTAS', x, headerY, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
+        doc.text('GANANCIA', x, headerY, { align: 'right', width: colWidths.ganancia });
 
-                if (data.branch_name) {
-                    doc.font('Helvetica').fontSize(8).fillColor('#475569');
-                    doc.text(`EMPRESA: ${data.company_name}   |   SUCURSAL: ${data.branch_name.toUpperCase()}`, startX, topY + 14);
-                }
+        doc.moveTo(startX, tableTop + 14).lineTo(startX + totalWidth, tableTop + 14).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        doc.y = tableTop + 18;
+    };
 
-                const tableTop = topY + 28;
-                doc.lineWidth(1).strokeColor('#000000');
-                doc.moveTo(startX, tableTop).lineTo(startX + totalWidth, tableTop).stroke();
+    drawHeader();
+    drawTableHeader();
 
-                doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000');
-                let x = startX;
-                const headerY = tableTop + 4;
-                doc.text('CODIGO', x, headerY); x += colWidths.codigo;
-                doc.text('DESCRIPCION', x, headerY); x += colWidths.descripcion;
-                doc.text('CATEGORIA', x, headerY); x += colWidths.categoria;
-                doc.text('COSTO', x, headerY, { align: 'right', width: colWidths.costo }); x += colWidths.costo;
-                doc.text('PRECIO', x, headerY, { align: 'right', width: colWidths.precio }); x += colWidths.precio;
-                doc.text('CANT.', x, headerY, { align: 'right', width: colWidths.cant }); x += colWidths.cant;
-                doc.text('RENTABILIDAD', x, headerY, { align: 'right', width: colWidths.rentabilidad }); x += colWidths.rentabilidad;
-                doc.text('COSTO TOT', x, headerY, { align: 'right', width: colWidths.costoTot }); x += colWidths.costoTot;
-                doc.text('VENTAS', x, headerY, { align: 'right', width: colWidths.ventas }); x += colWidths.ventas;
-                doc.text('GANANCIA', x, headerY, { align: 'right', width: colWidths.ganancia });
-
-                doc.moveTo(startX, tableTop + 16).lineTo(startX + totalWidth, tableTop + 16).stroke();
-                return tableTop + 20;
-            };
-
-            let currentY = drawPageHeader();
-
-            data.items.forEach((item) => {
-                if (currentY > 550) {
-                    doc.addPage();
-                    currentY = drawPageHeader();
-                }
-
-                doc.font('Helvetica').fontSize(7).fillColor('#000000');
-                let x = startX;
-
-                // CODIGO
-                doc.text(String(item.codigo || '---'), x, currentY, { width: colWidths.codigo - 4, truncate: true });
-                x += colWidths.codigo;
-
-                // DESCRIPCION
-                doc.text(fitText(String(item.descripcion || '').toUpperCase(), colWidths.descripcion - 4), x, currentY, { width: colWidths.descripcion - 4 });
-                x += colWidths.descripcion;
-
-                // CATEGORIA
-                doc.text(fitText(String(item.categoria || 'SIN CATEGORIA').toUpperCase(), colWidths.categoria - 4), x, currentY, { width: colWidths.categoria - 4 });
-                x += colWidths.categoria;
-
-                // COSTO
-                const costoStr = item.hasCost ? formatMoney(item.costo) : '$ -';
-                doc.text(costoStr, x, currentY, { align: 'right', width: colWidths.costo });
-                x += colWidths.costo;
-
-                // PRECIO
-                doc.text(formatMoney(item.precio), x, currentY, { align: 'right', width: colWidths.precio });
-                x += colWidths.precio;
-
-                // CANT.
-                doc.text(parseFloat(item.cantidad || 0).toFixed(2), x, currentY, { align: 'right', width: colWidths.cant });
-                x += colWidths.cant;
-
-                // RENTABILIDAD: "$ 0.70 | 66.52%"
-                let rentStr = '$ - | 0.00%';
-                if (item.hasCost) {
-                    const unitMarginStr = `$ ${parseFloat(item.rentabilidadUnitaria || 0).toFixed(2)}`;
-                    const pctStr = `${parseFloat(item.rentabilidadPorcentaje || 0).toFixed(2)}%`;
-                    rentStr = `${unitMarginStr} | ${pctStr}`;
-                }
-                doc.text(rentStr, x, currentY, { align: 'right', width: colWidths.rentabilidad });
-                x += colWidths.rentabilidad;
-
-                // COSTO TOT
-                const costoTotStr = item.hasCost ? formatMoney(item.costoTotal) : '$ -';
-                doc.text(costoTotStr, x, currentY, { align: 'right', width: colWidths.costoTot });
-                x += colWidths.costoTot;
-
-                // VENTAS
-                doc.text(formatMoney(item.totalVenta), x, currentY, { align: 'right', width: colWidths.ventas });
-                x += colWidths.ventas;
-
-                // GANANCIA
-                const gananciaStr = item.hasCost ? formatMoney(item.ganancia) : '$ -';
-                doc.text(gananciaStr, x, currentY, { align: 'right', width: colWidths.ganancia });
-
-                currentY += 10.5;
-            });
-
-            // Resumen de Totales Generales
-            if (currentY + 40 > 550) {
-                doc.addPage();
-                currentY = drawPageHeader();
-            }
-
-            currentY += 5;
-            doc.lineWidth(1).strokeColor('#000000');
-            doc.moveTo(startX, currentY).lineTo(startX + totalWidth, currentY).stroke();
-            currentY += 5;
-
-            doc.font('Helvetica-Bold').fontSize(8).fillColor('#000000');
-            doc.text('TOTALES GENERALES:', startX, currentY, { width: colWidths.codigo + colWidths.descripcion + colWidths.categoria });
-            
-            let xTot = startX + colWidths.codigo + colWidths.descripcion + colWidths.categoria + colWidths.costo + colWidths.precio;
-            // CANT TOTAL
-            doc.text(parseFloat(data.totals.cantidad || 0).toFixed(2), xTot, currentY, { align: 'right', width: colWidths.cant });
-            xTot += colWidths.cant;
-
-            // RENTABILIDAD TOTAL %
-            const totPct = `${parseFloat(data.totals.rentabilidadPorcentaje || 0).toFixed(2)}%`;
-            doc.text(totPct, xTot, currentY, { align: 'right', width: colWidths.rentabilidad });
-            xTot += colWidths.rentabilidad;
-
-            // COSTO TOTAL
-            doc.text(formatMoney(data.totals.costoTotal), xTot, currentY, { align: 'right', width: colWidths.costoTot });
-            xTot += colWidths.costoTot;
-
-            // VENTAS TOTAL
-            doc.text(formatMoney(data.totals.totalVenta), xTot, currentY, { align: 'right', width: colWidths.ventas });
-            xTot += colWidths.ventas;
-
-            // GANANCIA TOTAL
-            doc.text(formatMoney(data.totals.ganancia), xTot, currentY, { align: 'right', width: colWidths.ganancia });
-
-            currentY += 14;
-            doc.moveTo(startX, currentY).lineTo(startX + totalWidth, currentY).stroke();
-
-            doc.end();
-        } catch (err) {
-            reject(err);
+    const fitText = (text, maxWidth) => {
+        const str = text || '';
+        if (doc.widthOfString(str) <= maxWidth) return str;
+        let truncated = str;
+        while (truncated.length > 0 && doc.widthOfString(truncated + '...') > maxWidth) {
+            truncated = truncated.slice(0, -1);
         }
+        return truncated + '...';
+    };
+
+    const items = data.items || [];
+    items.forEach((item) => {
+        if (doc.y > 520) {
+            doc.addPage();
+            drawHeader();
+            drawTableHeader();
+        }
+
+        const currentY = doc.y;
+        doc.font('Helvetica').fontSize(6.8).fillColor('#0f172a');
+        let x = startX;
+
+        // CODIGO
+        doc.text(String(item.codigo || '---'), x, currentY, { width: colWidths.codigo - 4, lineBreak: false, ellipsis: true });
+        x += colWidths.codigo;
+
+        // DESCRIPCION
+        doc.text(fitText(String(item.descripcion || '').toUpperCase(), colWidths.descripcion - 4), x, currentY, { width: colWidths.descripcion - 4, lineBreak: false });
+        x += colWidths.descripcion;
+
+        // CATEGORIA
+        doc.text(fitText(String(item.categoria || 'SIN CATEGORÍA').toUpperCase(), colWidths.categoria - 4), x, currentY, { width: colWidths.categoria - 4, lineBreak: false });
+        x += colWidths.categoria;
+
+        // COSTO
+        const costoStr = item.hasCost ? reportPdfHelper.fmt(item.costo) : '$ -';
+        doc.text(costoStr, x, currentY, { align: 'right', width: colWidths.costo });
+        x += colWidths.costo;
+
+        // PRECIO
+        doc.text(reportPdfHelper.fmt(item.precio), x, currentY, { align: 'right', width: colWidths.precio });
+        x += colWidths.precio;
+
+        // CANT.
+        doc.text(parseFloat(item.cantidad || 0).toFixed(2), x, currentY, { align: 'right', width: colWidths.cant });
+        x += colWidths.cant;
+
+        // RENTABILIDAD: "$ 0.70 | 66.52%"
+        let rentStr = '$ - | 0.00%';
+        if (item.hasCost) {
+            const unitMarginStr = reportPdfHelper.fmt(item.rentabilidadUnitaria || 0);
+            const pctStr = `${parseFloat(item.rentabilidadPorcentaje || 0).toFixed(2)}%`;
+            rentStr = `${unitMarginStr} | ${pctStr}`;
+        }
+        doc.text(rentStr, x, currentY, { align: 'right', width: colWidths.rentabilidad });
+        x += colWidths.rentabilidad;
+
+        // COSTO TOT
+        const costoTotStr = item.hasCost ? reportPdfHelper.fmt(item.costoTotal) : '$ -';
+        doc.text(costoTotStr, x, currentY, { align: 'right', width: colWidths.costoTot });
+        x += colWidths.costoTot;
+
+        // VENTAS
+        doc.text(reportPdfHelper.fmt(item.totalVenta), x, currentY, { align: 'right', width: colWidths.ventas });
+        x += colWidths.ventas;
+
+        // GANANCIA
+        const gananciaStr = item.hasCost ? reportPdfHelper.fmt(item.ganancia) : '$ -';
+        doc.text(gananciaStr, x, currentY, { align: 'right', width: colWidths.ganancia });
+
+        doc.y = currentY + 11;
     });
+
+    // Resumen de Totales Generales
+    if (doc.y > 510) {
+        doc.addPage();
+        drawHeader();
+        drawTableHeader();
+    }
+
+    const currentY = doc.y + 4;
+    doc.moveTo(startX, currentY).lineTo(startX + totalWidth, currentY).lineWidth(1).strokeColor('#0f172a').stroke();
+
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a');
+    doc.text('TOTALES GENERALES:', startX, currentY + 3, { width: colWidths.codigo + colWidths.descripcion + colWidths.categoria });
+    
+    let xTot = startX + colWidths.codigo + colWidths.descripcion + colWidths.categoria + colWidths.costo + colWidths.precio;
+    // CANT TOTAL
+    doc.text(parseFloat(data.totals?.cantidad || 0).toFixed(2), xTot, currentY + 3, { align: 'right', width: colWidths.cant });
+    xTot += colWidths.cant;
+
+    // RENTABILIDAD TOTAL %
+    const totPct = `${parseFloat(data.totals?.rentabilidadPorcentaje || 0).toFixed(2)}%`;
+    doc.text(totPct, xTot, currentY + 3, { align: 'right', width: colWidths.rentabilidad });
+    xTot += colWidths.rentabilidad;
+
+    // COSTO TOTAL
+    doc.text(reportPdfHelper.fmt(data.totals?.costoTotal), xTot, currentY + 3, { align: 'right', width: colWidths.costoTot });
+    xTot += colWidths.costoTot;
+
+    // VENTAS TOTAL
+    doc.text(reportPdfHelper.fmt(data.totals?.totalVenta), xTot, currentY + 3, { align: 'right', width: colWidths.ventas });
+    xTot += colWidths.ventas;
+
+    // GANANCIA TOTAL
+    doc.text(reportPdfHelper.fmt(data.totals?.ganancia), xTot, currentY + 3, { align: 'right', width: colWidths.ganancia });
+
+    doc.moveTo(startX, currentY + 15).lineTo(startX + totalWidth, currentY + 15).lineWidth(1).strokeColor('#0f172a').stroke();
+    doc.y = currentY + 20;
+
+    reportPdfHelper.renderClosingFooter(doc, startX, doc.y, items.length, 'Productos');
+    reportPdfHelper.renderPageNumbers(doc);
+    doc.end();
+    return await getBuffer();
 };
 
 module.exports = {
@@ -4254,6 +4415,7 @@ module.exports = {
     generateCloseoutDetailPDF,
     generateFuelInventoryPDF,
     generateGalonajeVendidoPDF,
+    generateFuelSalesSummaryPDF,
     generatePlanillaPDF,
     generatePlanillaReciboPDF,
     generateArqueosReportPDF
