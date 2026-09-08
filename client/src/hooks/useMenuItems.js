@@ -129,6 +129,39 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar reportes de inventario (Valorización y Rotación)
+    const invReportsNode = Object.values(itemMap).find(i => 
+        (i.id === 60 || i.id === 'inventory-reports') ||
+        (i.children && i.children.some(c => c.path === '/inventario/reportes/stock'))
+    );
+
+    if (invReportsNode) {
+        if (!invReportsNode.children.some(c => c.path === '/inventario/reportes/valorizacion')) {
+            invReportsNode.children.push({
+                id: 'virtual-inventory-valuation',
+                label: 'Valorización y Márgenes',
+                path: '/inventario/reportes/valorizacion',
+                permission: 'view_stock_report',
+                permission_key: 'view_stock_report',
+                hideInMenu: false,
+                icon: iconMap.TrendingUp || iconMap.Circle,
+                children: []
+            });
+        }
+        if (!invReportsNode.children.some(c => c.path === '/inventario/reportes/rotacion')) {
+            invReportsNode.children.push({
+                id: 'virtual-inventory-turnover',
+                label: 'Rotación y Obsolescencia',
+                path: '/inventario/reportes/rotacion',
+                permission: 'view_stock_report',
+                permission_key: 'view_stock_report',
+                hideInMenu: false,
+                icon: iconMap.Clock || iconMap.Circle,
+                children: []
+            });
+        }
+    }
+
     return roots;
 }
 

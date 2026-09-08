@@ -1042,10 +1042,259 @@ const getKardexReport = async (req, res) => {
     }
 };
 
+const getInventoryValuationReport = async (req, res) => {
+    try {
+        const { branch_id, category_ids, as_of, only_in_stock } = req.query;
+        const company_id = req.company_id;
+
+        if (!branch_id) {
+            return res.status(400).json({ message: 'La sucursal es requerida' });
+        }
+
+        const [companyRows] = await pool.query('SELECT razon_social as nombre, nit, nrc FROM companies WHERE id = ?', [company_id]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+
+        if (!companyRows.length || !branchRows.length) {
+            return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
+        }
+
+        const company = companyRows[0];
+        const branch = branchRows[0];
+
+        let query = `
+            SELECT 
+                p.id,
+                p.codigo,
+                p.nombre,
+                c.name as categoria,
+                COALESCE(i.stock, 0) as stock,
+                p.costo,
+                COALESCE(pbp.precio_unitario, 0) as precio_venta
+            FROM products p
+            LEFT JOIN inventory i ON p.id = i.product_id AND i.branch_id = ?
+            LEFT JOIN product_categories c ON p.category_id = c.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
+            JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+            WHERE p.company_id = ? AND p.status = 'activo'
+        `;
+        const params = [branch_id, branch_id, branch_id, company_id];
+
+        if (category_ids) {
+            const ids = category_ids.split(',').map(id => parseInt(id)).filter(Boolean);
+            if (ids.length > 0) {
+                query += ` AND p.category_id IN (${ids.map(() => '?').join(',')})`;
+                params.push(...ids);
+            }
+        }
+
+        if (only_in_stock === 'true' || only_in_stock === true) {
+            query += ` AND COALESCE(i.stock, 0) > 0`;
+        }
+
+        query += ` ORDER BY c.name ASC, p.nombre ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        const reportData = {
+            company_id,
+            company,
+            branch_name: branch.nombre,
+            as_of: as_of || null,
+            products: rows
+        };
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Valorizacion',
+                    columns: [
+                        { header: 'Código', key: 'codigo', width: 14 },
+                        { header: 'Producto', key: 'nombre', width: 35 },
+                        { header: 'Categoría', key: 'categoria', width: 20 },
+                        { header: 'Stock', key: 'stock', width: 12 },
+                        { header: 'Costo Unit.', key: 'costo', width: 14 },
+                        { header: 'Precio Venta', key: 'precio_venta', width: 14 },
+                        { header: 'Valor Costo', key: 'valor_costo', width: 16 },
+                        { header: 'Valor Venta', key: 'valor_venta', width: 16 },
+                        { header: 'Margen ($)', key: 'margen_monto', width: 16 },
+                        { header: 'Margen (%)', key: 'margen_pct', width: 14 }
+                    ],
+                    data: rows.map(r => {
+                        const stock = parseFloat(r.stock || 0);
+                        const costo = parseFloat(r.costo || 0);
+                        const precio = parseFloat(r.precio_venta || 0);
+                        const vCosto = stock * costo;
+                        const vVenta = stock * precio;
+                        const margen = vVenta - vCosto;
+                        const margenPct = vVenta > 0 ? (margen / vVenta) * 100 : 0;
+                        return {
+                            codigo: r.codigo || 'S/C',
+                            nombre: r.nombre,
+                            categoria: r.categoria || 'GENERAL',
+                            stock: stock.toFixed(2),
+                            costo: costo.toFixed(2),
+                            precio_venta: precio.toFixed(2),
+                            valor_costo: vCosto.toFixed(2),
+                            valor_venta: vVenta.toFixed(2),
+                            margen_monto: margen.toFixed(2),
+                            margen_pct: `${margenPct.toFixed(1)}%`
+                        };
+                    })
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'reporte-valorizacion-inventario.xlsx');
+        }
+
+        const pdfBuffer = await pdfService.generateInventoryValuationPDF(reportData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename=reporte-valorizacion.pdf');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[InventoryValuationReport] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al generar el reporte de valorización' });
+    }
+};
+
+const getInventoryTurnoverReport = async (req, res) => {
+    try {
+        const { branch_id, category_ids, days_inactive, only_stagnant } = req.query;
+        const company_id = req.company_id;
+
+        if (!branch_id) {
+            return res.status(400).json({ message: 'La sucursal es requerida' });
+        }
+
+        const [companyRows] = await pool.query('SELECT razon_social as nombre, nit, nrc FROM companies WHERE id = ?', [company_id]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+
+        if (!companyRows.length || !branchRows.length) {
+            return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
+        }
+
+        const company = companyRows[0];
+        const branch = branchRows[0];
+
+        let query = `
+            SELECT 
+                p.id,
+                p.codigo,
+                p.nombre,
+                c.name as categoria,
+                COALESCE(i.stock, 0) as stock,
+                p.costo,
+                lm.ultimo_movimiento,
+                DATEDIFF(NOW(), COALESCE(lm.ultimo_movimiento, p.created_at)) as dias_inactivo
+            FROM products p
+            LEFT JOIN inventory i ON p.id = i.product_id AND i.branch_id = ?
+            LEFT JOIN product_categories c ON p.category_id = c.id
+            JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
+            LEFT JOIN (
+                SELECT product_id, MAX(created_at) as ultimo_movimiento
+                FROM inventory_movements
+                WHERE branch_id = ?
+                GROUP BY product_id
+            ) lm ON p.id = lm.product_id
+            WHERE p.company_id = ? AND p.status = 'activo'
+        `;
+        const params = [branch_id, branch_id, branch_id, company_id];
+
+        if (category_ids) {
+            const ids = category_ids.split(',').map(id => parseInt(id)).filter(Boolean);
+            if (ids.length > 0) {
+                query += ` AND p.category_id IN (${ids.map(() => '?').join(',')})`;
+                params.push(...ids);
+            }
+        }
+
+        const minDays = parseInt(days_inactive || 0, 10);
+        if (minDays > 0) {
+            query += ` AND DATEDIFF(NOW(), COALESCE(lm.ultimo_movimiento, p.created_at)) >= ?`;
+            params.push(minDays);
+        }
+
+        if (only_stagnant === 'true' || only_stagnant === true) {
+            query += ` AND COALESCE(i.stock, 0) > 0`;
+        }
+
+        query += ` ORDER BY dias_inactivo DESC, p.nombre ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        let criteriaText = '';
+        if (minDays > 0) {
+            criteriaText = `PRODUCTOS CON MÁS DE ${minDays} DÍAS SIN MOVIMIENTO`;
+        } else {
+            criteriaText = `ANÁLISIS GENERAL DE ROTACIÓN E INACTIVIDAD`;
+        }
+
+        const reportData = {
+            company_id,
+            company,
+            branch_name: branch.nombre,
+            criteriaText,
+            products: rows
+        };
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Rotacion',
+                    columns: [
+                        { header: 'Código', key: 'codigo', width: 14 },
+                        { header: 'Producto', key: 'nombre', width: 35 },
+                        { header: 'Categoría', key: 'categoria', width: 20 },
+                        { header: 'Stock Actual', key: 'stock', width: 14 },
+                        { header: 'Costo Unit.', key: 'costo', width: 14 },
+                        { header: 'Capital Inmovilizado', key: 'inmovilizado', width: 18 },
+                        { header: 'Último Movimiento', key: 'ultimo_mov', width: 18 },
+                        { header: 'Días Inactivo', key: 'dias_inactivo', width: 14 },
+                        { header: 'Estado', key: 'estado', width: 16 }
+                    ],
+                    data: rows.map(r => {
+                        const stock = parseFloat(r.stock || 0);
+                        const costo = parseFloat(r.costo || 0);
+                        const dias = parseInt(r.dias_inactivo || 0, 10);
+                        let estado = 'Normal';
+                        if (dias >= 120) estado = 'Crítico (+120d)';
+                        else if (dias >= 90) estado = 'Obsoleto (90d)';
+                        else if (dias >= 60) estado = 'Lento (60d)';
+                        else if (dias >= 30) estado = 'Bajo (30d)';
+
+                        return {
+                            codigo: r.codigo || 'S/C',
+                            nombre: r.nombre,
+                            categoria: r.categoria || 'GENERAL',
+                            stock: stock.toFixed(2),
+                            costo: costo.toFixed(2),
+                            inmovilizado: (stock * costo).toFixed(2),
+                            ultimo_mov: r.ultimo_movimiento ? reportPdfHelper.formatDate(r.ultimo_movimiento) : 'Sin Mov.',
+                            dias_inactivo: dias,
+                            estado
+                        };
+                    })
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'reporte-rotacion-inventario.xlsx');
+        }
+
+        const pdfBuffer = await pdfService.generateInventoryTurnoverPDF(reportData);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename=reporte-rotacion.pdf');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[InventoryTurnoverReport] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al generar el reporte de rotación' });
+    }
+};
+
 module.exports = { 
     getInventory, 
     getKardex, 
     getKardexReport,
+    getInventoryValuationReport,
+    getInventoryTurnoverReport,
     createTransfer, 
     getTransfers, 
     deleteTransfer, 

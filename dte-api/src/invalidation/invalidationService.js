@@ -57,9 +57,16 @@ async function invalidateDTE(payload, companyId, user) {
     const pos = posRows.length > 0 ? posRows[0] : { codigo: null };
 
     // 2. Generar JSON de Invalidación (hora actual en zona de El Salvador UTC-6)
-    const localNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/El_Salvador" }));
-    const fecEmi = localNow.toISOString().split('T')[0];
-    const horEmi = localNow.toTimeString().split(' ')[0]; // HH:MM:SS
+    const localNow = new Date();
+    const horEmi = localNow.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador', hour12: false }); // HH:MM:SS
+    const svDateStr = localNow.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' }); // YYYY-MM-DD
+
+    // En Hacienda, la regla de validación de invalidación exige que identificacion.fecEmi coincida con
+    // la fecha del DTE original (fecha de emisión/transmisión). Si se envía la fecha del momento de anulación,
+    // Hacienda rechaza el evento con: [identificacion.fecEmi] DATO NO COINCIDE CON DTE (códigoMsg: 027).
+    const fecEmi = dteJson?.identificacion?.fecEmi
+        || (dte.fh_procesamiento ? new Date(dte.fh_procesamiento).toISOString().split('T')[0] : null)
+        || svDateStr;
 
     const emisorOrig = dteJson?.emisor || {};
     const receptor = dteJson?.receptor || {};
@@ -165,7 +172,7 @@ async function invalidateDTE(payload, companyId, user) {
             codigoGeneracion: dte.codigo_generacion,
             selloRecibido: dte.sello_recepcion,
             numeroControl: dte.numero_control,
-            fecEmi: dteJson.identificacion.fecEmi,
+            fecEmi: fecEmi,
             codigoGeneracionR: codigoGeneracionRFinal,
             tipoDocumento: receptorTipoDoc,
             numDocumento: receptorNumDoc,
@@ -252,7 +259,7 @@ async function invalidateDTE(payload, companyId, user) {
         if (status === 'PROCESADO') {
             await pool.query('UPDATE dtes SET status = "INVALIDADO" WHERE id = ?', [dte.id]);
             if (dte.venta_id) {
-                await pool.query('UPDATE sales_headers SET estado = "anulado" WHERE id = ?', [dte.venta_id]);
+                await pool.query('UPDATE sales_headers SET estado = "invalidado" WHERE id = ?', [dte.venta_id]);
             }
             await pool.query(
                 'INSERT INTO dte_events (dte_id, event_type, description) VALUES (?, "INVALIDATED", ?)',

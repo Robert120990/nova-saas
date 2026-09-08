@@ -76,6 +76,8 @@ import ProviderStatement from './pages/ProviderStatement';
 import AddProviderPayment from './pages/AddProviderPayment';
 import InventoryStockReport from './pages/InventoryStockReport';
 import InventoryMovementsReport from './pages/InventoryMovementsReport';
+import InventoryValuationReport from './pages/InventoryValuationReport';
+import InventoryTurnoverReport from './pages/InventoryTurnoverReport';
 import CustomerBalancesReport from './pages/CustomerBalancesReport';
 import ProviderBalancesReport from './pages/ProviderBalancesReport';
 import FuelPrices from './pages/FuelPrices';
@@ -243,6 +245,8 @@ function App() {
                         <Route path="/inventario/kardex" element={<Kardex />} />
                         <Route path="/inventario/reportes/stock" element={<InventoryStockReport />} />
                         <Route path="/inventario/reportes/movimientos" element={<InventoryMovementsReport />} />
+                        <Route path="/inventario/reportes/valorizacion" element={<InventoryValuationReport />} />
+                        <Route path="/inventario/reportes/rotacion" element={<InventoryTurnoverReport />} />
 
                         {/* Libros de IVA */}
                         <Route path="/iva/compras" element={<VatBookPurchases />} />

@@ -2337,8 +2337,8 @@ const voidSale = async (req, res) => {
 
         const sale = sales[0];
 
-        if (sale.estado === 'anulado') {
-            return res.status(400).json({ message: 'La venta ya se encuentra anulada' });
+        if (sale.estado === 'anulado' || sale.estado === 'invalidado') {
+            return res.status(400).json({ message: 'La venta ya se encuentra anulada o invalidada' });
         }
 
         // 2. Validación de Tiempo para DTE (Normativa V2.0 MH / Infile)
@@ -2397,7 +2397,10 @@ const voidSale = async (req, res) => {
                 }
             }
 
-            if (!isWithinLimit) {
+            const isSuperAdmin = req.user?.role === 'SuperAdmin' || 
+                                 (typeof req.user?.role === 'string' && req.user.role.toLowerCase() === 'superadmin');
+
+            if (!isWithinLimit && !isSuperAdmin) {
                 return res.status(400).json({ message: limitMessage });
             }
 
@@ -2428,7 +2431,7 @@ const voidSale = async (req, res) => {
 
         // 4. Actualizar estado de la venta INMEDIATAMENTE (fuera de transacción)
         //    para evitar el escenario donde el DTE queda invalidado pero estado = ""
-        await pool.query('UPDATE sales_headers SET estado = "anulado" WHERE id = ?', [id]);
+        await pool.query('UPDATE sales_headers SET estado = "invalidado" WHERE id = ?', [id]);
 
         // 5. Restaurar Stock e Inventario (en su propia transacción)
         //    Si falla, el estado ya quedó como "anulado" y el usuario puede corregir stock manualmente

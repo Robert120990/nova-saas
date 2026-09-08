@@ -895,6 +895,276 @@ const generateKardexReportPDF = async (data) => {
 };
 
 /**
+ * Generates a PDF buffer for Inventory Valuation & Margins Report
+ */
+const generateInventoryValuationPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+    const title = 'REPORTE DE VALORIZACIÓN DE INVENTARIO Y MÁRGENES';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = data.as_of ? `FECHA DE CORTE: ${reportPdfHelper.formatDate(data.as_of)}` : `AL ${reportPdfHelper.formatDate(new Date())}`;
+
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = {
+        codigo: 62,
+        producto: 170,
+        categoria: 90,
+        stock: 55,
+        costo: 55,
+        precio: 55,
+        valorCosto: 75,
+        valorVenta: 80,
+        margen: 90
+    };
+    const colX = {
+        codigo: startX,
+        producto: startX + colWidths.codigo,
+        categoria: startX + colWidths.codigo + colWidths.producto,
+        stock: startX + colWidths.codigo + colWidths.producto + colWidths.categoria,
+        costo: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock,
+        precio: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo,
+        valorCosto: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.precio,
+        valorVenta: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.precio + colWidths.valorCosto,
+        margen: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.precio + colWidths.valorCosto + colWidths.valorVenta
+    };
+
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CÓDIGO', colX.codigo + 2, y + 3, { width: colWidths.codigo - 4 });
+        doc.text('PRODUCTO', colX.producto + 2, y + 3, { width: colWidths.producto - 4 });
+        doc.text('CATEGORÍA', colX.categoria + 2, y + 3, { width: colWidths.categoria - 4 });
+        doc.text('STOCK', colX.stock, y + 3, { width: colWidths.stock - 4, align: 'right' });
+        doc.text('COSTO UNIT.', colX.costo, y + 3, { width: colWidths.costo - 4, align: 'right' });
+        doc.text('P. VENTA', colX.precio, y + 3, { width: colWidths.precio - 4, align: 'right' });
+        doc.text('VALOR COSTO', colX.valorCosto, y + 3, { width: colWidths.valorCosto - 4, align: 'right' });
+        doc.text('VALOR VENTA', colX.valorVenta, y + 3, { width: colWidths.valorVenta - 4, align: 'right' });
+        doc.text('MARGEN BRUTO (%)', colX.margen, y + 3, { width: colWidths.margen - 4, align: 'right' });
+        return y + 17;
+    };
+
+    currentY = drawTableHeader(currentY);
+
+    let grandTotalStock = 0;
+    let grandTotalCost = 0;
+    let grandTotalRevenue = 0;
+    const products = data.products || [];
+
+    products.forEach((p, idx) => {
+        if (currentY > 530) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        const stock = parseFloat(p.stock || 0);
+        const costo = parseFloat(p.costo || 0);
+        const precio = parseFloat(p.precio_venta || 0);
+        const valorCosto = stock * costo;
+        const valorVenta = stock * precio;
+        const margen = valorVenta - valorCosto;
+        const margenPct = valorVenta > 0 ? (margen / valorVenta) * 100 : 0;
+
+        grandTotalStock += stock;
+        grandTotalCost += valorCosto;
+        grandTotalRevenue += valorVenta;
+
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 1, contentWidth, 12).fill('#f8fafc');
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#334155');
+        doc.text(p.codigo || 'S/C', colX.codigo + 2, currentY, { width: colWidths.codigo - 4, lineBreak: false });
+        doc.text(p.nombre || '—', colX.producto + 2, currentY, { width: colWidths.producto - 4, truncate: true, lineBreak: false });
+        doc.text(p.categoria || 'GENERAL', colX.categoria + 2, currentY, { width: colWidths.categoria - 4, truncate: true, lineBreak: false });
+        doc.text(stock.toFixed(2), colX.stock, currentY, { width: colWidths.stock - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(costo), colX.costo, currentY, { width: colWidths.costo - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(precio), colX.precio, currentY, { width: colWidths.precio - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(valorCosto), colX.valorCosto, currentY, { width: colWidths.valorCosto - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(valorVenta), colX.valorVenta, currentY, { width: colWidths.valorVenta - 4, align: 'right', lineBreak: false });
+
+        // Margen con color según sea positivo o negativo
+        const margenColor = margen >= 0 ? '#047857' : '#b91c1c';
+        doc.font('Helvetica-Bold').fillColor(margenColor);
+        doc.text(`${reportPdfHelper.fmt(margen)} (${margenPct.toFixed(1)}%)`, colX.margen, currentY, { width: colWidths.margen - 4, align: 'right', lineBreak: false });
+
+        currentY += 12;
+    });
+
+    if (products.length === 0) {
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#94a3b8');
+        doc.text('No se encontraron productos registrados para los filtros seleccionados.', startX, currentY + 10, { width: contentWidth, align: 'center' });
+        currentY += 30;
+    }
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    const grandTotalMargin = grandTotalRevenue - grandTotalCost;
+    const grandTotalMarginPct = grandTotalRevenue > 0 ? (grandTotalMargin / grandTotalRevenue) * 100 : 0;
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 5;
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTAL UNIDADES: ${grandTotalStock.toFixed(2)}`, startX, currentY, { width: 140, lineBreak: false });
+    doc.text(`INVERSIÓN AL COSTO: ${reportPdfHelper.fmt(grandTotalCost)}`, startX + 150, currentY, { width: 180, lineBreak: false });
+    doc.text(`VENTA POTENCIAL: ${reportPdfHelper.fmt(grandTotalRevenue)}`, startX + 340, currentY, { width: 180, lineBreak: false });
+    doc.text(`UTILIDAD: ${reportPdfHelper.fmt(grandTotalMargin)} (${grandTotalMarginPct.toFixed(1)}%)`, startX + 530, currentY, { width: 202, align: 'right', lineBreak: false });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, products.length, 'Productos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
+/**
+ * Generates a PDF buffer for Inventory Turnover & Stagnant Stock Report
+ */
+const generateInventoryTurnoverPDF = async (data) => {
+    const comp = await resolveCompanyInfo(data);
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+    const title = 'REPORTE DE ROTACIÓN DE INVENTARIO Y OBSOLESCENCIA';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+    const periodText = data.criteriaText ? data.criteriaText.toUpperCase() : `CORTE AL ${reportPdfHelper.formatDate(new Date())}`;
+
+    let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+
+    const startX = 30;
+    const contentWidth = 732;
+    const colWidths = {
+        codigo: 70,
+        producto: 195,
+        categoria: 90,
+        stock: 55,
+        costo: 55,
+        inmovilizado: 77,
+        ultimoMov: 72,
+        diasInact: 48,
+        estado: 70
+    };
+    const colX = {
+        codigo: startX,
+        producto: startX + colWidths.codigo,
+        categoria: startX + colWidths.codigo + colWidths.producto,
+        stock: startX + colWidths.codigo + colWidths.producto + colWidths.categoria,
+        costo: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock,
+        inmovilizado: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo,
+        ultimoMov: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.inmovilizado,
+        diasInact: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.inmovilizado + colWidths.ultimoMov,
+        estado: startX + colWidths.codigo + colWidths.producto + colWidths.categoria + colWidths.stock + colWidths.costo + colWidths.inmovilizado + colWidths.ultimoMov + colWidths.diasInact
+    };
+
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CÓDIGO', colX.codigo + 2, y + 3, { width: colWidths.codigo - 4 });
+        doc.text('PRODUCTO', colX.producto + 2, y + 3, { width: colWidths.producto - 4 });
+        doc.text('CATEGORÍA', colX.categoria + 2, y + 3, { width: colWidths.categoria - 4 });
+        doc.text('STOCK', colX.stock, y + 3, { width: colWidths.stock - 4, align: 'right' });
+        doc.text('COSTO UNIT.', colX.costo, y + 3, { width: colWidths.costo - 4, align: 'right' });
+        doc.text('CAPITAL INMOV.', colX.inmovilizado, y + 3, { width: colWidths.inmovilizado - 4, align: 'right' });
+        doc.text('ÚLTIMO MOV.', colX.ultimoMov, y + 3, { width: colWidths.ultimoMov - 4, align: 'center' });
+        doc.text('DÍAS INACT.', colX.diasInact, y + 3, { width: colWidths.diasInact - 4, align: 'center' });
+        doc.text('ESTADO', colX.estado, y + 3, { width: colWidths.estado - 4, align: 'center' });
+        return y + 17;
+    };
+
+    currentY = drawTableHeader(currentY);
+
+    let grandTotalStock = 0;
+    let grandTotalInmovilizado = 0;
+    const products = data.products || [];
+
+    products.forEach((p, idx) => {
+        if (currentY > 530) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        const stock = parseFloat(p.stock || 0);
+        const costo = parseFloat(p.costo || 0);
+        const inmovilizado = stock * costo;
+        const dias = parseInt(p.dias_inactivo || 0, 10);
+        const ultimoMovStr = p.ultimo_movimiento ? reportPdfHelper.formatDate(p.ultimo_movimiento) : 'SIN MOV.';
+
+        grandTotalStock += stock;
+        grandTotalInmovilizado += inmovilizado;
+
+        if (idx % 2 === 1) {
+            doc.rect(startX, currentY - 1, contentWidth, 12).fill('#f8fafc');
+        }
+
+        let estadoColor = '#334155';
+        let estadoLabel = 'NORMAL';
+        if (dias >= 120) {
+            estadoColor = '#b91c1c';
+            estadoLabel = 'CRÍTICO (+120D)';
+        } else if (dias >= 90) {
+            estadoColor = '#c2410c';
+            estadoLabel = 'OBSOLETO (90D)';
+        } else if (dias >= 60) {
+            estadoColor = '#b45309';
+            estadoLabel = 'LENTO (60D)';
+        } else if (dias >= 30) {
+            estadoColor = '#475569';
+            estadoLabel = 'BAJO (30D)';
+        }
+
+        doc.fontSize(6.8).font('Helvetica').fillColor('#334155');
+        doc.text(p.codigo || 'S/C', colX.codigo + 2, currentY, { width: colWidths.codigo - 4, lineBreak: false });
+        doc.text(p.nombre || '—', colX.producto + 2, currentY, { width: colWidths.producto - 4, truncate: true, lineBreak: false });
+        doc.text(p.categoria || 'GENERAL', colX.categoria + 2, currentY, { width: colWidths.categoria - 4, truncate: true, lineBreak: false });
+        doc.text(stock.toFixed(2), colX.stock, currentY, { width: colWidths.stock - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(costo), colX.costo, currentY, { width: colWidths.costo - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(inmovilizado), colX.inmovilizado, currentY, { width: colWidths.inmovilizado - 4, align: 'right', lineBreak: false });
+        doc.text(ultimoMovStr, colX.ultimoMov, currentY, { width: colWidths.ultimoMov - 4, align: 'center', lineBreak: false });
+        doc.text(`${dias} d`, colX.diasInact, currentY, { width: colWidths.diasInact - 4, align: 'center', lineBreak: false });
+
+        doc.font('Helvetica-Bold').fillColor(estadoColor);
+        doc.text(estadoLabel, colX.estado, currentY, { width: colWidths.estado - 4, align: 'center', lineBreak: false });
+
+        currentY += 12;
+    });
+
+    if (products.length === 0) {
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#94a3b8');
+        doc.text('No se encontraron productos que coincidan con los criterios de inactividad.', startX, currentY + 10, { width: contentWidth, align: 'center' });
+        currentY += 30;
+    }
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+    currentY += 5;
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTAL PRODUCTOS: ${products.length}`, startX, currentY, { width: 150, lineBreak: false });
+    doc.text(`TOTAL UNIDADES ESTANCADAS: ${grandTotalStock.toFixed(2)}`, startX + 170, currentY, { width: 230, lineBreak: false });
+    doc.text(`TOTAL CAPITAL INMOVILIZADO: ${reportPdfHelper.fmt(grandTotalInmovilizado)}`, startX + 420, currentY, { width: 312, align: 'right', lineBreak: false });
+    currentY += 18;
+
+    currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, products.length, 'Productos');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
+/**
  * Generates a PDF for Customer Balances Report
  */
 const generateCustomerBalancesPDF = async (data) => {
@@ -5410,6 +5680,8 @@ module.exports = {
     generateStockReportPDF,
     generateMovementsReportPDF,
     generateKardexReportPDF,
+    generateInventoryValuationPDF,
+    generateInventoryTurnoverPDF,
     generateCustomerBalancesPDF,
     generateProviderBalancesPDF,
     generatePaymentReceiptPDF,

@@ -261,6 +261,8 @@ router.get('/inventory/stock-report', inventoryController.getInventoryStockRepor
 router.get('/inventory/movements-report', inventoryController.getInventoryMovementsReport);
 router.get('/inventory/kardex', inventoryController.getKardex);
 router.get('/inventory/kardex-report', inventoryController.getKardexReport);
+router.get('/inventory/valuation-report', inventoryController.getInventoryValuationReport);
+router.get('/inventory/turnover-report', inventoryController.getInventoryTurnoverReport);
 router.get('/inventory/transfers', inventoryController.getTransfers);
 router.get('/inventory/transfers/:id', inventoryController.getTransferDetail);
 router.post('/inventory/transfers', inventoryController.createTransfer);

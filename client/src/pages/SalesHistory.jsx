@@ -14,6 +14,7 @@ import {
 import Money from '../components/ui/Money';
 import SaleDetailModal from '../components/sales/SaleDetailModal';
 import DteStatsModal from '../components/sales/DteStatsModal';
+import { useAuth } from '../context/AuthContext';
 
 const formatDateTime = (dateStr) => {
     if (!dateStr || dateStr === 'N/A') return 'N/A 00:00';
@@ -48,6 +49,14 @@ const formatDUI = (value) => {
 };
 
 const SalesHistory = () => {
+    const { user } = useAuth();
+    const currentUser = user || (() => {
+        try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
+    })();
+    const isSuperAdmin = currentUser?.role === 'SuperAdmin' || 
+                         currentUser?.role?.toLowerCase() === 'superadmin' || 
+                         currentUser?.role_name === 'SuperAdmin';
+
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -441,17 +450,57 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     };
 
     const isVoidableDTE = (sale) => {
+        // SuperAdmin siempre tiene habilitada la opción de anulación
+        if (isSuperAdmin) return true;
+
         if (!sale.codigo_generacion) return true; // Si no es DTE oficial, es anulable siempre
-        // Para DTE oficial, límite de 24 horas
-        const emissionDateStr = sale.fecha_emision.substring(0, 10);
-        const emissionDateTime = new Date(`${emissionDateStr}T${sale.hora_emision}`);
+        if (!sale.fecha_emision) return true;
+
+        const emissionDateStr = String(sale.fecha_emision).substring(0, 10);
+        const tipoDte = String(sale.tipo_documento || '01');
+        const emiDateParts = emissionDateStr.split('-');
+        const emiYear = parseInt(emiDateParts[0], 10);
+        const emiMonth = parseInt(emiDateParts[1], 10) - 1; // 0-indexed
+        const emiDay = parseInt(emiDateParts[2], 10);
+
         const now = new Date();
-        const diffHours = (now - emissionDateTime) / (1000 * 60 * 60);
-        
-        const isFactura = sale.tipo_documento === '01' || (sale.tipo_documento_name && sale.tipo_documento_name.toLowerCase().includes('factura'));
-        const limitHours = isFactura ? (90 * 24) : 24;
-        
-        return diffHours <= limitHours;
+
+        // Grupo 1: CCF (03), NC (05), ND (06), Retención (07), Liquidación (08), Remisión (04), Retorno (18), Op. Esp (17)
+        // -> 10 Días Hábiles del mes siguiente al periodo tributario de emisión (Normativa oficial MH)
+        const group1Types = ['03', '04', '05', '06', '07', '08', '17', '18'];
+
+        if (group1Types.includes(tipoDte)) {
+            let nextMonth = emiMonth + 1;
+            let year = emiYear;
+            if (nextMonth > 11) {
+                nextMonth = 0;
+                year += 1;
+            }
+
+            let businessDaysCount = 0;
+            let limitDate = null;
+            for (let day = 1; day <= 31; day++) {
+                const d = new Date(year, nextMonth, day);
+                if (d.getMonth() !== nextMonth) break;
+                const dayOfWeek = d.getDay(); // 0 = Sun, 6 = Sat
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                    businessDaysCount++;
+                    if (businessDaysCount === 10) {
+                        limitDate = new Date(year, nextMonth, day, 23, 59, 59, 999);
+                        break;
+                    }
+                }
+            }
+
+            if (limitDate && now > limitDate) {
+                return false;
+            }
+            return true;
+        } else {
+            // Grupo 2 (Factura 01, FEX 11, FSE 14): Tres meses desde la fecha de emisión
+            const limitDate = new Date(emiYear, emiMonth + 3, emiDay, 23, 59, 59, 999);
+            return now <= limitDate;
+        }
     };
 
     return (
@@ -644,18 +693,30 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
 
                                                     <div className="h-px bg-slate-100 my-0.5 mx-1" />
 
-                                                    <button 
-                                                        onClick={() => { handleOpenVoidModal(sale); setMenuState(null); }} 
-                                                        disabled={sale.estado === 'anulado' || !isVoidableDTE(sale)}
-                                                        className={`flex items-center gap-2 w-full p-1.5 text-left rounded-xl transition-all group ${
-                                                            sale.estado === 'anulado' || !isVoidableDTE(sale) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-rose-50 text-rose-600'
-                                                        }`}
-                                                    >
-                                                        <div className={`p-1.5 rounded-lg group-hover:scale-110 transition-transform ${
-                                                            sale.estado === 'anulado' || !isVoidableDTE(sale) ? 'bg-slate-100 text-slate-400' : 'bg-rose-100 text-rose-600'
-                                                        }`}><Ban size={14} /></div>
-                                                        <span className="text-xs font-bold">Anular Operación</span>
-                                                    </button>
+                                                    {(() => {
+                                                        const isAlreadyVoided = sale.estado === 'anulado' || sale.estado === 'invalidado' || sale.dte_status === 'INVALIDADO';
+                                                        return (
+                                                            <button 
+                                                                onClick={() => { handleOpenVoidModal(sale); setMenuState(null); }} 
+                                                                disabled={isAlreadyVoided || !isVoidableDTE(sale)}
+                                                                title={
+                                                                    isAlreadyVoided 
+                                                                        ? 'Esta venta ya se encuentra anulada' 
+                                                                        : !isVoidableDTE(sale) 
+                                                                            ? 'Plazo legal de anulación/invalidación vencido según normativa MH' 
+                                                                            : 'Anular esta operación y generar evento de invalidación DTE'
+                                                                }
+                                                                className={`flex items-center gap-2 w-full p-1.5 text-left rounded-xl transition-all group ${
+                                                                    isAlreadyVoided || !isVoidableDTE(sale) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-rose-50 text-rose-600'
+                                                                }`}
+                                                            >
+                                                                <div className={`p-1.5 rounded-lg group-hover:scale-110 transition-transform ${
+                                                                    isAlreadyVoided || !isVoidableDTE(sale) ? 'bg-slate-100 text-slate-400' : 'bg-rose-100 text-rose-600'
+                                                                }`}><Ban size={14} /></div>
+                                                                <span className="text-xs font-bold">Anular Operación</span>
+                                                            </button>
+                                                        );
+                                                    })()}
 
                                                     <button onClick={() => { handlePrintTicket(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                         <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Printer size={14} /></div>
