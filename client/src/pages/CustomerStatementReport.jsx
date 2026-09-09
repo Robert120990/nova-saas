@@ -6,8 +6,6 @@ import {
     Calendar,
     User,
     FileText,
-    Wallet,
-    Fuel,
     Info,
     ArrowLeft
 } from 'lucide-react';
@@ -16,17 +14,19 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { getTodayString, getFirstDayOfMonth } from '../utils/dateUtils';
 
 const CustomerStatementReport = () => {
     const { user } = useAuth();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
+    const firstDayOfMonth = getFirstDayOfMonth();
 
     // States
     const [reportType, setReportType] = useState('credito'); // 'credito' | 'anticipado' | 'trupput'
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [selectedCustomerName, setSelectedCustomerName] = useState('');
-    const [startDate, setStartDate] = useState('');
+    const [startDate, setStartDate] = useState(firstDayOfMonth);
     const [endDate, setEndDate] = useState(today);
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
@@ -213,44 +213,41 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <FileText size={12} className="text-indigo-500" /> Modalidad de Cuenta
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1 bg-slate-100/80 p-1 rounded-xl">
                     <button
                         type="button"
                         onClick={() => handleTypeChange('credito')}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
+                        className={`py-2 px-1 rounded-lg font-bold text-[11px] uppercase tracking-wider transition-all text-center cursor-pointer ${
                             reportType === 'credito'
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
-                        <FileText size={14} />
-                        <span>Crédito</span>
+                        Crédito
                     </button>
 
                     <button
                         type="button"
                         onClick={() => handleTypeChange('anticipado')}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
+                        className={`py-2 px-1 rounded-lg font-bold text-[11px] uppercase tracking-wider transition-all text-center cursor-pointer ${
                             reportType === 'anticipado'
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
-                        <Wallet size={14} />
-                        <span>Anticipado</span>
+                        Anticipos
                     </button>
 
                     <button
                         type="button"
                         onClick={() => handleTypeChange('trupput')}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
+                        className={`py-2 px-1 rounded-lg font-bold text-[11px] uppercase tracking-wider transition-all text-center cursor-pointer ${
                             reportType === 'trupput'
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
-                        <Fuel size={14} />
-                        <span>Trupput</span>
+                        Trupput
                     </button>
                 </div>
             </div>
@@ -298,31 +295,67 @@ const CustomerStatementReport = () => {
                 />
             </div>
 
-            {/* Rango de Fechas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
-                    </label>
-                    <input 
-                        type="date"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                    />
-                </div>
+            {/* Fecha Inicio */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
+                </label>
+                <input 
+                    type="date"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                />
+            </div>
 
-                <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Fecha Fin
-                    </label>
-                    <input 
-                        type="date"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                    />
-                </div>
+            {/* Fecha Fin */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={12} className="text-indigo-500" /> Fecha Fin
+                </label>
+                <input 
+                    type="date"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                />
+            </div>
+
+            {/* Accesos Rápidos de Fecha */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStartDate(getFirstDayOfMonth());
+                        setEndDate(getTodayString());
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                >
+                    Este Mes
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        const now = new Date();
+                        const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                        setStartDate(getTodayString(prevMonthStart));
+                        setEndDate(getTodayString(prevMonthEnd));
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                >
+                    Mes Anterior
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                >
+                    Historial Completo
+                </button>
             </div>
 
             {/* Tarjeta Informativa */}
