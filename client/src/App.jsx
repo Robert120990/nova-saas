@@ -120,6 +120,7 @@ import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
 import FuelInventoryReport from './pages/FuelInventoryReport';
 import GalonajeVendidoReport from './pages/GalonajeVendidoReport';
 import GasRemesaDeliveries from './pages/GasRemesaDeliveries';
+import GasCouponLiquidation from './pages/GasCouponLiquidation';
 import SalesRemesaDeliveries from './pages/SalesRemesaDeliveries';
 import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
 import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
@@ -324,6 +325,7 @@ function App() {
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
                         <Route path="/gas-station/trupput" element={<GasTrupput />} />
                         <Route path="/gas-station/entrega-remesas" element={<GasRemesaDeliveries />} />
+                        <Route path="/gas-station/liquidacion-cupones" element={<GasCouponLiquidation />} />
                         <Route path="/ventas/entrega-remesas" element={<SalesRemesaDeliveries />} />
                         <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />
                         <Route path="/gas-station/reporte-detalle-cierre" element={<GasCloseoutDetailReport />} />

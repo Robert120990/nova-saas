@@ -83,6 +83,7 @@ const gasTrupputController = require('../controllers/gasTrupput.controller');
 const gasOrderController = require('../controllers/gasOrder.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
+const gasCouponLiquidationController = require('../controllers/gasCouponLiquidation.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
 const pozoController = require('../controllers/pozo.controller');
 
@@ -785,6 +786,16 @@ router.put('/gas-station/remesa-deliveries/:id/entregar', gasRemesaDeliveryContr
 router.put('/gas-station/remesa-deliveries/:id/revertir-entregado', gasRemesaDeliveryController.revertirEntregado);
 router.get('/gas-station/remesa-deliveries/:id/pdf', gasRemesaDeliveryController.getDeliveryPdf);
 router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
+
+// Gas Station - Coupon Liquidations (Sistema vs Físicos)
+router.get('/gas-station/coupon-liquidations/pending-cupones', gasCouponLiquidationController.getPendingCupones);
+router.get('/gas-station/coupon-liquidations', gasCouponLiquidationController.getLiquidaciones);
+router.post('/gas-station/coupon-liquidations', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.createLiquidacion);
+router.get('/gas-station/coupon-liquidations/:id', gasCouponLiquidationController.getLiquidacionById);
+router.put('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.updateLiquidacion);
+router.delete('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.deleteLiquidacion);
+router.get('/gas-station/coupon-liquidations/:id/pdf', gasCouponLiquidationController.exportPDF);
+router.get('/gas-station/coupon-liquidations/:id/excel', gasCouponLiquidationController.exportExcel);
 
 // Control de Pozo - Servicios
 router.get('/pozo/servicios', pozoController.getServicios);

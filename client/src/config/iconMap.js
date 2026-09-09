@@ -65,6 +65,7 @@ import {
     Clock,
     Scale,
     Palmtree,
+    Ticket,
 } from 'lucide-react';
 
 const iconMap = {
@@ -134,6 +135,7 @@ const iconMap = {
     Clock,
     Scale,
     Palmtree,
+    Ticket,
 };
 
 export default iconMap;
