@@ -52,7 +52,9 @@ const doReload = async (version) => {
     }
     // Forzar activación inmediata del nuevo Service Worker (skipWaiting)
     if (swRegistration?.waiting) {
-        swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        try {
+            swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        } catch (e) {}
     }
     try {
         await swRegistration?.update();
@@ -61,7 +63,6 @@ const doReload = async (version) => {
     if (typeof updateSW === 'function') {
         try {
             await updateSW(true);
-            return;
         } catch (e) {}
     }
     window.location.reload();
@@ -101,6 +102,43 @@ const dismissPersistentToast = () => {
     }
 };
 
+const triggerCountdownReload = (version, initialPrefix = 'Nueva versión disponible') => {
+    isUpdating = true;
+    dismissPersistentToast();
+    if (version && version !== 'sw-update') {
+        pendingVersion = version;
+        localStorage.setItem('app_version', version);
+    }
+
+    const toastId = 'app-update-countdown';
+    let secondsLeft = 3;
+
+    const renderText = (sec) =>
+        `${initialPrefix}. Actualizando en ${sec} segundo${sec > 1 ? 's' : ''}...`;
+
+    toast.info(renderText(secondsLeft), {
+        id: toastId,
+        duration: 4000,
+    });
+
+    const timer = setInterval(() => {
+        secondsLeft -= 1;
+        if (secondsLeft > 0) {
+            toast.info(renderText(secondsLeft), {
+                id: toastId,
+                duration: 4000,
+            });
+        } else {
+            clearInterval(timer);
+            toast.info('Actualizando aplicación ahora...', {
+                id: toastId,
+                duration: 2000,
+            });
+            doReload(pendingVersion || version);
+        }
+    }, 1000);
+};
+
 const handleUpdateDetected = (version) => {
     if (isUpdating) return;
 
@@ -122,17 +160,8 @@ const handleUpdateDetected = (version) => {
         return;
     }
 
-    // No hay formularios sucios: proceder con la recarga informada
-    isUpdating = true;
-    dismissPersistentToast();
-    if (pendingVersion) {
-        localStorage.setItem('app_version', pendingVersion);
-    }
-    toast.info('Nueva versión disponible. Actualizando en 3 segundos...', { duration: 3500 });
-
-    setTimeout(() => {
-        doReload(pendingVersion);
-    }, 3000);
+    // No hay formularios sucios: proceder con la recarga informada con cuenta regresiva
+    triggerCountdownReload(pendingVersion || version, 'Nueva versión disponible');
 };
 
 // Receptor para notificaciones en tiempo real vía WebSocket
@@ -170,10 +199,7 @@ setInterval(checkForUpdates, 10 * 60 * 1000);
 
 setInterval(() => {
     if (pendingVersion && updateToastId && !isAnyDirty()) {
-        isUpdating = true;
-        dismissPersistentToast();
-        toast.info('Actualizando aplicación en 3 segundos...', { duration: 3500 });
-        setTimeout(() => doReload(pendingVersion), 3000);
+        triggerCountdownReload(pendingVersion, 'Actualizando aplicación');
     }
 }, 10000);
 
