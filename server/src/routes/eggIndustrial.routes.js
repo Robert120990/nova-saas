@@ -108,8 +108,14 @@ router.delete('/costeo-libra/scenarios/:id', eggCosteoController.deleteScenario)
 router.get('/costeo-libra/history', eggCosteoController.getCostingHistory);
 
 // 17. Laboratorio y Calidad Microbiológica LAB-004
+router.get('/quality-parameters', eggController.getQualityParameters);
+router.post('/quality-parameters', eggController.saveQualityParameter);
+router.put('/quality-parameters/:id', eggController.saveQualityParameter);
+router.delete('/quality-parameters/:id', eggController.deleteQualityParameter);
 router.get('/lab/logs', eggController.getLabLogs);
 router.post('/lab/logs', eggController.createLabLog);
+router.put('/lab/logs/:id', eggController.updateLabLog);
+router.post('/lab/send-unified-email', eggController.sendUnifiedCoaEmail);
 router.get('/lab/solids-calc', eggController.getSolidsCalculation);
 
 // 18. Control de Retornables (Cubetas y Tapaderas)
