@@ -1,26 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     FileText, 
     Download, 
     Loader2, 
     BarChart3,
-    FileSpreadsheet
+    FileSpreadsheet,
+    Maximize2
 } from 'lucide-react';
+import PdfViewerModal from './PdfViewerModal';
 
 /**
- * ReportLayout - Componente base para reportes "Premium"
+ * ReportLayout - Componente base unificado para reportes "Premium"
  * 
  * @param {string} title - Título del reporte
  * @param {string} subtitle - Subtítulo descriptivo
- * @param {string} category - Categoría del reporte (ej: "Inventario")
+ * @param {string} category - Categoría del reporte (ej: "Inventario", "Ventas")
  * @param {React.ReactNode} children - Contenido de los filtros (Sidebar)
- * @param {string} pdfUrl - URL del PDF generado
- * @param {boolean} isGenerating - Estado de carga
+ * @param {string} pdfUrl - URL del PDF generado (Blob URL)
+ * @param {boolean} isGenerating - Estado de carga mientras se genera el reporte
  * @param {function} onGenerate - Función al presionar generar
  * @param {function} onDownload - Función al presionar descargar
  * @param {boolean} canGenerate - Si el botón de generar está habilitado
  * @param {string} generateButtonText - Texto del botón de generar
  * @param {function} onExportExcel - Función al presionar exportar a Excel
+ * @param {string} fileName - Nombre del archivo descargado
+ * @param {string} footerNote - Nota informativa en el pie del visor modal
+ * @param {boolean} showModalButton - Si se muestra el botón para abrir en modal (por defecto true)
  */
 const ReportLayout = ({
     title,
@@ -33,24 +38,48 @@ const ReportLayout = ({
     onDownload,
     canGenerate = true,
     generateButtonText = "Generar Reporte",
-    onExportExcel
+    onExportExcel,
+    fileName,
+    footerNote,
+    showModalButton = true
 }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const effectiveFileName = fileName || `${(title || 'reporte').toLowerCase().replace(/[^a-z0-9]/gi, '_')}.pdf`;
+
     return (
         <div className="max-w-[1400px] mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-700">
-            {/* Header */}
-            <div>
-                <h1 className="text-4xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-3">
-                    {title}
-                    {category && (
-                        <span className="text-sm font-black uppercase px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
-                            {category}
-                        </span>
+            {/* Header con Título y Botón Ver en Modal */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-3">
+                        {title}
+                        {category && (
+                            <span className="text-xs md:text-sm font-black uppercase px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
+                                {category}
+                            </span>
+                        )}
+                    </h1>
+                    {subtitle && (
+                        <p className="text-slate-500 font-medium mt-1 uppercase text-[10px] tracking-widest leading-relaxed">
+                            {subtitle}
+                        </p>
                     )}
-                </h1>
-                {subtitle && (
-                    <p className="text-slate-500 font-medium mt-1 uppercase text-[10px] tracking-widest leading-relaxed">
-                        {subtitle}
-                    </p>
+                </div>
+
+                {/* Botón Expandir en la cabecera */}
+                {pdfUrl && showModalButton && (
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setIsModalOpen(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 border border-indigo-200/80 hover:border-indigo-300 rounded-2xl font-black text-xs uppercase tracking-wider shadow-sm hover:shadow transition-all active:scale-95 cursor-pointer"
+                            title="Expandir reporte en ventana modal amplia (pantalla completa)"
+                        >
+                            <Maximize2 size={16} className="text-indigo-600" />
+                            <span>Expandir</span>
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -75,7 +104,7 @@ const ReportLayout = ({
                             {pdfUrl && onDownload && (
                                 <button 
                                     onClick={onDownload}
-                                    className="w-full py-4 bg-indigo-50 text-indigo-700 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-indigo-100 hover:bg-indigo-100 transition-all flex items-center justify-center gap-3"
+                                    className="w-full py-4 bg-white text-slate-700 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
                                 >
                                     <Download size={18} />
                                     Descargar PDF
@@ -137,6 +166,22 @@ const ReportLayout = ({
                     </div>
                 </div>
             </div>
+
+            {/* Modal de Visualización Interactiva estilo Planillas */}
+            {showModalButton && (
+                <PdfViewerModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    title={title}
+                    subtitle={subtitle}
+                    badge={category || 'Formato Oficial'}
+                    pdfUrl={pdfUrl}
+                    isLoading={isGenerating}
+                    onRetry={onGenerate}
+                    fileName={effectiveFileName}
+                    footerNote={footerNote || "Formato contable estándar oficial • Presentación Carta sin firmas"}
+                />
+            )}
         </div>
     );
 };

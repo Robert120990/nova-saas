@@ -129,7 +129,7 @@ TODO nuevo reporte en PDF debe implementar el estándar contable unificado usand
 - Paginación y Cierre: Salto defensivo (`doc.y > 510` en landscape o `> 700` en portrait), `reportPdfHelper.renderClosingFooter` ("Número de {Entidad} Impresas : N", "FIN DEL REPORTE.") y paginación dinámica centrada con `reportPdfHelper.renderPageNumbers(doc)`.
 - **SIN FIRMAS**: Los reportes operacionales (ventas, inventario, compras, gastos, cxc, cxp, arqueos, rentabilidad) **NO llevan firmas** bajo ninguna circunstancia. Las firmas quedan reservadas para balances/estados contables.
 - Exportación Excel: Todo endpoint debe soportar `?format=excel` antes de la generación PDF usando `excelService.createExcelBuffer` y `excelService.sendExcelResponse`.
-- Frontend: Usar `<ReportLayout>` (`client/src/components/ui/ReportLayout.jsx`) con `onExportExcel`.
+- Frontend: Usar `<ReportLayout>` (`client/src/components/ui/ReportLayout.jsx`) con `onExportExcel`. `<ReportLayout>` integra obligatoriamente el botón "Expandir" en la cabecera/título y el visor `<PdfViewerModal>` estilo planillas (`max-w-6xl h-[92vh]`), garantizando que todo reporte convencional cuente con vista modal interactiva sin código repetitivo.
 
 ## Environment Configuration
 

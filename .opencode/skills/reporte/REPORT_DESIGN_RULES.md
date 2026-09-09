@@ -18,11 +18,15 @@ El componente recibe las siguientes propiedades:
 - `onDownload`: Función opcional para la descarga del archivo.
 - `canGenerate`: Booleano para habilitar/deshabilitar el botón de generación.
 - `onExportExcel`: Función opcional para exportar a Excel. Debe incluirse en TODOS los reportes.
+- `fileName`: (Opcional) Nombre del archivo sugerido para descarga.
+- `footerNote`: (Opcional) Nota informativa en el pie del visor modal.
+- `showModalButton`: (Opcional, por defecto `true`) Controla si se muestra el botón "Expandir".
 
 ### Estándares de Layout
 - **Ancho del Contenedor**: Máximo `1400px` con padding responsivo (`p-4 md:p-8`).
 - **Animaciones**: Usar `animate-in fade-in duration-700` para transiciones suaves.
 - **Cabecera**: Título en `text-4xl`, `font-black`, con un `span` indicador de categoría (ej: "Inventario") en color base Indigo.
+- **Botón "Expandir" en Cabecera (OBLIGATORIO)**: `ReportLayout` incluye de manera automática e integrada en la cabecera junto al título el botón **"Expandir"** (icono `Maximize2`). Al hacer clic, abre el reporte en el visor modal interactivo estilo planillas (`PdfViewerModal`). No duplicar botones en la barra lateral ni en el contenedor embebido; la cabecera es el único punto de acceso.
 
 ### Estándares de Filtros (Sidebar)
 - **Contenedor**: Tarjeta blanca con `rounded-[2rem]`, sombra `shadow-xl` y `p-8`.
@@ -30,9 +34,10 @@ El componente recibe las siguientes propiedades:
 - **Inputs**: Estilo consistente con bordes `slate-100` y enfoque en `indigo-500`.
 - **Botón de Acción**: Siempre en la parte inferior, `bg-slate-900`, `font-black`, `uppercase`, `tracking-[0.2em]`.
 
-### Visualización de PDF
+### Visualización de PDF y Modal Integrado
 - **Loading State**: Siempre mostrar un overlay con `backdrop-blur-sm` y un spinner animado durante la generación.
 - **Embed**: Usar un `iframe` que ocupe el resto del espacio disponible, con altura mínima de `750px`.
+- **Visor Modal (`PdfViewerModal`)**: Provee una ventana modal `max-w-6xl h-[92vh]` con fondo desenfocado, descarga directa, impresión nativa vía iframe, apertura en pestaña nueva y tecla de escape rápida (`ESC`). Todo nuevo reporte hereda esta capacidad automáticamente al usar `ReportLayout`.
 
 ## 2. Exportación a Excel
 
