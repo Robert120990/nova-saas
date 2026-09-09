@@ -7,6 +7,16 @@ import axios from 'axios'
 import { toast } from 'sonner'
 import { isAnyDirty } from './store/dirtyState'
 
+const isDev = import.meta.env.DEV;
+
+// En desarrollo local (Vite dev server), limpiar cualquier toast residual de actualización
+if (isDev) {
+    try {
+        toast.dismiss('app-update-countdown');
+        toast.dismiss('update-persistent');
+    } catch (e) {}
+}
+
 // Sincronizar versión compilada del build actual inmediatamente al arrancar
 const currentBuildVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null;
 if (currentBuildVersion && currentBuildVersion !== 'unknown') {
@@ -34,21 +44,25 @@ const updateSW = registerSW({
         swRegistration = registration || null;
     },
     onNeedReload() {
+        if (isDev) return;
         // Interceptamos la recarga automática de Workbox para que no recargue a espaldas del usuario
         handleUpdateDetected(pendingVersion || 'sw-update');
     }
 });
 
 const checkForUpdates = () => {
-    if (isUpdating) return;
+    if (isDev || isUpdating) return;
     try {
         swRegistration?.update().catch(() => {});
     } catch (e) {}
 };
 
 const doReload = async (version) => {
+    if (isDev) return;
     if (version && version !== 'sw-update') {
         localStorage.setItem('app_version', version);
+        sessionStorage.setItem('last_update_reload_version', version);
+        sessionStorage.setItem('last_update_reload_time', String(Date.now()));
     }
     // Forzar activación inmediata del nuevo Service Worker (skipWaiting)
     if (swRegistration?.waiting) {
@@ -69,7 +83,7 @@ const doReload = async (version) => {
 };
 
 const showPersistentUpdateToast = (version) => {
-    if (updateToastId) return;
+    if (isDev || updateToastId) return;
     updateToastId = toast.warning(
         'NUEVA VERSIÓN DISPONIBLE',
         {
@@ -103,11 +117,15 @@ const dismissPersistentToast = () => {
 };
 
 const triggerCountdownReload = (version, initialPrefix = 'Nueva versión disponible') => {
+    if (isDev) return;
+    if (isUpdating) return;
     isUpdating = true;
     dismissPersistentToast();
     if (version && version !== 'sw-update') {
         pendingVersion = version;
         localStorage.setItem('app_version', version);
+        sessionStorage.setItem('last_update_reload_version', version);
+        sessionStorage.setItem('last_update_reload_time', String(Date.now()));
     }
 
     const toastId = 'app-update-countdown';
@@ -140,7 +158,16 @@ const triggerCountdownReload = (version, initialPrefix = 'Nueva versión disponi
 };
 
 const handleUpdateDetected = (version) => {
-    if (isUpdating) return;
+    // En desarrollo local no realizar recargas automáticas por desajuste de versión con Git
+    if (isDev || isUpdating) return;
+
+    // Protección contra bucles si tras recargar el navegador sigue recibiendo la misma versión pendiente
+    const lastAttemptVersion = sessionStorage.getItem('last_update_reload_version');
+    const lastAttemptTime = Number(sessionStorage.getItem('last_update_reload_time') || 0);
+    if (lastAttemptVersion === version && (Date.now() - lastAttemptTime) < 60000) {
+        console.warn(`[Update] Recarga para versión ${version} ya intentada recientemente. Evitando bucle.`);
+        return;
+    }
 
     const currentVersion = (currentBuildVersion && currentBuildVersion !== 'unknown')
         ? currentBuildVersion
@@ -166,13 +193,14 @@ const handleUpdateDetected = (version) => {
 
 // Receptor para notificaciones en tiempo real vía WebSocket
 window.__onVersionReceived = (version) => {
+    if (isDev) return;
     if (version && version !== 'unknown') {
         handleUpdateDetected(version);
     }
 };
 
 const checkVersion = async () => {
-    if (isUpdating || document.visibilityState !== 'visible') return;
+    if (isDev || isUpdating || document.visibilityState !== 'visible') return;
     try {
         const { data } = await axios.get('/health');
         const version = data.version || '';
@@ -193,22 +221,24 @@ const checkVersion = async () => {
     } catch (e) {}
 };
 
-checkVersion();
-setInterval(checkVersion, 5 * 60 * 1000);
-setInterval(checkForUpdates, 10 * 60 * 1000);
+if (!isDev) {
+    checkVersion();
+    setInterval(checkVersion, 5 * 60 * 1000);
+    setInterval(checkForUpdates, 10 * 60 * 1000);
 
-setInterval(() => {
-    if (pendingVersion && updateToastId && !isAnyDirty()) {
-        triggerCountdownReload(pendingVersion, 'Actualizando aplicación');
-    }
-}, 10000);
+    setInterval(() => {
+        if (pendingVersion && updateToastId && !isAnyDirty()) {
+            triggerCountdownReload(pendingVersion, 'Actualizando aplicación');
+        }
+    }, 10000);
 
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        checkForUpdates();
-        checkVersion();
-    }
-});
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            checkForUpdates();
+            checkVersion();
+        }
+    });
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
