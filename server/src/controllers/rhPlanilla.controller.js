@@ -7,6 +7,10 @@ const notificationService = require('../services/notification.service');
 const TABLE = 'rh_planillas';
 const LABEL = 'Planilla';
 
+const isBonificacionCuenta = (c) => {
+    return c.codigo === '02' || (c.descripcion || '').toUpperCase().includes('BONIF');
+};
+
 const getPlanillas = async (req, res) => {
     try {
         const { search, page = 1, limit = 15, anio, mes, quincena } = req.query;
@@ -150,7 +154,7 @@ const createPlanilla = async (req, res) => {
                 [values]
             );
         } else {
-            await cargarCuentasPorDefecto(pool, planillaId, req.company_id, dias, sueldoBase, empleado_id, quincena);
+            await cargarCuentasPorDefecto(pool, planillaId, req.company_id, dias, sueldoBase, empleado_id, quincena, bonificacionFija);
         }
 
         res.status(201).json({ id: planillaId });
@@ -159,7 +163,7 @@ const createPlanilla = async (req, res) => {
     }
 };
 
-const cargarCuentasPorDefecto = async (pool, planillaId, companyId, diasTrabajados, sueldoBase, empleadoId = null, quincena = 'primera') => {
+const cargarCuentasPorDefecto = async (pool, planillaId, companyId, diasTrabajados, sueldoBase, empleadoId = null, quincena = 'primera', bonificacionFija = 0) => {
     const [cuentas] = await pool.query(
         `SELECT * FROM rh_cuentas_planillas WHERE company_id = ? AND activa = 1 ORDER BY codigo ASC`,
         [companyId]
@@ -168,6 +172,7 @@ const cargarCuentasPorDefecto = async (pool, planillaId, companyId, diasTrabajad
     if (cuentas.length === 0) return;
 
     let empDescuentos = [];
+    let bonifFija = parseFloat(bonificacionFija || 0);
     if (empleadoId) {
         const [dRows] = await pool.query(
             `SELECT ed.*, dp.cuenta_id, dp.codigo as desc_codigo, dp.descripcion as desc_nombre
@@ -178,6 +183,16 @@ const cargarCuentasPorDefecto = async (pool, planillaId, companyId, diasTrabajad
             [companyId, empleadoId, quincena]
         );
         empDescuentos = dRows;
+
+        if (!bonifFija) {
+            const [empRows] = await pool.query(
+                `SELECT bonificacion_fija FROM rh_empleados WHERE id = ? AND company_id = ?`,
+                [empleadoId, companyId]
+            );
+            if (empRows.length > 0) {
+                bonifFija = parseFloat(empRows[0].bonificacion_fija || 0);
+            }
+        }
     }
 
     const sueldoDiario = sueldoBase / 30;
@@ -186,7 +201,10 @@ const cargarCuentasPorDefecto = async (pool, planillaId, companyId, diasTrabajad
         let cantidad = 0;
 
         if (c.operacion === 'sumar') {
-            if (c.tipo_valor === 'dias') {
+            if (isBonificacionCuenta(c)) {
+                valor = Math.round(bonifFija * 100) / 100;
+                cantidad = valor;
+            } else if (c.tipo_valor === 'dias') {
                 if (c.codigo === '01') {
                     cantidad = diasTrabajados;
                     valor = sueldoDiario * diasTrabajados;
@@ -516,12 +534,13 @@ const generarPlanilla = async (req, res) => {
 
         for (const emp of empleados) {
             const sueldoBase = parseFloat(emp.sueldo_base || 0);
+            const bonificacionFija = parseFloat(emp.bonificacion_fija || 0);
             const sueldoDiario = sueldoBase / 30;
 
             const [result] = await pool.query(
                 `INSERT INTO ${TABLE} (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, dias, sueldoBase, parseFloat(emp.bonificacion_fija || 0)]
+                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, dias, sueldoBase, bonificacionFija]
             );
             const planillaId = result.insertId;
 
@@ -534,7 +553,10 @@ const generarPlanilla = async (req, res) => {
                 let cantidad = 0;
 
                 if (c.operacion === 'sumar') {
-                    if (c.tipo_valor === 'dias') {
+                    if (isBonificacionCuenta(c)) {
+                        valor = Math.round(bonificacionFija * 100) / 100;
+                        cantidad = valor;
+                    } else if (c.tipo_valor === 'dias') {
                         if (c.codigo === '01') {
                             cantidad = dias;
                             valor = Math.round(sueldoDiario * dias * 100) / 100;
@@ -1069,6 +1091,7 @@ const getEmpleadoData = async (req, res) => {
                 [req.company_id]
             );
             const sueldoBase = parseFloat(emp.sueldo_base || 0);
+            const bonificacionFija = parseFloat(emp.bonificacion_fija || 0);
             const sueldoDiario = sueldoBase / 30;
             const dias = 15;
 
@@ -1077,7 +1100,10 @@ const getEmpleadoData = async (req, res) => {
                 let cantidad = 0;
 
                 if (c.operacion === 'sumar') {
-                    if (c.tipo_valor === 'dias' && c.codigo === '01') {
+                    if (isBonificacionCuenta(c)) {
+                        valor = Math.round(bonificacionFija * 100) / 100;
+                        cantidad = valor;
+                    } else if (c.tipo_valor === 'dias' && c.codigo === '01') {
                         cantidad = dias;
                         valor = Math.round(sueldoDiario * dias * 100) / 100;
                     } else if (c.tipo_valor === 'valor') {

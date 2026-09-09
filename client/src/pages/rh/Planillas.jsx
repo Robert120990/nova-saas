@@ -331,6 +331,7 @@ const Planillas = () => {
     const buildDetalles = (emp) => {
         if (!cuentasActivas || cuentasActivas.length === 0) return;
         const sueldoBase = parseFloat(emp?.sueldo_base || 0);
+        const bonificacionFija = parseFloat(emp?.bonificacion_fija || 0);
 
         const activeDiscounts = (emp?.descuentos_programados || []).filter(d => {
             const q = d.quincena || d.aplicar_en;
@@ -341,7 +342,9 @@ const Planillas = () => {
 
         const list = cuentasActivas.map(c => {
             let cantidad = 0;
-            if (c.tipo_valor === 'dias' && c.codigo === '01') {
+            if (c.operacion === 'sumar' && (c.codigo === '02' || (c.descripcion || '').toUpperCase().includes('BONIF'))) {
+                cantidad = bonificacionFija;
+            } else if (c.tipo_valor === 'dias' && c.codigo === '01') {
                 cantidad = diasTrabajados;
             } else {
                 // Check if account matches any active scheduled discount
@@ -981,6 +984,17 @@ const Planillas = () => {
                                             <span className="text-[10px] text-slate-400 uppercase font-bold block">Depto</span>
                                             <span className="text-slate-700 font-medium">{empleadoData.departamento_nombre || 'Sin depto.'}</span>
                                         </div>
+                                        {parseFloat(empleadoData.bonificacion_fija || 0) > 0 && (
+                                            <>
+                                                <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                                <div>
+                                                    <span className="text-[10px] text-amber-600 uppercase font-bold block">Bonif. Fija</span>
+                                                    <span className="text-xs font-black text-amber-700">
+                                                        ${parseFloat(empleadoData.bonificacion_fija).toFixed(2)}/q
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )}
                                         <div className="ml-auto text-right">
                                             <span className="text-[10px] text-slate-400 uppercase font-bold block">Sueldo Quincenal</span>
                                             <span className="text-sm font-black text-indigo-600">
