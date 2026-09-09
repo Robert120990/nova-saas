@@ -95,6 +95,24 @@ const createSale = async (req, res) => {
                     success: false
                 });
             }
+        // 0d. Validar período de documentos vinculados para Comprobante de Retención (DTE 07)
+        if (header.dte_type === '07' || header.tipo_documento === '07') {
+            const currentPeriod = new Date().toISOString().substring(0, 7); // YYYY-MM
+            for (const doc of (linkedDocuments || [])) {
+                if (doc.emission_date) {
+                    const docDateStr = doc.emission_date instanceof Date 
+                        ? doc.emission_date.toISOString().substring(0, 10)
+                        : String(doc.emission_date).substring(0, 10);
+                    const docPeriod = docDateStr.substring(0, 7);
+                    if (docPeriod !== currentPeriod) {
+                        await connection.rollback();
+                        return res.status(400).json({
+                            message: `El documento a retener (${doc.doc_number || 'sin número'}) tiene fecha ${docDateStr} fuera del período tributario actual (${currentPeriod}). Hacienda rechaza comprobantes de retención para documentos de otros meses.`,
+                            success: false
+                        });
+                    }
+                }
+            }
         }
 
         // Obtener código de terminal si existe pos_id

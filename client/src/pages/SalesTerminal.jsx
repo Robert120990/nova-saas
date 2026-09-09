@@ -2705,7 +2705,19 @@ const SalesTerminal = () => {
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <input id="link-number" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Número de Documento" />
-                                            <input id="link-date" type="date" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={new Date().toISOString().split('T')[0]} />
+                                            <div>
+                                                <input 
+                                                    id="link-date" 
+                                                    type="date" 
+                                                    min={`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`}
+                                                    max={new Date().toISOString().split('T')[0]}
+                                                    defaultValue={new Date().toISOString().split('T')[0]} 
+                                                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                                                />
+                                                <span className="text-[9px] text-indigo-500 font-semibold ml-1 block mt-0.5">
+                                                    * Período actual: {new Date().toLocaleDateString('es-SV', { month: 'long', year: 'numeric' })}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
@@ -2729,6 +2741,21 @@ const SalesTerminal = () => {
                                                 const gravadas = parseFloat(document.getElementById('link-gravadas').value) || 0;
                                                 const retencion = parseFloat(document.getElementById('link-retencion').value) || 0;
                                                 if(!num) return toast.error('El número de documento es obligatorio');
+                                                if(!date) return toast.error('La fecha del documento es obligatoria');
+
+                                                // Validación de período tributario para Comprobante de Retención (DTE-07)
+                                                const todayStr = new Date().toISOString().split('T')[0];
+                                                const currentPeriod = todayStr.substring(0, 7); // YYYY-MM
+                                                const docPeriod = date.substring(0, 7); // YYYY-MM
+
+                                                if (docPeriod !== currentPeriod) {
+                                                    return toast.error(`El documento a retener debe corresponder al mismo período tributario (${currentPeriod}). Hacienda rechaza comprobantes de retención para documentos de otros meses.`);
+                                                }
+
+                                                if (date > todayStr) {
+                                                    return toast.error('La fecha del documento a retener no puede ser una fecha futura');
+                                                }
+
                                                 if(gravadas < 100) return toast.error('El monto gravado debe ser mayor o igual a $100.00');
                                                 if(retencion <= 0) return toast.error('La retención debe ser mayor a $0.00');
                                                 // Validar que no esté duplicado en el CR actual

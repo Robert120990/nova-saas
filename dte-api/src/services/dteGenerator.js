@@ -235,6 +235,14 @@ async function generateDTE(payload) {
     let resumenTaxes = [];
 
     if (tipoDte === '07') {
+        const currentPeriod = fecEmi.substring(0, 7);
+        for (const item of (items || [])) {
+            const docDate = String(item.fechaEmision || item.emissionDate || item.emission_date || item.fecEmi || '').substring(0, 10);
+            if (docDate && docDate.substring(0, 7) !== currentPeriod) {
+                const docNum = item.numDocumento || item.docNumber || item.doc_number || item.numeroDocumento || 'sin número';
+                throw new Error(`El documento a retener (${docNum}) tiene fecha ${docDate} fuera del período tributario actual (${currentPeriod}). Hacienda rechaza comprobantes de retención para documentos de otros meses.`);
+            }
+        }
         corpoItems = (items || []).map((item, index) => ({
             numItem: index + 1,
             tipoDte: String(item.tipoDte || item.docType || item.doc_type || '03'),
