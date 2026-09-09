@@ -172,6 +172,7 @@ import EggProductionCalendar from './pages/EggIndustrial/ProductionCalendar';
 // CRM Pages
 import CustomerAgreements from './pages/CRM/CustomerAgreements';
 import CrmConfig from './pages/CRM/CrmConfig';
+import CrmQuotations from './pages/CRM/CrmQuotations';
 
 import Layout from './components/layout/Layout';
 
@@ -396,6 +397,7 @@ function App() {
                         <Route path="/industrial/configuracion" element={<EggConfig />} />
 
                         {/* CRM Comercial */}
+                        <Route path="/crm/cotizaciones" element={<CrmQuotations />} />
                         <Route path="/crm/acuerdos" element={<CustomerAgreements />} />
                         <Route path="/crm/configuracion" element={<CrmConfig />} />
                         

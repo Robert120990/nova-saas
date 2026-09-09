@@ -67,6 +67,7 @@ const rhReportesController = require('../controllers/rhReportes.controller');
 const rhAccionPersonalController = require('../controllers/rhAccionPersonal.controller');
 const changelogController = require('../controllers/changelog.controller');
 const crmAgreementsController = require('../controllers/crmAgreements.controller');
+const crmQuotationController = require('../controllers/crmQuotation.controller');
 
 // Gas Station Controllers
 const gasDistributorController = require('../controllers/gasDistributor.controller');
@@ -581,6 +582,19 @@ router.post('/crm/customer-agreements', crmAgreementsController.saveAgreement);
 router.delete('/crm/customer-agreements/:id', crmAgreementsController.deleteAgreement);
 router.get('/crm/settings', crmAgreementsController.getCrmSettings);
 router.post('/crm/settings', crmAgreementsController.updateCrmSettings);
+
+// CRM — Cotizador Comercial y Firmas Digitales
+router.get('/crm/quotations', crmQuotationController.getQuotations);
+router.get('/crm/quotations/:id', crmQuotationController.getQuotationById);
+router.post('/crm/quotations', crmQuotationController.createQuotation);
+router.put('/crm/quotations/:id', crmQuotationController.updateQuotation);
+router.delete('/crm/quotations/:id', crmQuotationController.deleteQuotation);
+router.patch('/crm/quotations/:id/status', crmQuotationController.updateStatus);
+router.post('/crm/quotations/:id/convert-to-agreement', crmQuotationController.convertToAgreement);
+router.post('/crm/quotations/:id/duplicate', crmQuotationController.duplicateQuotation);
+router.get('/crm/quotations/:id/pdf', crmQuotationController.getQuotationPdf);
+router.post('/crm/user-signature', crmQuotationController.saveUserSignature);
+router.get('/crm/user-signature', crmQuotationController.getUserSignature);
 
 
 // Gas Station - Distributors

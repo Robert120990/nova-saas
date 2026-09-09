@@ -89,8 +89,20 @@ function buildTree(items) {
 
     // Asegurar submenús clave en CRM
     if (crmRoot) {
-        if (!crmRoot.children.some(c => c.path === '/crm/acuerdos')) {
+        if (!crmRoot.children.some(c => c.path === '/crm/cotizaciones')) {
             crmRoot.children.unshift({
+                id: 'virtual-crm-quotations',
+                label: 'Cotizador Comercial',
+                path: '/crm/cotizaciones',
+                permission: 'manage_crm_quotes',
+                permission_key: 'manage_crm_quotes',
+                hideInMenu: false,
+                icon: iconMap.FileText || iconMap.Circle,
+                children: []
+            });
+        }
+        if (!crmRoot.children.some(c => c.path === '/crm/acuerdos')) {
+            crmRoot.children.push({
                 id: 'virtual-crm-agreements',
                 label: 'Acuerdos con Clientes',
                 path: '/crm/acuerdos',
