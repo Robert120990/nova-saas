@@ -5,11 +5,8 @@ import {
     GitBranch, 
     Calendar,
     User,
-    FileText,
-    Info,
-    ArrowLeft
+    FileText
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
@@ -213,43 +210,15 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <FileText size={12} className="text-indigo-500" /> Modalidad de Cuenta
                 </label>
-                <div className="grid grid-cols-3 gap-1 bg-slate-100/80 p-1 rounded-xl">
-                    <button
-                        type="button"
-                        onClick={() => handleTypeChange('credito')}
-                        className={`py-2 px-1 rounded-lg font-bold text-[11px] uppercase tracking-wider transition-all text-center cursor-pointer ${
-                            reportType === 'credito'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        Crédito
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => handleTypeChange('anticipado')}
-                        className={`py-2 px-1 rounded-lg font-bold text-[11px] uppercase tracking-wider transition-all text-center cursor-pointer ${
-                            reportType === 'anticipado'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        Anticipos
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => handleTypeChange('trupput')}
-                        className={`py-2 px-1 rounded-lg font-bold text-[11px] uppercase tracking-wider transition-all text-center cursor-pointer ${
-                            reportType === 'trupput'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        Trupput
-                    </button>
-                </div>
+                <select 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all cursor-pointer"
+                    value={reportType}
+                    onChange={(e) => handleTypeChange(e.target.value)}
+                >
+                    <option value="credito">CRÉDITO (VENTAS Y ABONOS)</option>
+                    <option value="anticipado">ANTICIPOS (DEPÓSITOS Y CONSUMOS)</option>
+                    <option value="trupput">TRUPPUT (PREPAGO POR GALONAJE)</option>
+                </select>
             </div>
 
             {/* Sucursal */}
@@ -356,34 +325,6 @@ const CustomerStatementReport = () => {
                 >
                     Historial Completo
                 </button>
-            </div>
-
-            {/* Tarjeta Informativa */}
-            <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-100 space-y-2">
-                <div className="flex items-center gap-2 text-slate-500">
-                    <Info size={14} className="text-indigo-500" />
-                    <span className="text-[10px] font-black uppercase tracking-wider">
-                        {reportType === 'credito' && 'Modalidad Crédito'}
-                        {reportType === 'anticipado' && 'Modalidad Anticipos'}
-                        {reportType === 'trupput' && 'Modalidad Trupput (Galones)'}
-                    </span>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                    {reportType === 'credito' && 'Incluye las ventas a crédito, documentos fiscales y abonos/pagos recibidos. Si especifica una fecha de inicio, calcula el saldo inicial previo a esa fecha.'}
-                    {reportType === 'anticipado' && 'Muestra los depósitos o anticipos monetarios recibidos y los consumos aplicados en estación, reflejando el saldo disponible en dólares.'}
-                    {reportType === 'trupput' && 'Presenta el control de prepago de combustible en volumen: recargas en galones (+) versus despachos por turno (-), expresando el saldo disponible en galones.'}
-                </p>
-            </div>
-
-            {/* Acceso a Consulta Interactiva */}
-            <div className="pt-2">
-                <Link
-                    to="/cxc/estado-cuenta"
-                    className="inline-flex items-center gap-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline"
-                >
-                    <ArrowLeft size={13} />
-                    <span>Ir a Consulta Interactiva de Clientes</span>
-                </Link>
             </div>
         </ReportLayout>
     );
