@@ -259,9 +259,9 @@ const SearchableSelect = ({
                             autoFocus
                             type="text"
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => setSearch(e.target.value.toUpperCase())}
                             placeholder="Buscar..."
-                            className="w-full bg-transparent border-none outline-none py-1 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0"
+                            className="w-full bg-transparent border-none outline-none py-1 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 uppercase"
                             onClick={(e) => e.stopPropagation()}
                         />
                         {search && (

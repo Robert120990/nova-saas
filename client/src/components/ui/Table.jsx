@@ -1,5 +1,5 @@
 
-const Table = ({ headers, data = [], renderRow, renderCard, isLoading }) => {
+const Table = ({ headers = [], data = [], renderRow, renderCard, isLoading }) => {
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             {/* Vista en tarjeta para móvil (si se provee renderCard) */}

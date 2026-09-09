@@ -126,7 +126,7 @@ const ProviderModal = ({ isOpen, onClose, provider = null, onSuccess }) => {
         mutation.mutate(data);
     };
 
-    const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
+    const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm uppercase";
     const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
 
     return (
