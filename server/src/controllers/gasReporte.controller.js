@@ -987,7 +987,41 @@ exports.getFuelSalesSummaryPDF = async (req, res) => {
                     codigo_producto: '',
                     descripcion_producto: 'TOTAL DIARIO',
                     galones: totalGalones,
-                    monto: totalMonto
+                    monto: totalMonto,
+                    porcentaje: ''
+                });
+            }
+
+            // Resumen de operaciones para Excel
+            const summaryByProduct = {};
+            for (const [, items] of Object.entries(grouped)) {
+                for (const r of items) {
+                    const code = r.codigo_producto || 'SIN_COD';
+                    if (!summaryByProduct[code]) {
+                        summaryByProduct[code] = {
+                            codigo: code,
+                            descripcion: r.descripcion_producto || '',
+                            galones: 0,
+                            monto: 0
+                        };
+                    }
+                    summaryByProduct[code].galones += parseFloat(r.galones || 0);
+                    summaryByProduct[code].monto += parseFloat(r.monto || 0);
+                }
+            }
+            const grandTotalGal = Object.values(summaryByProduct).reduce((acc, c) => acc + c.galones, 0);
+
+            sheetData.push({ fecha: '', codigo_producto: '', descripcion_producto: '', galones: '', monto: '', porcentaje: '' });
+            sheetData.push({ fecha: 'CUADRO RESUMEN DE OPERACIONES', codigo_producto: '', descripcion_producto: '', galones: '', monto: '', porcentaje: '' });
+            for (const s of Object.values(summaryByProduct).sort((a, b) => a.codigo.localeCompare(b.codigo))) {
+                const pct = grandTotalGal > 0 ? (s.galones / grandTotalGal) * 100 : 0;
+                sheetData.push({
+                    fecha: '',
+                    codigo_producto: s.codigo,
+                    descripcion_producto: s.descripcion,
+                    galones: s.galones,
+                    monto: s.monto,
+                    porcentaje: `${pct.toFixed(2)}%`
                 });
             }
 
@@ -1000,6 +1034,7 @@ exports.getFuelSalesSummaryPDF = async (req, res) => {
                         { header: 'Descripcion', key: 'descripcion_producto', width: 30 },
                         { header: 'Galones', key: 'galones', width: 12 },
                         { header: 'Monto', key: 'monto', width: 14 },
+                        { header: 'Porcentaje', key: 'porcentaje', width: 14 }
                     ],
                     data: sheetData
                 }]
