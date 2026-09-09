@@ -17,7 +17,6 @@ import {
     FileSpreadsheet,
     Truck,
     Calculator,
-    Calendar,
     AlertCircle,
     FileText as FilePdf,
     Settings,
@@ -41,6 +40,23 @@ const formatDate = (dateStr) => {
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
+const MONTHS = [
+    { value: 1, label: '01 - ENE' },
+    { value: 2, label: '02 - FEB' },
+    { value: 3, label: '03 - MAR' },
+    { value: 4, label: '04 - ABR' },
+    { value: 5, label: '05 - MAY' },
+    { value: 6, label: '06 - JUN' },
+    { value: 7, label: '07 - JUL' },
+    { value: 8, label: '08 - AGO' },
+    { value: 9, label: '09 - SEP' },
+    { value: 10, label: '10 - OCT' },
+    { value: 11, label: '11 - NOV' },
+    { value: 12, label: '12 - DIC' },
+];
+const currentYearVal = new Date().getFullYear();
+const YEARS = Array.from({ length: 9 }, (_, i) => currentYearVal - 4 + i);
+
 const Purchases = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -58,7 +74,25 @@ const Purchases = () => {
     const [condicionId, setCondicionId] = useState('1'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+    const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
+    const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
     const [observaciones, setObservaciones] = useState('');
+
+    const handleFechaChange = (e) => {
+        const val = e.target.value;
+        setFecha(val);
+        if (val) {
+            const parts = val.split('-');
+            if (parts.length === 3) {
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                if (!isNaN(y) && !isNaN(m)) {
+                    setPeriodYear(y);
+                    setPeriodMonth(m);
+                }
+            }
+        }
+    };
 
     // Credit Note Specific
     const [docAfectado, setDocAfectado] = useState('');
@@ -128,19 +162,6 @@ const Purchases = () => {
     const limit = 10;
 
     useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc);
-
-    // Date Period Validation
-    const dateLimits = useMemo(() => {
-        const now = new Date();
-        const min = new Date();
-        min.setMonth(now.getMonth() - 3); // 3 months back
-        const max = new Date();
-        max.setMonth(now.getMonth() + 1); // 1 month forward
-        return { 
-            min: min.toISOString().split('T')[0],
-            max: max.toISOString().split('T')[0]
-        };
-    }, []);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -238,7 +259,7 @@ const Purchases = () => {
         enabled: !!viewingPurchase?.id
     });
 
-    const { data: activePeriod, isLoading: loadingPeriod } = useQuery({
+    const { data: activePeriod } = useQuery({
         queryKey: ['active-period', user?.company_id],
         queryFn: async () => {
             const resp = await axios.get('/api/period-purchases');
@@ -449,6 +470,11 @@ const Purchases = () => {
         setDocAfectado(''); setFechaAfectada('');
         setDiasCredito(0); setFechaVencimiento('');
         setManualRetencion(0); setManualPercepcion(0); setManualNosujeta(0); setManualExenta(0);
+        const today = new Date().toISOString().split('T')[0];
+        setFecha(today);
+        const [y, m] = today.split('-').map(Number);
+        setPeriodYear(y);
+        setPeriodMonth(m);
         setIsEditing(false); setEditingId(null);
     };
 
@@ -574,7 +600,6 @@ const Purchases = () => {
     };
 
     const handleSubmit = () => {
-        if (fecha < dateLimits.min || fecha > dateLimits.max) return toast.error('Fecha fuera de periodo permitido');
         if (!branchId || !providerId || !numeroDoc) return toast.error('Cabecera incompleta');
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
@@ -582,8 +607,8 @@ const Purchases = () => {
         const d = fecha ? new Date(fecha) : new Date();
         const docYear = !isNaN(d.getTime()) ? d.getFullYear() : new Date().getFullYear();
         const docMonth = !isNaN(d.getTime()) ? d.getMonth() + 1 : new Date().getMonth() + 1;
-        let finalPeriodYear = activePeriod?.year || docYear;
-        let finalPeriodMonth = activePeriod?.month || docMonth;
+        let finalPeriodYear = periodYear || activePeriod?.year || docYear;
+        let finalPeriodMonth = periodMonth || activePeriod?.month || docMonth;
 
         if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
             finalPeriodYear = docYear;
@@ -644,6 +669,14 @@ const Purchases = () => {
             setCondicionId(detail.condicion_operacion_id);
             setNumeroDoc(detail.numero_documento);
             setFecha(new Date(detail.fecha).toISOString().split('T')[0]);
+            if (detail.period_year && detail.period_month) {
+                setPeriodYear(parseInt(detail.period_year, 10));
+                setPeriodMonth(parseInt(detail.period_month, 10));
+            } else {
+                const d = new Date(detail.fecha);
+                setPeriodYear(d.getFullYear());
+                setPeriodMonth(d.getMonth() + 1);
+            }
             setDiasCredito(parseInt(detail.dias_credito) || 0);
             setFechaVencimiento(detail.fecha_vencimiento ? new Date(detail.fecha_vencimiento).toISOString().split('T')[0] : '');
             setObservaciones(detail.observaciones || '');
@@ -818,37 +851,6 @@ const Purchases = () => {
                 </div>
             </div>
 
-            {/* Redirección/Bloqueo si no hay periodo (solo aplica al intentar crear/editar) */}
-            {(!activePeriod && !loadingPeriod && activeTab === 'nuevo') && (
-                <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-sm w-full text-center space-y-6 animate-in zoom-in-95 duration-300">
-                        <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto">
-                            <Calendar size={40} className="text-amber-500" />
-                        </div>
-                        <div className="space-y-2">
-                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Periodo Requerido</h3>
-                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
-                                Debe seleccionar un periodo fiscal activo para poder registrar compras en el sistema.
-                            </p>
-                        </div>
-                        <div className="flex flex-col gap-3 w-full">
-                            <button 
-                                onClick={() => window.location.href = '/compras/periodo'}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-600/20 active:scale-95 transition-all"
-                            >
-                                CONFIGURAR PERIODO
-                            </button>
-                            <button 
-                                onClick={() => window.location.href = '/dashboard'}
-                                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-400 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.1em] active:scale-95 transition-all border border-slate-100"
-                            >
-                                SALIR AL DASHBOARD
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {activeTab === 'nuevo' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 animate-in fade-in duration-300">
                     <div className="lg:col-span-3 space-y-4">
@@ -927,14 +929,40 @@ const Purchases = () => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className={labelCls}>Fecha / Periodo Activo</label>
-                                    <div className="relative group">
-                                        <input type="date" value={fecha} min={dateLimits.min} max={dateLimits.max} onChange={(e) => setFecha(e.target.value)} className={`${inputCls} pr-20`} />
-                                        {activePeriod && (
-                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black uppercase tracking-tighter">
-                                                {activePeriod.year} - {activePeriod.month}
-                                            </div>
-                                        )}
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className={labelCls}>Fecha de Emisión</label>
+                                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 uppercase tracking-tight">
+                                            Periodo: {String(periodMonth).padStart(2, '0')}/{periodYear}
+                                        </span>
+                                    </div>
+                                    <input 
+                                        type="date" 
+                                        value={fecha} 
+                                        onChange={handleFechaChange} 
+                                        className={inputCls} 
+                                    />
+                                    <div className="mt-1.5 flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest pl-1">Per:</span>
+                                        <select 
+                                            value={periodMonth} 
+                                            onChange={(e) => setPeriodMonth(parseInt(e.target.value, 10))}
+                                            className="flex-1 bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+                                            title="Mes del Periodo"
+                                        >
+                                            {MONTHS.map(m => (
+                                                <option key={m.value} value={m.value}>{m.label}</option>
+                                            ))}
+                                        </select>
+                                        <select 
+                                            value={periodYear} 
+                                            onChange={(e) => setPeriodYear(parseInt(e.target.value, 10))}
+                                            className="w-20 bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+                                            title="Año del Periodo"
+                                        >
+                                            {YEARS.map(y => (
+                                                <option key={y} value={y}>{y}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
                                 <div className="md:col-span-2">

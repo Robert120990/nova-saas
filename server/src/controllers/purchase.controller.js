@@ -159,18 +159,38 @@ const createPurchase = async (req, res) => {
         const finalMontoTotal = Math.round((gravadaNum + exentaNum + nosujetaNum + finalIva + fovialNum + cotransNum - retencionNum + percepcionNum) * 100) / 100;
 
         // Periodo fiscal de la compra (Art. 65 Ley del IVA: no puede declararse en un periodo anterior a su emision)
-        let finalPeriodYear = parseInt(period_year, 10);
-        let finalPeriodMonth = parseInt(period_month, 10);
+        let docYear = new Date().getFullYear();
+        let docMonth = new Date().getMonth() + 1;
         if (fecha) {
-            const d = new Date(fecha);
-            if (!isNaN(d.getTime())) {
-                const docYear = d.getUTCFullYear();
-                const docMonth = d.getUTCMonth() + 1;
-                if (!finalPeriodYear || !finalPeriodMonth || finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
-                    finalPeriodYear = docYear;
-                    finalPeriodMonth = docMonth;
+            if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+                const parts = fecha.split('T')[0].split('-');
+                docYear = parseInt(parts[0], 10);
+                docMonth = parseInt(parts[1], 10);
+            } else {
+                const d = new Date(fecha);
+                if (!isNaN(d.getTime())) {
+                    docYear = d.getFullYear();
+                    docMonth = d.getMonth() + 1;
                 }
             }
+        }
+        let finalPeriodYear = parseInt(period_year, 10) || docYear;
+        let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
+        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+            finalPeriodYear = docYear;
+            finalPeriodMonth = docMonth;
+        }
+
+        // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
+        const [existingPeriod] = await connection.query(
+            'SELECT id FROM purchase_user_periods WHERE user_id = ? AND company_id = ?',
+            [usuarioId, companyId]
+        );
+        if (existingPeriod.length === 0) {
+            await connection.query(
+                'INSERT INTO purchase_user_periods (user_id, company_id, year, month) VALUES (?, ?, ?, ?)',
+                [usuarioId, companyId, finalPeriodYear, finalPeriodMonth]
+            );
         }
 
         // 1. Insertar Cabecera
@@ -359,18 +379,42 @@ const updatePurchase = async (req, res) => {
 
         const finalMontoTotal = Math.round((gravadaNum + exentaNum + nosujetaNum + finalIva + fovialNum + cotransNum - retencionNum + percepcionNum) * 100) / 100;
 
+        const usuarioId = req.user?.id;
+
         // Periodo fiscal de la compra (Art. 65 Ley del IVA: no puede declararse en un periodo anterior a su emision)
-        let finalPeriodYear = parseInt(period_year, 10);
-        let finalPeriodMonth = parseInt(period_month, 10);
+        let docYear = new Date().getFullYear();
+        let docMonth = new Date().getMonth() + 1;
         if (fecha) {
-            const d = new Date(fecha);
-            if (!isNaN(d.getTime())) {
-                const docYear = d.getUTCFullYear();
-                const docMonth = d.getUTCMonth() + 1;
-                if (!finalPeriodYear || !finalPeriodMonth || finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
-                    finalPeriodYear = docYear;
-                    finalPeriodMonth = docMonth;
+            if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+                const parts = fecha.split('T')[0].split('-');
+                docYear = parseInt(parts[0], 10);
+                docMonth = parseInt(parts[1], 10);
+            } else {
+                const d = new Date(fecha);
+                if (!isNaN(d.getTime())) {
+                    docYear = d.getFullYear();
+                    docMonth = d.getMonth() + 1;
                 }
+            }
+        }
+        let finalPeriodYear = parseInt(period_year, 10) || docYear;
+        let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
+        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+            finalPeriodYear = docYear;
+            finalPeriodMonth = docMonth;
+        }
+
+        // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
+        if (usuarioId && companyId) {
+            const [existingPeriod] = await connection.query(
+                'SELECT id FROM purchase_user_periods WHERE user_id = ? AND company_id = ?',
+                [usuarioId, companyId]
+            );
+            if (existingPeriod.length === 0) {
+                await connection.query(
+                    'INSERT INTO purchase_user_periods (user_id, company_id, year, month) VALUES (?, ?, ?, ?)',
+                    [usuarioId, companyId, finalPeriodYear, finalPeriodMonth]
+                );
             }
         }
 

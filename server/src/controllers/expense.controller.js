@@ -134,6 +134,41 @@ const createExpense = async (req, res) => {
 
         if (!companyId || !usuarioId) throw new Error('Sesión no válida');
 
+        // Periodo fiscal del gasto
+        let docYear = new Date().getFullYear();
+        let docMonth = new Date().getMonth() + 1;
+        if (fecha) {
+            if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+                const parts = fecha.split('T')[0].split('-');
+                docYear = parseInt(parts[0], 10);
+                docMonth = parseInt(parts[1], 10);
+            } else {
+                const d = new Date(fecha);
+                if (!isNaN(d.getTime())) {
+                    docYear = d.getFullYear();
+                    docMonth = d.getMonth() + 1;
+                }
+            }
+        }
+        let finalPeriodYear = parseInt(period_year, 10) || docYear;
+        let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
+        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+            finalPeriodYear = docYear;
+            finalPeriodMonth = docMonth;
+        }
+
+        // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
+        const [existingPeriod] = await connection.query(
+            'SELECT id FROM purchase_user_periods WHERE user_id = ? AND company_id = ?',
+            [usuarioId, companyId]
+        );
+        if (existingPeriod.length === 0) {
+            await connection.query(
+                'INSERT INTO purchase_user_periods (user_id, company_id, year, month) VALUES (?, ?, ?, ?)',
+                [usuarioId, companyId, finalPeriodYear, finalPeriodMonth]
+            );
+        }
+
         // 1. Insertar Cabecera
         const [headerResult] = await connection.query(`
             INSERT INTO expense_headers 
@@ -148,7 +183,7 @@ const createExpense = async (req, res) => {
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
-            period_year, period_month
+            finalPeriodYear, finalPeriodMonth
         ]);
 
         const expenseId = headerResult.insertId;
@@ -212,6 +247,45 @@ const updateExpense = async (req, res) => {
         );
         if (oldExpense.length === 0) throw new Error('Gasto no encontrado');
 
+        const usuarioId = req.user?.id;
+
+        // Periodo fiscal del gasto
+        let docYear = new Date().getFullYear();
+        let docMonth = new Date().getMonth() + 1;
+        if (fecha) {
+            if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+                const parts = fecha.split('T')[0].split('-');
+                docYear = parseInt(parts[0], 10);
+                docMonth = parseInt(parts[1], 10);
+            } else {
+                const d = new Date(fecha);
+                if (!isNaN(d.getTime())) {
+                    docYear = d.getFullYear();
+                    docMonth = d.getMonth() + 1;
+                }
+            }
+        }
+        let finalPeriodYear = parseInt(period_year, 10) || docYear;
+        let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
+        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
+            finalPeriodYear = docYear;
+            finalPeriodMonth = docMonth;
+        }
+
+        // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
+        if (usuarioId && companyId) {
+            const [existingPeriod] = await connection.query(
+                'SELECT id FROM purchase_user_periods WHERE user_id = ? AND company_id = ?',
+                [usuarioId, companyId]
+            );
+            if (existingPeriod.length === 0) {
+                await connection.query(
+                    'INSERT INTO purchase_user_periods (user_id, company_id, year, month) VALUES (?, ?, ?, ?)',
+                    [usuarioId, companyId, finalPeriodYear, finalPeriodMonth]
+                );
+            }
+        }
+
         // 2. Actualizar Cabecera
         await connection.query(`
             UPDATE expense_headers SET 
@@ -226,7 +300,7 @@ const updateExpense = async (req, res) => {
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
-            period_year, period_month,
+            finalPeriodYear, finalPeriodMonth,
             id, companyId
         ]);
 

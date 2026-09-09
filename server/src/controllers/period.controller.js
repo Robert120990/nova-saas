@@ -14,7 +14,12 @@ const getPurchasePeriod = async (req, res) => {
         );
 
         if (rows.length === 0) {
-            return res.status(404).json({ message: 'No se ha seleccionado un periodo de compras' });
+            const now = new Date();
+            return res.json({
+                year: now.getFullYear(),
+                month: now.getMonth() + 1,
+                isDefault: true
+            });
         }
 
         res.json(rows[0]);
