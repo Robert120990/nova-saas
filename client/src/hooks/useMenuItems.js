@@ -198,6 +198,24 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Reporte de Estado de Cuenta en Reportes de Cuentas por Cobrar (CXC)
+    const cxcReportsNode = Object.values(itemMap).find(i => 
+        (i.id === 30) ||
+        (i.children && i.children.some(c => c.path === '/cxc/reportes/saldos'))
+    );
+    if (cxcReportsNode && !cxcReportsNode.children.some(c => c.path === '/cxc/reportes/estado-cuenta')) {
+        cxcReportsNode.children.push({
+            id: 'virtual-cxc-statement-report',
+            label: 'Reporte de Estado de Cuenta',
+            path: '/cxc/reportes/estado-cuenta',
+            permission: 'view_customer_statement',
+            permission_key: 'view_customer_statement',
+            hideInMenu: false,
+            icon: iconMap.FileText || iconMap.Circle,
+            children: []
+        });
+    }
+
     return roots;
 }
 

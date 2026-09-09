@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
@@ -250,6 +251,14 @@ const CustomerStatement = () => {
                 </div>
                 
                 <div className="flex items-center gap-2">
+                    <Link 
+                        to="/cxc/reportes/estado-cuenta"
+                        className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-sm"
+                        title="Ir al Reporte Formal de Estado de Cuenta"
+                    >
+                        <FileText size={16} />
+                        <span className="hidden sm:inline">Reporte Formal</span>
+                    </Link>
                     <button 
                         onClick={handleExportExcel}
                         className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl hover:bg-emerald-100 transition-all shadow-sm"

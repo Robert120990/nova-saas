@@ -512,7 +512,9 @@ const sendStatementEmail = async (req, res) => {
  * Genera y descarga el PDF del estado de cuenta.
  */
 const exportStatementPDF = async (req, res) => {
-    const { customer_id, branch_id } = req.query;
+    const { customer_id, branch_id, start_date, end_date, startDate, endDate } = req.query;
+    const fromDate = (start_date || startDate || '').trim() || null;
+    const toDate = (end_date || endDate || '').trim() || null;
     const company_id = req.company_id;
 
     if (!customer_id || !branch_id) {
@@ -544,15 +546,47 @@ const exportStatementPDF = async (req, res) => {
         `, [company_id, branch_id, customer_id]);
 
         const movementsAll = [...sales, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-        let currentBalance = 0;
-        const history = movementsAll.map(m => {
-            currentBalance += (parseFloat(m.cargo) - parseFloat(m.abono));
-            return { ...m, balance: currentBalance };
+
+        let initialBalance = 0;
+        const inPeriodMovements = [];
+
+        movementsAll.forEach(m => {
+            const fStr = (m.fecha ? (typeof m.fecha === 'string' ? m.fecha.substring(0, 10) : new Date(m.fecha).toISOString().substring(0, 10)) : '');
+            const cargo = parseFloat(m.cargo) || 0;
+            const abono = parseFloat(m.abono) || 0;
+
+            if (fromDate && fStr < fromDate) {
+                initialBalance += (cargo - abono);
+            } else if (!toDate || fStr <= toDate) {
+                inPeriodMovements.push(m);
+            }
         });
+
+        let currentBalance = initialBalance;
+        const inPeriodHistory = inPeriodMovements.map(m => {
+            const cargo = parseFloat(m.cargo) || 0;
+            const abono = parseFloat(m.abono) || 0;
+            currentBalance += (cargo - abono);
+            return { ...m, cargo, abono, balance: currentBalance };
+        });
+
+        const history = fromDate ? [
+            {
+                fecha: fromDate,
+                tipo: 'SALDO',
+                numero: '—',
+                concepto: 'SALDO ANTERIOR',
+                cargo: initialBalance > 0 ? initialBalance : 0,
+                abono: initialBalance < 0 ? Math.abs(initialBalance) : 0,
+                balance: initialBalance
+            },
+            ...inPeriodHistory
+        ] : inPeriodHistory;
 
         if (req.query.format === 'excel') {
             const buffer = await excelService.createExcelBuffer({
                 title: `ESTADO DE CUENTA - ${customer.nombre.toUpperCase()}`,
+                subtitle: (fromDate && toDate) ? `PERÍODO DEL ${fromDate} AL ${toDate}` : undefined,
                 sheets: [{
                     name: 'Estado de Cuenta',
                     columns: [
@@ -586,6 +620,8 @@ const exportStatementPDF = async (req, res) => {
             customer_nit: customer.nit || customer.numero_documento,
             customer_nrc: customer.nrc,
             customer_phone: customer.telefono,
+            startDate: fromDate,
+            endDate: toDate,
             total_balance: currentBalance,
             movements: history
         };
@@ -1145,7 +1181,9 @@ const getAnticiposStatement = async (req, res) => {
  * Genera y descarga el PDF del estado de cuenta de anticipos.
  */
 const exportAnticiposStatementPDF = async (req, res) => {
-    const { customer_id, branch_id } = req.query;
+    const { customer_id, branch_id, start_date, end_date, startDate, endDate } = req.query;
+    const fromDate = (start_date || startDate || '').trim() || null;
+    const toDate = (end_date || endDate || '').trim() || null;
     const company_id = req.company_id;
 
     if (!customer_id || !branch_id) {
@@ -1186,17 +1224,47 @@ const exportAnticiposStatementPDF = async (req, res) => {
         `, [customer_id, company_id, branch_id]);
 
         const movementsAll = [...advances, ...consumptions].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-        let currentBalance = 0;
-        const history = movementsAll.map(m => {
+
+        let initialBalance = 0;
+        const inPeriodMovements = [];
+
+        movementsAll.forEach(m => {
+            const fStr = (m.fecha ? (typeof m.fecha === 'string' ? m.fecha.substring(0, 10) : new Date(m.fecha).toISOString().substring(0, 10)) : '');
+            const cargo = parseFloat(m.cargo) || 0;
+            const abono = parseFloat(m.abono) || 0;
+
+            if (fromDate && fStr < fromDate) {
+                initialBalance += (cargo - abono);
+            } else if (!toDate || fStr <= toDate) {
+                inPeriodMovements.push(m);
+            }
+        });
+
+        let currentBalance = initialBalance;
+        const inPeriodHistory = inPeriodMovements.map(m => {
             const cargo = parseFloat(m.cargo) || 0;
             const abono = parseFloat(m.abono) || 0;
             currentBalance += (cargo - abono);
             return { ...m, cargo, abono, balance: currentBalance };
         });
 
+        const history = fromDate ? [
+            {
+                fecha: fromDate,
+                tipo: 'SALDO',
+                numero: '—',
+                concepto: 'SALDO ANTERIOR',
+                cargo: initialBalance > 0 ? initialBalance : 0,
+                abono: initialBalance < 0 ? Math.abs(initialBalance) : 0,
+                balance: initialBalance
+            },
+            ...inPeriodHistory
+        ] : inPeriodHistory;
+
         if (req.query.format === 'excel') {
             const buffer = await excelService.createExcelBuffer({
                 title: `ESTADO DE CUENTA DE ANTICIPOS - ${customer.nombre.toUpperCase()}`,
+                subtitle: (fromDate && toDate) ? `PERÍODO DEL ${fromDate} AL ${toDate}` : undefined,
                 sheets: [{
                     name: 'Anticipos',
                     columns: [
@@ -1232,6 +1300,8 @@ const exportAnticiposStatementPDF = async (req, res) => {
             customer_phone: customer.telefono,
             title: 'ESTADO DE CUENTA DE ANTICIPOS',
             balance_label: 'SALDO DISPONIBLE EN ANTICIPOS:',
+            startDate: fromDate,
+            endDate: toDate,
             total_balance: currentBalance,
             movements: history
         };
@@ -1372,7 +1442,9 @@ const getTrupputStatement = async (req, res) => {
  * Genera y descarga el PDF del estado de cuenta Trupput.
  */
 const exportTrupputStatementPDF = async (req, res) => {
-    const { customer_id, branch_id } = req.query;
+    const { customer_id, branch_id, start_date, end_date, startDate, endDate } = req.query;
+    const fromDate = (start_date || startDate || '').trim() || null;
+    const toDate = (end_date || endDate || '').trim() || null;
     const company_id = req.company_id;
 
     if (!customer_id || !branch_id) {
@@ -1419,10 +1491,27 @@ const exportTrupputStatementPDF = async (req, res) => {
         `, [customer_id, company_id, branch_id]);
 
         const movementsAll = [...recharges, ...dispatches].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-        let currentBalanceGal = 0;
+
+        let initialBalanceGal = 0;
+        const inPeriodMovements = [];
+
+        movementsAll.forEach(m => {
+            const fStr = (m.fecha ? (typeof m.fecha === 'string' ? m.fecha.substring(0, 10) : new Date(m.fecha).toISOString().substring(0, 10)) : '');
+            const cargoGal = parseFloat(m.galones_cargo) || 0;
+            const abonoGal = parseFloat(m.galones_abono) || 0;
+
+            if (fromDate && fStr < fromDate) {
+                initialBalanceGal += (cargoGal - abonoGal);
+            } else if (!toDate || fStr <= toDate) {
+                inPeriodMovements.push(m);
+            }
+        });
+
+        let currentBalanceGal = initialBalanceGal;
         let totalRecargado = 0;
         let totalDespachado = 0;
-        const history = movementsAll.map(m => {
+
+        const inPeriodHistory = inPeriodMovements.map(m => {
             const cargoGal = parseFloat(m.galones_cargo) || 0;
             const abonoGal = parseFloat(m.galones_abono) || 0;
             currentBalanceGal += (cargoGal - abonoGal);
@@ -1431,9 +1520,26 @@ const exportTrupputStatementPDF = async (req, res) => {
             return { ...m, balance_galones: currentBalanceGal };
         });
 
+        const history = fromDate ? [
+            {
+                fecha: fromDate,
+                tipo: 'SALDO',
+                numero: '—',
+                concepto: 'SALDO ANTERIOR',
+                galones: 0,
+                galones_cargo: initialBalanceGal > 0 ? initialBalanceGal : 0,
+                galones_abono: initialBalanceGal < 0 ? Math.abs(initialBalanceGal) : 0,
+                balance_galones: initialBalanceGal,
+                cargo: 0,
+                abono: 0
+            },
+            ...inPeriodHistory
+        ] : inPeriodHistory;
+
         if (req.query.format === 'excel') {
             const buffer = await excelService.createExcelBuffer({
                 title: `ESTADO DE CUENTA TRUPPUT - ${customer.nombre.toUpperCase()}`,
+                subtitle: (fromDate && toDate) ? `PERÍODO DEL ${fromDate} AL ${toDate}` : undefined,
                 sheets: [{
                     name: 'Trupput',
                     columns: [
@@ -1471,6 +1577,8 @@ const exportTrupputStatementPDF = async (req, res) => {
             customer_nit: customer.nit || customer.numero_documento,
             customer_nrc: customer.nrc,
             customer_phone: customer.telefono,
+            startDate: fromDate,
+            endDate: toDate,
             total_balance_galones: currentBalanceGal,
             total_recargado: totalRecargado,
             total_despachado: totalDespachado,

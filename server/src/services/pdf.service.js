@@ -268,7 +268,9 @@ const generateTrupputStatementPDF = async (data) => {
 
     const title = 'ESTADO DE CUENTA TRUPPUT (PREPAGO POR GALONAJE)';
     const subtitle = data.branch_name ? `SUCURSAL: ${data.branch_name}` : null;
-    const periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
+    const periodText = data.startDate && data.endDate 
+        ? `DEL ${reportPdfHelper.formatDate(data.startDate)} AL ${reportPdfHelper.formatDate(data.endDate)}`
+        : `AL ${reportPdfHelper.formatDate(new Date())}`;
 
     let currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
 

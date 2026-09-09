@@ -79,6 +79,7 @@ import InventoryMovementsReport from './pages/InventoryMovementsReport';
 import InventoryValuationReport from './pages/InventoryValuationReport';
 import InventoryTurnoverReport from './pages/InventoryTurnoverReport';
 import CustomerBalancesReport from './pages/CustomerBalancesReport';
+import CustomerStatementReport from './pages/CustomerStatementReport';
 import ProviderBalancesReport from './pages/ProviderBalancesReport';
 import FuelPrices from './pages/FuelPrices';
 import SalesByCategoryReport from './pages/SalesByCategoryReport';
@@ -298,6 +299,7 @@ function App() {
                         <Route path="/cxc/abonos" element={<AddPayment />} />
                         <Route path="/cxc/reportes/saldos" element={<CustomerBalancesReport />} />
                         <Route path="/cxc/reportes/documentos-pendientes" element={<PendingDocumentsDetailedReport />} />
+                        <Route path="/cxc/reportes/estado-cuenta" element={<CustomerStatementReport />} />
 
                         {/* Accounts Payable (CXP) */}
                         <Route path="/cxp/estado-cuenta" element={<ProviderStatement />} />
