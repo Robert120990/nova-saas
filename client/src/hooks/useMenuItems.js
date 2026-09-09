@@ -220,8 +220,8 @@ function buildTree(items) {
             id: 'virtual-cxc-statement-report',
             label: 'Reporte de Estado de Cuenta',
             path: '/cxc/reportes/estado-cuenta',
-            permission: 'view_customer_statement',
-            permission_key: 'view_customer_statement',
+            permission: 'view_cxc_statement_report',
+            permission_key: 'view_cxc_statement_report',
             hideInMenu: false,
             icon: iconMap.FileText || iconMap.Circle,
             children: []
@@ -265,6 +265,56 @@ function getRootParent(flatItems, item) {
         current = parent;
     }
     return current;
+}
+
+export function isReportItem(item, flatItems = []) {
+    if (!item) return false;
+    const path = (item.path || '').toLowerCase();
+    const label = (item.label || '').toLowerCase();
+    const key = (item.permission_key || item.id || '').toLowerCase();
+
+    if (
+        path.includes('/reportes/') || 
+        path.includes('/report/') || 
+        path.startsWith('/iva/ventas-') || 
+        path.startsWith('/iva/compras') || 
+        path.includes('/libro-') || 
+        path.includes('galonaje-vendido') || 
+        path.includes('reporte-')
+    ) {
+        return true;
+    }
+    if (
+        label.includes('reporte') || 
+        label.includes('libro') || 
+        label.includes('informe') || 
+        label.includes('balance') || 
+        label.includes('estado de resultados') || 
+        label.includes('flujo de efectivo') || 
+        label.includes('cédula de auditoría') || 
+        label.includes('cedula de auditoria') || 
+        label.includes('listado de partidas') || 
+        label.includes('auxiliar de operaciones') || 
+        label.includes('constancia de sueldo') || 
+        label.includes('carta de renta')
+    ) {
+        return true;
+    }
+    if (
+        key.includes('_report') || 
+        key.includes('_ledger') || 
+        key.includes('_balances') || 
+        key.includes('_pending_docs')
+    ) {
+        return true;
+    }
+    if (item.parent_id && Array.isArray(flatItems)) {
+        const parent = flatItems.find(p => p.id === item.parent_id);
+        if (parent && (parent.label || '').toLowerCase().includes('reporte')) {
+            return true;
+        }
+    }
+    return false;
 }
 
 export function useMenuPermissions() {
@@ -314,9 +364,20 @@ export function useMenuPermissions() {
                 };
             }
 
+            const isReport = isReportItem(item, flatItems);
+
             if (!seen[item.permission_key]) {
                 seen[item.permission_key] = true;
-                groups[groupId].permissions.push({ id: item.permission_key, label: item.label });
+                groups[groupId].permissions.push({ 
+                    id: item.permission_key, 
+                    label: item.label,
+                    isReport: isReport
+                });
+            } else {
+                const existingPerm = groups[groupId]?.permissions.find(p => p.id === item.permission_key);
+                if (existingPerm && isReport) {
+                    existingPerm.isReport = true;
+                }
             }
 
             if (item.extra_permissions) {

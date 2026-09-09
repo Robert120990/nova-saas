@@ -238,6 +238,12 @@ const Roles = () => {
                                     <p className="text-[11px] text-slate-500 mt-1">
                                         Este panel se adapta en tiempo real a las opciones agregadas al sistema. Selecciona o deshabilita en qué menús tendrá visión y acceso este rol:
                                     </p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <span className="inline-flex items-center text-[9px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                            Reporte
+                                        </span>
+                                        <span className="text-[11px] text-slate-400">Identifica opciones correspondientes a reportes y libros del sistema.</span>
+                                    </div>
                                 </div>
                                 <button 
                                     type="button"
@@ -265,23 +271,30 @@ const Roles = () => {
                                              {group.permissions.map(perm => (
                                                 <label 
                                                     key={`${group.id}-${perm.id}`} 
-                                                    className="flex items-center gap-3 cursor-pointer group/item select-none"
+                                                    className="flex items-center justify-between gap-3 cursor-pointer group/item select-none py-0.5"
                                                 >
-                                                    <div 
-                                                        onClick={() => handleTogglePermission(perm.id)}
-                                                        className={`transition-all duration-200 ${formData.permissions.includes(perm.id) ? "text-indigo-500" : "text-slate-700 group-hover/item:text-slate-500"}`}
-                                                    >
-                                                        {formData.permissions.includes(perm.id) ? (
-                                                            <div className="w-5 h-5 border border-indigo-500 rounded bg-indigo-500/10 flex items-center justify-center">
-                                                                <CheckCircle2 size={14} className="text-indigo-500" />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="w-5 h-5 border border-slate-700 rounded bg-transparent" />
-                                                        )}
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div 
+                                                            onClick={() => handleTogglePermission(perm.id)}
+                                                            className={`shrink-0 transition-all duration-200 ${formData.permissions.includes(perm.id) ? "text-indigo-500" : "text-slate-700 group-hover/item:text-slate-500"}`}
+                                                        >
+                                                            {formData.permissions.includes(perm.id) ? (
+                                                                <div className="w-5 h-5 border border-indigo-500 rounded bg-indigo-500/10 flex items-center justify-center">
+                                                                    <CheckCircle2 size={14} className="text-indigo-500" />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-5 h-5 border border-slate-700 rounded bg-transparent" />
+                                                            )}
+                                                        </div>
+                                                        <span className={`text-[13px] font-medium transition-colors ${formData.permissions.includes(perm.id) ? "text-slate-200" : "text-slate-500 group-hover/item:text-slate-400"}`}>
+                                                            {perm.label}
+                                                        </span>
                                                     </div>
-                                                    <span className={`text-[13px] font-medium transition-colors ${formData.permissions.includes(perm.id) ? "text-slate-200" : "text-slate-500 group-hover/item:text-slate-400"}`}>
-                                                        {perm.label}
-                                                    </span>
+                                                    {perm.isReport && (
+                                                        <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 uppercase tracking-wider">
+                                                            Reporte
+                                                        </span>
+                                                    )}
                                                 </label>
                                             ))}
                                         </div>
