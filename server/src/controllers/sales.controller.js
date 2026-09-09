@@ -95,6 +95,8 @@ const createSale = async (req, res) => {
                     success: false
                 });
             }
+        }
+
         // 0d. Validar período de documentos vinculados para Comprobante de Retención (DTE 07)
         if (header.dte_type === '07' || header.tipo_documento === '07') {
             const currentPeriod = new Date().toISOString().substring(0, 7); // YYYY-MM
