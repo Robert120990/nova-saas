@@ -5,28 +5,25 @@ import {
     GitBranch, 
     Calendar,
     User,
-    FileText,
-    Wallet,
-    Fuel,
-    Info,
-    ArrowLeft
+    FileText
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { getTodayString, getFirstDayOfMonth } from '../utils/dateUtils';
 
 const CustomerStatementReport = () => {
     const { user } = useAuth();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
+    const firstDayOfMonth = getFirstDayOfMonth();
 
     // States
     const [reportType, setReportType] = useState('credito'); // 'credito' | 'anticipado' | 'trupput'
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [selectedCustomerName, setSelectedCustomerName] = useState('');
-    const [startDate, setStartDate] = useState('');
+    const [startDate, setStartDate] = useState(firstDayOfMonth);
     const [endDate, setEndDate] = useState(today);
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
@@ -213,46 +210,15 @@ const CustomerStatementReport = () => {
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <FileText size={12} className="text-indigo-500" /> Modalidad de Cuenta
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                        type="button"
-                        onClick={() => handleTypeChange('credito')}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            reportType === 'credito'
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-                        }`}
-                    >
-                        <FileText size={14} />
-                        <span>Crédito</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => handleTypeChange('anticipado')}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            reportType === 'anticipado'
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-                        }`}
-                    >
-                        <Wallet size={14} />
-                        <span>Anticipado</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => handleTypeChange('trupput')}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            reportType === 'trupput'
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-                        }`}
-                    >
-                        <Fuel size={14} />
-                        <span>Trupput</span>
-                    </button>
-                </div>
+                <select 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all cursor-pointer"
+                    value={reportType}
+                    onChange={(e) => handleTypeChange(e.target.value)}
+                >
+                    <option value="credito">CRÉDITO (VENTAS Y ABONOS)</option>
+                    <option value="anticipado">ANTICIPOS (DEPÓSITOS Y CONSUMOS)</option>
+                    <option value="trupput">TRUPPUT (PREPAGO POR GALONAJE)</option>
+                </select>
             </div>
 
             {/* Sucursal */}
@@ -298,59 +264,67 @@ const CustomerStatementReport = () => {
                 />
             </div>
 
-            {/* Rango de Fechas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
-                    </label>
-                    <input 
-                        type="date"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                    />
-                </div>
-
-                <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Calendar size={12} className="text-indigo-500" /> Fecha Fin
-                    </label>
-                    <input 
-                        type="date"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                    />
-                </div>
+            {/* Fecha Inicio */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={12} className="text-indigo-500" /> Fecha Inicio
+                </label>
+                <input 
+                    type="date"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                />
             </div>
 
-            {/* Tarjeta Informativa */}
-            <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-100 space-y-2">
-                <div className="flex items-center gap-2 text-slate-500">
-                    <Info size={14} className="text-indigo-500" />
-                    <span className="text-[10px] font-black uppercase tracking-wider">
-                        {reportType === 'credito' && 'Modalidad Crédito'}
-                        {reportType === 'anticipado' && 'Modalidad Anticipos'}
-                        {reportType === 'trupput' && 'Modalidad Trupput (Galones)'}
-                    </span>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                    {reportType === 'credito' && 'Incluye las ventas a crédito, documentos fiscales y abonos/pagos recibidos. Si especifica una fecha de inicio, calcula el saldo inicial previo a esa fecha.'}
-                    {reportType === 'anticipado' && 'Muestra los depósitos o anticipos monetarios recibidos y los consumos aplicados en estación, reflejando el saldo disponible en dólares.'}
-                    {reportType === 'trupput' && 'Presenta el control de prepago de combustible en volumen: recargas en galones (+) versus despachos por turno (-), expresando el saldo disponible en galones.'}
-                </p>
+            {/* Fecha Fin */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={12} className="text-indigo-500" /> Fecha Fin
+                </label>
+                <input 
+                    type="date"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                />
             </div>
 
-            {/* Acceso a Consulta Interactiva */}
-            <div className="pt-2">
-                <Link
-                    to="/cxc/estado-cuenta"
-                    className="inline-flex items-center gap-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline"
+            {/* Accesos Rápidos de Fecha */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStartDate(getFirstDayOfMonth());
+                        setEndDate(getTodayString());
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                 >
-                    <ArrowLeft size={13} />
-                    <span>Ir a Consulta Interactiva de Clientes</span>
-                </Link>
+                    Este Mes
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        const now = new Date();
+                        const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                        setStartDate(getTodayString(prevMonthStart));
+                        setEndDate(getTodayString(prevMonthEnd));
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                >
+                    Mes Anterior
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                >
+                    Historial Completo
+                </button>
             </div>
         </ReportLayout>
     );

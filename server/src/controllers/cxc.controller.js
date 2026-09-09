@@ -12,7 +12,17 @@ const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 
-
+const extractDateYMD = (d) => {
+    if (!d) return '';
+    if (typeof d === 'string') return d.split('T')[0].substring(0, 10);
+    if (d instanceof Date && !isNaN(d)) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+    return String(d).substring(0, 10);
+};
 /**
  * Obtiene el estado de cuenta de un cliente para una sucursal específica.
  */
@@ -551,7 +561,7 @@ const exportStatementPDF = async (req, res) => {
         const inPeriodMovements = [];
 
         movementsAll.forEach(m => {
-            const fStr = (m.fecha ? (typeof m.fecha === 'string' ? m.fecha.substring(0, 10) : new Date(m.fecha).toISOString().substring(0, 10)) : '');
+            const fStr = extractDateYMD(m.fecha);
             const cargo = parseFloat(m.cargo) || 0;
             const abono = parseFloat(m.abono) || 0;
 
@@ -1229,7 +1239,7 @@ const exportAnticiposStatementPDF = async (req, res) => {
         const inPeriodMovements = [];
 
         movementsAll.forEach(m => {
-            const fStr = (m.fecha ? (typeof m.fecha === 'string' ? m.fecha.substring(0, 10) : new Date(m.fecha).toISOString().substring(0, 10)) : '');
+            const fStr = extractDateYMD(m.fecha);
             const cargo = parseFloat(m.cargo) || 0;
             const abono = parseFloat(m.abono) || 0;
 
@@ -1496,7 +1506,7 @@ const exportTrupputStatementPDF = async (req, res) => {
         const inPeriodMovements = [];
 
         movementsAll.forEach(m => {
-            const fStr = (m.fecha ? (typeof m.fecha === 'string' ? m.fecha.substring(0, 10) : new Date(m.fecha).toISOString().substring(0, 10)) : '');
+            const fStr = extractDateYMD(m.fecha);
             const cargoGal = parseFloat(m.galones_cargo) || 0;
             const abonoGal = parseFloat(m.galones_abono) || 0;
 

@@ -176,7 +176,7 @@ const generateStatementPDF = async (data, isProvider = false) => {
 
     currentY += 48;
 
-    const colWidths = { fecha: 65, doc: 110, concepto: 157, cargo: 70, abono: 70, saldo: 80 };
+    const colWidths = { fecha: 58, doc: 88, concepto: 196, cargo: 70, abono: 70, saldo: 70 };
     const colX = {
         fecha: startX,
         doc: startX + colWidths.fecha,
@@ -206,28 +206,34 @@ const generateStatementPDF = async (data, isProvider = false) => {
     let totalAbonos = 0;
 
     movements.forEach(m => {
-        if (currentY > 700) {
-            doc.addPage();
-            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
-            currentY = drawTableHeader(currentY);
-        }
-
         const cargo = parseFloat(m.cargo || 0);
         const abono = parseFloat(m.abono || 0);
         const balance = parseFloat(m.balance || 0);
         totalCargos += cargo;
         totalAbonos += abono;
         const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
+        const conceptoText = String(m.concepto || '—');
 
-        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.fontSize(7).font('Helvetica');
+        const conceptHeight = doc.heightOfString(conceptoText, { width: colWidths.concepto - 4 });
+        const docHeight = doc.heightOfString(docText, { width: colWidths.doc - 4 });
+        const rowHeight = Math.max(13, Math.ceil(conceptHeight) + 3, Math.ceil(docHeight) + 3);
+
+        if (currentY + rowHeight > 700) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.fillColor('#334155');
         doc.text(reportPdfHelper.formatDate(m.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
-        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
-        doc.text(String(m.concepto || '—'), colX.concepto + 2, currentY, { width: colWidths.concepto - 4, truncate: true });
+        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4 });
+        doc.text(conceptoText, colX.concepto + 2, currentY, { width: colWidths.concepto - 4 });
         doc.text(reportPdfHelper.fmt(cargo), colX.cargo, currentY, { width: colWidths.cargo - 4, align: 'right' });
         doc.text(reportPdfHelper.fmt(abono), colX.abono, currentY, { width: colWidths.abono - 4, align: 'right' });
         doc.text(reportPdfHelper.fmt(balance), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
 
-        currentY += 12;
+        currentY += rowHeight;
     });
 
     if (currentY > 685) {
@@ -296,7 +302,7 @@ const generateTrupputStatementPDF = async (data) => {
 
     currentY += 48;
 
-    const colWidths = { fecha: 65, doc: 105, concepto: 112, galones: 65, cargo: 65, abono: 65, saldo: 75 };
+    const colWidths = { fecha: 55, doc: 85, concepto: 162, galones: 60, cargo: 60, abono: 60, saldo: 70 };
     const colX = {
         fecha: startX,
         doc: startX + colWidths.fecha,
@@ -328,12 +334,6 @@ const generateTrupputStatementPDF = async (data) => {
     let totalGalonesAbono = 0;
 
     movements.forEach(m => {
-        if (currentY > 700) {
-            doc.addPage();
-            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
-            currentY = drawTableHeader(currentY);
-        }
-
         const cargoGal = parseFloat(m.galones_cargo || 0);
         const abonoGal = parseFloat(m.galones_abono || 0);
         const balanceGal = parseFloat(m.balance_galones || 0);
@@ -341,17 +341,29 @@ const generateTrupputStatementPDF = async (data) => {
         totalGalonesCargo += cargoGal;
         totalGalonesAbono += abonoGal;
         const docText = `${m.tipo || ''} ${m.numero || ''}`.trim() || '—';
+        const conceptoText = String(m.concepto || '—');
 
-        doc.fontSize(7).font('Helvetica').fillColor('#334155');
+        doc.fontSize(7).font('Helvetica');
+        const conceptHeight = doc.heightOfString(conceptoText, { width: colWidths.concepto - 4 });
+        const docHeight = doc.heightOfString(docText, { width: colWidths.doc - 4 });
+        const rowHeight = Math.max(13, Math.ceil(conceptHeight) + 3, Math.ceil(docHeight) + 3);
+
+        if (currentY + rowHeight > 700) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, comp, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.fillColor('#334155');
         doc.text(reportPdfHelper.formatDate(m.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
-        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4, truncate: true });
-        doc.text(String(m.concepto || '—'), colX.concepto + 2, currentY, { width: colWidths.concepto - 4, truncate: true });
+        doc.text(docText, colX.doc + 2, currentY, { width: colWidths.doc - 4 });
+        doc.text(conceptoText, colX.concepto + 2, currentY, { width: colWidths.concepto - 4 });
         doc.text(galones > 0 ? galones.toFixed(4) : '-', colX.galones, currentY, { width: colWidths.galones - 4, align: 'right' });
         doc.text(cargoGal > 0 ? cargoGal.toFixed(4) : '-', colX.cargo, currentY, { width: colWidths.cargo - 4, align: 'right' });
         doc.text(abonoGal > 0 ? abonoGal.toFixed(4) : '-', colX.abono, currentY, { width: colWidths.abono - 4, align: 'right' });
         doc.text(balanceGal.toFixed(4), colX.saldo, currentY, { width: colWidths.saldo - 4, align: 'right' });
 
-        currentY += 12;
+        currentY += rowHeight;
     });
 
     if (currentY > 655) {
