@@ -9,11 +9,9 @@ import {
     ShieldAlert,
     Clock,
     FileText,
-    Percent,
     Building2,
     Calendar,
     Phone,
-    UserCheck,
     CheckCircle2,
     FileDown
 } from 'lucide-react';
@@ -41,7 +39,7 @@ const PRESENTATION_OPTIONS = [
 ];
 
 export default function QuotationModal({ isOpen, onClose, onSaved, quotationId = null }) {
-    const [loading, setLoading] = useState(false);
+    const [_loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // Modales secundarios

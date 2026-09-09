@@ -14,11 +14,7 @@ import {
     ShieldAlert,
     CheckCircle2,
     Clock,
-    AlertCircle,
     Handshake,
-    Send,
-    Filter,
-    Calendar,
     DollarSign,
     RefreshCw,
     Mail,
@@ -39,7 +35,7 @@ const STATUS_CONFIG = {
 };
 
 export default function CrmQuotations() {
-    const { user } = useAuth();
+    const { user: _user } = useAuth();
     const queryClient = useQueryClient();
 
     // Filtros
@@ -82,7 +78,7 @@ export default function CrmQuotations() {
     const totalPages = data?.totalPages || 1;
 
     // Mutación para cambiar estado
-    const statusMutation = useMutation({
+    const _statusMutation = useMutation({
         mutationFn: async ({ id, status }) => {
             await axios.patch(`/api/crm/quotations/${id}/status`, { status });
         },
