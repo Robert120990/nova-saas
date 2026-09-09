@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { AlertCircle, Ban, Calendar, CheckCircle2, Clock, FileText, FileSpreadsheet, Loader2, Search, XCircle } from 'lucide-react';
+import { AlertCircle, Ban, Calendar, CheckCircle2, Clock, FileText, FileSpreadsheet, Loader2, Search, XCircle, Building2, GitBranch } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../context/AuthContext';
 import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import Money from '../../components/ui/Money';
 
 const VatBookAnexosIVA = () => {
+    const { user } = useAuth();
     const currentDate = new Date();
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
 
     const [fechaInicio, setFechaInicio] = useState(firstDayOfMonth);
     const [fechaFin, setFechaFin] = useState(currentDate.toISOString().split('T')[0]);
     const [tipoDte, setTipoDte] = useState('');
+    const [branchId, setBranchId] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -32,10 +35,20 @@ const VatBookAnexosIVA = () => {
         fecha_inicio: fechaInicio || undefined,
         fecha_fin: fechaFin || undefined,
         tipo_dte: tipoDte || undefined,
+        branch_id: branchId || undefined,
         search: debouncedSearch || undefined,
         page,
         limit
     };
+
+    const { data: branches = [] } = useQuery({
+        queryKey: ['branches'],
+        queryFn: async () => (await axios.get('/api/branches')).data
+    });
+
+    const currentBranchId = user?.branch_id ? String(user.branch_id) : null;
+    const currentBranch = branches.find((b) => String(b.id) === currentBranchId);
+    const currentBranchName = currentBranch?.nombre || user?.branch_name || 'Sucursal Actual';
 
     const { data: tipoDocs = [] } = useQuery({
         queryKey: ['catalog', '002'],
@@ -43,7 +56,7 @@ const VatBookAnexosIVA = () => {
     });
 
     const { data: response = { data: [], total: 0, page: 1, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['anexos-iva', fechaInicio, fechaFin, tipoDte, debouncedSearch, page, limit],
+        queryKey: ['anexos-iva', fechaInicio, fechaFin, tipoDte, branchId, debouncedSearch, page, limit],
         queryFn: async () => (await axios.get('/api/vat-books/anexos-iva', { params: queryParams })).data
     });
 
@@ -56,6 +69,7 @@ const VatBookAnexosIVA = () => {
                 fecha_inicio: fechaInicio || undefined,
                 fecha_fin: fechaFin || undefined,
                 tipo_dte: tipoDte || undefined,
+                branch_id: branchId || undefined,
                 search: debouncedSearch || undefined
             };
             const res = await axios.get(endpoint, { params, responseType: 'blob' });
@@ -128,7 +142,10 @@ const EstadoBadge = ({ estado }) => {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <button
-                        onClick={() => exportToFile('/api/vat-books/anexos-iva-pdf', 'application/pdf', 'Anexos_IVA.pdf', 'pdf')}
+                        onClick={() => {
+                            const scope = branchId === 'all' ? 'Contribuyente' : `Sucursal_${branchId}`;
+                            exportToFile('/api/vat-books/anexos-iva-pdf', 'application/pdf', `Anexos_IVA_${scope}.pdf`, 'pdf');
+                        }}
                         disabled={isExporting}
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
                     >
@@ -137,7 +154,10 @@ const EstadoBadge = ({ estado }) => {
                         <span className="sm:hidden">PDF</span>
                     </button>
                     <button
-                        onClick={() => exportToFile('/api/vat-books/anexos-iva-excel', 'spreadsheetml', 'Anexos_IVA.xlsx', 'excel')}
+                        onClick={() => {
+                            const scope = branchId === 'all' ? 'Contribuyente' : `Sucursal_${branchId}`;
+                            exportToFile('/api/vat-books/anexos-iva-excel', 'spreadsheetml', `Anexos_IVA_${scope}.xlsx`, 'excel');
+                        }}
                         disabled={isExporting}
                         className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-lg shadow-emerald-600/20 active:scale-95 disabled:opacity-50"
                     >
@@ -149,7 +169,70 @@ const EstadoBadge = ({ estado }) => {
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Selector Rápido de Ámbito: Contribuyente vs Sucursal Actual */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            Ámbito de Consulta:
+                        </span>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black ${
+                            branchId === 'all'
+                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
+                            {branchId === 'all' ? <Building2 size={13} /> : <GitBranch size={13} />}
+                            {branchId === 'all'
+                                ? 'Por Contribuyente (Todas las sucursales)'
+                                : `Por Sucursal: ${branches.find(b => String(b.id) === String(branchId))?.nombre || currentBranchName}`
+                            }
+                        </span>
+                    </div>
+
+                    <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+                        <button
+                            type="button"
+                            onClick={() => { setBranchId('all'); setPage(1); }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                branchId === 'all'
+                                    ? 'bg-white text-indigo-700 shadow-sm'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <Building2 size={14} />
+                            <span>Por Contribuyente</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { if (currentBranchId) { setBranchId(currentBranchId); setPage(1); } }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                branchId !== 'all' && (String(branchId) === currentBranchId || !currentBranchId)
+                                    ? 'bg-white text-emerald-700 shadow-sm'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <GitBranch size={14} />
+                            <span>Por Sucursal Actual {currentBranchName ? `(${currentBranchName})` : ''}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="space-y-1">
+                        <label className={labelCls}>Sucursal Específica</label>
+                        <select
+                            value={branchId}
+                            onChange={(e) => { setBranchId(e.target.value); setPage(1); }}
+                            className={inputCls}
+                        >
+                            <option value="all">🏢 Por Contribuyente (Todas)</option>
+                            {currentBranchId && (
+                                <option value={currentBranchId}>🏪 Sucursal Actual: {currentBranchName}</option>
+                            )}
+                            {branches.filter(b => String(b.id) !== currentBranchId).map(b => (
+                                <option key={b.id} value={String(b.id)}>📍 {b.nombre}</option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="space-y-1">
                         <label className={labelCls}>Fecha Inicio</label>
                         <input type="date" value={fechaInicio} onChange={(e) => { setFechaInicio(e.target.value); setPage(1); }} className={inputCls} />

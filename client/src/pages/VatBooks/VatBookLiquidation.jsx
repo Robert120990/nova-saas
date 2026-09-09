@@ -18,9 +18,11 @@ import {
     SlidersHorizontal,
     Coins,
     Receipt,
-    AlertCircle
+    AlertCircle,
+    Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../context/AuthContext';
 import Money, { MoneyInput } from '../../components/ui/Money';
 
 const MONTHS = [
@@ -39,6 +41,7 @@ const MONTHS = [
 ];
 
 const VatBookLiquidation = () => {
+    const { user } = useAuth();
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear().toString();
     const currentMonth = (currentDate.getMonth() + 1).toString();
@@ -64,6 +67,10 @@ const VatBookLiquidation = () => {
         queryKey: ['branches'],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
+
+    const currentBranchId = user?.branch_id ? String(user.branch_id) : null;
+    const currentBranch = branches.find((b) => String(b.id) === currentBranchId);
+    const currentBranchName = currentBranch?.nombre || user?.branch_name || 'Sucursal Actual';
 
     // Consulta de datos de liquidación
     const queryParams = {
@@ -100,7 +107,8 @@ const VatBookLiquidation = () => {
             const endpoint = type === 'pdf' ? '/api/vat-books/liquidation/pdf' : '/api/vat-books/liquidation/excel';
             const mime = type === 'pdf' ? 'application/pdf' : 'spreadsheetml';
             const extension = type === 'pdf' ? 'pdf' : 'xlsx';
-            const filename = `Liquidacion_IVA_F07_${year}_${month}.${extension}`;
+            const scopeSlug = branchId === 'all' ? 'Contribuyente' : `Sucursal_${branchId}`;
+            const filename = `Liquidacion_IVA_F07_${scopeSlug}_${year}_${month}.${extension}`;
 
             const res = await axios.get(endpoint, {
                 params: queryParams,
@@ -202,6 +210,53 @@ const VatBookLiquidation = () => {
 
             {/* Barra de Filtros y Período */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                {/* Selector Rápido de Ámbito: Contribuyente vs Sucursal Actual */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-3.5 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            Ámbito de Consulta:
+                        </span>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black ${
+                            branchId === 'all'
+                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
+                            {branchId === 'all' ? <Building2 size={13} /> : <GitBranch size={13} />}
+                            {branchId === 'all'
+                                ? 'Por Contribuyente (Consolidado de todas las sucursales)'
+                                : `Por Sucursal: ${data?.meta?.branchName || currentBranchName}`
+                            }
+                        </span>
+                    </div>
+
+                    <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+                        <button
+                            type="button"
+                            onClick={() => setBranchId('all')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                branchId === 'all'
+                                    ? 'bg-white text-indigo-700 shadow-sm'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <Building2 size={14} />
+                            <span>Por Contribuyente</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => currentBranchId && setBranchId(currentBranchId)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                branchId !== 'all' && (String(branchId) === currentBranchId || !currentBranchId)
+                                    ? 'bg-white text-emerald-700 shadow-sm'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <GitBranch size={14} />
+                            <span>Por Sucursal Actual {currentBranchName ? `(${currentBranchName})` : ''}</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                     <div>
                         <label className={labelCls}>Año Fiscal</label>
@@ -243,10 +298,15 @@ const VatBookLiquidation = () => {
                                 onChange={(e) => setBranchId(e.target.value)}
                                 className={inputCls}
                             >
-                                <option value="all">Todas las Sucursales (Consolidado)</option>
-                                {branches.map((b) => (
-                                    <option key={b.id} value={b.id}>{b.nombre}</option>
-                                ))}
+                                <option value="all">🏢 Por Contribuyente (Consolidado)</option>
+                                {currentBranchId && (
+                                    <option value={currentBranchId}>🏪 Sucursal Actual: {currentBranchName}</option>
+                                )}
+                                {branches
+                                    .filter((b) => String(b.id) !== currentBranchId)
+                                    .map((b) => (
+                                        <option key={b.id} value={String(b.id)}>📍 {b.nombre}</option>
+                                    ))}
                             </select>
                             <GitBranch size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
                         </div>

@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
     GitBranch, 
-    Calendar
+    Calendar,
+    Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -29,6 +30,10 @@ const VatBookPurchases = () => {
         queryKey: ['branches'],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
+
+    const currentBranchId = user?.branch_id ? String(user.branch_id) : null;
+    const currentBranch = branches.find((b) => String(b.id) === currentBranchId);
+    const currentBranchName = currentBranch?.nombre || user?.branch_name || 'Sucursal Actual';
 
     const handleFilterChange = (name, value) => {
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -81,7 +86,8 @@ const VatBookPurchases = () => {
         if (!pdfUrl) return;
         const link = document.createElement('a');
         link.href = pdfUrl;
-        link.setAttribute('download', `Libro_Compras_${filters.month}_${filters.year}.pdf`);
+        const scope = filters.branch_id === 'all' ? 'Contribuyente' : `Sucursal_${filters.branch_id}`;
+        link.setAttribute('download', `Libro_Compras_${scope}_${filters.month}_${filters.year}.pdf`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -103,7 +109,8 @@ const VatBookPurchases = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Libro_Compras.xlsx`);
+            const scope = filters.branch_id === 'all' ? 'Contribuyente' : `Sucursal_${filters.branch_id}`;
+            link.setAttribute('download', `Libro_Compras_${scope}_${filters.month}_${filters.year}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -136,10 +143,41 @@ const VatBookPurchases = () => {
             onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.year && filters.month)}
         >
-            {/* Sucursal */}
+            {/* Ámbito del Reporte */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <GitBranch size={12} className="text-indigo-500" /> Sucursal
+                    <Building2 size={12} className="text-indigo-500" /> Ámbito del Reporte
+                </label>
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                    <button
+                        type="button"
+                        onClick={() => handleFilterChange('branch_id', 'all')}
+                        className={`py-2 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
+                            filters.branch_id === 'all'
+                                ? 'bg-white text-indigo-700 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                    >
+                        <span>🏢</span> Contribuyente
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => currentBranchId && handleFilterChange('branch_id', currentBranchId)}
+                        className={`py-2 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
+                            filters.branch_id !== 'all' && (String(filters.branch_id) === currentBranchId || !currentBranchId)
+                                ? 'bg-white text-emerald-700 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                    >
+                        <span>🏪</span> Sucursal Actual
+                    </button>
+                </div>
+            </div>
+
+            {/* Sucursal Específica */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <GitBranch size={12} className="text-indigo-500" /> Sucursal Específica
                 </label>
                 <select 
                     name="branch_id"
@@ -147,9 +185,12 @@ const VatBookPurchases = () => {
                     value={filters.branch_id}
                     onChange={(e) => handleFilterChange('branch_id', e.target.value)}
                 >
-                    <option value="all">Todas las sucursales</option>
-                    {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.nombre}</option>
+                    <option value="all">🏢 Por Contribuyente (Todas las sucursales)</option>
+                    {currentBranchId && (
+                        <option value={currentBranchId}>🏪 Sucursal Actual: {currentBranchName}</option>
+                    )}
+                    {branches.filter(b => String(b.id) !== currentBranchId).map(b => (
+                        <option key={b.id} value={String(b.id)}>📍 {b.nombre}</option>
                     ))}
                 </select>
             </div>

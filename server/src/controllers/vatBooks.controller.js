@@ -203,7 +203,10 @@ const getVatBookPurchasesPDF = async (req, res) => {
 
         const title = 'LIBRO DE COMPRAS (I.V.A.)';
         const periodText = getPeriodText(month, year);
-        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
+        const isAllBranches = !branch_id || branch_id === 'all';
+        const subtitle = isAllBranches
+            ? 'ÁMBITO: DECLARACIÓN POR CONTRIBUYENTE (TODAS LAS SUCURSALES)'
+            : `ÁMBITO: SUCURSAL ${branchName.toUpperCase()}`;
 
         const startX = 30;
         const totalWidth = 732;
@@ -415,7 +418,10 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
 
         const title = 'LIBRO DE VENTAS A CONTRIBUYENTES (CRÉDITO FISCAL)';
         const periodText = getPeriodText(month, year);
-        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
+        const isAllBranches = !branch_id || branch_id === 'all';
+        const subtitle = isAllBranches
+            ? 'ÁMBITO: DECLARACIÓN POR CONTRIBUYENTE (TODAS LAS SUCURSALES)'
+            : `ÁMBITO: SUCURSAL ${branchName.toUpperCase()}`;
 
         const startX = 30;
         const totalWidth = 732;
@@ -679,7 +685,10 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
             ? 'LIBRO DE VENTAS A CONSUMIDOR FINAL (RESUMEN)' 
             : 'LIBRO DE VENTAS A CONSUMIDOR FINAL (DETALLE)';
         const periodText = getPeriodText(month, year);
-        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
+        const isAllBranches = !branch_id || branch_id === 'all';
+        const subtitle = isAllBranches
+            ? 'ÁMBITO: DECLARACIÓN POR CONTRIBUYENTE (TODAS LAS SUCURSALES)'
+            : `ÁMBITO: SUCURSAL ${branchName.toUpperCase()}`;
 
         const startX = 30;
         const totalWidth = 732;
@@ -880,11 +889,15 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
 const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tipo_dte, search, limit, offset }) => {
     const whereClauses = [
         'sh.company_id = ?',
-        'sh.branch_id = ?',
         "sh.estado != 'ANULADO'",
         DTE_VALIDO_SQL
     ];
-    const params = [companyId, branchId];
+    const params = [companyId];
+
+    if (branchId && branchId !== 'all') {
+        whereClauses.push('sh.branch_id = ?');
+        params.push(branchId);
+    }
 
     if (fecha_inicio) { whereClauses.push('DATE(sh.fecha_emision) >= ?'); params.push(fecha_inicio); }
     if (fecha_fin) { whereClauses.push('DATE(sh.fecha_emision) <= ?'); params.push(fecha_fin); }
@@ -951,7 +964,7 @@ const buildAnexosIVAQuery = ({ companyId, branchId, fecha_inicio, fecha_fin, tip
 const getVatBookAnexosIVA = async (req, res) => {
     try {
         const companyId = req.company_id || req.user?.company_id;
-        const branchId = req.user?.branch_id;
+        const branchId = req.query.branch_id !== undefined ? req.query.branch_id : (req.user?.branch_id || 'all');
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
@@ -1008,7 +1021,7 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
         }
 
         const companyId = req.company_id || req.user?.company_id;
-        const branchId = req.user?.branch_id;
+        const branchId = req.query.branch_id !== undefined ? req.query.branch_id : (req.user?.branch_id || 'all');
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
@@ -1017,7 +1030,7 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
         const company = await reportPdfHelper.getCompanyInfo(companyId);
 
         let branchName = 'TODAS / CONSOLIDADO';
-        if (branchId) {
+        if (branchId && branchId !== 'all') {
             const [branches] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
             branchName = branches[0]?.nombre || '---';
         }
@@ -1033,7 +1046,10 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
         const periodText = (fecha_inicio && fecha_fin)
             ? `DEL ${reportPdfHelper.formatDate(fecha_inicio)} AL ${reportPdfHelper.formatDate(fecha_fin)}`
             : 'TODOS LOS REGISTROS';
-        const subtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
+        const isAllBranches = !branchId || branchId === 'all';
+        const subtitle = isAllBranches
+            ? 'ÁMBITO: DECLARACIÓN POR CONTRIBUYENTE (TODAS LAS SUCURSALES)'
+            : `ÁMBITO: SUCURSAL ${branchName.toUpperCase()}`;
 
         const startX = 30;
         const totalWidth = 732;
@@ -1143,7 +1159,7 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
 const getVatBookAnexosIVAExcel = async (req, res) => {
     try {
         const companyId = req.company_id || req.user?.company_id;
-        const branchId = req.user?.branch_id;
+        const branchId = req.query.branch_id !== undefined ? req.query.branch_id : (req.user?.branch_id || 'all');
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
@@ -1602,6 +1618,11 @@ const getVatLiquidationPDF = async (req, res) => {
 
         const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
 
+        const isAllBranches = !branch_id || branch_id === 'all';
+        const subtitle = isAllBranches
+            ? 'ÁMBITO: DECLARACIÓN POR CONTRIBUYENTE (CONSOLIDADO)'
+            : `ÁMBITO: SUCURSAL ${data.meta.branchName.toUpperCase()}`;
+
         // Encabezado institucional unificado
         reportPdfHelper.renderHeader(
             doc,
@@ -1609,7 +1630,7 @@ const getVatLiquidationPDF = async (req, res) => {
             'LIQUIDACIÓN DE IVA Y PAGO A CUENTA (MANDAMIENTO F-07)',
             data.meta.periodText,
             'landscape',
-            data.meta.branchName !== 'TODAS / CONSOLIDADO' ? `SUCURSAL: ${data.meta.branchName}` : null
+            subtitle
         );
 
         let curY = doc.y + 4;
@@ -1859,7 +1880,8 @@ const getVatLiquidationExcel = async (req, res) => {
             }]
         });
 
-        return excelService.sendExcelResponse(res, buffer, `Liquidacion_IVA_F07_${year}_${month}.xlsx`);
+        const scopeLabel = (branch_id && branch_id !== 'all') ? `Sucursal_${branch_id}` : 'Contribuyente';
+        return excelService.sendExcelResponse(res, buffer, `Liquidacion_IVA_F07_${scopeLabel}_${month}_${year}.xlsx`);
     } catch (e) {
         console.error('[VAT Books] Error Liquidacion IVA Excel:', e);
         res.status(500).json({ message: 'Error exportando liquidación a Excel', error: e.message });
