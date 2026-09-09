@@ -1,12 +1,13 @@
 import { useAuth } from '../../context/AuthContext';
 
-const Money = ({ value, className = '' }) => {
+const Money = ({ value, className = '', digits = 2 }) => {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'SuperAdmin';
   const permisos = Array.isArray(user?.permissions) ? user.permissions : [];
   const canView = isSuperAdmin || permisos.includes('view_amounts');
 
-  const fmt = `$${(parseFloat(value) || 0).toFixed(2)}`;
+  const num = parseFloat(value) || 0;
+  const fmt = `$${num.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 
   return (
     <span className={canView ? className : `${className} select-none text-slate-300`}>
