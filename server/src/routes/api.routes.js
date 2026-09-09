@@ -287,6 +287,7 @@ router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
 
 // Purchase Checks (Chq Contado) — MUST be before /purchases/:id to avoid route conflict
 const purchaseCheckController = require('../controllers/purchaseCheck.controller');
+router.get('/purchases/checks/reports/pdf', purchaseCheckController.getPurchaseCheckReportPDF);
 router.get('/purchases/checks', purchaseCheckController.getChecks);
 router.post('/purchases/checks', purchaseCheckController.createCheck);
 router.get('/purchases/checks/verify-rrs-providers', purchaseCheckController.verifyProvidersInRrs);

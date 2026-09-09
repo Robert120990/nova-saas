@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const { getRrsPool } = require('../config/rrsDb');
+const excelService = require('../services/excel.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 const getChecks = async (req, res) => {
     try {
@@ -825,6 +827,222 @@ const getRrsNumCheque = async (req, res) => {
     }
 };
 
+const getPurchaseCheckReportPDF = async (req, res) => {
+    try {
+        const { start_date, end_date, branch_id, destino, status, provider_id } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Rango de fechas requerido' });
+        }
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let sql = `
+            SELECT pc.*,
+                   p.nombre AS provider_nombre,
+                   p.nrc AS provider_nrc,
+                   p.nit AS provider_nit,
+                   b.nombre AS branch_nombre,
+                   u.nombre AS usuario_nombre
+            FROM purchase_checks pc
+            LEFT JOIN providers p ON pc.provider_id = p.id
+            LEFT JOIN branches b ON pc.branch_id = b.id
+            LEFT JOIN users u ON pc.usuario_id = u.id
+            WHERE pc.company_id = ? AND pc.fecha BETWEEN ? AND ?
+        `;
+        const params = [companyId, start_date, end_date];
+
+        if (branch_id && branch_id !== 'all') {
+            sql += ' AND pc.branch_id = ?';
+            params.push(branch_id);
+        }
+
+        if (destino && destino !== 'all') {
+            sql += ' AND pc.destino = ?';
+            params.push(destino);
+        }
+
+        if (status && status !== 'all') {
+            sql += ' AND pc.status = ?';
+            params.push(status);
+        }
+
+        if (provider_id && provider_id !== 'all') {
+            sql += ' AND pc.provider_id = ?';
+            params.push(provider_id);
+        }
+
+        sql += ' ORDER BY pc.fecha ASC, pc.id ASC';
+
+        const [rows] = await pool.query(sql, params);
+
+        // Excel export
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Cheques de Contado',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 15 },
+                        { header: 'N. Cheque', key: 'num_cheque', width: 16 },
+                        { header: 'Proveedor', key: 'proveedor', width: 35 },
+                        { header: 'NRC', key: 'nrc', width: 15 },
+                        { header: 'Sucursal', key: 'sucursal', width: 22 },
+                        { header: 'Destino', key: 'destino', width: 12 },
+                        { header: 'Estado', key: 'estado', width: 15 },
+                        { header: 'F. Entrega', key: 'fecha_entrega', width: 15 },
+                        { header: 'Documento', key: 'documento', width: 20 },
+                        { header: 'Monto', key: 'monto', width: 15 }
+                    ],
+                    data: rows.map(r => ({
+                        fecha: reportPdfHelper.formatDate(r.fecha),
+                        num_cheque: r.rrs_num_cheque || '---',
+                        proveedor: r.provider_nombre || '---',
+                        nrc: r.provider_nrc || '---',
+                        sucursal: r.branch_nombre || '---',
+                        destino: r.destino === 'P' ? 'PISTA' : (r.destino === 'T' ? 'TIENDA' : (r.destino || '---')),
+                        estado: r.status || '---',
+                        fecha_entrega: r.fecha_entrega ? reportPdfHelper.formatDate(r.fecha_entrega) : '---',
+                        documento: r.documento || '---',
+                        monto: `$${parseFloat(r.monto || 0).toFixed(2)}`
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Reporte_Cheques_Contado_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        // PDF Generation
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+        let branchName = 'TODAS LAS SUCURSALES';
+        if (branch_id && branch_id !== 'all' && rows.length > 0) {
+            branchName = (rows[0].branch_nombre || '').toUpperCase();
+        } else if (branch_id && branch_id !== 'all') {
+            const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (bRows.length > 0) branchName = (bRows[0].nombre || '').toUpperCase();
+        }
+
+        let subtitle = `SUCURSAL: ${branchName}`;
+        if (destino && destino !== 'all') {
+            subtitle += `    |    DESTINO: ${destino === 'P' ? 'PISTA' : 'TIENDA'}`;
+        }
+        if (status && status !== 'all') {
+            subtitle += `    |    ESTADO: ${status}`;
+        }
+
+        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+
+        const startX = 30;
+        const tableWidth = 732; // 792 - 60
+        const colWidths = {
+            fecha: 50,
+            num: 65,
+            proveedor: 195,
+            sucursal: 85,
+            destino: 45,
+            estado: 65,
+            f_entrega: 50,
+            documento: 75,
+            monto: 102
+        };
+        const colX = {
+            fecha: startX,
+            num: startX + colWidths.fecha,
+            proveedor: startX + colWidths.fecha + colWidths.num,
+            sucursal: startX + colWidths.fecha + colWidths.num + colWidths.proveedor,
+            destino: startX + colWidths.fecha + colWidths.num + colWidths.proveedor + colWidths.sucursal,
+            estado: startX + colWidths.fecha + colWidths.num + colWidths.proveedor + colWidths.sucursal + colWidths.destino,
+            f_entrega: startX + colWidths.fecha + colWidths.num + colWidths.proveedor + colWidths.sucursal + colWidths.destino + colWidths.estado,
+            documento: startX + colWidths.fecha + colWidths.num + colWidths.proveedor + colWidths.sucursal + colWidths.destino + colWidths.estado + colWidths.f_entrega,
+            monto: startX + colWidths.fecha + colWidths.num + colWidths.proveedor + colWidths.sucursal + colWidths.destino + colWidths.estado + colWidths.f_entrega + colWidths.documento
+        };
+
+        const drawTableHeader = (y) => {
+            doc.rect(startX, y, tableWidth, 14).fill('#f1f5f9');
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('FECHA', colX.fecha + 2, y + 3, { width: colWidths.fecha - 4 });
+            doc.text('N. CHEQUE', colX.num + 2, y + 3, { width: colWidths.num - 4 });
+            doc.text('PROVEEDOR', colX.proveedor + 2, y + 3, { width: colWidths.proveedor - 4 });
+            doc.text('SUCURSAL', colX.sucursal + 2, y + 3, { width: colWidths.sucursal - 4 });
+            doc.text('DESTINO', colX.destino, y + 3, { width: colWidths.destino, align: 'center' });
+            doc.text('ESTADO', colX.estado + 2, y + 3, { width: colWidths.estado - 4 });
+            doc.text('F. ENTREGA', colX.f_entrega + 2, y + 3, { width: colWidths.f_entrega - 4 });
+            doc.text('DOCUMENTO', colX.documento + 2, y + 3, { width: colWidths.documento - 4 });
+            doc.text('MONTO', colX.monto, y + 3, { width: colWidths.monto - 4, align: 'right' });
+            return y + 17;
+        };
+
+        let currentY = reportPdfHelper.renderHeader(doc, company, 'REPORTE DE CHEQUES DE CONTADO', periodText, 'landscape', subtitle);
+        currentY = drawTableHeader(currentY);
+
+        let grandTotal = 0;
+        let rowCount = 0;
+
+        rows.forEach(row => {
+            if (currentY > 510) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, 'REPORTE DE CHEQUES DE CONTADO', periodText, 'landscape', subtitle);
+                currentY = drawTableHeader(currentY);
+            }
+
+            const rowMonto = parseFloat(row.monto || 0);
+            doc.fontSize(7).font('Helvetica').fillColor('#334155');
+            doc.text(reportPdfHelper.formatDate(row.fecha), colX.fecha + 2, currentY, { width: colWidths.fecha - 4 });
+            doc.text(row.rrs_num_cheque || '---', colX.num + 2, currentY, { width: colWidths.num - 4 });
+            doc.text((row.provider_nombre || '---').toUpperCase(), colX.proveedor + 2, currentY, { width: colWidths.proveedor - 6, truncate: true });
+            doc.text((row.branch_nombre || '---').toUpperCase(), colX.sucursal + 2, currentY, { width: colWidths.sucursal - 4, truncate: true });
+
+            const destinoLabel = row.destino === 'P' ? 'PISTA' : (row.destino === 'T' ? 'TIENDA' : (row.destino || '---'));
+            doc.text(destinoLabel, colX.destino, currentY, { width: colWidths.destino, align: 'center' });
+
+            const statusColors = {
+                'PENDIENTE': '#b45309',
+                'SOLICITADO': '#1d4ed8',
+                'ENTREGADO': '#15803d'
+            };
+            doc.font('Helvetica-Bold').fillColor(statusColors[row.status] || '#475569');
+            doc.text(row.status || '---', colX.estado + 2, currentY, { width: colWidths.estado - 4 });
+
+            doc.font('Helvetica').fillColor('#334155');
+            doc.text(row.fecha_entrega ? reportPdfHelper.formatDate(row.fecha_entrega) : '---', colX.f_entrega + 2, currentY, { width: colWidths.f_entrega - 4 });
+            doc.text(row.documento || '---', colX.documento + 2, currentY, { width: colWidths.documento - 4, truncate: true });
+            doc.text(reportPdfHelper.fmt(rowMonto), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+
+            grandTotal += rowMonto;
+            rowCount++;
+            currentY += 13;
+        });
+
+        if (currentY > 490) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, 'REPORTE DE CHEQUES DE CONTADO', periodText, 'landscape', subtitle);
+        }
+
+        // Línea de gran total
+        doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + tableWidth, currentY).stroke();
+        currentY += 4;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL GENERAL:', colX.documento - 50, currentY, { width: 50 + colWidths.documento - 6, align: 'right' });
+        doc.text(reportPdfHelper.fmt(grandTotal), colX.monto, currentY, { width: colWidths.monto - 4, align: 'right' });
+        currentY += 18;
+
+        currentY = reportPdfHelper.renderClosingFooter(doc, startX, currentY, rowCount, 'Cheques');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Reporte_Cheques_Contado_${start_date}_al_${end_date}.pdf"`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error al generar reporte de cheques de contado:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Error al generar reporte de cheques de contado: ' + error.message });
+        }
+    }
+};
+
 module.exports = {
     getChecks,
     getCheckById,
@@ -838,5 +1056,6 @@ module.exports = {
     syncProviders,
     verifyProvidersInRrs,
     revertCheck,
-    getRrsNumCheque
+    getRrsNumCheque,
+    getPurchaseCheckReportPDF
 };

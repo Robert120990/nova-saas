@@ -93,6 +93,7 @@ import Expenses from './pages/Expenses';
 import ExpenseReport from './pages/ExpenseReport';
 import PurchaseReport from './pages/PurchaseReport';
 import PurchaseChecks from './pages/PurchaseChecks';
+import PurchaseCheckReport from './pages/PurchaseCheckReport';
 import Quedan from './pages/Quedan';
 import QuedanReport from './pages/QuedanReport';
 
@@ -263,6 +264,8 @@ function App() {
                         <Route path="/compras/reportes/gastos" element={<ExpenseReport />} />
                         <Route path="/compras/periodo" element={<PurchasePeriod />} />
                         <Route path="/compras/chq-contado" element={<PurchaseChecks />} />
+                        <Route path="/compras/reportes/chq-contado" element={<PurchaseCheckReport />} />
+                        <Route path="/compras/reportes/cheques-contado" element={<PurchaseCheckReport />} />
                         <Route path="/compras/quedan" element={<Quedan />} />
                         <Route path="/compras/reportes/quedan" element={<QuedanReport />} />
                         <Route path="/ventas/nueva" element={<SalesTerminal />} />

@@ -180,6 +180,24 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Reporte de Cheques de Contado en Reportes de Compras
+    const purchaseReportsNode = Object.values(itemMap).find(i => 
+        (i.id === 52) ||
+        (i.children && i.children.some(c => c.path === '/compras/reportes/compras'))
+    );
+    if (purchaseReportsNode && !purchaseReportsNode.children.some(c => c.path === '/compras/reportes/chq-contado')) {
+        purchaseReportsNode.children.push({
+            id: 'virtual-purchase-checks-report',
+            label: 'Reporte de Cheques de Contado',
+            path: '/compras/reportes/chq-contado',
+            permission: 'manage_purchase_checks',
+            permission_key: 'manage_purchase_checks',
+            hideInMenu: false,
+            icon: iconMap.CreditCard || iconMap.Circle,
+            children: []
+        });
+    }
+
     return roots;
 }
 

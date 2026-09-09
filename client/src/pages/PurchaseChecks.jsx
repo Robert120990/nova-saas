@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -21,7 +22,8 @@ import {
     ChevronLeft,
     ChevronRight,
     CheckSquare,
-    Square
+    Square,
+    FileText
 } from 'lucide-react';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -47,6 +49,7 @@ const PurchaseChecks = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
+    const navigate = useNavigate();
 
     const [listSearch, setListSearch] = useState('');
     const [listPage, setListPage] = useState(1);
@@ -486,6 +489,14 @@ const PurchaseChecks = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => navigate('/compras/reportes/chq-contado')}
+                        className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3.5 py-1.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95"
+                        title="Ver reporte de cheques de contado"
+                    >
+                        <FileText size={17} className="text-indigo-600" />
+                        <span>Reporte</span>
+                    </button>
                     <button
                         onClick={() => {
                             setProviderBranchId(branchFilter || user?.branch_id || (branches[0]?.id ? String(branches[0].id) : ''));
