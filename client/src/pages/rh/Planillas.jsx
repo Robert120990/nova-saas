@@ -5,7 +5,7 @@ import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText } from 'lucide-react';
+import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus } from 'lucide-react';
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
@@ -262,6 +262,7 @@ const Planillas = () => {
                 setSelected(cachedPlanillaId ? { id: cachedPlanillaId, empleado_id: id } : null);
             } else if (data.planilla_id) {
                 setSelected({ id: data.planilla_id, empleado_id: id });
+                setDiasTrabajados(data.dias_trabajados !== undefined && data.dias_trabajados !== null ? parseInt(data.dias_trabajados) : 15);
                 const sueldoBase = parseFloat(data.sueldo_base || 0);
                 const sueldoDiario = sueldoBase / 30;
 
@@ -321,17 +322,21 @@ const Planillas = () => {
             } else {
                 setSelected(null);
                 setCalculo(null);
-                buildDetalles(data);
+                const esAusente = data.en_vacaciones === 1 || data.incapacitado === 1;
+                const initialDias = esAusente ? 0 : 15;
+                setDiasTrabajados(initialDias);
+                buildDetalles(data, initialDias);
             }
         } catch {
             toast.error('Error al cargar datos del empleado');
         }
     };
 
-    const buildDetalles = (emp) => {
+    const buildDetalles = (emp, forcedDias = null) => {
         if (!cuentasActivas || cuentasActivas.length === 0) return;
         const sueldoBase = parseFloat(emp?.sueldo_base || 0);
         const bonificacionFija = parseFloat(emp?.bonificacion_fija || 0);
+        const diasToUse = forcedDias !== null ? forcedDias : diasTrabajados;
 
         const activeDiscounts = (emp?.descuentos_programados || []).filter(d => {
             const q = d.quincena || d.aplicar_en;
@@ -345,7 +350,7 @@ const Planillas = () => {
             if (c.operacion === 'sumar' && (c.codigo === '02' || (c.descripcion || '').toUpperCase().includes('BONIF'))) {
                 cantidad = bonificacionFija;
             } else if (c.tipo_valor === 'dias' && c.codigo === '01') {
-                cantidad = diasTrabajados;
+                cantidad = diasToUse;
             } else {
                 // Check if account matches any active scheduled discount
                 const matchDiscount = activeDiscounts.find(d => {
@@ -420,6 +425,10 @@ const Planillas = () => {
         d.valor_ingresado = calcularMontoDetalle(d, raw, sueldoBase);
         updated[index] = d;
 
+        if (d.codigo === '01' && d.tipo_valor === 'dias') {
+            setDiasTrabajados(raw);
+        }
+
         setDetalles(updated);
         autoSaveRef.current = true;
         if (empleadoId) {
@@ -442,6 +451,96 @@ const Planillas = () => {
         }
     };
 
+
+    const sincronizarMutation = useMutation({
+        mutationFn: (data) => axios.post('/api/rh/planillas/sincronizar', data),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            toast.success(res.data.message);
+            if (empleadoId) {
+                loadEmpleado(empleadoId);
+            }
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al sincronizar planilla');
+        }
+    });
+
+    const handleSincronizar = async () => {
+        const ok = await confirm({
+            title: '¿Sincronizar planilla?',
+            message: `Se buscarán empleados nuevos o faltantes y se actualizarán novedades de vacaciones/incapacidades. Todas las horas extras, turnos y valores que ya ingresaste se mantendrán 100% intactos. ¿Continuar?`,
+            confirmLabel: 'Sí, sincronizar',
+            variant: 'primary'
+        });
+        if (ok) {
+            sincronizarMutation.mutate({
+                periodo_anio: periodoAnio,
+                periodo_mes: periodoMes,
+                quincena
+            });
+        }
+    };
+
+    const excluirMutation = useMutation({
+        mutationFn: (id) => axios.delete(`/api/rh/planillas/${id}`),
+        onSuccess: () => {
+            toast.success('Empleado excluido de esta planilla quincenal');
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            if (empleadoId) delete cacheRef.current[empleadoId];
+            setSelected(null);
+            setCalculo(null);
+            setDetalles([]);
+            setEmpleadoId('');
+            setEmpleadoData(null);
+            setCodigoInput('');
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al excluir empleado');
+        }
+    });
+
+    const handleExcluirEmpleado = async () => {
+        if (!selected?.id || !empleadoData) return;
+        const ok = await confirm({
+            title: '¿Excluir de esta planilla?',
+            message: `¿Desea retirar a ${empleadoData.nombres} ${empleadoData.apellidos} de la planilla de este período? No se borrará del catálogo general de empleados, únicamente se excluye de esta quincena.`,
+            confirmLabel: 'Sí, excluir',
+            variant: 'danger'
+        });
+        if (ok) {
+            excluirMutation.mutate(selected.id);
+        }
+    };
+
+    const handleAgregarEmpleado = async () => {
+        if (!empleadoId || !calculo) return;
+        savingRef.current = true;
+        try {
+            const data = {
+                empleado_id: empleadoId,
+                periodo_anio: periodoAnio,
+                periodo_mes: periodoMes,
+                quincena,
+                dias_trabajados: diasTrabajados,
+                detalles: detalles,
+                total_percepciones: calculo.total_percepciones,
+                total_deducciones: calculo.total_deducciones,
+                descuento_isss: calculo.descuento_isss,
+                descuento_afp: calculo.descuento_afp,
+                descuento_renta: calculo.descuento_renta,
+                monto_recibir: calculo.monto_recibir
+            };
+            const saveRes = await axios.post('/api/rh/planillas', data);
+            setSelected({ id: saveRes.data.id, empleado_id: empleadoId });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            toast.success(`${empleadoData?.nombres || 'Empleado'} agregado a la planilla`);
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al agregar a la planilla');
+        } finally {
+            savingRef.current = false;
+        }
+    };
 
     const handleDownloadCSV = async (anio, mes, quincena) => {
         try {
@@ -893,10 +992,22 @@ const Planillas = () => {
                             </div>
                             <div className="sm:col-span-2 lg:col-span-2 flex items-end">
                                 {periodoBloqueado ? (
-                                    <div className="w-full flex items-center justify-between gap-2 bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200">
-                                        <span className="flex items-center gap-1.5 text-emerald-600 font-bold">
-                                            <CheckCircle size={14} /> Planilla activa
-                                        </span>
+                                    <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-50 text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                                                <CheckCircle size={14} /> Activa
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={handleSincronizar}
+                                                disabled={sincronizarMutation.isPending}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                                title="Incorporar empleados nuevos o actualizar novedades sin borrar horas extras ni datos existentes"
+                                            >
+                                                <RefreshCw size={12} className={sincronizarMutation.isPending ? 'animate-spin' : ''} />
+                                                <span>{sincronizarMutation.isPending ? 'Sincronizando...' : 'Sincronizar'}</span>
+                                            </button>
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={() => setPeriodoBloqueado(false)}
@@ -995,14 +1106,72 @@ const Planillas = () => {
                                                 </div>
                                             </>
                                         )}
-                                        <div className="ml-auto text-right">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold block">Sueldo Quincenal</span>
-                                            <span className="text-sm font-black text-indigo-600">
-                                                ${((parseFloat(empleadoData.sueldo_base || 0) / 30) * diasTrabajados).toFixed(2)}
-                                            </span>
-                                            <span className="text-[9px] text-slate-400 block font-medium">
-                                                Base: ${parseFloat(empleadoData.sueldo_base || 0).toFixed(2)}/mes
-                                            </span>
+                                        {empleadoData.en_vacaciones === 1 && (
+                                            <>
+                                                <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-lg">
+                                                    🏖️ Vacaciones
+                                                </span>
+                                            </>
+                                        )}
+                                        {empleadoData.incapacitado === 1 && (
+                                            <>
+                                                <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded-lg">
+                                                    🏥 Incapacitado
+                                                </span>
+                                            </>
+                                        )}
+                                        {(empleadoData.en_vacaciones === 1 || empleadoData.incapacitado === 1) && diasTrabajados > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDiasTrabajadosChange(0)}
+                                                className="text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-100/70 hover:bg-amber-200/90 px-2 py-0.5 rounded border border-amber-300/80 transition-colors shadow-xs"
+                                                title="Ajustar días trabajados a 0 para esta quincena"
+                                            >
+                                                Poner 0 días
+                                            </button>
+                                        )}
+
+                                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                                            {selected?.id ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleExcluirEmpleado}
+                                                    disabled={excluirMutation.isPending}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                                    title="Excluir a este empleado únicamente de esta planilla quincenal"
+                                                >
+                                                    <UserX size={13} />
+                                                    <span>{excluirMutation.isPending ? 'Excluyendo...' : 'Excluir de Planilla'}</span>
+                                                </button>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-lg">
+                                                        No incluido en quincena
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleAgregarEmpleado}
+                                                        disabled={savingRef.current}
+                                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                                        title="Agregar formalmente a este empleado a la planilla de esta quincena"
+                                                    >
+                                                        <UserPlus size={13} />
+                                                        <span>{savingRef.current ? 'Agregando...' : 'Agregar a Planilla'}</span>
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <div className="text-right pl-2 border-l border-slate-200">
+                                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Sueldo Quincenal</span>
+                                                <span className="text-sm font-black text-indigo-600">
+                                                    ${((parseFloat(empleadoData.sueldo_base || 0) / 30) * diasTrabajados).toFixed(2)}
+                                                </span>
+                                                <span className="text-[9px] text-slate-400 block font-medium">
+                                                    Base: ${parseFloat(empleadoData.sueldo_base || 0).toFixed(2)}/mes
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 ) : (

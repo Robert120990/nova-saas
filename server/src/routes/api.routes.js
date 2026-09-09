@@ -970,6 +970,7 @@ router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.
 router.get('/rh/planillas/cuentas-activas', rhPlanillaController.getCuentasActivas);
 router.post('/rh/planillas/calcular', rhPlanillaController.calcular);
 router.post('/rh/planillas/generar', rhPlanillaController.generarPlanilla);
+router.post('/rh/planillas/sincronizar', rhPlanillaController.sincronizarPlanilla);
 router.get('/rh/planillas/grupos', rhPlanillaController.getGruposPlanilla);
 router.get('/rh/planillas/recibos-masivos', rhPlanillaController.exportRecibosMasivos);
 router.post('/rh/planillas/cerrar-periodo', rhPlanillaController.cerrarPeriodo);

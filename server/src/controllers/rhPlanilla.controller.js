@@ -677,6 +677,301 @@ const generarPlanilla = async (req, res) => {
     }
 };
 
+const sincronizarPlanilla = async (req, res) => {
+    try {
+        const { periodo_anio, periodo_mes, quincena } = req.body;
+        if (!periodo_anio || !periodo_mes || !quincena) {
+            return res.status(400).json({ message: 'periodo_anio, periodo_mes y quincena requeridos' });
+        }
+
+        // 1. Empleados activos de la empresa
+        const [empleados] = await pool.query(
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, codigo, nombres, apellidos, en_vacaciones, incapacitado 
+             FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
+            [req.company_id]
+        );
+
+        if (empleados.length === 0) {
+            return res.status(400).json({ message: 'No hay empleados activos en la empresa' });
+        }
+
+        // 2. Planillas registradas actualmente para este período
+        const [existentes] = await pool.query(
+            `SELECT id, empleado_id, dias_trabajados, sueldo_base, bonificacion_fija
+             FROM ${TABLE} WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ?`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+
+        const existentesMap = new Map(existentes.map(p => [p.empleado_id, p]));
+        const missingEmps = empleados.filter(e => !existentesMap.has(e.id));
+
+        // 3. Catálogo de cuentas activas
+        const [cuentas] = await pool.query(
+            `SELECT * FROM rh_cuentas_planillas WHERE company_id = ? AND activa = 1 ORDER BY codigo ASC`,
+            [req.company_id]
+        );
+
+        // 4. Descuentos programados aplicables a esta quincena
+        const [empDescuentos] = await pool.query(
+            `SELECT ed.*, dp.cuenta_id, dp.codigo as desc_codigo, dp.descripcion as desc_nombre
+             FROM rh_empleado_descuentos ed
+             JOIN rh_descuentos_programados dp ON ed.descuento_id = dp.id
+             WHERE ed.company_id = ? AND ed.activo = 1 AND ed.cuotas_restantes > 0
+               AND (ed.quincena = 'ambas' OR ed.quincena = ?)`,
+            [req.company_id, quincena]
+        );
+
+        const today = new Date().toISOString().split('T')[0];
+
+        // 5. Configuración de ISSS y Renta
+        let isssTasa = null, isssTope = null;
+        const [isssRows] = await pool.query(
+            `SELECT porcentaje_empleado, tope_quincenal, tope_mensual FROM rh_isss_tasas 
+             WHERE company_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
+             ORDER BY fecha_desde DESC LIMIT 1`,
+            [req.company_id, today, today]
+        );
+        if (isssRows.length > 0) {
+            isssTasa = isssRows[0].porcentaje_empleado;
+            isssTope = isssRows[0].tope_quincenal || (isssRows[0].tope_mensual ? isssRows[0].tope_mensual / 2 : Infinity);
+        }
+
+        let rentaConfigId = null;
+        const [rentaConfigRows] = await pool.query(
+            `SELECT id, tipo FROM rh_renta_config 
+             WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
+             ORDER BY FIELD(tipo, 'Q', 'M'), fecha_desde DESC LIMIT 1`,
+            [req.company_id, today, today]
+        );
+        if (rentaConfigRows.length > 0) rentaConfigId = rentaConfigRows[0].id;
+
+        let agregadosCount = 0;
+        let actualizadosCount = 0;
+
+        // A. Insertar empleados faltantes
+        for (const emp of missingEmps) {
+            const esAusente = emp.en_vacaciones === 1 || emp.incapacitado === 1;
+            const dias = esAusente ? 0 : 15;
+            const sueldoBase = parseFloat(emp.sueldo_base || 0);
+            const bonificacionFija = parseFloat(emp.bonificacion_fija || 0);
+            const sueldoDiario = sueldoBase / 30;
+
+            const [result] = await pool.query(
+                `INSERT INTO ${TABLE} (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, dias, sueldoBase, bonificacionFija]
+            );
+            const planillaId = result.insertId;
+
+            const myDiscounts = empDescuentos.filter(d => d.empleado_id === emp.id);
+            let totalPercepciones = 0;
+            let totalDeduccionesCuentas = 0;
+
+            const detalleValues = cuentas.map(c => {
+                let valor = 0;
+                let cantidad = 0;
+
+                if (c.operacion === 'sumar') {
+                    if (isBonificacionCuenta(c)) {
+                        valor = Math.round(bonificacionFija * 100) / 100;
+                        cantidad = valor;
+                    } else if (c.tipo_valor === 'dias') {
+                        if (c.codigo === '01') {
+                            cantidad = dias;
+                            valor = Math.round(sueldoDiario * dias * 100) / 100;
+                        }
+                    } else if (c.tipo_valor === 'valor') {
+                        valor = parseFloat(c.valor_base || 0);
+                        cantidad = valor;
+                    } else if (c.tipo_valor === 'porcentaje') {
+                        const pct = parseFloat(c.valor_base || 0);
+                        cantidad = pct;
+                        valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                    } else if (c.tipo_valor === 'horas') {
+                        const hrs = parseFloat(c.valor_base || 0);
+                        cantidad = hrs;
+                        if (hrs > 0) {
+                            const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
+                            const factor = isNocturna ? 2.5 : 2.0;
+                            valor = Math.round((sueldoDiario / 8 * factor) * hrs * 100) / 100;
+                        }
+                    }
+                    totalPercepciones += valor;
+                } else {
+                    const matchingDiscounts = myDiscounts.filter(d => {
+                        if (d.cuenta_id && d.cuenta_id === c.id) return true;
+                        const descD = (d.desc_nombre || '').toLowerCase();
+                        const descC = (c.descripcion || '').toLowerCase();
+                        if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
+                        if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
+                        if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
+                        if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
+                        return false;
+                    });
+
+                    if (matchingDiscounts.length > 0) {
+                        const sumMonto = matchingDiscounts.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0);
+                        valor = Math.round(sumMonto * 100) / 100;
+                        cantidad = valor;
+                    } else if (c.tipo_valor === 'valor') {
+                        valor = parseFloat(c.valor_base || 0);
+                        cantidad = valor;
+                    } else if (c.tipo_valor === 'porcentaje') {
+                        const pct = parseFloat(c.valor_base || 0);
+                        cantidad = pct;
+                        valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                    }
+                    totalDeduccionesCuentas += valor;
+                }
+
+                return [planillaId, c.id, c.codigo, c.descripcion, c.operacion, c.tipo_valor, cantidad || null, valor, c.orden || 0];
+            });
+
+            if (detalleValues.length > 0) {
+                await pool.query(
+                    `INSERT INTO rh_planilla_detalles (planilla_id, cuenta_id, codigo, descripcion, operacion, tipo_valor, valor_base, valor_ingresado, orden) VALUES ?`,
+                    [detalleValues]
+                );
+            }
+
+            const esJubilado = !!emp.es_jubilado;
+            let descuentoISSS = 0;
+            if (!esJubilado && isssTasa) {
+                const baseISSS = Math.min(totalPercepciones, isssTope || Infinity);
+                descuentoISSS = baseISSS * isssTasa / 100;
+            }
+            let descuentoAFP = 0;
+            if (!esJubilado && emp.afp_id) {
+                const [afpRows] = await pool.query(
+                    `SELECT porcentaje_empleado, tope_quincenal, tope_mensual FROM rh_afp_tasas 
+                     WHERE company_id = ? AND afp_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
+                     ORDER BY fecha_desde DESC LIMIT 1`,
+                    [req.company_id, emp.afp_id, today, today]
+                );
+                if (afpRows.length > 0) {
+                    const afpTope = afpRows[0].tope_quincenal || (afpRows[0].tope_mensual ? afpRows[0].tope_mensual / 2 : Infinity);
+                    const baseAFP = Math.min(totalPercepciones, afpTope || Infinity);
+                    descuentoAFP = baseAFP * afpRows[0].porcentaje_empleado / 100;
+                }
+            }
+            const ingresoGravado = totalPercepciones - descuentoISSS - descuentoAFP;
+            let descuentoRenta = 0;
+            if (esJubilado) {
+                descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
+            } else if (rentaConfigId && ingresoGravado > 0) {
+                const [bracketRows] = await pool.query(
+                    `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
+                    [rentaConfigId, ingresoGravado, ingresoGravado]
+                );
+                if (bracketRows.length > 0) {
+                    const br = bracketRows[0];
+                    descuentoRenta = Math.max(0, ((ingresoGravado - br.exceso) * br.porcentaje / 100) + parseFloat(br.valor_descuento));
+                }
+            }
+
+            descuentoISSS = Math.round(descuentoISSS * 100) / 100;
+            descuentoAFP = Math.round(descuentoAFP * 100) / 100;
+            descuentoRenta = Math.round(descuentoRenta * 100) / 100;
+            const totalDeducciones = Math.round((totalDeduccionesCuentas + descuentoISSS + descuentoAFP + descuentoRenta) * 100) / 100;
+            const montoRecibir = Math.round((totalPercepciones - totalDeducciones) * 100) / 100;
+
+            await pool.query(
+                `UPDATE ${TABLE} SET total_percepciones = ?, total_deducciones = ?, descuento_isss = ?, descuento_afp = ?, descuento_renta = ?, monto_recibir = ? WHERE id = ?`,
+                [totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaId]
+            );
+
+            agregadosCount++;
+        }
+
+        // B. Para empleados existentes: actualizar si están marcados en vacaciones o incapacitados y aún tenían días > 0
+        for (const emp of empleados) {
+            const planillaExistente = existentesMap.get(emp.id);
+            if (!planillaExistente) continue;
+
+            const esAusente = emp.en_vacaciones === 1 || emp.incapacitado === 1;
+            if (esAusente && planillaExistente.dias_trabajados > 0) {
+                // Actualizar la cuenta 01 a 0 días y $0.00
+                await pool.query(
+                    `UPDATE rh_planilla_detalles SET valor_base = 0, valor_ingresado = 0
+                     WHERE planilla_id = ? AND codigo = '01'`,
+                    [planillaExistente.id]
+                );
+
+                // Recalcular percepciones y deducciones de la planilla existente respetando sus otras cuentas
+                const [detallesRows] = await pool.query(
+                    `SELECT * FROM rh_planilla_detalles WHERE planilla_id = ?`,
+                    [planillaExistente.id]
+                );
+
+                let totalPercepciones = 0;
+                let totalDeduccionesCuentas = 0;
+                for (const d of detallesRows) {
+                    const val = parseFloat(d.valor_ingresado || 0);
+                    if (d.operacion === 'sumar') totalPercepciones += val;
+                    else totalDeduccionesCuentas += val;
+                }
+
+                const esJubilado = !!emp.es_jubilado;
+                let descuentoISSS = 0;
+                if (!esJubilado && isssTasa) {
+                    const baseISSS = Math.min(totalPercepciones, isssTope || Infinity);
+                    descuentoISSS = baseISSS * isssTasa / 100;
+                }
+                let descuentoAFP = 0;
+                if (!esJubilado && emp.afp_id) {
+                    const [afpRows] = await pool.query(
+                        `SELECT porcentaje_empleado, tope_quincenal, tope_mensual FROM rh_afp_tasas 
+                         WHERE company_id = ? AND afp_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
+                         ORDER BY fecha_desde DESC LIMIT 1`,
+                        [req.company_id, emp.afp_id, today, today]
+                    );
+                    if (afpRows.length > 0) {
+                        const afpTope = afpRows[0].tope_quincenal || (afpRows[0].tope_mensual ? afpRows[0].tope_mensual / 2 : Infinity);
+                        const baseAFP = Math.min(totalPercepciones, afpTope || Infinity);
+                        descuentoAFP = baseAFP * afpRows[0].porcentaje_empleado / 100;
+                    }
+                }
+                const ingresoGravado = totalPercepciones - descuentoISSS - descuentoAFP;
+                let descuentoRenta = 0;
+                if (esJubilado) {
+                    descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
+                } else if (rentaConfigId && ingresoGravado > 0) {
+                    const [bracketRows] = await pool.query(
+                        `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
+                        [rentaConfigId, ingresoGravado, ingresoGravado]
+                    );
+                    if (bracketRows.length > 0) {
+                        const br = bracketRows[0];
+                        descuentoRenta = Math.max(0, ((ingresoGravado - br.exceso) * br.porcentaje / 100) + parseFloat(br.valor_descuento));
+                    }
+                }
+
+                descuentoISSS = Math.round(descuentoISSS * 100) / 100;
+                descuentoAFP = Math.round(descuentoAFP * 100) / 100;
+                descuentoRenta = Math.round(descuentoRenta * 100) / 100;
+                const totalDeducciones = Math.round((totalDeduccionesCuentas + descuentoISSS + descuentoAFP + descuentoRenta) * 100) / 100;
+                const montoRecibir = Math.round((totalPercepciones - totalDeducciones) * 100) / 100;
+
+                await pool.query(
+                    `UPDATE ${TABLE} SET dias_trabajados = 0, total_percepciones = ?, total_deducciones = ?, descuento_isss = ?, descuento_afp = ?, descuento_renta = ?, monto_recibir = ? WHERE id = ?`,
+                    [totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaExistente.id]
+                );
+
+                actualizadosCount++;
+            }
+        }
+
+        res.json({
+            message: `Sincronización completada: ${agregadosCount} empleado(s) nuevo(s) agregado(s), ${actualizadosCount} actualizado(s).`,
+            agregados: agregadosCount,
+            actualizados: actualizadosCount,
+            total: existentes.length + agregadosCount
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const calcular = async (req, res) => {
     try {
         const { planilla_id, empleado_id: reqEmpleadoId, detalles: reqDetalles, quincena: reqQuincena } = req.body;
@@ -1704,6 +1999,6 @@ const exportPlanillaReportePDF = async (req, res) => {
 
 module.exports = {
     getPlanillas, getPlanilla, createPlanilla, updatePlanilla, deletePlanilla,
-    pagarPlanilla, cerrarPeriodo, eliminarPeriodo, calcular, generarPlanilla, getGruposPlanilla, exportRecibosMasivos, getEmpleadoData, getCuentasActivas, exportPDF, exportRecibo,
+    pagarPlanilla, cerrarPeriodo, eliminarPeriodo, calcular, generarPlanilla, sincronizarPlanilla, getGruposPlanilla, exportRecibosMasivos, getEmpleadoData, getCuentasActivas, exportPDF, exportRecibo,
     exportPlanillaReportePDF
 };
