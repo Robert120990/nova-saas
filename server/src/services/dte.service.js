@@ -138,11 +138,13 @@ class DteService {
             if (result.success) {
                 return {
                     success: true,
+                    contingency: Boolean(result.contingency),
                     data: {
                         codigo_generacion: result.codigoGeneracion,
                         numero_control: result.numeroControl,
                         sello_recepcion: result.data?.selloRecibido || null,
-                        fh_procesamiento: result.data?.fhProcesamiento || null
+                        fh_procesamiento: result.data?.fhProcesamiento || null,
+                        contingency: Boolean(result.contingency)
                     }
                 };
             } else {

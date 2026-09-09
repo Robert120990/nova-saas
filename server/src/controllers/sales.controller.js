@@ -3510,7 +3510,22 @@ const getDteStats = async (req, res) => {
     }
 };
 
+const notifyDTEAccepted = async (req, res) => {
+    const { codigoGeneracion, ventaId, companyId } = req.body;
+    try {
+        if (ventaId) {
+            console.log(`[NotifyDTEAccepted] Disparando envío automático de correo para venta ${ventaId} (DTE: ${codigoGeneracion})...`);
+            await mailerService.sendDTEEmail(ventaId, companyId);
+        }
+        res.json({ success: true, message: 'Correo enviado automáticamente tras aprobación de Hacienda' });
+    } catch (err) {
+        console.error('[NotifyDTEAccepted] Error enviando correo automático:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
 module.exports = {
+    notifyDTEAccepted,
     createSale,
     getSales,
     getSaleById,

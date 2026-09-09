@@ -34,6 +34,11 @@ async function stop(req, res) {
             console.error('[Contingency] Error enviando reporte:', err.message);
             result.reportError = err.message;
         }
+
+        // Iniciar de inmediato la retransmisión de documentos acumulados
+        const { processContingencyQueue } = require('../jobs/resendContingencyDTE');
+        processContingencyQueue().catch(err => console.error('[ContingencyController] Error disparando retransmisión:', err.message));
+
         res.status(200).json(result);
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

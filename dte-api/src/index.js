@@ -13,6 +13,7 @@ const { authMiddleware, tenantMiddleware } = require('./middlewares/auth');
 const dteController = require('./controllers/dteController');
 const { startQueueWorker } = require('./queue/transmissionQueue');
 const { startContingencyWorker } = require('./jobs/resendContingencyDTE');
+const { startAutoCloseWorker } = require('./jobs/autoCloseContingency');
 const { initValidators } = require('./validators/schemaValidator');
 
 const app = express();
@@ -42,6 +43,7 @@ app.use(morgan(':method :safe-url :status :response-time ms - :res[content-lengt
 initValidators();
 startQueueWorker(60000); // Process queue every 60s
 startContingencyWorker(300000); // Process contingency every 5m
+startAutoCloseWorker(300000); // Check auto-recovery every 5m
 
 // Routes
 const router = express.Router();

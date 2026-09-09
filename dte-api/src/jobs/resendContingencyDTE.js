@@ -4,6 +4,7 @@
  */
 
 const pool = require('../../config/db');
+const axios = require('axios');
 const { authenticate, transmitDTE } = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
 const { getMHAmbiente } = require('../config/haciendaConfig');
@@ -13,13 +14,17 @@ const MAX_RETRIES = 5;
 async function processContingencyQueue() {
     console.log('[ContingencyWorker] Processing queue...');
 
-    // 1. Get pending contingency documents (sin exceder máximo de intentos)
+    // 1. Get pending contingency documents (solo de empresas cuya contingencia esté CERRADA)
     const [tasks] = await pool.query(
-        'SELECT cd.*, c.api_user, c.api_password, d.ambiente ' +
+        'SELECT cd.*, c.api_user, c.api_password, d.ambiente, d.id as dte_id, d.venta_id, d.company_id ' +
         'FROM dte_contingency_documents cd ' +
         'JOIN dtes d ON cd.codigo_generacion = d.codigo_generacion ' +
         'JOIN companies c ON d.company_id = c.id ' +
         'WHERE cd.estado_envio = "PENDING" AND (cd.retry_count IS NULL OR cd.retry_count < ?) ' +
+        '  AND NOT EXISTS (' +
+        '      SELECT 1 FROM dte_contingencies dc ' +
+        '      WHERE dc.company_id = d.company_id AND dc.estado = "OPEN"' +
+        '  ) ' +
         'ORDER BY cd.created_at ASC LIMIT 10',
         [MAX_RETRIES]
     );
@@ -45,33 +50,69 @@ async function processContingencyQueue() {
             });
 
             if (result.success && result.status === 'PROCESADO') {
+                // Formatear fhProcesamiento si viene como DD/MM/YYYY HH:MM:SS
+                let formattedDate = result.fhProcesamiento || null;
+                if (formattedDate && formattedDate.includes('/')) {
+                    const [datePart, timePart] = formattedDate.split(' ');
+                    const [day, month, year] = datePart.split('/');
+                    formattedDate = `${year}-${month}-${day} ${timePart}`;
+                }
+
                 // 4a. Success
                 await pool.query(
                     'UPDATE dte_contingency_documents SET estado_envio = "SENT", fecha_envio_hacienda = NOW() WHERE id = ?',
                     [task.id]
                 );
                 await pool.query(
-                    'UPDATE dtes SET status = "RETRANSMITIDO", sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
-                    [result.selloRecepcion, result.fhProcesamiento, task.codigo_generacion]
+                    'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
+                    [result.selloRecepcion, formattedDate, task.codigo_generacion]
                 );
                 await pool.query(
-                    'INSERT INTO dte_events (dte_id, event_type, description) SELECT id, "RETRANSMITTED", "Documento retransmitido post-contingencia" FROM dtes WHERE codigo_generacion = ?',
-                    [task.codigo_generacion]
+                    'UPDATE sales_headers SET sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
+                    [result.selloRecepcion, formattedDate, task.codigo_generacion]
                 );
-                console.log(`[ContingencyWorker] ✅ ${task.codigo_generacion} retransmitido`);
+                await pool.query(
+                    'INSERT INTO dte_events (dte_id, event_type, description) VALUES (?, "RETRANSMITTED", "Documento retransmitido y aceptado por MH post-contingencia")',
+                    [task.dte_id]
+                );
+                console.log(`[ContingencyWorker] ✅ ${task.codigo_generacion} retransmitido y aceptado con sello ${result.selloRecepcion}`);
+
+                // 4b. Disparar envío automático de correo al cliente con sello de Hacienda oficial
+                if (task.venta_id) {
+                    const mainServerUrl = process.env.MAIN_SERVER_URL || 'http://localhost:4000';
+                    try {
+                        await axios.post(`${mainServerUrl}/api/internal/dte/notify-accepted`, {
+                            codigoGeneracion: task.codigo_generacion,
+                            ventaId: task.venta_id,
+                            companyId: task.company_id
+                        }, { timeout: 10000 });
+                        console.log(`[ContingencyWorker] 📧 Notificación de correo enviada al servidor para venta ${task.venta_id}`);
+                    } catch (mailErr) {
+                        console.warn(`[ContingencyWorker] ⚠️ Error notificando envío de correo: ${mailErr.message}`);
+                    }
+                }
             } else {
-                // 4b. Hacienda rechazó
+                // 4b. Hacienda rechazó o devolvió error
                 const retries = (task.retry_count || 0) + 1;
+                const lastErrorMsg = JSON.stringify(result.error || result.data || 'Rechazo MH sin detalle');
                 if (retries >= MAX_RETRIES) {
                     await pool.query(
-                        'UPDATE dte_contingency_documents SET estado_envio = "FAILED", retry_count = ? WHERE id = ?',
-                        [retries, task.id]
+                        'UPDATE dte_contingency_documents SET estado_envio = "FAILED", retry_count = ?, last_error = ? WHERE id = ?',
+                        [retries, lastErrorMsg, task.id]
+                    );
+                    await pool.query(
+                        'UPDATE dtes SET status = "ERROR" WHERE codigo_generacion = ?',
+                        [task.codigo_generacion]
+                    );
+                    await pool.query(
+                        'INSERT INTO dte_errors (dte_id, codigo_error, mensaje_error) VALUES (?, "CONT_RETRY_ERR", ?)',
+                        [task.dte_id, lastErrorMsg]
                     );
                     console.log(`[ContingencyWorker] ❌ ${task.codigo_generacion} FAILED after ${MAX_RETRIES} retries`);
                 } else {
                     await pool.query(
                         'UPDATE dte_contingency_documents SET retry_count = ?, last_error = ? WHERE id = ?',
-                        [retries, JSON.stringify(result.error || result.data), task.id]
+                        [retries, lastErrorMsg, task.id]
                     );
                 }
             }
@@ -82,6 +123,14 @@ async function processContingencyQueue() {
                 await pool.query(
                     'UPDATE dte_contingency_documents SET estado_envio = "FAILED", retry_count = ?, last_error = ? WHERE id = ?',
                     [retries, error.message, task.id]
+                );
+                await pool.query(
+                    'UPDATE dtes SET status = "ERROR" WHERE codigo_generacion = ?',
+                    [task.codigo_generacion]
+                );
+                await pool.query(
+                    'INSERT INTO dte_errors (dte_id, codigo_error, mensaje_error) VALUES (?, "CONT_RETRY_ERR", ?)',
+                    [task.dte_id, error.message]
                 );
             } else {
                 await pool.query(

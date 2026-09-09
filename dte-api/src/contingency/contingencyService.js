@@ -67,6 +67,7 @@ async function getActiveContingency(companyId) {
 async function sendContingencyReport(contingencyId) {
     const [contingencyRows] = await pool.query(
         'SELECT c.*, comp.nit, comp.razon_social, comp.correo, comp.telefono, comp.ambiente, ' +
+        'comp.api_user, comp.api_password, comp.certificate_path, comp.certificate_password, ' +
         'b.tipo_establecimiento, b.codigo_mh, b.codigo as punto_venta_codigo, b.ambiente AS branch_ambiente ' +
         'FROM dte_contingencies c ' +
         'LEFT JOIN companies comp ON c.company_id = comp.id ' +
@@ -80,32 +81,53 @@ async function sendContingencyReport(contingencyId) {
     const ambiente = con.branch_ambiente || con.ambiente;
 
     const [docs] = await pool.query(
-        'SELECT codigo_generacion, tipo_documento FROM dte_contingency_documents WHERE estado_envio = ?',
-        ['PENDING']
+        'SELECT cd.codigo_generacion, cd.tipo_documento ' +
+        'FROM dte_contingency_documents cd ' +
+        'JOIN dtes d ON cd.codigo_generacion = d.codigo_generacion ' +
+        'WHERE d.company_id = ? AND cd.estado_envio = "PENDING"',
+        [con.company_id]
     );
 
+    if (docs.length === 0) {
+        console.log(`[ContingencyReport] Período ${contingencyId} sin documentos pendientes (no requiere transmisión de evento a MH)`);
+        return {
+            success: true,
+            message: 'Período cerrado sin documentos emitidos en contingencia (no requiere reporte a Hacienda)'
+        };
+    }
+
+    const localNow = new Date();
+    const fTransmision = localNow.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
+    const hTransmision = localNow.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador', hour12: false }).substring(0, 8);
+
     const inicio = new Date(con.fecha_inicio);
-    const fin = new Date();
+    const fin = con.fecha_fin ? new Date(con.fecha_fin) : localNow;
+    const fInicio = inicio.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
+    const hInicio = inicio.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador', hour12: false }).substring(0, 8);
+    const fFin = fin.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
+    const hFin = fin.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador', hour12: false }).substring(0, 8);
+
+    const cleanNit = (con.nit || '00000000000000').replace(/[^0-9]/g, '');
 
     const report = {
         identificacion: {
             version: 4,
             ambiente: getMHAmbiente(ambiente),
             codigoGeneracion: uuidv4().toUpperCase(),
-            fTransmision: fin.toISOString().split('T')[0],
-            hTransmision: fin.toTimeString().split(' ')[0]
+            fTransmision: fTransmision,
+            hTransmision: hTransmision
         },
         emisor: {
-            nit: con.nit || '00000000000000',
-            nombre: con.razon_social || 'Emisor',
-            nombreResponsable: 'Responsable',
+            nit: cleanNit,
+            nombre: (con.razon_social || 'EMISOR').substring(0, 250),
+            nombreResponsable: (con.razon_social || 'RESPONSABLE').substring(0, 100),
             tipoDocResponsable: '36',
-            numeroDocResponsable: con.nit || '00000000000000',
-            tipoEstablecimiento: con.tipo_establecimiento || '02',
-            codEstableMH: con.codigo_mh || null,
-            codPuntoVenta: con.punto_venta_codigo || '0001',
-            telefono: con.telefono || '00000000',
-            correo: con.correo || 'emisor@example.com'
+            numeroDocResponsable: cleanNit.substring(0, 25),
+            tipoEstablecimiento: con.tipo_establecimiento || '01',
+            codEstableMH: con.codigo_mh ? String(con.codigo_mh).padStart(4, '0').substring(0, 4) : null,
+            codPuntoVentaMH: con.punto_venta_codigo ? String(con.punto_venta_codigo).padStart(4, '0').substring(0, 4) : null,
+            telefono: String(con.telefono || '00000000').replace(/[^0-9]/g, '').padEnd(8, '0').substring(0, 30),
+            correo: (con.correo || 'facturacion@empresa.com').substring(0, 100)
         },
         detalleDTE: docs.map((doc, i) => ({
             noItem: i + 1,
@@ -113,23 +135,49 @@ async function sendContingencyReport(contingencyId) {
             tipoDoc: doc.tipo_documento
         })),
         motivo: {
-            fInicio: inicio.toISOString().split('T')[0],
-            fFin: fin.toISOString().split('T')[0],
-            hInicio: inicio.toTimeString().split(' ')[0],
-            hFin: fin.toTimeString().split(' ')[0],
+            fInicio: fInicio,
+            fFin: fFin,
+            hInicio: hInicio,
+            hFin: hFin,
             tipoContingencia: con.tipo_contingencia || 1,
-            motivoContingencia: con.motivo || null
+            motivoContingencia: (con.motivo || 'Falla de servicios').substring(0, 500)
         }
     };
 
     try {
+        const signatureService = require('../services/signature/signatureService');
+        const signResult = await signatureService.signDTE(report, {
+            certificatePath: con.certificate_path,
+            certificatePassword: con.certificate_password,
+            nit: con.nit,
+            ambiente: ambiente
+        });
+
+        if (!signResult.success) {
+            throw new Error(`Falla en firma del reporte de contingencia: ${signResult.message}`);
+        }
+
         const auth = await authenticate(con.api_user, con.api_password, ambiente);
-        if (!auth.success) return { success: false, message: 'Error de autenticación MH' };
+        if (!auth.success) return { success: false, message: `Error de autenticación MH: ${auth.message}` };
+
+        let jwsString = typeof signResult.jws === 'string' ? signResult.jws : signResult.jws?.body || JSON.stringify(signResult.jws);
+        jwsString = jwsString.replace(/^"|"$/g, '').trim();
+
+        const contingencyPayload = {
+            ambiente: getMHAmbiente(ambiente),
+            idEnvio: Math.floor(Date.now() / 1000),
+            version: 4,
+            nit: cleanNit,
+            documento: jwsString
+        };
 
         const url = getEndpoint('contingencia', ambiente);
-        const response = await axios.post(url, report, {
-            headers: { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' }
+        const response = await axios.post(url, contingencyPayload, {
+            headers: { 'Authorization': auth.token, 'Content-Type': 'application/json' },
+            timeout: 15000
         });
+
+        console.log(`[ContingencyReport] ✅ Evento de contingencia ${report.identificacion.codigoGeneracion} transmitido a MH:`, response.data?.estado || 'OK');
 
         return {
             success: true,
@@ -137,8 +185,12 @@ async function sendContingencyReport(contingencyId) {
             haciendaResponse: response.data
         };
     } catch (error) {
-        console.error('[ContingencyReport] Error enviando reporte:', error.message);
-        return { success: false, message: error.message };
+        const errorData = error.response ? error.response.data : null;
+        console.error('[ContingencyReport] Error enviando reporte:', errorData || error.message);
+        return { 
+            success: false, 
+            message: errorData ? (errorData.descripcionMsg || JSON.stringify(errorData)) : error.message 
+        };
     }
 }
 
