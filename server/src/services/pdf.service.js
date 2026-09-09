@@ -4652,6 +4652,151 @@ const generateGalonajeVendidoPDF = async (data) => {
     return await getBuffer();
 };
 
+function draw3DDonutSlice(doc, cx, cy, rx, ry, innerRx, innerRy, startAngle, endAngle, depth, explodeDist, topColor, sideColor) {
+    const midAngle = (startAngle + endAngle) / 2;
+    const ox = Math.cos(midAngle) * explodeDist;
+    const oy = Math.sin(midAngle) * explodeDist;
+
+    const centerColX = cx + ox;
+    const centerColY = cy + oy;
+
+    const steps = 40;
+    const angleStep = (endAngle - startAngle) / steps;
+
+    const outerPoints = [];
+    for (let i = 0; i <= steps; i++) {
+        const a = startAngle + i * angleStep;
+        outerPoints.push({
+            x: centerColX + Math.cos(a) * rx,
+            y: centerColY + Math.sin(a) * ry,
+            angle: a
+        });
+    }
+
+    const innerPoints = [];
+    for (let i = 0; i <= steps; i++) {
+        const a = startAngle + i * angleStep;
+        innerPoints.push({
+            x: centerColX + Math.cos(a) * innerRx,
+            y: centerColY + Math.sin(a) * innerRy,
+            angle: a
+        });
+    }
+
+    // Outer side wall (front-facing)
+    for (let i = 0; i < steps; i++) {
+        const p1 = outerPoints[i];
+        const p2 = outerPoints[i + 1];
+        const midA = (p1.angle + p2.angle) / 2;
+
+        if (Math.sin(midA) >= -0.05) {
+            doc.save();
+            doc.fillColor(sideColor);
+            doc.strokeColor(sideColor).lineWidth(0.5);
+            doc.moveTo(p1.x, p1.y)
+               .lineTo(p2.x, p2.y)
+               .lineTo(p2.x, p2.y + depth)
+               .lineTo(p1.x, p1.y + depth)
+               .closePath()
+               .fillAndStroke();
+            doc.restore();
+        }
+    }
+
+    // Inner side wall (back-facing)
+    for (let i = 0; i < steps; i++) {
+        const p1 = innerPoints[i];
+        const p2 = innerPoints[i + 1];
+        const midA = (p1.angle + p2.angle) / 2;
+
+        if (Math.sin(midA) <= 0.05) {
+            doc.save();
+            doc.fillColor(sideColor);
+            doc.strokeColor(sideColor).lineWidth(0.5);
+            doc.moveTo(p1.x, p1.y)
+               .lineTo(p2.x, p2.y)
+               .lineTo(p2.x, p2.y + depth)
+               .lineTo(p1.x, p1.y + depth)
+               .closePath()
+               .fillAndStroke();
+            doc.restore();
+        }
+    }
+
+    // Radial cut wall: START edge
+    if (Math.cos(startAngle) <= 0.05) {
+        const inPt = innerPoints[0];
+        const outPt = outerPoints[0];
+        doc.save();
+        doc.fillColor(sideColor);
+        doc.strokeColor(sideColor).lineWidth(0.5);
+        doc.moveTo(inPt.x, inPt.y)
+           .lineTo(outPt.x, outPt.y)
+           .lineTo(outPt.x, outPt.y + depth)
+           .lineTo(inPt.x, inPt.y + depth)
+           .closePath()
+           .fillAndStroke();
+        doc.restore();
+    }
+
+    // Radial cut wall: END edge
+    if (Math.cos(endAngle) >= -0.05) {
+        const inPt = innerPoints[steps];
+        const outPt = outerPoints[steps];
+        doc.save();
+        doc.fillColor(sideColor);
+        doc.strokeColor(sideColor).lineWidth(0.5);
+        doc.moveTo(inPt.x, inPt.y)
+           .lineTo(outPt.x, outPt.y)
+           .lineTo(outPt.x, outPt.y + depth)
+           .lineTo(inPt.x, inPt.y + depth)
+           .closePath()
+           .fillAndStroke();
+        doc.restore();
+    }
+
+    // Top face
+    doc.save();
+    doc.fillColor(topColor);
+    doc.strokeColor('#ffffff').lineWidth(1);
+    doc.moveTo(outerPoints[0].x, outerPoints[0].y);
+    for (let i = 1; i <= steps; i++) {
+        doc.lineTo(outerPoints[i].x, outerPoints[i].y);
+    }
+    for (let i = steps; i >= 0; i--) {
+        doc.lineTo(innerPoints[i].x, innerPoints[i].y);
+    }
+    doc.closePath();
+    doc.fillAndStroke();
+    doc.restore();
+
+    const labelRadiusX = (rx + innerRx) / 2;
+    const labelRadiusY = (ry + innerRy) / 2;
+    const lx = centerColX + Math.cos(midAngle) * labelRadiusX;
+    const ly = centerColY + Math.sin(midAngle) * labelRadiusY - 4;
+
+    return { lx, ly, midAngle };
+}
+
+function getFuelPalette(desc, index) {
+    const d = (desc || '').toUpperCase();
+    if (d.includes('DIESEL') && !d.includes('COMPLETO')) return { top: '#3b70a2', side: '#24496b' };
+    if (d.includes('DIESEL') && d.includes('COMPLETO')) return { top: '#688fa0', side: '#43616f' };
+    if (d.includes('REGULAR') && !d.includes('COMPLETO')) return { top: '#4f944f', side: '#326332' };
+    if (d.includes('REGULAR') && d.includes('COMPLETO')) return { top: '#d97724', side: '#8f4a10' };
+    if (d.includes('SUPER') && !d.includes('COMPLETO')) return { top: '#dfa212', side: '#946a06' };
+    if (d.includes('SUPER') && d.includes('COMPLETO')) return { top: '#8a99a8', side: '#576573' };
+    const palette = [
+        { top: '#3b70a2', side: '#24496b' },
+        { top: '#4f944f', side: '#326332' },
+        { top: '#dfa212', side: '#946a06' },
+        { top: '#d97724', side: '#8f4a10' },
+        { top: '#688fa0', side: '#43616f' },
+        { top: '#8a99a8', side: '#576573' }
+    ];
+    return palette[index % palette.length];
+}
+
 const generateFuelSalesSummaryPDF = async (data) => {
     const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
     const company = await resolveCompanyInfo(data);
@@ -4770,6 +4915,170 @@ const generateFuelSalesSummaryPDF = async (data) => {
     doc.text(reportPdfHelper.fmt(grandMonto), colX.monto, currentY + 3, { width: colW.monto - 2, align: 'right' });
     doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 14).lineTo(startX + pageW, currentY + 14).stroke();
     currentY += 24;
+
+    // === CUADRO RESUMEN DE OPERACIONES ===
+    const summaryByProduct = {};
+    for (const [, items] of allEntries) {
+        for (const r of items) {
+            const code = r.codigo_producto || 'SIN_COD';
+            if (!summaryByProduct[code]) {
+                summaryByProduct[code] = {
+                    codigo: code,
+                    descripcion: r.descripcion_producto || '',
+                    galonaje: 0,
+                    monto: 0
+                };
+            }
+            summaryByProduct[code].galonaje += parseFloat(r.galones || 0);
+            summaryByProduct[code].monto += parseFloat(r.monto || 0);
+        }
+    }
+    const summaryList = Object.values(summaryByProduct).sort((a, b) => a.codigo.localeCompare(b.codigo));
+    summaryList.forEach(s => {
+        s.porcentaje = grandGalones > 0 ? (s.galonaje / grandGalones) * 100 : 0;
+    });
+
+    const summaryTableHeight = 14 + 14 + (summaryList.length * 12) + 20;
+    if (currentY + summaryTableHeight > 690) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('CUADRO RESUMEN DE OPERACIONES', startX, currentY, { width: pageW, align: 'center' });
+    currentY += 14;
+
+    const sumColX = {
+        codigo: startX,
+        descripcion: startX + 60,
+        galonaje: startX + 60 + 202,
+        monto: startX + 60 + 202 + 95,
+        porcentaje: startX + 60 + 202 + 95 + 105
+    };
+    const sumColW = {
+        codigo: 60,
+        descripcion: 202,
+        galonaje: 95,
+        monto: 105,
+        porcentaje: 90
+    };
+
+    doc.rect(startX, currentY, pageW, 14).fill('#f1f5f9');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, currentY, pageW, 14).stroke();
+    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('CODIGO', sumColX.codigo, currentY + 3, { width: sumColW.codigo, align: 'center' });
+    doc.text('DESCRIPCION', sumColX.descripcion, currentY + 3, { width: sumColW.descripcion });
+    doc.text('GALONAJE', sumColX.galonaje, currentY + 3, { width: sumColW.galonaje - 4, align: 'right' });
+    doc.text('MONTO', sumColX.monto, currentY + 3, { width: sumColW.monto - 4, align: 'right' });
+    doc.text('PORCENTAJE', sumColX.porcentaje, currentY + 3, { width: sumColW.porcentaje - 4, align: 'right' });
+    currentY += 14;
+
+    summaryList.forEach((r, idx) => {
+        if (idx % 2 === 1) doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).rect(startX, currentY, pageW, 12).stroke();
+        doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+        doc.text(r.codigo, sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center' });
+        doc.text(r.descripcion, sumColX.descripcion, currentY + 2, { width: sumColW.descripcion });
+        doc.text(fmtGal(r.galonaje), sumColX.galonaje, currentY + 2, { width: sumColW.galonaje - 4, align: 'right' });
+        doc.text(reportPdfHelper.fmt(r.monto), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right' });
+        doc.text(`${r.porcentaje.toFixed(2)}%`, sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right' });
+        currentY += 12;
+    });
+    currentY += 20;
+
+    // === DISTRIBUCION DE VENTAS (GRAFICO Y LEYENDA) ===
+    const chartAreaHeight = 160;
+    if (currentY + chartAreaHeight > 690) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    }
+
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('Distribucion de Ventas', startX, currentY, { width: pageW, align: 'center' });
+    currentY += 22;
+
+    const chartY = currentY + 58;
+    const cx = 170;
+    const cy = chartY;
+    const rx = 85;
+    const ry = 46;
+    const innerRx = 38;
+    const innerRy = 20;
+    const depth = 16;
+    const explode = 8;
+
+    const activeSlices = summaryList.filter(r => r.galonaje > 0);
+    if (grandGalones > 0 && activeSlices.length > 0) {
+        let currentAngle = -Math.PI / 2;
+        const renderedSlices = [];
+
+        activeSlices.forEach((s, idx) => {
+            const sliceAngle = (s.porcentaje / 100) * Math.PI * 2;
+            const startA = currentAngle;
+            const endA = currentAngle + sliceAngle;
+            const color = getFuelPalette(s.descripcion, idx);
+
+            renderedSlices.push({
+                label: s.descripcion,
+                porcentaje: s.porcentaje,
+                startA,
+                endA,
+                midA: (startA + endA) / 2,
+                topColor: color.top,
+                sideColor: color.side
+            });
+
+            currentAngle = endA;
+        });
+
+        // Painter's algorithm
+        renderedSlices.sort((a, b) => Math.sin(a.midA) - Math.sin(b.midA));
+
+        const labelsToDraw = [];
+        for (const s of renderedSlices) {
+            const { lx, ly } = draw3DDonutSlice(
+                doc, cx, cy, rx, ry, innerRx, innerRy,
+                s.startA, s.endA, depth, explode,
+                s.topColor, s.sideColor
+            );
+            labelsToDraw.push({ text: `${s.porcentaje.toFixed(2)}%`, x: lx - 20, y: ly });
+        }
+
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+        for (const lbl of labelsToDraw) {
+            doc.text(lbl.text, lbl.x, lbl.y, { width: 40, align: 'center' });
+        }
+    } else {
+        doc.fontSize(8.5).font('Helvetica-Oblique').fillColor('#64748b');
+        doc.text('No se registraron ventas de combustible en el período.', startX, chartY, { width: 300, align: 'center' });
+    }
+
+    // Legend box
+    const legX = 325;
+    const legY = currentY + 8;
+    const legW = 227;
+    const legH = (summaryList.length * 15) + 26;
+
+    doc.rect(legX, legY, legW, legH).fillAndStroke('#ffffff', '#cbd5e1');
+
+    let itemY = legY + 8;
+    summaryList.forEach((r, idx) => {
+        const color = getFuelPalette(r.descripcion, idx);
+        doc.rect(legX + 10, itemY + 1, 9, 9).fill(color.top);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text(r.descripcion, legX + 25, itemY + 1, { width: 135 });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+        doc.text(`${r.porcentaje.toFixed(2)}%`, legX + 165, itemY + 1, { width: 50, align: 'right' });
+        itemY += 15;
+    });
+
+    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(legX + 10, itemY).lineTo(legX + legW - 10, itemY).stroke();
+    itemY += 3;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('Total:', legX + 25, itemY, { width: 100 });
+    doc.text('100.00%', legX + 165, itemY, { width: 50, align: 'right' });
+
+    currentY = Math.max(chartY + depth + ry + 20, legY + legH + 20);
 
     reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsCount, 'Registros');
     reportPdfHelper.renderPageNumbers(doc);

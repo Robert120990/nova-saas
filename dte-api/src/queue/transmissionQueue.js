@@ -3,7 +3,9 @@
  */
 
 const pool = require('../../config/db');
+const axios = require('axios');
 const { authenticate, transmitDTE } = require('../transmission/transmissionService');
+const { getSchemaVersion } = require('../utils/versionMap');
 
 async function addToQueue(dteId) {
     const nextAttemptAt = new Date();
@@ -18,7 +20,7 @@ async function processQueue() {
 
     // 1. Get pending tasks
     const [tasks] = await pool.query(
-        'SELECT tq.*, d.codigo_generacion, d.tipo_dte, d.ambiente, d.json_firmado, c.api_user, c.api_password ' +
+        'SELECT tq.*, d.venta_id, d.company_id, d.codigo_generacion, d.tipo_dte, d.ambiente, d.json_original, d.json_firmado, c.api_user, c.api_password ' +
         'FROM transmission_queue tq ' +
         'JOIN dtes d ON tq.dte_id = d.id ' +
         'JOIN companies c ON d.company_id = c.id ' +
@@ -37,10 +39,12 @@ async function processQueue() {
             }
 
             // 3. Transmit
+            const version = getSchemaVersion(task.tipo_dte);
             const result = await transmitDTE(auth.token, task.json_firmado, {
                 ambiente: task.ambiente,
                 tipoDte: task.tipo_dte,
-                codigoGeneracion: task.codigo_generacion
+                codigoGeneracion: task.codigo_generacion,
+                version: version
             });
 
             if (result.success && result.status === 'PROCESADO') {
@@ -49,10 +53,31 @@ async function processQueue() {
                     'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
                     [result.selloRecepcion, result.fhProcesamiento, task.dte_id]
                 );
+                if (task.venta_id) {
+                    await pool.query(
+                        'UPDATE sales_headers SET sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
+                        [result.selloRecepcion, result.fhProcesamiento, task.venta_id]
+                    );
+                }
                 await pool.query('UPDATE transmission_queue SET status = "COMPLETED", attempts = attempts + 1 WHERE id = ?', [task.id]);
 
                 // Create event
                 await pool.query('INSERT INTO dte_events (dte_id, event_type, description) VALUES (?, "TRANSMITTED", "Documento aceptado por MH")', [task.dte_id]);
+
+                // Notificar envío de correo si existe venta_id
+                if (task.venta_id) {
+                    const mainServerUrl = process.env.MAIN_SERVER_URL || 'http://localhost:4000';
+                    try {
+                        await axios.post(`${mainServerUrl}/api/internal/dte/notify-accepted`, {
+                            codigoGeneracion: task.codigo_generacion,
+                            ventaId: task.venta_id,
+                            companyId: task.company_id
+                        }, { timeout: 10000 });
+                        console.log(`[QueueWorker] 📧 Notificación de correo enviada para venta ${task.venta_id}`);
+                    } catch (mailErr) {
+                        console.warn(`[QueueWorker] ⚠️ Error notificando envío de correo: ${mailErr.message}`);
+                    }
+                }
             } else {
                 throw new Error(JSON.stringify(result.error || result.data));
             }

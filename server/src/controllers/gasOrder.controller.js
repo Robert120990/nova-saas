@@ -446,6 +446,37 @@ exports.receiveOrder = async (req, res) => {
         const rSuper = r_super !== undefined && r_super !== '' ? parseFloat(r_super) || 0 : (parseFloat(order.p_super) || 0);
         const rIon = r_ion !== undefined && r_ion !== '' ? parseFloat(r_ion) || 0 : (parseFloat(order.p_ion) || 0);
 
+        // Captured fuel unit costs and freight (defaults to existing order values if not provided)
+        const costoD = req.body.costo_d !== undefined && req.body.costo_d !== '' ? parseFloat(req.body.costo_d) || 0 : (parseFloat(order.costo_d) || 0);
+        const costoR = req.body.costo_r !== undefined && req.body.costo_r !== '' ? parseFloat(req.body.costo_r) || 0 : (parseFloat(order.costo_r) || 0);
+        const costoS = req.body.costo_s !== undefined && req.body.costo_s !== '' ? parseFloat(req.body.costo_s) || 0 : (parseFloat(order.costo_s) || 0);
+        const costoI = req.body.costo_i !== undefined && req.body.costo_i !== '' ? parseFloat(req.body.costo_i) || 0 : (parseFloat(order.costo_i) || 0);
+        const flete = req.body.flete !== undefined && req.body.flete !== '' ? parseFloat(req.body.flete) || 0 : (parseFloat(order.flete) || 0);
+
+        // Validation: at least one fuel product must have received gallons
+        if (rDiesel <= 0 && rRegular <= 0 && rSuper <= 0 && rIon <= 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Debe registrar la descarga de galones de al menos un producto.' });
+        }
+
+        // Validation: any received fuel product must have a cost greater than zero
+        if (rDiesel > 0 && costoD <= 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Debe ingresar el costo por galón para Diésel.' });
+        }
+        if (rRegular > 0 && costoR <= 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Debe ingresar el costo por galón para Regular.' });
+        }
+        if (rSuper > 0 && costoS <= 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Debe ingresar el costo por galón para Súper.' });
+        }
+        if (rIon > 0 && costoI <= 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Debe ingresar el costo por galón para Ion Diésel.' });
+        }
+
         const ncrNumero = (ncr_numero || '').trim();
         const ncrMonto = parseFloat(ncr_monto) || 0;
         const obs = (observacion || '').trim();
@@ -611,7 +642,7 @@ exports.receiveOrder = async (req, res) => {
             finalObs = obs;
         }
 
-        // 3. Actualizar web_pedidos
+        // 3. Actualizar web_pedidos con descarga, costos capturados y flete
         await conn.query(
             `UPDATE web_pedidos SET
                 documento = ?,
@@ -620,6 +651,11 @@ exports.receiveOrder = async (req, res) => {
                 r_regular = ?,
                 r_super = ?,
                 r_ion = ?,
+                costo_d = ?,
+                costo_r = ?,
+                costo_s = ?,
+                costo_i = ?,
+                flete = ?,
                 estado = 'RECIBIDO',
                 fecha_descarga = ?,
                 forma_pago = ?,
@@ -635,6 +671,11 @@ exports.receiveOrder = async (req, res) => {
                 rRegular,
                 rSuper,
                 rIon,
+                costoD,
+                costoR,
+                costoS,
+                costoI,
+                flete,
                 formattedFechaDescarga,
                 cPago,
                 cuponesMonto,
@@ -660,34 +701,32 @@ exports.receiveOrder = async (req, res) => {
             orderDate = new Date().toISOString().slice(0, 10);
         }
 
-        const flete = parseFloat(order.flete) || 0;
-
-        if (parseFloat(order.p_diesel) > 0 && parseFloat(order.costo_d) > 0) {
-            const costo = parseFloat(order.costo_d) + flete;
+        if (parseFloat(order.p_diesel) > 0 && costoD > 0) {
+            const costo = costoD + flete;
             await conn.query(
                 `INSERT INTO combustibles_costos (id_empresa, cod_producto, costo, fecha, pedido, id_origen)
                  VALUES (?, 'DIESEL', ?, ?, ?, ?)`,
                 [order.id_estacion, costo, orderDate, order.numero, id]
             );
         }
-        if (parseFloat(order.p_regular) > 0 && parseFloat(order.costo_r) > 0) {
-            const costo = parseFloat(order.costo_r) + flete;
+        if (parseFloat(order.p_regular) > 0 && costoR > 0) {
+            const costo = costoR + flete;
             await conn.query(
                 `INSERT INTO combustibles_costos (id_empresa, cod_producto, costo, fecha, pedido, id_origen)
                  VALUES (?, 'REGULAR', ?, ?, ?, ?)`,
                 [order.id_estacion, costo, orderDate, order.numero, id]
             );
         }
-        if (parseFloat(order.p_super) > 0 && parseFloat(order.costo_s) > 0) {
-            const costo = parseFloat(order.costo_s) + flete;
+        if (parseFloat(order.p_super) > 0 && costoS > 0) {
+            const costo = costoS + flete;
             await conn.query(
                 `INSERT INTO combustibles_costos (id_empresa, cod_producto, costo, fecha, pedido, id_origen)
                  VALUES (?, 'SUPER', ?, ?, ?, ?)`,
                 [order.id_estacion, costo, orderDate, order.numero, id]
             );
         }
-        if (parseFloat(order.p_ion) > 0 && parseFloat(order.costo_i) > 0) {
-            const costo = parseFloat(order.costo_i) + flete;
+        if (parseFloat(order.p_ion) > 0 && costoI > 0) {
+            const costo = costoI + flete;
             await conn.query(
                 `INSERT INTO combustibles_costos (id_empresa, cod_producto, costo, fecha, pedido, id_origen)
                  VALUES (?, 'IONDIESEL', ?, ?, ?, ?)`,
@@ -715,7 +754,12 @@ exports.receiveOrder = async (req, res) => {
                 r_diesel: rDiesel,
                 r_regular: rRegular,
                 r_super: rSuper,
-                r_ion: rIon
+                r_ion: rIon,
+                costo_d: costoD,
+                costo_r: costoR,
+                costo_s: costoS,
+                costo_i: costoI,
+                flete: flete
             }
         });
     } catch (error) {

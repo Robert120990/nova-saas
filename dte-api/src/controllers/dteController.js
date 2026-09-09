@@ -11,6 +11,26 @@ const { getMHAmbiente } = require('../config/haciendaConfig');
 const queue = require('../queue/transmissionQueue');
 const pool = require('../../config/db');
 
+function isNetworkError(errOrMsg) {
+    if (!errOrMsg) return false;
+    const str = typeof errOrMsg === 'string' ? errOrMsg : JSON.stringify(errOrMsg);
+    const networkPatterns = [
+        'ECONNREFUSED',
+        'ETIMEDOUT',
+        'ECONNABORTED',
+        'ENOTFOUND',
+        'EAI_AGAIN',
+        '502',
+        '503',
+        '504',
+        'timeout',
+        'Error de conexión con MH',
+        'Network Error',
+        'socket hang up'
+    ];
+    return networkPatterns.some(pattern => str.includes(pattern));
+}
+
 async function emit(req, res) {
     try {
         const { venta_id, dte: dteInput, password: bodyPassword } = req.body;
@@ -59,30 +79,163 @@ async function emit(req, res) {
             throw new Error(`Falla en firma: ${signResult.message}`);
         }
 
-        // 4. Authenticate with Hacienda
-        console.log(`[HaciendaAuth] Authenticaton request for company ${company[0].nit}...`);
-        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
-        if (!auth.success) {
-            throw new Error(`Error MH Auth: ${auth.message}`);
+        let jwsString = typeof signResult.jws === 'string' ? signResult.jws : signResult.jws?.body || JSON.stringify(signResult.jws);
+        jwsString = jwsString.replace(/^"|"$/g, '').trim();
+
+        // 4. MODO CONTINGENCIA ACTIVO (Período previamente abierto) -> Diferir transmisión síncrona
+        if (dte.identificacion.tipoOperacion === 2) {
+            console.log(`[ContingencyEmit] Empresa ${req.company_id} en modo contingencia activo. Registrando DTE ${codigoGeneracion} para retransmisión posterior...`);
+
+            await pool.query(
+                'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    venta_id || null,
+                    codigoGeneracion,
+                    numeroControl,
+                    tipoDte,
+                    req.company_id,
+                    req.branch_id,
+                    req.user ? req.user.id : 0,
+                    'CONTINGENCIA_PENDIENTE',
+                    dte.identificacion.ambiente,
+                    JSON.stringify(dte),
+                    jwsString,
+                    null,
+                    null,
+                    'EMITIDO_EN_CONTINGENCIA'
+                ]
+            );
+
+            await pool.query(
+                'INSERT INTO dte_contingency_documents (codigo_generacion, tipo_documento, json_dte, json_firmado, estado_envio, fecha_generacion) VALUES (?, ?, ?, ?, ?, NOW()) ' +
+                'ON DUPLICATE KEY UPDATE json_firmado = VALUES(json_firmado), estado_envio = "PENDING"',
+                [codigoGeneracion, tipoDte, JSON.stringify(dte), jwsString, 'PENDING']
+            );
+
+            return res.status(200).json({
+                success: true,
+                venta_id: venta_id || null,
+                codigoGeneracion,
+                numeroControl,
+                estadoHacienda: 'CONTINGENCIA',
+                contingency: true,
+                data: {
+                    selloRecibido: null,
+                    estado: 'CONTINGENCIA',
+                    mensaje: 'Documento emitido y firmado en contingencia.'
+                }
+            });
         }
 
-        // 5. Transmit to Hacienda
-        let jwsString = typeof signResult.jws === 'string' ? signResult.jws : signResult.jws?.body || JSON.stringify(signResult.jws);
-        
-        // Final cleaning: Ensure it's a pure string without extra quotes or spaces if returned as JSON string
-        jwsString = jwsString.replace(/^"|"$/g, '').trim();
-        
-        console.log(`[Transmission] JWS identified (starting with): ${jwsString.substring(0, 50)}...`);
+        // 5. FLUJO NORMAL: Intentar transmitir a Hacienda de forma síncrona
+        let isConnectivityFailure = false;
+        let connectivityMessage = '';
 
-        const txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
-            ambiente: getMHAmbiente(ambiente),
-            tipoDte: tipoDte,
-            codigoGeneracion: codigoGeneracion,
-            version: getSchemaVersion(tipoDte)
-        });
-        console.log(`[DTE-EMIT-DEBUG] Ambiente enviado a Hacienda: "${getMHAmbiente(ambiente)}" (DB: "${ambiente}")`);
+        console.log(`[HaciendaAuth] Authentication request for company ${company[0].nit}...`);
+        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
+        if (!auth.success) {
+            if (isNetworkError(auth.message)) {
+                isConnectivityFailure = true;
+                connectivityMessage = auth.message;
+            } else {
+                throw new Error(`Error MH Auth: ${auth.message}`);
+            }
+        }
 
-        // 6. Store in Database
+        let txResult = null;
+        if (!isConnectivityFailure) {
+            console.log(`[Transmission] JWS identified (starting with): ${jwsString.substring(0, 50)}...`);
+            txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
+                ambiente: getMHAmbiente(ambiente),
+                tipoDte: tipoDte,
+                codigoGeneracion: codigoGeneracion,
+                version: getSchemaVersion(tipoDte)
+            });
+
+            if (!txResult.success && isNetworkError(txResult.error)) {
+                isConnectivityFailure = true;
+                connectivityMessage = typeof txResult.error === 'string' ? txResult.error : JSON.stringify(txResult.error);
+            }
+        }
+
+        // 6. CIRCUITO DE CONTINGENCIA AUTOMÁTICA ANTE CAÍDA DE HACIENDA / RED
+        if (isConnectivityFailure) {
+            console.warn(`[AutoContingency] Falla de red con Hacienda detectada (${connectivityMessage}). Activando contingencia automática para empresa ${req.company_id}...`);
+
+            // Abrir período de contingencia automático si no hay uno abierto
+            const [openPeriods] = await pool.query(
+                'SELECT id FROM dte_contingencies WHERE company_id = ? AND estado = "OPEN" LIMIT 1',
+                [req.company_id]
+            );
+            if (openPeriods.length === 0) {
+                await pool.query(
+                    'INSERT INTO dte_contingencies (company_id, branch_id, fecha_inicio, motivo, tipo_contingencia, estado) VALUES (?, ?, NOW(), ?, 1, "OPEN")',
+                    [req.company_id, req.branch_id || null, 'No disponibilidad del sistema de Hacienda (activación automática)']
+                );
+            }
+
+            // Actualizar DTE a contingencia (tipoOperacion: 2, tipoModelo: 2)
+            dte.identificacion.tipoOperacion = 2;
+            dte.identificacion.tipoModelo = 2;
+            dte.identificacion.tipoContingencia = 1;
+            dte.identificacion.motivoContin = 'No disponibilidad de sistema del Ministerio de Hacienda';
+
+            // Refirmar con tipoOperacion 2
+            const reSignResult = await signatureService.signDTE(dte, {
+                certificatePath: company[0].certificate_path,
+                certificatePassword: certPass,
+                nit: company[0].nit,
+                ambiente: ambiente
+            });
+            if (reSignResult.success) {
+                jwsString = typeof reSignResult.jws === 'string' ? reSignResult.jws : reSignResult.jws?.body || JSON.stringify(reSignResult.jws);
+                jwsString = jwsString.replace(/^"|"$/g, '').trim();
+            }
+
+            await pool.query(
+                'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    venta_id || null,
+                    codigoGeneracion,
+                    numeroControl,
+                    tipoDte,
+                    req.company_id,
+                    req.branch_id,
+                    req.user ? req.user.id : 0,
+                    'CONTINGENCIA_PENDIENTE',
+                    dte.identificacion.ambiente,
+                    JSON.stringify(dte),
+                    jwsString,
+                    null,
+                    null,
+                    `CONTINGENCIA_AUTOMATICA: ${connectivityMessage}`.substring(0, 500)
+                ]
+            );
+
+            await pool.query(
+                'INSERT INTO dte_contingency_documents (codigo_generacion, tipo_documento, json_dte, json_firmado, estado_envio, fecha_generacion) VALUES (?, ?, ?, ?, ?, NOW()) ' +
+                'ON DUPLICATE KEY UPDATE json_firmado = VALUES(json_firmado), estado_envio = "PENDING"',
+                [codigoGeneracion, tipoDte, JSON.stringify(dte), jwsString, 'PENDING']
+            );
+
+            return res.status(200).json({
+                success: true,
+                venta_id: venta_id || null,
+                codigoGeneracion,
+                numeroControl,
+                estadoHacienda: 'CONTINGENCIA',
+                contingency: true,
+                data: {
+                    selloRecibido: null,
+                    estado: 'CONTINGENCIA',
+                    mensaje: 'Hacienda no disponible. Documento resguardado en contingencia automática.'
+                }
+            });
+        }
+
+        // 7. RESPUESTA NORMAL DE HACIENDA (PROCESADO o RECHAZADO TRIBUTARIO)
         const dbStatus = txResult.success && txResult.status === 'PROCESADO' ? 'ACCEPTED' : 'REJECTED';
         const haciendaError = txResult.error || txResult.data;
 

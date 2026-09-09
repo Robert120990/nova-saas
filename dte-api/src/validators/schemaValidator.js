@@ -29,7 +29,9 @@ const schemaMap = {
     '15': 'v2/fe-cd-v2.json',        // Comprobante de Donación
     '16': 'v3/invalidacion-schema-v3.json',  // Invalidación
     '17': 'v1/fe-eop-v1.json',       // Evento de Operaciones Especiales
-    '18': 'v1/fe-eret-v1.json'       // Evento de Retorno
+    '18': 'v1/fe-eret-v1.json',      // Evento de Retorno
+    '19': 'v4/contingencia-schema-v4.json', // Evento de Contingencia
+    'contingencia': 'v4/contingencia-schema-v4.json'
 };
 
 const validators = {};

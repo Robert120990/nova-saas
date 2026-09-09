@@ -96,6 +96,7 @@ router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
 router.get('/public/dte/:codigo/info', salesController.getPublicDTEInfo);
 router.get('/public/dte/:codigo/json', salesController.getPublicDTEJson);
 router.post('/public/dte/:codigo/send-email', salesController.sendPublicDTEEmail);
+router.post('/internal/dte/notify-accepted', salesController.notifyDTEAccepted);
 
 // Public scan routes (no auth required - accessed via QR token)
 router.get('/inventory/scan/:token', inventoryScanController.getScanSession);

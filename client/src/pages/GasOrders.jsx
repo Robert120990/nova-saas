@@ -38,6 +38,26 @@ function formatDate(val) {
     return `${d}/${m}/${y}`;
 }
 
+function calculateOrderCost(order) {
+    if (!order) return 0;
+    if (order.estado === 'RECIBIDO' && parseFloat(order.pago) > 0) {
+        return parseFloat(order.pago);
+    }
+    const flete = parseFloat(order.flete) || 0;
+    const isReceived = order.estado === 'RECIBIDO';
+    const dGal = isReceived && parseFloat(order.r_diesel) > 0 ? parseFloat(order.r_diesel) : (parseFloat(order.p_diesel) || 0);
+    const rGal = isReceived && parseFloat(order.r_regular) > 0 ? parseFloat(order.r_regular) : (parseFloat(order.p_regular) || 0);
+    const sGal = isReceived && parseFloat(order.r_super) > 0 ? parseFloat(order.r_super) : (parseFloat(order.p_super) || 0);
+    const iGal = isReceived && parseFloat(order.r_ion) > 0 ? parseFloat(order.r_ion) : (parseFloat(order.p_ion) || 0);
+
+    const cD = (parseFloat(order.costo_d) || 0) + flete;
+    const cR = (parseFloat(order.costo_r) || 0) + flete;
+    const cS = (parseFloat(order.costo_s) || 0) + flete;
+    const cI = (parseFloat(order.costo_i) || 0) + flete;
+
+    return (dGal * cD) + (rGal * cR) + (sGal * cS) + (iGal * cI);
+}
+
 export default function GasOrders() {
     const queryClient = useQueryClient();
 
@@ -65,6 +85,11 @@ export default function GasOrders() {
         r_regular: '0',
         r_super: '0',
         r_ion: '0',
+        costo_d: '0',
+        costo_r: '0',
+        costo_s: '0',
+        costo_i: '0',
+        flete: '0',
     });
 
     // Cheques subform and list state
@@ -215,25 +240,50 @@ export default function GasOrders() {
         const rI = parseFloat(order.r_ion) || 0;
 
         const docDefault = order.documento || '';
+        const galD = rD > 0 ? rD : pD;
+        const galR = rR > 0 ? rR : pR;
+        const galS = rS > 0 ? rS : pS;
+        const galI = rI > 0 ? rI : pI;
+
+        const costD = order.costo_d !== undefined && order.costo_d !== null ? parseFloat(order.costo_d) || 0 : 0;
+        const costR = order.costo_r !== undefined && order.costo_r !== null ? parseFloat(order.costo_r) || 0 : 0;
+        const costS = order.costo_s !== undefined && order.costo_s !== null ? parseFloat(order.costo_s) || 0 : 0;
+        const costI = order.costo_i !== undefined && order.costo_i !== null ? parseFloat(order.costo_i) || 0 : 0;
+        const fleteVal = order.flete !== undefined && order.flete !== null ? parseFloat(order.flete) || 0 : 0;
+
+        const ncrMontoDefault = order.ncr_monto !== undefined && order.ncr_monto !== null ? String(order.ncr_monto) : '0.00';
+        const cuponesDefault = order.cupones !== undefined && order.cupones !== null ? String(order.cupones) : '0.00';
 
         setReceiveForm({
             fecha_descarga: defaultDate,
             documento: docDefault,
             observacion: order.observacion || '',
             ncr_numero: order.ncr_numero || '',
-            ncr_monto: order.ncr_monto !== undefined && order.ncr_monto !== null ? String(order.ncr_monto) : '0.00',
-            cupones: order.cupones !== undefined && order.cupones !== null ? String(order.cupones) : '0.00',
-            r_diesel: rD > 0 ? String(rD) : String(pD),
-            r_regular: rR > 0 ? String(rR) : String(pR),
-            r_super: rS > 0 ? String(rS) : String(pS),
-            r_ion: rI > 0 ? String(rI) : String(pI),
+            ncr_monto: ncrMontoDefault,
+            cupones: cuponesDefault,
+            r_diesel: String(galD),
+            r_regular: String(galR),
+            r_super: String(galS),
+            r_ion: String(galI),
+            costo_d: costD > 0 ? String(costD) : '0',
+            costo_r: costR > 0 ? String(costR) : '0',
+            costo_s: costS > 0 ? String(costS) : '0',
+            costo_i: costI > 0 ? String(costI) : '0',
+            flete: fleteVal > 0 ? String(fleteVal) : '0',
         });
+
+        // Compute suggested payment amount if order.pago is not set
+        const totalEstimated = (galD * (costD + fleteVal)) + (galR * (costR + fleteVal)) + (galS * (costS + fleteVal)) + (galI * (costI + fleteVal));
+        const netEstimated = Math.max(0, totalEstimated - (parseFloat(ncrMontoDefault) || 0) - (parseFloat(cuponesDefault) || 0));
+        const initialPayment = order.pago && parseFloat(order.pago) > 0
+            ? String(order.pago)
+            : (netEstimated > 0 ? netEstimated.toFixed(2) : '0.00');
 
         setSelectedBank('');
         setChequeForm({
             numero_cuenta: '',
             cheque: '',
-            valor: '0.00',
+            valor: initialPayment,
             concepto: docDefault ? `PAGO DE PIPA CCF# ${docDefault}` : '',
         });
 
@@ -241,7 +291,7 @@ export default function GasOrders() {
         setTransferForm({
             numero_cuenta: '',
             referencia: '',
-            monto: order.pago ? String(order.pago) : '0.00',
+            monto: initialPayment,
             fecha_pago: defaultDate,
             concepto: docDefault ? `PAGO DE PIPA CCF# ${docDefault}` : '',
         });
@@ -407,6 +457,41 @@ export default function GasOrders() {
             return;
         }
 
+        const galDiesel = parseFloat(receiveForm.r_diesel) || 0;
+        const galRegular = parseFloat(receiveForm.r_regular) || 0;
+        const galSuper = parseFloat(receiveForm.r_super) || 0;
+        const galIon = parseFloat(receiveForm.r_ion) || 0;
+
+        const costDiesel = parseFloat(receiveForm.costo_d) || 0;
+        const costRegular = parseFloat(receiveForm.costo_r) || 0;
+        const costSuper = parseFloat(receiveForm.costo_s) || 0;
+        const costIon = parseFloat(receiveForm.costo_i) || 0;
+
+        if (galDiesel <= 0 && galRegular <= 0 && galSuper <= 0 && galIon <= 0) {
+            toast.error('Debe ingresar los galones recibidos de al menos un producto');
+            return;
+        }
+
+        if (galDiesel > 0 && costDiesel <= 0) {
+            toast.error('Debe ingresar el costo por galón para Diésel');
+            return;
+        }
+
+        if (galRegular > 0 && costRegular <= 0) {
+            toast.error('Debe ingresar el costo por galón para Regular');
+            return;
+        }
+
+        if (galSuper > 0 && costSuper <= 0) {
+            toast.error('Debe ingresar el costo por galón para Súper');
+            return;
+        }
+
+        if (galIon > 0 && costIon <= 0) {
+            toast.error('Debe ingresar el costo por galón para Ion Diésel');
+            return;
+        }
+
         if (receiveMethod === 'TRANSFERENCIA') {
             if (!transferForm.numero_cuenta) {
                 toast.error('Falta seleccionar la Cuenta Bancaria');
@@ -435,6 +520,11 @@ export default function GasOrders() {
             r_regular: parseFloat(receiveForm.r_regular) || 0,
             r_super: parseFloat(receiveForm.r_super) || 0,
             r_ion: parseFloat(receiveForm.r_ion) || 0,
+            costo_d: parseFloat(receiveForm.costo_d) || 0,
+            costo_r: parseFloat(receiveForm.costo_r) || 0,
+            costo_s: parseFloat(receiveForm.costo_s) || 0,
+            costo_i: parseFloat(receiveForm.costo_i) || 0,
+            flete: parseFloat(receiveForm.flete) || 0,
             cheques: chequesList.map(c => ({
                 numero_cuenta: c.numero_cuenta,
                 cheque: c.cheque,
@@ -1078,72 +1168,364 @@ export default function GasOrders() {
                                 </div>
                             </div>
 
-                            {/* Sección 2: Descarga de Combustibles y Notas de Crédito */}
-                            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                                <h4 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                                    Descarga de Combustible (Galones)
-                                </h4>
-
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                                            <span>Diésel</span>
-                                            <span className="text-slate-400 font-normal">Ped: {formatNumber(receivingOrder.p_diesel)}</span>
-                                        </div>
-                                        <input
-                                            type="number"
-                                            step="0.01"
+                            {/* Sección 2: Descarga de Combustibles y Captura de Costos */}
+                            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1 border-b border-slate-200">
+                                    <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Fuel className="w-3.5 h-3.5 text-indigo-600" />
+                                        Descarga de Combustible y Captura de Costos
+                                    </h4>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-[11px] font-bold text-slate-500 uppercase shrink-0">
+                                            Flete /gln ($):
+                                        </label>
+                                        <MoneyInput
+                                            step="0.0001"
                                             min="0"
-                                            value={receiveForm.r_diesel}
-                                            onChange={(e) => setReceiveForm(prev => ({ ...prev, r_diesel: e.target.value }))}
-                                            className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                                            placeholder="0.0000"
+                                            value={receiveForm.flete}
+                                            onChange={(e) => setReceiveForm(prev => ({ ...prev, flete: e.target.value }))}
+                                            className="w-24 px-2 py-1 text-right text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                                            title="Flete por galón a sumar al costo"
                                         />
                                     </div>
+                                </div>
 
-                                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                                            <span>Regular</span>
-                                            <span className="text-slate-400 font-normal">Ped: {formatNumber(receivingOrder.p_regular)}</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {/* Diésel */}
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2.5 flex flex-col justify-between">
+                                        <div>
+                                            <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                                                <span className="flex items-center gap-1.5">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-slate-700 shrink-0" />
+                                                    Diésel
+                                                </span>
+                                                <span className="text-[10px] font-normal text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                    Ped: {formatNumber(receivingOrder.p_diesel)} gln
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-2 space-y-2">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                                                        Galones Recibidos
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={receiveForm.r_diesel}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, r_diesel: e.target.value }))}
+                                                        className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                                                        <span>Costo /gln ($)</span>
+                                                        {parseFloat(receiveForm.r_diesel) > 0 && (parseFloat(receiveForm.costo_d) || 0) <= 0 && (
+                                                            <span className="text-rose-500 font-semibold text-[9px] lowercase">requerido</span>
+                                                        )}
+                                                    </label>
+                                                    <MoneyInput
+                                                        step="0.00001"
+                                                        min="0"
+                                                        placeholder="0.0000"
+                                                        value={receiveForm.costo_d}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, costo_d: e.target.value }))}
+                                                        className={`w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border rounded focus:bg-white focus:outline-none focus:ring-2 text-slate-800 ${
+                                                            parseFloat(receiveForm.r_diesel) > 0 && (parseFloat(receiveForm.costo_d) || 0) <= 0
+                                                                ? 'border-rose-400 focus:ring-rose-500/20'
+                                                                : 'border-slate-300 focus:ring-indigo-500/20'
+                                                        }`}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={receiveForm.r_regular}
-                                            onChange={(e) => setReceiveForm(prev => ({ ...prev, r_regular: e.target.value }))}
-                                            className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
-                                        />
+
+                                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                                            {parseFloat(receiveForm.flete) > 0 && (
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                    <span>Costo + Flete:</span>
+                                                    <span className="font-mono">
+                                                        <Money value={(parseFloat(receiveForm.costo_d) || 0) + (parseFloat(receiveForm.flete) || 0)} digits={4} />
+                                                    </span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                                <span className="text-slate-500">Subtotal:</span>
+                                                <span className="font-mono text-indigo-700">
+                                                    <Money value={(parseFloat(receiveForm.r_diesel) || 0) * ((parseFloat(receiveForm.costo_d) || 0) + (parseFloat(receiveForm.flete) || 0))} />
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                                            <span>Súper</span>
-                                            <span className="text-slate-400 font-normal">Ped: {formatNumber(receivingOrder.p_super)}</span>
+                                    {/* Regular */}
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2.5 flex flex-col justify-between">
+                                        <div>
+                                            <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                                                <span className="flex items-center gap-1.5">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                                                    Regular
+                                                </span>
+                                                <span className="text-[10px] font-normal text-slate-500 bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded">
+                                                    Ped: {formatNumber(receivingOrder.p_regular)} gln
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-2 space-y-2">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                                                        Galones Recibidos
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={receiveForm.r_regular}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, r_regular: e.target.value }))}
+                                                        className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                                                        <span>Costo /gln ($)</span>
+                                                        {parseFloat(receiveForm.r_regular) > 0 && (parseFloat(receiveForm.costo_r) || 0) <= 0 && (
+                                                            <span className="text-rose-500 font-semibold text-[9px] lowercase">requerido</span>
+                                                        )}
+                                                    </label>
+                                                    <MoneyInput
+                                                        step="0.00001"
+                                                        min="0"
+                                                        placeholder="0.0000"
+                                                        value={receiveForm.costo_r}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, costo_r: e.target.value }))}
+                                                        className={`w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border rounded focus:bg-white focus:outline-none focus:ring-2 text-slate-800 ${
+                                                            parseFloat(receiveForm.r_regular) > 0 && (parseFloat(receiveForm.costo_r) || 0) <= 0
+                                                                ? 'border-rose-400 focus:ring-rose-500/20'
+                                                                : 'border-slate-300 focus:ring-indigo-500/20'
+                                                        }`}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={receiveForm.r_super}
-                                            onChange={(e) => setReceiveForm(prev => ({ ...prev, r_super: e.target.value }))}
-                                            className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
-                                        />
+
+                                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                                            {parseFloat(receiveForm.flete) > 0 && (
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                    <span>Costo + Flete:</span>
+                                                    <span className="font-mono">
+                                                        <Money value={(parseFloat(receiveForm.costo_r) || 0) + (parseFloat(receiveForm.flete) || 0)} digits={4} />
+                                                    </span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                                <span className="text-slate-500">Subtotal:</span>
+                                                <span className="font-mono text-amber-700">
+                                                    <Money value={(parseFloat(receiveForm.r_regular) || 0) * ((parseFloat(receiveForm.costo_r) || 0) + (parseFloat(receiveForm.flete) || 0))} />
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                                            <span>Ion Diésel</span>
-                                            <span className="text-slate-400 font-normal">Ped: {formatNumber(receivingOrder.p_ion)}</span>
+                                    {/* Súper */}
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2.5 flex flex-col justify-between">
+                                        <div>
+                                            <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                                                <span className="flex items-center gap-1.5">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                                                    Súper
+                                                </span>
+                                                <span className="text-[10px] font-normal text-slate-500 bg-rose-50 text-rose-800 px-1.5 py-0.5 rounded">
+                                                    Ped: {formatNumber(receivingOrder.p_super)} gln
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-2 space-y-2">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                                                        Galones Recibidos
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={receiveForm.r_super}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, r_super: e.target.value }))}
+                                                        className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                                                        <span>Costo /gln ($)</span>
+                                                        {parseFloat(receiveForm.r_super) > 0 && (parseFloat(receiveForm.costo_s) || 0) <= 0 && (
+                                                            <span className="text-rose-500 font-semibold text-[9px] lowercase">requerido</span>
+                                                        )}
+                                                    </label>
+                                                    <MoneyInput
+                                                        step="0.00001"
+                                                        min="0"
+                                                        placeholder="0.0000"
+                                                        value={receiveForm.costo_s}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, costo_s: e.target.value }))}
+                                                        className={`w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border rounded focus:bg-white focus:outline-none focus:ring-2 text-slate-800 ${
+                                                            parseFloat(receiveForm.r_super) > 0 && (parseFloat(receiveForm.costo_s) || 0) <= 0
+                                                                ? 'border-rose-400 focus:ring-rose-500/20'
+                                                                : 'border-slate-300 focus:ring-indigo-500/20'
+                                                        }`}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={receiveForm.r_ion}
-                                            onChange={(e) => setReceiveForm(prev => ({ ...prev, r_ion: e.target.value }))}
-                                            className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
-                                        />
+
+                                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                                            {parseFloat(receiveForm.flete) > 0 && (
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                    <span>Costo + Flete:</span>
+                                                    <span className="font-mono">
+                                                        <Money value={(parseFloat(receiveForm.costo_s) || 0) + (parseFloat(receiveForm.flete) || 0)} digits={4} />
+                                                    </span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                                <span className="text-slate-500">Subtotal:</span>
+                                                <span className="font-mono text-rose-700">
+                                                    <Money value={(parseFloat(receiveForm.r_super) || 0) * ((parseFloat(receiveForm.costo_s) || 0) + (parseFloat(receiveForm.flete) || 0))} />
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
+
+                                    {/* Ion Diésel */}
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2.5 flex flex-col justify-between">
+                                        <div>
+                                            <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                                                <span className="flex items-center gap-1.5">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0" />
+                                                    Ion Diésel
+                                                </span>
+                                                <span className="text-[10px] font-normal text-slate-500 bg-indigo-50 text-indigo-800 px-1.5 py-0.5 rounded">
+                                                    Ped: {formatNumber(receivingOrder.p_ion)} gln
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-2 space-y-2">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                                                        Galones Recibidos
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={receiveForm.r_ion}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, r_ion: e.target.value }))}
+                                                        className="w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                                                        <span>Costo /gln ($)</span>
+                                                        {parseFloat(receiveForm.r_ion) > 0 && (parseFloat(receiveForm.costo_i) || 0) <= 0 && (
+                                                            <span className="text-rose-500 font-semibold text-[9px] lowercase">requerido</span>
+                                                        )}
+                                                    </label>
+                                                    <MoneyInput
+                                                        step="0.00001"
+                                                        min="0"
+                                                        placeholder="0.0000"
+                                                        value={receiveForm.costo_i}
+                                                        onChange={(e) => setReceiveForm(prev => ({ ...prev, costo_i: e.target.value }))}
+                                                        className={`w-full px-2 py-1 text-right text-xs font-mono font-bold bg-slate-50 border rounded focus:bg-white focus:outline-none focus:ring-2 text-slate-800 ${
+                                                            parseFloat(receiveForm.r_ion) > 0 && (parseFloat(receiveForm.costo_i) || 0) <= 0
+                                                                ? 'border-rose-400 focus:ring-rose-500/20'
+                                                                : 'border-slate-300 focus:ring-indigo-500/20'
+                                                        }`}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                                            {parseFloat(receiveForm.flete) > 0 && (
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                    <span>Costo + Flete:</span>
+                                                    <span className="font-mono">
+                                                        <Money value={(parseFloat(receiveForm.costo_i) || 0) + (parseFloat(receiveForm.flete) || 0)} digits={4} />
+                                                    </span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                                <span className="text-slate-500">Subtotal:</span>
+                                                <span className="font-mono text-indigo-700">
+                                                    <Money value={(parseFloat(receiveForm.r_ion) || 0) * ((parseFloat(receiveForm.costo_i) || 0) + (parseFloat(receiveForm.flete) || 0))} />
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Resumen de Descarga y Costos */}
+                                <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-4 flex-wrap">
+                                        <div>
+                                            <span className="block text-[10px] font-bold text-slate-500 uppercase">Total Galones</span>
+                                            <span className="font-mono font-bold text-xs text-slate-800">
+                                                {formatNumber((parseFloat(receiveForm.r_diesel) || 0) + (parseFloat(receiveForm.r_regular) || 0) + (parseFloat(receiveForm.r_super) || 0) + (parseFloat(receiveForm.r_ion) || 0))} gln
+                                            </span>
+                                        </div>
+                                        <div className="h-5 w-px bg-indigo-200 hidden sm:block" />
+                                        <div>
+                                            <span className="block text-[10px] font-bold text-slate-500 uppercase">Total Estimado</span>
+                                            <span className="font-mono font-bold text-xs text-indigo-900">
+                                                <Money value={
+                                                    ((parseFloat(receiveForm.r_diesel) || 0) * ((parseFloat(receiveForm.costo_d) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                    ((parseFloat(receiveForm.r_regular) || 0) * ((parseFloat(receiveForm.costo_r) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                    ((parseFloat(receiveForm.r_super) || 0) * ((parseFloat(receiveForm.costo_s) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                    ((parseFloat(receiveForm.r_ion) || 0) * ((parseFloat(receiveForm.costo_i) || 0) + (parseFloat(receiveForm.flete) || 0)))
+                                                } />
+                                            </span>
+                                        </div>
+                                        <div className="h-5 w-px bg-indigo-200 hidden sm:block" />
+                                        <div>
+                                            <span className="block text-[10px] font-bold text-slate-500 uppercase">Neto a Pagar</span>
+                                            <span className="font-mono font-bold text-xs text-emerald-700">
+                                                <Money value={Math.max(0, (
+                                                    ((parseFloat(receiveForm.r_diesel) || 0) * ((parseFloat(receiveForm.costo_d) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                    ((parseFloat(receiveForm.r_regular) || 0) * ((parseFloat(receiveForm.costo_r) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                    ((parseFloat(receiveForm.r_super) || 0) * ((parseFloat(receiveForm.costo_s) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                    ((parseFloat(receiveForm.r_ion) || 0) * ((parseFloat(receiveForm.costo_i) || 0) + (parseFloat(receiveForm.flete) || 0)))
+                                                ) - (parseFloat(receiveForm.ncr_monto) || 0) - (parseFloat(receiveForm.cupones) || 0))} />
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const totalCalculado = (
+                                                ((parseFloat(receiveForm.r_diesel) || 0) * ((parseFloat(receiveForm.costo_d) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                ((parseFloat(receiveForm.r_regular) || 0) * ((parseFloat(receiveForm.costo_r) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                ((parseFloat(receiveForm.r_super) || 0) * ((parseFloat(receiveForm.costo_s) || 0) + (parseFloat(receiveForm.flete) || 0))) +
+                                                ((parseFloat(receiveForm.r_ion) || 0) * ((parseFloat(receiveForm.costo_i) || 0) + (parseFloat(receiveForm.flete) || 0)))
+                                            );
+                                            const neto = Math.max(0, totalCalculado - (parseFloat(receiveForm.ncr_monto) || 0) - (parseFloat(receiveForm.cupones) || 0));
+                                            const formattedNeto = neto.toFixed(2);
+                                            if (receiveMethod === 'TRANSFERENCIA') {
+                                                setTransferForm(prev => ({ ...prev, monto: formattedNeto }));
+                                            } else {
+                                                setChequeForm(prev => ({ ...prev, valor: formattedNeto }));
+                                            }
+                                            toast.success(`Monto de pago actualizado a $${formattedNeto}`);
+                                        }}
+                                        className="self-start md:self-auto px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                                    >
+                                        Aplicar al Monto de Pago
+                                    </button>
                                 </div>
 
                                 {/* Notas de Crédito */}
@@ -1508,7 +1890,7 @@ export default function GasOrders() {
             {/* Modal: Order Detail Modal */}
             {selectedOrder && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
-                    <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+                    <div className="bg-white w-full max-w-3xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
                         {/* Modal Header */}
                         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                             <div className="flex items-center gap-3">
@@ -1537,15 +1919,25 @@ export default function GasOrders() {
                         <div className="p-6 overflow-y-auto space-y-5 text-xs">
                             {/* Fuel Comparison Table */}
                             <div>
-                                <h4 className="text-[11px] font-bold text-slate-500 uppercase mb-2">Desglose de Combustible</h4>
-                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-[11px] font-bold text-slate-500 uppercase">Desglose de Combustible y Costos</h4>
+                                    {parseFloat(selectedOrder.flete) > 0 && (
+                                        <span className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                            Flete aplicado: <Money value={selectedOrder.flete} digits={4} /> /gln
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="border border-slate-200 rounded-xl overflow-x-auto">
                                     <table className="w-full text-left border-collapse text-xs">
                                         <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200">
                                             <tr>
                                                 <th className="py-2.5 px-3">Producto</th>
-                                                <th className="py-2.5 px-3 text-right">Galones Pedidos</th>
-                                                <th className="py-2.5 px-3 text-right">Galones Recibidos</th>
-                                                <th className="py-2.5 px-3 text-right">Costo Estimado</th>
+                                                <th className="py-2.5 px-3 text-right">Gal. Pedidos</th>
+                                                <th className="py-2.5 px-3 text-right">Gal. Recibidos</th>
+                                                <th className="py-2.5 px-3 text-right">Costo /gln</th>
+                                                <th className="py-2.5 px-3 text-right">Flete /gln</th>
+                                                <th className="py-2.5 px-3 text-right">Costo Efectivo</th>
+                                                <th className="py-2.5 px-3 text-right">Subtotal</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 font-mono">
@@ -1561,7 +1953,16 @@ export default function GasOrders() {
                                                     {formatNumber(selectedOrder.r_diesel)} gln
                                                 </td>
                                                 <td className="py-2.5 px-3 text-right text-slate-600">
-                                                    <Money value={selectedOrder.costo_d || 0} />
+                                                    <Money value={selectedOrder.costo_d || 0} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right text-slate-500">
+                                                    <Money value={selectedOrder.flete || 0} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right font-semibold text-slate-800">
+                                                    <Money value={(parseFloat(selectedOrder.costo_d) || 0) + (parseFloat(selectedOrder.flete) || 0)} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                                                    <Money value={(parseFloat(selectedOrder.estado === 'RECIBIDO' && parseFloat(selectedOrder.r_diesel) > 0 ? selectedOrder.r_diesel : selectedOrder.p_diesel) || 0) * ((parseFloat(selectedOrder.costo_d) || 0) + (parseFloat(selectedOrder.flete) || 0))} />
                                                 </td>
                                             </tr>
                                             <tr>
@@ -1576,7 +1977,16 @@ export default function GasOrders() {
                                                     {formatNumber(selectedOrder.r_regular)} gln
                                                 </td>
                                                 <td className="py-2.5 px-3 text-right text-slate-600">
-                                                    <Money value={selectedOrder.costo_r || 0} />
+                                                    <Money value={selectedOrder.costo_r || 0} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right text-slate-500">
+                                                    <Money value={selectedOrder.flete || 0} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right font-semibold text-slate-800">
+                                                    <Money value={(parseFloat(selectedOrder.costo_r) || 0) + (parseFloat(selectedOrder.flete) || 0)} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right font-bold text-amber-800">
+                                                    <Money value={(parseFloat(selectedOrder.estado === 'RECIBIDO' && parseFloat(selectedOrder.r_regular) > 0 ? selectedOrder.r_regular : selectedOrder.p_regular) || 0) * ((parseFloat(selectedOrder.costo_r) || 0) + (parseFloat(selectedOrder.flete) || 0))} />
                                                 </td>
                                             </tr>
                                             <tr>
@@ -1591,14 +2001,23 @@ export default function GasOrders() {
                                                     {formatNumber(selectedOrder.r_super)} gln
                                                 </td>
                                                 <td className="py-2.5 px-3 text-right text-slate-600">
-                                                    <Money value={selectedOrder.costo_s || 0} />
+                                                    <Money value={selectedOrder.costo_s || 0} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right text-slate-500">
+                                                    <Money value={selectedOrder.flete || 0} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right font-semibold text-slate-800">
+                                                    <Money value={(parseFloat(selectedOrder.costo_s) || 0) + (parseFloat(selectedOrder.flete) || 0)} digits={4} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right font-bold text-rose-800">
+                                                    <Money value={(parseFloat(selectedOrder.estado === 'RECIBIDO' && parseFloat(selectedOrder.r_super) > 0 ? selectedOrder.r_super : selectedOrder.p_super) || 0) * ((parseFloat(selectedOrder.costo_s) || 0) + (parseFloat(selectedOrder.flete) || 0))} />
                                                 </td>
                                             </tr>
                                             {parseFloat(selectedOrder.p_ion) > 0 && (
                                                 <tr>
                                                     <td className="py-2.5 px-3 font-sans font-semibold text-slate-700 flex items-center gap-2">
                                                         <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                                                        V-Power / Ion
+                                                        Ion Diésel
                                                     </td>
                                                     <td className="py-2.5 px-3 text-right font-bold text-slate-800">
                                                         {formatNumber(selectedOrder.p_ion)} gln
@@ -1607,7 +2026,16 @@ export default function GasOrders() {
                                                         {formatNumber(selectedOrder.r_ion)} gln
                                                     </td>
                                                     <td className="py-2.5 px-3 text-right text-slate-600">
-                                                        <Money value={selectedOrder.costo_i || 0} />
+                                                        <Money value={selectedOrder.costo_i || 0} digits={4} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right text-slate-500">
+                                                        <Money value={selectedOrder.flete || 0} digits={4} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right font-semibold text-slate-800">
+                                                        <Money value={(parseFloat(selectedOrder.costo_i) || 0) + (parseFloat(selectedOrder.flete) || 0)} digits={4} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right font-bold text-indigo-800">
+                                                        <Money value={(parseFloat(selectedOrder.estado === 'RECIBIDO' && parseFloat(selectedOrder.r_ion) > 0 ? selectedOrder.r_ion : selectedOrder.p_ion) || 0) * ((parseFloat(selectedOrder.costo_i) || 0) + (parseFloat(selectedOrder.flete) || 0))} />
                                                     </td>
                                                 </tr>
                                             )}
@@ -1626,7 +2054,12 @@ export default function GasOrders() {
                                                         (parseFloat(selectedOrder.r_ion) || 0)
                                                     )} gln
                                                 </td>
-                                                <td className="py-2.5 px-3 text-right text-slate-400">—</td>
+                                                <td colSpan={3} className="py-2.5 px-3 text-right font-sans text-slate-500 text-[11px] uppercase">
+                                                    Total Estimado / Facturado:
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right text-emerald-700 font-bold text-sm">
+                                                    <Money value={calculateOrderCost(selectedOrder)} />
+                                                </td>
                                             </tr>
                                         </tfoot>
                                     </table>
