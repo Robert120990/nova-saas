@@ -151,10 +151,16 @@ const Purchases = () => {
         total: 0
     });
 
-    const [manualRetencion, setManualRetencion] = useState(0);
-    const [manualPercepcion, setManualPercepcion] = useState(0);
-    const [manualNosujeta, setManualNosujeta] = useState(0);
-    const [manualExenta, setManualExenta] = useState(0);
+    const [manualRetencion, setManualRetencion] = useState('');
+    const [manualPercepcion, setManualPercepcion] = useState('');
+    const [manualNosujeta, setManualNosujeta] = useState('');
+    const [manualExenta, setManualExenta] = useState('');
+    const [manualFovial, setManualFovial] = useState('');
+    const [manualCotrans, setManualCotrans] = useState('');
+    const [isRetDirty, setIsRetDirty] = useState(false);
+    const [isPercDirty, setIsPercDirty] = useState(false);
+    const [isFovialDirty, setIsFovialDirty] = useState(false);
+    const [isCotransDirty, setIsCotransDirty] = useState(false);
 
     // History State
     const [historySearch, setHistorySearch] = useState('');
@@ -322,59 +328,84 @@ const Purchases = () => {
     // Tax Logic SV
     useEffect(() => {
         let gravada = 0;
-        let fovial = 0;
-        let cotrans = 0;
+        let autoFovial = 0;
+        let autoCotrans = 0;
 
         selectedItems.forEach(item => {
-            const qty = parseFloat(item.cantidad || 0);
-            const cost = parseFloat(item.precio_unitario || 0);
+            const qty = parseFloat(item.cantidad) || 0;
+            const cost = parseFloat(item.precio_unitario) || 0;
             gravada += qty * cost;
 
             if (item.tipo_combustible > 0) {
-                fovial += qty * parseFloat(taxSettings?.fovial_rate || 0.20);
-                cotrans += qty * parseFloat(taxSettings?.cotrans_rate || 0.10);
+                autoFovial += qty * parseFloat(taxSettings?.fovial_rate || 0.20);
+                autoCotrans += qty * parseFloat(taxSettings?.cotrans_rate || 0.10);
             }
         });
+        gravada = Math.round(gravada * 100) / 100;
+        autoFovial = Math.round(autoFovial * 100) / 100;
+        autoCotrans = Math.round(autoCotrans * 100) / 100;
 
-        // FISCAL LOGIC: For 'Factura' (01), the buyer cannot deduct IVA, so for our records IVA = 0
         const esFactura = tipoDocId === '01';
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
-        const iva = (selectedProvider?.exento_iva || esFactura) ? 0 : Number((gravada * ivaRate).toFixed(2));
-        
-        // Advanced Fiscal Logic
-        // 1. Retención (Nosotros retenemos al proveedor)
-        let retencion = 0;
+        const iva = (selectedProvider?.exento_iva || esFactura) ? 0 : Math.round(gravada * ivaRate * 100) / 100;
+
+        // Auto Retención y Percepción
+        let autoRetencion = 0;
         const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
         const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
         const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
-        
         if (nosAgenteRetencion && proveedNoGC && gravada >= 100 && tipoDocId === '03') {
-            retencion = gravada * retencionRate;
+            autoRetencion = Math.round(gravada * retencionRate * 100) / 100;
         }
 
-        // 2. Percepción (Proveedor nos percibe a nosotros)
-        let percepcion = 0;
+        let autoPercepcion = 0;
         const proveedAgentePerc = selectedProvider?.es_gran_contribuyente;
         const nosNoGC = currentCompany?.tipo_contribuyente !== 'Grande';
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
-
         if (proveedAgentePerc && nosNoGC && tipoDocId === '03') {
-            percepcion = gravada * percepcionRate;
+            autoPercepcion = Math.round(gravada * percepcionRate * 100) / 100;
         }
 
+        // Si no han sido editados manualmente, sincronizar con el cálculo automático
+        if (!isFovialDirty) {
+            setManualFovial(autoFovial > 0 ? String(autoFovial) : '');
+        }
+        if (!isCotransDirty) {
+            setManualCotrans(autoCotrans > 0 ? String(autoCotrans) : '');
+        }
+        if (!isRetDirty) {
+            setManualRetencion(autoRetencion > 0 ? String(autoRetencion) : '');
+        }
+        if (!isPercDirty) {
+            setManualPercepcion(autoPercepcion > 0 ? String(autoPercepcion) : '');
+        }
+
+        const effectiveFovial = isFovialDirty ? (parseFloat(manualFovial) || 0) : autoFovial;
+        const effectiveCotrans = isCotransDirty ? (parseFloat(manualCotrans) || 0) : autoCotrans;
+        const effectiveRetencion = isRetDirty ? (parseFloat(manualRetencion) || 0) : autoRetencion;
+        const effectivePercepcion = isPercDirty ? (parseFloat(manualPercepcion) || 0) : autoPercepcion;
+        const effectiveNosujeta = parseFloat(manualNosujeta) || 0;
+        const effectiveExenta = parseFloat(manualExenta) || 0;
+
+        const isExentoProv = Boolean(selectedProvider?.exento_iva);
+        const baseGravada = isExentoProv ? 0 : gravada;
+        const baseExenta = isExentoProv ? (effectiveExenta + gravada) : effectiveExenta;
+
+        const finalTotal = baseGravada + iva + effectiveFovial + effectiveCotrans + effectiveNosujeta + baseExenta - effectiveRetencion + effectivePercepcion;
+
         setTotals({
-            gravada,
+            gravada: baseGravada,
             iva,
-            retencion: manualRetencion || retencion,
-            percepcion: manualPercepcion || percepcion,
-            fovial,
-            cotrans,
-            nosujeta: manualNosujeta,
-            exenta: selectedProvider?.exento_iva ? (manualExenta + gravada) : manualExenta,
-            total: (selectedProvider?.exento_iva ? 0 : gravada) + iva + fovial + cotrans + manualNosujeta + (selectedProvider?.exento_iva ? (manualExenta + gravada) : manualExenta) - (manualRetencion || retencion) + (manualPercepcion || percepcion)
+            retencion: effectiveRetencion,
+            percepcion: effectivePercepcion,
+            fovial: effectiveFovial,
+            cotrans: effectiveCotrans,
+            nosujeta: effectiveNosujeta,
+            exenta: baseExenta,
+            total: Math.round(finalTotal * 100) / 100
         });
 
-    }, [selectedItems, tipoDocId, selectedProvider, currentCompany, manualRetencion, manualPercepcion, manualNosujeta, manualExenta, taxSettings]);
+    }, [selectedItems, tipoDocId, selectedProvider, currentCompany, manualRetencion, manualPercepcion, manualNosujeta, manualExenta, manualFovial, manualCotrans, isFovialDirty, isCotransDirty, isRetDirty, isPercDirty, taxSettings]);
 
     const handleSelectProduct = (product) => {
         setQuickProd(product);
@@ -455,7 +486,9 @@ const Purchases = () => {
         setSelectedItems(selectedItems.map(item => {
             if (item.product_id === id) {
                 const updated = { ...item, [field]: value };
-                updated.total = updated.cantidad * updated.precio_unitario;
+                const c = parseFloat(updated.cantidad) || 0;
+                const p = parseFloat(updated.precio_unitario) || 0;
+                updated.total = Math.round(c * p * 100) / 100;
                 return updated;
             }
             return item;
@@ -470,7 +503,9 @@ const Purchases = () => {
         setSelectedItems([]); setNumeroDoc(''); setObservaciones('');
         setDocAfectado(''); setFechaAfectada('');
         setDiasCredito(0); setFechaVencimiento('');
-        setManualRetencion(0); setManualPercepcion(0); setManualNosujeta(0); setManualExenta(0);
+        setManualRetencion(''); setManualPercepcion(''); setManualNosujeta(''); setManualExenta('');
+        setManualFovial(''); setManualCotrans('');
+        setIsRetDirty(false); setIsPercDirty(false); setIsFovialDirty(false); setIsCotransDirty(false);
         const today = getTodayString();
         setFecha(today);
         const [y, m] = today.split('-').map(Number);
@@ -585,9 +620,25 @@ const Purchases = () => {
 
                 // 4. Totals (Override with fiscal precision)
                 if (json.resumen) {
-                    setManualRetencion(parseFloat(json.resumen.retencionValue || json.resumen.totalRetencion || 0));
-                    setManualNosujeta(parseFloat(json.resumen.totalNoSuj || 0));
-                    setManualExenta(parseFloat(json.resumen.totalExenta || 0));
+                    const ret = parseFloat(json.resumen.retencionValue || json.resumen.totalRetencion || 0);
+                    const nos = parseFloat(json.resumen.totalNoSuj || 0);
+                    const exe = parseFloat(json.resumen.totalExenta || 0);
+                    if (ret > 0) { setManualRetencion(String(ret)); setIsRetDirty(true); }
+                    if (nos > 0) { setManualNosujeta(String(nos)); }
+                    if (exe > 0) { setManualExenta(String(exe)); }
+
+                    if (json.resumen.tributos && Array.isArray(json.resumen.tributos)) {
+                        const fov = json.resumen.tributos.find(t => String(t.codigo).toUpperCase() === 'D1')?.valor || 0;
+                        const cot = json.resumen.tributos.find(t => String(t.codigo).toUpperCase() === 'C8')?.valor || 0;
+                        if (parseFloat(fov) > 0) {
+                            setManualFovial(String(parseFloat(fov)));
+                            setIsFovialDirty(true);
+                        }
+                        if (parseFloat(cot) > 0) {
+                            setManualCotrans(String(parseFloat(cot)));
+                            setIsCotransDirty(true);
+                        }
+                    }
                 }
 
                 toast.info("Importación completada.");
@@ -685,10 +736,16 @@ const Purchases = () => {
             setFechaAfectada(detail.fecha_afectada ? new Date(detail.fecha_afectada).toISOString().split('T')[0] : '');
             
             // Totals
-            setManualNosujeta(parseFloat(detail.total_nosujeta) || 0);
-            setManualExenta(parseFloat(detail.total_exenta) || 0);
-            setManualRetencion(parseFloat(detail.retencion) || 0);
-            setManualPercepcion(parseFloat(detail.percepcion) || 0);
+            setManualNosujeta(detail.total_nosujeta != null && parseFloat(detail.total_nosujeta) !== 0 ? String(detail.total_nosujeta) : '');
+            setManualExenta(detail.total_exenta != null && parseFloat(detail.total_exenta) !== 0 ? String(detail.total_exenta) : '');
+            setManualRetencion(detail.retencion != null && parseFloat(detail.retencion) !== 0 ? String(detail.retencion) : '');
+            setManualPercepcion(detail.percepcion != null && parseFloat(detail.percepcion) !== 0 ? String(detail.percepcion) : '');
+            setManualFovial(detail.fovial != null && parseFloat(detail.fovial) !== 0 ? String(detail.fovial) : '');
+            setManualCotrans(detail.cotrans != null && parseFloat(detail.cotrans) !== 0 ? String(detail.cotrans) : '');
+            setIsRetDirty(true);
+            setIsPercDirty(true);
+            setIsFovialDirty(true);
+            setIsCotransDirty(true);
 
             setSelectedItems(detail.items.map(it => ({
                 product_id: it.product_id,
@@ -724,6 +781,8 @@ const Purchases = () => {
             'IVA': parseFloat(p.iva || 0),
             'RETENCIÓN': parseFloat(p.retencion || 0),
             'PERCEPCIÓN': parseFloat(p.percepcion || 0),
+            'FOVIAL': parseFloat(p.fovial || 0),
+            'COTRANS': parseFloat(p.cotrans || 0),
             'TOTAL': parseFloat(p.monto_total || 0),
             'ESTADO': p.status === 'voided' ? 'ANULADO' : 'ACTIVO'
         }));
@@ -1085,10 +1144,10 @@ const Purchases = () => {
                                                 <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600" data-label="Código">{item.codigo}</td>
                                                 <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase" data-label="Producto">{item.nombre}</td>
                                                 <td className="px-5 py-1.5" data-label="Cant.">
-                                                    <input type="number" value={item.cantidad} onChange={(e) => updateItem(item.product_id, 'cantidad', parseFloat(e.target.value))} className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" />
+                                                    <input type="number" step="0.01" value={item.cantidad} onChange={(e) => updateItem(item.product_id, 'cantidad', e.target.value)} onFocus={(e) => e.target.select()} className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" />
                                                 </td>
                                                 <td className="px-5 py-1.5" data-label="Costo U.">
-                                                    <MoneyInput value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', parseFloat(e.target.value))} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
+                                                    <MoneyInput step="0.0001" value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', e.target.value)} onFocus={(e) => e.target.select()} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
                                                 </td>
                                                 <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]" data-label="Subtotal"><Money value={item.total} /></td>
                                                 <td className="px-5 py-1.5 text-right" data-label="">
@@ -1122,36 +1181,134 @@ const Purchases = () => {
                                     <div className="text-sm font-black text-right text-white/90">${totals.iva.toFixed(2)}</div>
                                 </div>
                                 
-                                {totals.fovial > 0 && (
-                                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                                        <span className="text-[8px] opacity-40 font-black uppercase text-[Spanish]">FOVIAL (${(taxSettings?.fovial_rate || 0.20)} / Gal)</span>
-                                        <span className="text-sm font-black text-right text-white/90">${totals.fovial.toFixed(2)}</span>
+                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[8px] font-black text-amber-400 uppercase tracking-tight">FOVIAL ($)</span>
+                                            {isFovialDirty ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsFovialDirty(false)}
+                                                    className="text-[7px] text-amber-300 hover:text-white uppercase font-bold transition-colors"
+                                                    title="Recalcular automáticamente según galonaje"
+                                                >
+                                                    Auto ↺
+                                                </button>
+                                            ) : (
+                                                <span className="text-[7px] text-white/30 uppercase font-bold">Auto</span>
+                                            )}
+                                        </div>
+                                        <div className="relative group">
+                                            <MoneyInput
+                                                step="0.01"
+                                                value={manualFovial}
+                                                onChange={(e) => {
+                                                    setManualFovial(e.target.value);
+                                                    setIsFovialDirty(true);
+                                                }}
+                                                onFocus={(e) => e.target.select()}
+                                                className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-amber-500 group-hover:bg-white/10 text-white font-mono"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
                                     </div>
-                                )}
-                                
-                                {totals.cotrans > 0 && (
-                                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                                        <span className="text-[8px] opacity-40 font-black uppercase text-[Spanish]">COTRANS (${(taxSettings?.cotrans_rate || 0.10)} / Gal)</span>
-                                        <span className="text-sm font-black text-right text-white/90">${totals.cotrans.toFixed(2)}</span>
+
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[8px] font-black text-cyan-400 uppercase tracking-tight">COTRANS ($)</span>
+                                            {isCotransDirty ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsCotransDirty(false)}
+                                                    className="text-[7px] text-cyan-300 hover:text-white uppercase font-bold transition-colors"
+                                                    title="Recalcular automáticamente según galonaje"
+                                                >
+                                                    Auto ↺
+                                                </button>
+                                            ) : (
+                                                <span className="text-[7px] text-white/30 uppercase font-bold">Auto</span>
+                                            )}
+                                        </div>
+                                        <div className="relative group">
+                                            <MoneyInput
+                                                step="0.01"
+                                                value={manualCotrans}
+                                                onChange={(e) => {
+                                                    setManualCotrans(e.target.value);
+                                                    setIsCotransDirty(true);
+                                                }}
+                                                onFocus={(e) => e.target.select()}
+                                                className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-cyan-500 group-hover:bg-white/10 text-white font-mono"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
                                     </div>
-                                )}
+                                </div>
 
                                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
                                     <div>
                                         <div className="flex flex-col gap-1">
-                                            <span className="text-[8px] font-black text-rose-400 uppercase text-[Spanish]">Retención ({(taxSettings?.retencion_rate || 1)}%)</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[8px] font-black text-rose-400 uppercase text-[Spanish]">Retención ({(taxSettings?.retencion_rate || 1)}%)</span>
+                                                {isRetDirty ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsRetDirty(false)}
+                                                        className="text-[7px] text-rose-300 hover:text-white uppercase font-bold transition-colors"
+                                                        title="Recalcular automáticamente el 1%"
+                                                    >
+                                                        Auto ↺
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-[7px] text-white/30 uppercase font-bold">Auto</span>
+                                                )}
+                                            </div>
                                             <div className="relative group">
-                                                <MoneyInput step="0.01" value={totals.retencion.toFixed(2)} onChange={(e) => setManualRetencion(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-rose-500 group-hover:bg-white/10" />
-                                                <Settings size={8} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-rose-400" />
+                                                <MoneyInput
+                                                    step="0.01"
+                                                    value={manualRetencion}
+                                                    onChange={(e) => {
+                                                        setManualRetencion(e.target.value);
+                                                        setIsRetDirty(true);
+                                                    }}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-rose-500 group-hover:bg-white/10 text-white font-mono"
+                                                    placeholder="0.00"
+                                                />
+                                                <Settings size={8} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-rose-400 pointer-events-none" />
                                             </div>
                                         </div>
                                     </div>
                                     <div>
                                         <div className="flex flex-col gap-1">
-                                            <span className="text-[8px] font-black text-emerald-400 uppercase text-[Spanish]">Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[8px] font-black text-emerald-400 uppercase text-[Spanish]">Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span>
+                                                {isPercDirty ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsPercDirty(false)}
+                                                        className="text-[7px] text-emerald-300 hover:text-white uppercase font-bold transition-colors"
+                                                        title="Recalcular automáticamente el 1%"
+                                                    >
+                                                        Auto ↺
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-[7px] text-white/30 uppercase font-bold">Auto</span>
+                                                )}
+                                            </div>
                                             <div className="relative group">
-                                                <MoneyInput step="0.01" value={totals.percepcion.toFixed(2)} onChange={(e) => setManualPercepcion(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-emerald-500 group-hover:bg-white/10" />
-                                                <Settings size={8} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-emerald-400" />
+                                                <MoneyInput
+                                                    step="0.01"
+                                                    value={manualPercepcion}
+                                                    onChange={(e) => {
+                                                        setManualPercepcion(e.target.value);
+                                                        setIsPercDirty(true);
+                                                    }}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-emerald-500 group-hover:bg-white/10 text-white font-mono"
+                                                    placeholder="0.00"
+                                                />
+                                                <Settings size={8} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-emerald-400 pointer-events-none" />
                                             </div>
                                         </div>
                                     </div>
@@ -1159,12 +1316,26 @@ const Purchases = () => {
 
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-1">
-                                        <span className="text-[8px] font-black text-slate-500 uppercase text-[Spanish]">No Sujeta</span>
-                                        <input type="number" step="0.01" value={manualNosujeta.toFixed(2)} onChange={(e) => setManualNosujeta(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none" />
+                                        <span className="text-[8px] font-black text-slate-400 uppercase text-[Spanish]">No Sujeta</span>
+                                        <MoneyInput
+                                            step="0.01"
+                                            value={manualNosujeta}
+                                            onChange={(e) => setManualNosujeta(e.target.value)}
+                                            onFocus={(e) => e.target.select()}
+                                            placeholder="0.00"
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-indigo-500 group-hover:bg-white/10 text-white font-mono"
+                                        />
                                     </div>
                                     <div className="space-y-1">
-                                        <span className="text-[8px] font-black text-slate-500 uppercase text-[Spanish]">Exenta</span>
-                                        <MoneyInput step="0.01" value={totals.exenta.toFixed(2)} onChange={(e) => setManualExenta(parseFloat(e.target.value) || 0)} className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none" />
+                                        <span className="text-[8px] font-black text-slate-400 uppercase text-[Spanish]">Exenta</span>
+                                        <MoneyInput
+                                            step="0.01"
+                                            value={manualExenta}
+                                            onChange={(e) => setManualExenta(e.target.value)}
+                                            onFocus={(e) => e.target.select()}
+                                            placeholder="0.00"
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] font-black text-right outline-none focus:ring-1 focus:ring-indigo-500 group-hover:bg-white/10 text-white font-mono"
+                                        />
                                     </div>
                                 </div>
 
@@ -1364,7 +1535,22 @@ const Purchases = () => {
                                     <div className="bg-slate-50 p-6 rounded-3xl flex justify-between items-center mt-6">
                                         <div className="space-y-1">
                                             <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Monto Total Invertido</p>
-                                            <p className="text-[9px] font-bold text-slate-400 uppercase italic">Incluye impuestos registrados</p>
+                                            <div className="flex flex-wrap gap-3 text-[9px] font-bold text-slate-400 uppercase">
+                                                <span>Gravada: <Money value={purchaseDetail.total_gravada} /></span>
+                                                <span>IVA: <Money value={purchaseDetail.iva} /></span>
+                                                {parseFloat(purchaseDetail.fovial || 0) > 0 && (
+                                                    <span className="text-amber-600">FOVIAL: <Money value={purchaseDetail.fovial} /></span>
+                                                )}
+                                                {parseFloat(purchaseDetail.cotrans || 0) > 0 && (
+                                                    <span className="text-cyan-600">COTRANS: <Money value={purchaseDetail.cotrans} /></span>
+                                                )}
+                                                {parseFloat(purchaseDetail.retencion || 0) > 0 && (
+                                                    <span className="text-rose-500">Retención: -<Money value={purchaseDetail.retencion} /></span>
+                                                )}
+                                                {parseFloat(purchaseDetail.percepcion || 0) > 0 && (
+                                                    <span className="text-emerald-600">Percepción: +<Money value={purchaseDetail.percepcion} /></span>
+                                                )}
+                                            </div>
                                         </div>
                                         <p className="text-2xl font-black tracking-tighter text-indigo-600"><Money value={purchaseDetail.monto_total} /></p>
                                     </div>
