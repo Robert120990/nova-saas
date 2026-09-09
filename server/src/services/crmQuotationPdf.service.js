@@ -312,10 +312,40 @@ function generateQuotationPdf(quotation, items = []) {
                 doc.text(`Firma digital registrada: ${formatDateShort(quotation.signature_date)}`, sigX, curY);
             }
 
-            // 8. FOOTER BANNER (Full-bleed ancho inferior)
-            if (fs.existsSync(FOOTER_IMAGE_PATH)) {
-                doc.image(FOOTER_IMAGE_PATH, 0, pageHeight - 48, { width: pageWidth, height: 48 });
-            }
+            // 8. FOOTER VECTORIAL DIGITALIZADO (Texto nítido, teléfono e iconos)
+            // Separador superior sutil
+            doc.moveTo(contentLeft, pageHeight - 46).lineTo(contentRight, pageHeight - 46).strokeColor('#e2e8f0').lineWidth(0.8).stroke();
+
+            // Lado Izquierdo: Razón Social y Dirección Oficial
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a')
+               .text('ALIMENTOS NUTRICIONALES DE EL SALVADOR S.A DE C.V', contentLeft, pageHeight - 39, { width: 340 });
+
+            doc.font('Helvetica').fontSize(6.5).fillColor('#475569')
+               .text('Antigua Carretera a Zacatecoluca km. 38.5 Cantón Asunción Amate, El Rosario, Dpto. de La Paz, El Salvador. C.A.', contentLeft, pageHeight - 28, { width: 350 });
+
+            // Lado Derecho: Teléfono de Contacto
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a')
+               .text('+503 2330-5800', contentRight - 160, pageHeight - 39, { width: 160, align: 'right' });
+
+            // Redes Sociales (@eggcelentsv + Badges Naranjas Vectoriales)
+            const fbX = contentRight - 27;
+            const igX = contentRight - 12;
+            const badgeY = pageHeight - 27;
+
+            // Texto @eggcelentsv
+            doc.font('Helvetica').fontSize(7.5).fillColor('#475569')
+               .text('@eggcelentsv', contentRight - 180, pageHeight - 26, { width: 148, align: 'right' });
+
+            // Badge Facebook (recuadro redondeado naranja con 'f' blanca)
+            doc.roundedRect(fbX, badgeY, 12, 12, 2.5).fill('#EA991C');
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff')
+               .text('f', fbX + 3.5, badgeY + 1.2);
+
+            // Badge Instagram (recuadro redondeado naranja con cámara vectorial blanca)
+            doc.roundedRect(igX, badgeY, 12, 12, 2.5).fill('#EA991C');
+            doc.roundedRect(igX + 2, badgeY + 2, 8, 8, 2).strokeColor('#ffffff').lineWidth(0.9).stroke();
+            doc.circle(igX + 6, badgeY + 6, 1.8).strokeColor('#ffffff').lineWidth(0.8).stroke();
+            doc.circle(igX + 8, badgeY + 3.8, 0.45).fill('#ffffff');
 
             doc.end();
         } catch (err) {

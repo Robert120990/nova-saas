@@ -14,7 +14,8 @@ import {
     Calendar,
     Phone,
     UserCheck,
-    CheckCircle2
+    CheckCircle2,
+    FileDown
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -988,6 +989,34 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
 
                     {/* Botones */}
                     <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
+                        {quotationId && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const toastId = toast.loading('Generando documento Word...');
+                                    try {
+                                        const res = await axios.get(`/api/crm/quotations/${quotationId}/docx`, { responseType: 'blob' });
+                                        const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                                        const url = window.URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `Cotizacion_${formData.quote_number || quotationId}.docx`;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        window.URL.revokeObjectURL(url);
+                                        toast.success('Documento Word descargado.', { id: toastId });
+                                    } catch (e) {
+                                        toast.error('Error al descargar Word.', { id: toastId });
+                                    }
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-colors"
+                                title="Descargar versión editable en Word"
+                            >
+                                <FileDown className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Word (.docx)</span>
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={onClose}

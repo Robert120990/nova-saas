@@ -20,11 +20,14 @@ import {
     Filter,
     Calendar,
     DollarSign,
-    RefreshCw
+    RefreshCw,
+    Mail,
+    FileDown
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
 import QuotationModal from '../../components/crm/QuotationModal';
+import SendEmailModal from '../../components/crm/SendEmailModal';
 import { useAuth } from '../../context/AuthContext';
 
 const STATUS_CONFIG = {
@@ -53,6 +56,10 @@ export default function CrmQuotations() {
     const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
     const [pdfLoading, setPdfLoading] = useState(false);
     const [selectedQuoteForPdf, setSelectedQuoteForPdf] = useState(null);
+
+    // Modal de Envío por Correo
+    const [emailModalOpen, setEmailModalOpen] = useState(false);
+    const [selectedQuoteForEmail, setSelectedQuoteForEmail] = useState(null);
 
     // Query principal de cotizaciones
     const { data, isLoading, refetch } = useQuery({
@@ -164,6 +171,37 @@ export default function CrmQuotations() {
             ? `https://wa.me/503${phone}?text=${encodeURIComponent(greeting)}`
             : `https://wa.me/?text=${encodeURIComponent(greeting)}`;
         window.open(url, '_blank');
+    };
+
+    // Descargar Word (.docx) editable
+    const handleDownloadDocx = async (quote) => {
+        const toastId = toast.loading(`Generando documento Word de ${quote.quote_number}...`);
+        try {
+            const res = await axios.get(`/api/crm/quotations/${quote.id}/docx`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Cotizacion_${quote.quote_number || quote.id}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success('Documento Word descargado con éxito.', { id: toastId });
+        } catch (err) {
+            console.error('Error al descargar Word (.docx):', err);
+            toast.error('No se pudo generar el documento Word.', { id: toastId });
+        }
+    };
+
+    // Abrir modal de envío por correo
+    const handleOpenEmailModal = (quote) => {
+        setSelectedQuoteForEmail(quote);
+        setEmailModalOpen(true);
     };
 
     return (
@@ -458,6 +496,26 @@ export default function CrmQuotations() {
                                                         <Eye className="w-4 h-4" />
                                                     </button>
 
+                                                    {/* Descargar Word (.docx) */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDownloadDocx(q)}
+                                                        className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="Descargar Word (.docx) editable"
+                                                    >
+                                                        <FileDown className="w-4 h-4" />
+                                                    </button>
+
+                                                    {/* Enviar por Correo Electrónico */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenEmailModal(q)}
+                                                        className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors"
+                                                        title="Enviar por Correo Electrónico"
+                                                    >
+                                                        <Mail className="w-4 h-4" />
+                                                    </button>
+
                                                     {/* Compartir por WhatsApp */}
                                                     <button
                                                         type="button"
@@ -582,6 +640,18 @@ export default function CrmQuotations() {
                 fileName={`Cotizacion_${selectedQuoteForPdf?.quote_number || 'ANDELSA'}.pdf`}
                 footerNote="Documento Oficial ANDELSA / Eggcelent • Incluye Firma Electrónica y Cláusulas de Envases Retornables"
             />
+
+            {/* Modal de Envío por Correo Electrónico */}
+            <SendEmailModal
+                isOpen={emailModalOpen}
+                onClose={() => {
+                    setEmailModalOpen(false);
+                    setSelectedQuoteForEmail(null);
+                }}
+                quotation={selectedQuoteForEmail}
+                onSent={() => refetch()}
+            />
         </div>
     );
 }
+

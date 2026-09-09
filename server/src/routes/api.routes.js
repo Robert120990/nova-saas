@@ -593,8 +593,11 @@ router.patch('/crm/quotations/:id/status', crmQuotationController.updateStatus);
 router.post('/crm/quotations/:id/convert-to-agreement', crmQuotationController.convertToAgreement);
 router.post('/crm/quotations/:id/duplicate', crmQuotationController.duplicateQuotation);
 router.get('/crm/quotations/:id/pdf', crmQuotationController.getQuotationPdf);
+router.get('/crm/quotations/:id/docx', crmQuotationController.getQuotationDocx);
+router.post('/crm/quotations/:id/send-email', crmQuotationController.sendQuotationEmail);
 router.post('/crm/user-signature', crmQuotationController.saveUserSignature);
 router.get('/crm/user-signature', crmQuotationController.getUserSignature);
+
 
 
 // Gas Station - Distributors

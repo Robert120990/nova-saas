@@ -1,5 +1,7 @@
 const pool = require('../config/db');
+const nodemailer = require('nodemailer');
 const { generateQuotationPdf } = require('../services/crmQuotationPdf.service');
+const { generateQuotationDocx } = require('../services/crmQuotationDocx.service');
 
 /**
  * Genera el correlativo anual de cotización para la empresa: COT-YYYY-0001
@@ -725,6 +727,215 @@ const getQuotationPdf = async (req, res) => {
     }
 };
 
+// 12. Descargar Word (.docx) editable de la cotización
+const getQuotationDocx = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const { id } = req.params;
+
+        const [[quotation]] = await pool.query(
+            'SELECT * FROM crm_quotations WHERE id = ? AND company_id = ?',
+            [id, companyId]
+        );
+
+        if (!quotation) {
+            return res.status(404).json({ message: 'Cotización no encontrada' });
+        }
+
+        const [items] = await pool.query(
+            'SELECT * FROM crm_quotation_items WHERE quotation_id = ? ORDER BY id ASC',
+            [id]
+        );
+
+        quotation.items = items;
+        const docxBuffer = await generateQuotationDocx(quotation);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="Cotizacion_${quotation.quote_number || id}.docx"`);
+        res.send(docxBuffer);
+    } catch (err) {
+        console.error('Error al generar DOCX de cotización:', err);
+        res.status(500).json({ message: 'Error interno al generar documento Word editable.' });
+    }
+};
+
+// 13. Enviar cotización por correo electrónico
+const sendQuotationEmail = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const { id } = req.params;
+        const { to, cc, subject, message, include_pdf = true, include_docx = false } = req.body;
+
+        if (!to) {
+            return res.status(400).json({ message: 'El correo del destinatario es obligatorio.' });
+        }
+
+        const [[quotation]] = await pool.query(
+            'SELECT * FROM crm_quotations WHERE id = ? AND company_id = ?',
+            [id, companyId]
+        );
+
+        if (!quotation) {
+            return res.status(404).json({ message: 'Cotización no encontrada' });
+        }
+
+        const [items] = await pool.query(
+            'SELECT * FROM crm_quotation_items WHERE quotation_id = ? ORDER BY id ASC',
+            [id]
+        );
+        quotation.items = items;
+
+        // Obtener configuración SMTP (usando sucursal o fallback de empresa)
+        const [branchRows] = await pool.query('SELECT id, nombre FROM branches WHERE company_id = ? LIMIT 1', [companyId]);
+        const branchId = branchRows[0]?.id || 1;
+
+        let smtp;
+        try {
+            const [bSmtp] = await pool.query('SELECT * FROM smtp_settings WHERE branch_id = ? LIMIT 1', [branchId]);
+            if (bSmtp.length > 0) {
+                smtp = bSmtp[0];
+            } else {
+                const [cSmtp] = await pool.query(`
+                    SELECT s.* FROM smtp_settings s
+                    JOIN branches b ON s.branch_id = b.id
+                    WHERE b.company_id = ? LIMIT 1
+                `, [companyId]);
+                if (cSmtp.length > 0) smtp = cSmtp[0];
+            }
+        } catch (e) {
+            console.warn('Error buscando configuración SMTP:', e.message);
+        }
+
+        if (!smtp) {
+            return res.status(400).json({
+                message: 'No se encontró una configuración SMTP activa para enviar correos. Por favor configure los parámetros SMTP en Configuración > SMTP.'
+            });
+        }
+
+        const transporter = nodemailer.createTransport({
+            host: smtp.host,
+            port: parseInt(smtp.port, 10),
+            secure: smtp.encryption === 'ssl' || parseInt(smtp.port, 10) === 465,
+            auth: {
+                user: smtp.user,
+                pass: smtp.password
+            },
+            tls: {
+                rejectUnauthorized: false,
+                minVersion: 'TLSv1'
+            }
+        });
+
+        const attachments = [];
+
+        if (include_pdf) {
+            const pdfBuffer = await generateQuotationPdf(quotation, items);
+            attachments.push({
+                filename: `Cotizacion_${quotation.quote_number || id}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf'
+            });
+        }
+
+        if (include_docx) {
+            const docxBuffer = await generateQuotationDocx(quotation);
+            attachments.push({
+                filename: `Cotizacion_${quotation.quote_number || id}.docx`,
+                content: docxBuffer,
+                contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            });
+        }
+
+        const [[company]] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
+        const companyName = company?.nombre_comercial || company?.razon_social || 'ANDELSA / Eggcelent';
+
+        const formatDateShort = (dStr) => {
+            if (!dStr) return '';
+            const d = new Date(dStr);
+            return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+        };
+
+        const defaultHtml = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
+                <div style="text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #ea991c;">
+                    <h2 style="color: #0f172a; margin: 0 0 6px 0; font-size: 22px; font-weight: 800;">ANDELSA / Eggcelent</h2>
+                    <p style="color: #64748b; margin: 0; font-size: 13px;">Ovoproductos Pasteurizados de Alta Calidad e Inocuidad (HACCP)</p>
+                </div>
+
+                <p style="font-size: 15px; color: #1e293b; line-height: 1.6;">
+                    Estimado(a) <b>${quotation.customer_name}</b>,
+                </p>
+
+                <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+                    ${message ? message.replace(/\n/g, '<br>') : 'Es un placer saludarle. Por este medio le hacemos llegar nuestra oferta comercial formal para su amable revisión y consideración.'}
+                </p>
+
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 20px 0;">
+                    <table style="width: 100%; font-size: 13px; color: #334155;">
+                        <tr>
+                            <td style="padding: 4px 0; font-weight: bold; color: #64748b; width: 42%;">Número de Cotización:</td>
+                            <td style="padding: 4px 0; font-weight: 800; color: #ea991c;">${quotation.quote_number}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; font-weight: bold; color: #64748b;">Fecha de Emisión:</td>
+                            <td style="padding: 4px 0;">${formatDateShort(quotation.date)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; font-weight: bold; color: #64748b;">Válida Hasta:</td>
+                            <td style="padding: 4px 0; color: #b91c1c; font-weight: bold;">${formatDateShort(quotation.expiration_date)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; font-weight: bold; color: #64748b;">Condición de Pago:</td>
+                            <td style="padding: 4px 0;">${quotation.payment_terms || 'Contado'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; font-weight: bold; color: #64748b;">Monto Total:</td>
+                            <td style="padding: 4px 0; font-size: 16px; font-weight: 800; color: #0f172a;">$${parseFloat(quotation.total || 0).toFixed(2)} USD</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="background: #fffbeb; border-left: 4px solid #ea991c; padding: 12px 16px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 0; font-size: 12px; color: #92400e; line-height: 1.5;">
+                        <b>Compromiso de Envases:</b> Las cubetas plásticas (30 y 32 LBS) son de uso <b>estrictamente retornable</b>. Los demás envases (galones, medios galones, litros y bolsas liner) son descartables de un solo uso.
+                    </p>
+                </div>
+
+                <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
+                    Adjunto a este correo encontrará la cotización formal para su debida gestión comercial.
+                </p>
+
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+
+                <div style="font-size: 13px; color: #0f172a;">
+                    <b>${quotation.signature_author_name || quotation.created_by_name || 'Raul Rafael Sosa M.'}</b><br>
+                    <span style="color: #64748b; font-size: 12px;">${quotation.signature_author_title || 'Ejecutivo Comercial'}</span><br>
+                    <span style="color: #ea991c; font-weight: bold; font-size: 12px;">${quotation.signature_author_phone || '(503) 7069-5335'}</span>
+                </div>
+            </div>
+        `;
+
+        await transporter.sendMail({
+            from: `"${companyName}" <${smtp.user}>`,
+            to,
+            ...(cc ? { cc } : {}),
+            subject: subject || `Cotización Comercial ${quotation.quote_number} - ${companyName}`,
+            html: defaultHtml,
+            attachments
+        });
+
+        // Actualizar estado a 'enviada' si estaba en borrador
+        if (quotation.status === 'borrador') {
+            await pool.query("UPDATE crm_quotations SET status = 'enviada' WHERE id = ?", [id]);
+        }
+
+        res.json({ message: `Cotización enviada exitosamente por correo a ${to}.` });
+    } catch (err) {
+        console.error('Error al enviar cotización por correo:', err);
+        res.status(500).json({ message: err.message || 'Error al enviar el correo electrónico.' });
+    }
+};
+
 module.exports = {
     getQuotations,
     getQuotationById,
@@ -736,5 +947,8 @@ module.exports = {
     duplicateQuotation,
     saveUserSignature,
     getUserSignature,
-    getQuotationPdf
+    getQuotationPdf,
+    getQuotationDocx,
+    sendQuotationEmail
 };
+
