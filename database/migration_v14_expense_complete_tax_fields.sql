@@ -1,0 +1,13 @@
+-- Migración V14: Campos de Clasificación Tributaria F-07, DTE y Tipos de Documento para Gastos
+ALTER TABLE expense_headers
+ADD COLUMN IF NOT EXISTS documento_afectado VARCHAR(50) NULL,
+ADD COLUMN IF NOT EXISTS fecha_afectada DATE NULL,
+ADD COLUMN IF NOT EXISTS num_control VARCHAR(100) NULL,
+ADD COLUMN IF NOT EXISTS sello_recepcion VARCHAR(100) NULL,
+ADD COLUMN IF NOT EXISTS tipo_operacion VARCHAR(10) DEFAULT '1',
+ADD COLUMN IF NOT EXISTS tipo_clasificacion VARCHAR(10) DEFAULT '2',
+ADD COLUMN IF NOT EXISTS tipo_sector VARCHAR(10) DEFAULT '4',
+ADD COLUMN IF NOT EXISTS tipo_costo VARCHAR(10) DEFAULT '2',
+ADD COLUMN IF NOT EXISTS gravadas_importaciones DECIMAL(18, 6) DEFAULT 0,
+ADD COLUMN IF NOT EXISTS gravadas_internaciones DECIMAL(18, 6) DEFAULT 0,
+ADD COLUMN IF NOT EXISTS iva_importaciones DECIMAL(18, 6) DEFAULT 0;

@@ -9,13 +9,15 @@ const reportPdfHelper = require('../utils/reportPdfHelper');
  */
 const getExpenses = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, branch_id } = req.query;
+        const { search, page = 1, limit = 15, branch_id, year, month } = req.query;
         const offset = (page - 1) * limit;
         const companyId = req.company_id || req.user?.company_id;
 
         let query = `
             SELECT eh.*, 
                    p.nombre AS provider_nombre, 
+                   p.nrc AS provider_nrc,
+                   p.nit AS provider_nit,
                    br.nombre AS branch_nombre,
                    u.nombre AS usuario_nombre,
                    cat_dte.description AS tipo_documento_nombre,
@@ -35,6 +37,16 @@ const getExpenses = async (req, res) => {
             params.push(branch_id);
         }
 
+        if (year) {
+            query += " AND (eh.period_year = ? OR (eh.period_year IS NULL AND YEAR(eh.fecha) = ?))";
+            params.push(year, year);
+        }
+
+        if (month) {
+            query += " AND (eh.period_month = ? OR (eh.period_month IS NULL AND MONTH(eh.fecha) = ?))";
+            params.push(month, month);
+        }
+
         const getSearchWords = (term) => {
             const words = term.trim().split(/\s+/).filter(Boolean);
             return [...new Set(words)];
@@ -42,15 +54,56 @@ const getExpenses = async (req, res) => {
 
         const searchWords = search ? getSearchWords(search) : [];
         searchWords.forEach(word => {
-            query += ` AND (eh.numero_documento LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR eh.observaciones LIKE ?) `;
+            query += ` AND (eh.numero_documento LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR eh.observaciones LIKE ? OR eh.num_control LIKE ? OR eh.sello_recepcion LIKE ?) `;
             const searchTerm = `%${word}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         });
 
         // Count total for pagination
         const countQuery = `SELECT COUNT(*) as total FROM (${query}) as sub`;
         const [countResult] = await pool.query(countQuery, params);
         const total = countResult[0].total;
+
+        // KPI summary for the queried period/filters (only active records)
+        let summaryQuery = `
+            SELECT 
+                COALESCE(SUM(eh.monto_total), 0) AS total_monto,
+                COALESCE(SUM(eh.total_gravada), 0) AS total_gravada,
+                COALESCE(SUM(eh.iva), 0) AS total_iva,
+                COALESCE(SUM(eh.retencion), 0) AS total_retencion,
+                COALESCE(SUM(eh.percepcion), 0) AS total_percepcion,
+                COALESCE(SUM(eh.total_exenta), 0) AS total_exenta,
+                COALESCE(SUM(eh.total_nosujeta), 0) AS total_nosujeta
+            FROM expense_headers eh
+            LEFT JOIN providers p ON eh.provider_id = p.id
+            WHERE eh.company_id = ? AND eh.status = 'ACTIVO'
+        `;
+        let summaryParams = [companyId];
+        if (branch_id) {
+            summaryQuery += " AND eh.branch_id = ?";
+            summaryParams.push(branch_id);
+        }
+        if (year) {
+            summaryQuery += " AND (eh.period_year = ? OR (eh.period_year IS NULL AND YEAR(eh.fecha) = ?))";
+            summaryParams.push(year, year);
+        }
+        if (month) {
+            summaryQuery += " AND (eh.period_month = ? OR (eh.period_month IS NULL AND MONTH(eh.fecha) = ?))";
+            summaryParams.push(month, month);
+        }
+        searchWords.forEach(word => {
+            summaryQuery += ` AND (eh.numero_documento LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR eh.observaciones LIKE ? OR eh.num_control LIKE ? OR eh.sello_recepcion LIKE ?) `;
+            const searchTerm = `%${word}%`;
+            summaryParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        });
+        const [summaryResult] = await pool.query(summaryQuery, summaryParams);
+        const summary = summaryResult[0] || {
+            total_monto: 0,
+            total_gravada: 0,
+            total_iva: 0,
+            total_retencion: 0,
+            total_percepcion: 0
+        };
 
         // Final query with pagination
         query += ` ORDER BY eh.fecha DESC, eh.id DESC LIMIT ? OFFSET ? `;
@@ -62,7 +115,8 @@ const getExpenses = async (req, res) => {
             data: rows,
             total,
             page: parseInt(page),
-            totalPages: Math.ceil(total / limit)
+            totalPages: Math.ceil(total / limit),
+            summary
         });
     } catch (error) {
         console.error('Error al obtener gastos:', error);
@@ -79,12 +133,19 @@ const getExpenseById = async (req, res) => {
         const companyId = req.company_id || req.user?.company_id;
 
         const [header] = await pool.query(`
-            SELECT eh.*, p.nombre AS provider_nombre, br.nombre AS branch_nombre,
+            SELECT eh.*, 
+                   p.nombre AS provider_nombre, 
+                   p.nrc AS provider_nrc,
+                   p.nit AS provider_nit,
+                   p.es_gran_contribuyente AS provider_es_gran_contribuyente,
+                   br.nombre AS branch_nombre,
+                   u.nombre AS usuario_nombre,
                    cat.description AS tipo_documento_nombre,
                    cat_cond.description AS condicion_operacion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
             LEFT JOIN branches br ON eh.branch_id = br.id
+            LEFT JOIN users u ON eh.usuario_id = u.id
             LEFT JOIN cat_002_tipo_dte cat ON eh.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
             LEFT JOIN cat_016_condicion_operacion cat_cond ON eh.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code COLLATE utf8mb4_unicode_ci
             WHERE eh.id = ? AND eh.company_id = ?
@@ -118,12 +179,11 @@ const createExpense = async (req, res) => {
         total_nosujeta, total_exenta, total_gravada, 
         iva, retencion, percepcion, fovial, cotrans, monto_total,
         period_year, period_month,
+        documento_afectado, fecha_afectada, num_control, sello_recepcion,
+        tipo_operacion, tipo_clasificacion, tipo_sector, tipo_costo,
+        gravadas_importaciones, gravadas_internaciones, iva_importaciones,
         items 
     } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ message: 'Debe incluir al menos un item de gasto' });
-    }
 
     const connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -152,10 +212,6 @@ const createExpense = async (req, res) => {
         }
         let finalPeriodYear = parseInt(period_year, 10) || docYear;
         let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
-        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
-            finalPeriodYear = docYear;
-            finalPeriodMonth = docMonth;
-        }
 
         // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
         const [existingPeriod] = await connection.query(
@@ -176,20 +232,33 @@ const createExpense = async (req, res) => {
              tipo_documento_id, condicion_operacion_id, observaciones,
              total_nosujeta, total_exenta, total_gravada, 
              iva, retencion, percepcion, fovial, cotrans, monto_total,
-             period_year, period_month)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             period_year, period_month,
+             documento_afectado, fecha_afectada, num_control, sello_recepcion,
+             tipo_operacion, tipo_clasificacion, tipo_sector, tipo_costo,
+             gravadas_importaciones, gravadas_internaciones, iva_importaciones)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
-            finalPeriodYear, finalPeriodMonth
+            finalPeriodYear, finalPeriodMonth,
+            documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
+            tipo_operacion || '1', tipo_clasificacion || '2', tipo_sector || '4', tipo_costo || '2',
+            gravadas_importaciones || 0, gravadas_internaciones || 0, iva_importaciones || 0
         ]);
 
         const expenseId = headerResult.insertId;
 
-        // 2. Insertar Items
-        for (const item of items) {
+        // 2. Insertar Items (opcional con fallback si no se especifican conceptos individuales)
+        const itemsToInsert = (items && Array.isArray(items) && items.length > 0) ? items : [{
+            description: observaciones || 'Gasto registrado',
+            expense_type_id: null,
+            tax_type: 'gravada',
+            total: monto_total || 0
+        }];
+
+        for (const item of itemsToInsert) {
             const { description, expense_type_id, tax_type, total } = item;
             await connection.query(`
                 INSERT INTO expense_items (expense_id, description, expense_type_id, tax_type, total)
@@ -231,6 +300,9 @@ const updateExpense = async (req, res) => {
         total_nosujeta, total_exenta, total_gravada, 
         iva, retencion, percepcion, fovial, cotrans, monto_total,
         period_year, period_month,
+        documento_afectado, fecha_afectada, num_control, sello_recepcion,
+        tipo_operacion, tipo_clasificacion, tipo_sector, tipo_costo,
+        gravadas_importaciones, gravadas_internaciones, iva_importaciones,
         items 
     } = req.body;
 
@@ -267,10 +339,6 @@ const updateExpense = async (req, res) => {
         }
         let finalPeriodYear = parseInt(period_year, 10) || docYear;
         let finalPeriodMonth = parseInt(period_month, 10) || docMonth;
-        if (finalPeriodYear < docYear || (finalPeriodYear === docYear && finalPeriodMonth < docMonth)) {
-            finalPeriodYear = docYear;
-            finalPeriodMonth = docMonth;
-        }
 
         // Si no existe un periodo configurado para este usuario, crearlo al guardar el registro
         if (usuarioId && companyId) {
@@ -293,7 +361,10 @@ const updateExpense = async (req, res) => {
                 tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
                 iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, monto_total = ?,
-                period_year = ?, period_month = ?
+                period_year = ?, period_month = ?,
+                documento_afectado = ?, fecha_afectada = ?, num_control = ?, sello_recepcion = ?,
+                tipo_operacion = ?, tipo_clasificacion = ?, tipo_sector = ?, tipo_costo = ?,
+                gravadas_importaciones = ?, gravadas_internaciones = ?, iva_importaciones = ?
             WHERE id = ? AND company_id = ?
         `, [
             branch_id, provider_id, fecha, numero_documento,
@@ -301,12 +372,22 @@ const updateExpense = async (req, res) => {
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
+            documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
+            tipo_operacion || '1', tipo_clasificacion || '2', tipo_sector || '4', tipo_costo || '2',
+            gravadas_importaciones || 0, gravadas_internaciones || 0, iva_importaciones || 0,
             id, companyId
         ]);
 
-        // 3. Reemplazar Items
+        // 3. Reemplazar Items (opcional con fallback)
         await connection.query('DELETE FROM expense_items WHERE expense_id = ?', [id]);
-        for (const item of items) {
+        const itemsToUpdate = (items && Array.isArray(items) && items.length > 0) ? items : [{
+            description: observaciones || 'Gasto registrado',
+            expense_type_id: null,
+            tax_type: 'gravada',
+            total: monto_total || 0
+        }];
+
+        for (const item of itemsToUpdate) {
             const { description, expense_type_id, tax_type, total } = item;
             await connection.query(`
                 INSERT INTO expense_items (expense_id, description, expense_type_id, tax_type, total)

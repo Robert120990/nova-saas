@@ -145,55 +145,169 @@ const getVatBookPurchasesPDF = async (req, res) => {
             branchName = branches[0]?.nombre || '---';
         }
 
-        let whereClauses = ['ph.company_id = ?', 'ph.period_year = ?', 'ph.period_month = ?', "ph.status != 'ANULADO'"];
-        let params = [companyId, year, month];
-        if (branch_id && branch_id !== 'all') { whereClauses.push('ph.branch_id = ?'); params.push(branch_id); }
+        let pWhere = ['ph.company_id = ?', 'ph.period_year = ?', 'ph.period_month = ?', "ph.status != 'ANULADO'"];
+        let pParams = [companyId, year, month];
+        if (branch_id && branch_id !== 'all') { pWhere.push('ph.branch_id = ?'); pParams.push(branch_id); }
 
-        const query = `
-            SELECT ph.*, p.nombre AS provider_nombre, p.nit AS provider_nit, p.nrc AS provider_nrc, cat.description AS tipo_doc_nombre
+        let eWhere = ['eh.company_id = ?', 'eh.period_year = ?', 'eh.period_month = ?', "(eh.status IS NULL OR eh.status != 'ANULADO')"];
+        let eParams = [companyId, year, month];
+        if (branch_id && branch_id !== 'all') { eWhere.push('eh.branch_id = ?'); eParams.push(branch_id); }
+
+        const purchaseQuery = `
+            SELECT 
+                ph.id,
+                ph.fecha,
+                ph.branch_id,
+                ph.tipo_documento_id,
+                ph.numero_documento,
+                NULL AS num_control,
+                NULL AS sello_recepcion,
+                ph.documento_afectado,
+                ph.total_nosujeta,
+                ph.total_exenta,
+                ph.total_gravada,
+                ph.iva,
+                ph.retencion,
+                ph.percepcion,
+                ph.fovial,
+                ph.cotrans,
+                ph.monto_total,
+                ph.provider_id,
+                p.nombre AS provider_nombre,
+                p.nit AS provider_nit,
+                p.nrc AS provider_nrc,
+                cat.description AS tipo_doc_nombre,
+                'compra' AS source_type
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
             LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code
-            WHERE ${whereClauses.join(' AND ')}
+            WHERE ${pWhere.join(' AND ')}
             ORDER BY ph.fecha ASC, ph.id ASC
         `;
-        const [rows] = await pool.query(query, params);
 
-        const isNotaCreditoCompra = (r) => {
-            const tId = String(r.tipo_documento_id || '').trim();
-            const desc = String(r.tipo_doc_nombre || '').toLowerCase();
-            return tId === '06' || tId === '05' || desc.includes('crédito');
+        const expenseQuery = `
+            SELECT 
+                eh.id,
+                eh.fecha,
+                eh.branch_id,
+                eh.tipo_documento_id,
+                eh.numero_documento,
+                eh.num_control,
+                eh.sello_recepcion,
+                eh.documento_afectado,
+                eh.total_nosujeta,
+                eh.total_exenta,
+                (eh.total_gravada + COALESCE(eh.gravadas_importaciones, 0) + COALESCE(eh.gravadas_internaciones, 0)) AS total_gravada,
+                (eh.iva + COALESCE(eh.iva_importaciones, 0)) AS iva,
+                eh.retencion,
+                eh.percepcion,
+                eh.fovial,
+                eh.cotrans,
+                eh.monto_total,
+                eh.provider_id,
+                p.nombre AS provider_nombre,
+                p.nit AS provider_nit,
+                p.nrc AS provider_nrc,
+                NULL AS tipo_doc_nombre,
+                'gasto' AS source_type
+            FROM expense_headers eh
+            LEFT JOIN providers p ON eh.provider_id = p.id
+            WHERE ${eWhere.join(' AND ')}
+            ORDER BY eh.fecha ASC, eh.id ASC
+        `;
+
+        const [pRows] = await pool.query(purchaseQuery, pParams);
+        const [eRows] = await pool.query(expenseQuery, eParams);
+
+        const rows = [...pRows, ...eRows].sort((a, b) => {
+            const da = new Date(a.fecha).getTime();
+            const db = new Date(b.fecha).getTime();
+            if (da !== db) return da - db;
+            return a.id - b.id;
+        });
+
+        const getPurchaseDocInfo = (r) => {
+            const isExpense = r.source_type === 'gasto';
+            let esNC = false;
+            let tipoNombre = '';
+
+            if (isExpense) {
+                const tId = String(r.tipo_documento_id || '').trim();
+                switch (tId) {
+                    case '01': tipoNombre = 'Factura'; break;
+                    case '02': tipoNombre = 'Créd. Fiscal'; break;
+                    case '03': tipoNombre = 'Fact. Export.'; break;
+                    case '04': tipoNombre = 'Importación'; break;
+                    case '05': tipoNombre = 'Internación'; break;
+                    case '06': tipoNombre = 'Retención'; break;
+                    case '07': tipoNombre = 'Liquidación'; break;
+                    case '08': tipoNombre = 'Nota Débito'; break;
+                    case '09': tipoNombre = 'Nota Crédito'; esNC = true; break;
+                    default: tipoNombre = 'Doc. ' + tId;
+                }
+            } else {
+                const tId = String(r.tipo_documento_id || '').trim();
+                const desc = String(r.tipo_doc_nombre || '').toLowerCase();
+                esNC = tId === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
+                if (esNC) tipoNombre = 'Nota Crédito';
+                else if (tId === '01') tipoNombre = 'Factura';
+                else if (tId === '08' || desc.includes('retención')) tipoNombre = 'Retención';
+                else if (tId === '07' || desc.includes('débito')) tipoNombre = 'Nota Débito';
+                else if (tId === '11' || tId === '14') tipoNombre = 'Suj. Excl.';
+                else tipoNombre = 'Créd. Fiscal';
+            }
+
+            const docNumber = (r.num_control || r.numero_documento || '').trim();
+            return { esNC, tipoNombre, docNumber };
         };
 
         if (req.query.format === 'excel') {
             const excelData = rows.map(r => {
-                const esNC = isNotaCreditoCompra(r);
+                const { esNC, tipoNombre, docNumber } = getPurchaseDocInfo(r);
                 const sign = esNC ? -1 : 1;
+                const g = Math.abs(n(r.total_gravada));
+                const e = Math.abs(n(r.total_exenta));
+                const i = Math.abs(n(r.iva));
+                const f = Math.abs(n(r.fovial));
+                const c = Math.abs(n(r.cotrans));
+                const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
+                const to = Math.abs(n(r.monto_total)) || ((g + e + i + f + c + re) || 0);
+
                 return {
                     Fecha: reportPdfHelper.formatDate(r.fecha),
-                    'Tipo Doc': r.tipo_doc_nombre || (esNC ? 'Nota de Crédito' : 'Crédito Fiscal'),
-                    'No. Documento': r.numero_documento || '',
+                    'Tipo Doc': tipoNombre,
+                    'No. Documento': docNumber,
+                    'Doc. Afectado': r.documento_afectado || '',
                     Proveedor: r.provider_nombre || 'S/N',
                     NIT: r.provider_nit || '',
                     NRC: r.provider_nrc || '',
-                    Exento: (sign * n(r.total_exenta)).toFixed(2),
-                    Neto: (sign * n(r.total_gravada)).toFixed(2),
-                    IVA: (sign * n(r.iva)).toFixed(2),
-                    Total: (sign * n(r.monto_total)).toFixed(2)
+                    Exento: Number((sign * e).toFixed(2)),
+                    Neto: Number((sign * g).toFixed(2)),
+                    IVA: Number((sign * i).toFixed(2)),
+                    FOVIAL: Number((sign * f).toFixed(2)),
+                    COTRANS: Number((sign * c).toFixed(2)),
+                    'Ret/Per': Number((re).toFixed(2)),
+                    Total: Number((sign * to).toFixed(2)),
+                    Origen: r.source_type === 'gasto' ? 'Gasto' : 'Compra'
                 };
             });
             const buffer = await excelService.createExcelBuffer({
                 sheets: [{ name: 'Libro Compras', columns: [
                     { header: 'Fecha', key: 'Fecha', width: 14 },
-                    { header: 'Tipo Doc', key: 'Tipo Doc', width: 16 },
-                    { header: 'No. Documento', key: 'No. Documento', width: 20 },
+                    { header: 'Tipo Doc', key: 'Tipo Doc', width: 18 },
+                    { header: 'No. Documento', key: 'No. Documento', width: 28 },
+                    { header: 'Doc. Afectado', key: 'Doc. Afectado', width: 18 },
                     { header: 'Proveedor', key: 'Proveedor', width: 35 },
                     { header: 'NIT', key: 'NIT', width: 18 },
                     { header: 'NRC', key: 'NRC', width: 15 },
                     { header: 'Exento', key: 'Exento', width: 14 },
                     { header: 'Neto', key: 'Neto', width: 14 },
                     { header: 'IVA', key: 'IVA', width: 14 },
-                    { header: 'Total', key: 'Total', width: 14 }
+                    { header: 'FOVIAL', key: 'FOVIAL', width: 12 },
+                    { header: 'COTRANS', key: 'COTRANS', width: 12 },
+                    { header: 'Ret/Per', key: 'Ret/Per', width: 14 },
+                    { header: 'Total', key: 'Total', width: 14 },
+                    { header: 'Origen', key: 'Origen', width: 12 }
                 ], data: excelData }]
             });
             return excelService.sendExcelResponse(res, buffer, `Libro_Compras_${month}_${year}.xlsx`);
@@ -211,17 +325,18 @@ const getVatBookPurchasesPDF = async (req, res) => {
         const startX = 30;
         const totalWidth = 732;
         const cols = {
-            fecha: 45,
-            documento: 124,
-            proveedor: 180,
-            nit_nrc: 68,
-            gravada: 48,
-            exenta: 42,
-            iva: 44,
-            fov: 35,
-            cot: 35,
-            ret_per: 44,
-            total: 67
+            fecha: 40,
+            tipo: 48,
+            documento: 142,
+            proveedor: 147,
+            nit_nrc: 67,
+            gravada: 46,
+            exenta: 38,
+            iva: 42,
+            fov: 26,
+            cot: 26,
+            ret_per: 40,
+            total: 70
         };
 
         const drawPageHeader = () => {
@@ -234,7 +349,8 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
             let x = startX;
             doc.text('FECHA', x + 2, y + 4, { width: cols.fecha - 4 }); x += cols.fecha;
-            doc.text('DOCUMENTO', x + 2, y + 4, { width: cols.documento - 4 }); x += cols.documento;
+            doc.text('TIPO', x + 2, y + 4, { width: cols.tipo - 4 }); x += cols.tipo;
+            doc.text('NO. DOCUMENTO', x + 2, y + 4, { width: cols.documento - 4 }); x += cols.documento;
             doc.text('PROVEEDOR', x + 2, y + 4, { width: cols.proveedor - 4 }); x += cols.proveedor;
             doc.text('NIT/NRC', x + 2, y + 4, { width: cols.nit_nrc - 4 }); x += cols.nit_nrc;
             doc.text('GRAVADA', x, y + 4, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
@@ -260,10 +376,18 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 drawTableHeader();
             }
 
-            const esNC = isNotaCreditoCompra(r);
+            const { esNC, tipoNombre, docNumber } = getPurchaseDocInfo(r);
             const sign = esNC ? -1 : 1;
-            const g = n(r.total_gravada), e = n(r.total_exenta), i = n(r.iva);
-            const f = n(r.fovial), c = n(r.cotrans), re = n(r.retencion) + n(r.percepcion), to = n(r.monto_total);
+            const g = Math.abs(n(r.total_gravada));
+            const e = Math.abs(n(r.total_exenta));
+            const i = Math.abs(n(r.iva));
+            const f = Math.abs(n(r.fovial));
+            const c = Math.abs(n(r.cotrans));
+            const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
+            let to = Math.abs(n(r.monto_total));
+            if (to === 0 && (g > 0 || e > 0 || i > 0 || re > 0)) {
+                to = g + e + i + f + c + re;
+            }
 
             const rowY = doc.y;
             if (idx % 2 === 1) {
@@ -273,31 +397,73 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.fontSize(6.5).font('Helvetica').fillColor('#0f172a');
             let x = startX;
             doc.text(reportPdfHelper.formatDate(r.fecha), x + 2, rowY, { lineBreak: false }); x += cols.fecha;
-            
-            const docLabel = `${String(r.tipo_doc_nombre || '')} ${String(r.numero_documento || '')}`.trim();
-            doc.text(reportPdfHelper.fitText(doc, docLabel || '---', cols.documento - 4), x + 2, rowY, { lineBreak: false }); x += cols.documento;
-            doc.text(reportPdfHelper.fitText(doc, String(r.provider_nombre || 'S/N').toUpperCase(), cols.proveedor - 4), x + 2, rowY, { lineBreak: false }); x += cols.proveedor;
-            
-            const nitNrc = String(r.provider_nit || r.provider_nrc || '').trim();
-            doc.text(reportPdfHelper.fitText(doc, nitNrc || '---', cols.nit_nrc - 4), x + 2, rowY, { lineBreak: false }); x += cols.nit_nrc;
 
+            // Columna TIPO
+            if (esNC) {
+                doc.font('Helvetica-Bold').fillColor('#b91c1c');
+            } else {
+                doc.font('Helvetica').fillColor('#334155');
+            }
+            doc.text(reportPdfHelper.fitText(doc, tipoNombre, cols.tipo - 4), x + 2, rowY, { lineBreak: false });
+            x += cols.tipo;
+
+            // Columna NO. DOCUMENTO
+            doc.font('Helvetica').fillColor('#0f172a');
+            let docStr = docNumber;
+            if (esNC && r.documento_afectado) {
+                docStr += ` (Af: ${r.documento_afectado})`;
+            }
+            doc.text(reportPdfHelper.fitText(doc, docStr || '---', cols.documento - 4), x + 2, rowY, { lineBreak: false });
+            x += cols.documento;
+
+            // Columna PROVEEDOR
+            doc.text(reportPdfHelper.fitText(doc, String(r.provider_nombre || 'S/N').toUpperCase(), cols.proveedor - 4), x + 2, rowY, { lineBreak: false });
+            x += cols.proveedor;
+            
+            // Columna NIT/NRC
+            const nitNrc = String(r.provider_nit || r.provider_nrc || '').trim();
+            doc.text(reportPdfHelper.fitText(doc, nitNrc || '---', cols.nit_nrc - 4), x + 2, rowY, { lineBreak: false });
+            x += cols.nit_nrc;
+
+            // Columnas numéricas
             doc.text(reportPdfHelper.fmt(sign * g), x, rowY, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
             doc.text(reportPdfHelper.fmt(sign * e), x, rowY, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
             doc.text(reportPdfHelper.fmt(sign * i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
             doc.text(reportPdfHelper.fmt(sign * f), x, rowY, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
             doc.text(reportPdfHelper.fmt(sign * c), x, rowY, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
-            doc.text(reportPdfHelper.fmt(sign * re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text(reportPdfHelper.fmt(re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
             doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
 
             if (esNC) {
                 t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
                 t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
             } else {
-                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                t.grav += g; t.exe += e; t.iva += i; t.fovial -= f; t.cotrans += c; t.ret += re; t.total += to;
                 t.bruto_total += to;
             }
             doc.y = rowY + 13;
         });
+
+        // Fila de TOTALES GENERALES al pie de la tabla
+        const totalRowY = doc.y + 2;
+        doc.rect(startX, totalRowY, totalWidth, 15).fill('#f1f5f9');
+        doc.moveTo(startX, totalRowY).lineTo(startX + totalWidth, totalRowY).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+        doc.moveTo(startX, totalRowY + 15).lineTo(startX + totalWidth, totalRowY + 15).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        const labelWidth = cols.fecha + cols.tipo + cols.documento + cols.proveedor + cols.nit_nrc;
+        doc.text('TOTALES GENERALES:', startX + 4, totalRowY + 4, { width: labelWidth - 8, align: 'right' });
+
+        let tx = startX + labelWidth;
+        doc.text(reportPdfHelper.fmt(t.grav), tx, totalRowY + 4, { width: cols.gravada - 2, align: 'right' }); tx += cols.gravada;
+        doc.text(reportPdfHelper.fmt(t.exe), tx, totalRowY + 4, { width: cols.exenta - 2, align: 'right' }); tx += cols.exenta;
+        doc.text(reportPdfHelper.fmt(t.iva), tx, totalRowY + 4, { width: cols.iva - 2, align: 'right' }); tx += cols.iva;
+        doc.text(reportPdfHelper.fmt(t.fovial), tx, totalRowY + 4, { width: cols.fov - 2, align: 'right' }); tx += cols.fov;
+        doc.text(reportPdfHelper.fmt(t.cotrans), tx, totalRowY + 4, { width: cols.cot - 2, align: 'right' }); tx += cols.cot;
+        doc.text(reportPdfHelper.fmt(t.ret), tx, totalRowY + 4, { width: cols.ret_per - 2, align: 'right' }); tx += cols.ret_per;
+        doc.text(reportPdfHelper.fmt(t.total), tx, totalRowY + 4, { width: cols.total - 2, align: 'right' });
+
+        doc.y = totalRowY + 20;
 
         if (doc.y > 470) {
             doc.addPage();
@@ -1327,7 +1493,7 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
     const retencionesIvaSufridas = Math.round(Math.max(0, (ccfSales.retenido + fcfSales.retenido) - ncSales.retenido) * 100) / 100;
     const percepcionesIvaEfectuadas = Math.round((ccfSales.percibido + fcfSales.percibido) * 100) / 100;
 
-    // 2. Crédito Fiscal (Compras del período)
+    // 2. Crédito Fiscal (Compras y Gastos del período)
     let purchasesWhere = [
         'ph.company_id = ?',
         'ph.period_year = ?',
@@ -1358,6 +1524,34 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         GROUP BY ph.tipo_documento_id, cat.description
     `, purchasesParams);
 
+    let expensesWhere = [
+        'eh.company_id = ?',
+        'eh.period_year = ?',
+        'eh.period_month = ?',
+        "(eh.status IS NULL OR eh.status != 'ANULADO')"
+    ];
+    let expensesParams = [companyId, year, month];
+    if (branch_id && branch_id !== 'all') {
+        expensesWhere.push('eh.branch_id = ?');
+        expensesParams.push(branch_id);
+    }
+
+    const [expensesByTypeRows] = await pool.query(`
+        SELECT 
+            eh.tipo_documento_id,
+            COUNT(*) as count,
+            COALESCE(SUM(eh.total_gravada + COALESCE(eh.gravadas_importaciones, 0) + COALESCE(eh.gravadas_internaciones, 0)), 0) as total_gravada,
+            COALESCE(SUM(eh.total_exenta), 0) as total_exenta,
+            COALESCE(SUM(eh.total_nosujeta), 0) as total_nosujeta,
+            COALESCE(SUM(eh.iva + COALESCE(eh.iva_importaciones, 0)), 0) as total_iva,
+            COALESCE(SUM(eh.retencion), 0) as total_retencion,
+            COALESCE(SUM(eh.percepcion), 0) as total_percepcion,
+            COALESCE(SUM(ABS(eh.monto_total)), 0) as total_monto
+        FROM expense_headers eh
+        WHERE ${expensesWhere.join(' AND ')}
+        GROUP BY eh.tipo_documento_id
+    `, expensesParams);
+
     let ccfPurchases = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
     let ncPurchases = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
     let sujetosExcluidos = { count: 0, gravado: 0, exento: 0, nosujeta: 0, iva: 0, retencion: 0, percepcion: 0, total: 0 };
@@ -1365,6 +1559,8 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
 
     purchasesByTypeRows.forEach(row => {
         const t = String(row.tipo_documento_id || '').trim();
+        const desc = String(row.tipo_doc_nombre || '').toLowerCase();
+        const isNC = t === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
         const item = {
             count: parseInt(row.count, 10) || 0,
             gravado: n(row.total_gravada),
@@ -1376,8 +1572,15 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             total: n(row.total_monto)
         };
         if (t === '03') {
-            ccfPurchases = item;
-        } else if (t === '05' || t === '06') {
+            ccfPurchases.count += item.count;
+            ccfPurchases.gravado += item.gravado;
+            ccfPurchases.exento += item.exento;
+            ccfPurchases.nosujeta += item.nosujeta;
+            ccfPurchases.iva += item.iva;
+            ccfPurchases.retencion += item.retencion;
+            ccfPurchases.percepcion += item.percepcion;
+            ccfPurchases.total += item.total;
+        } else if (isNC) {
             ncPurchases.count += item.count;
             ncPurchases.gravado += item.gravado;
             ncPurchases.exento += item.exento;
@@ -1386,8 +1589,57 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             ncPurchases.retencion += item.retencion;
             ncPurchases.percepcion += item.percepcion;
             ncPurchases.total += item.total;
-        } else if (t === '14') {
-            sujetosExcluidos = item;
+        } else if (t === '11' || t === '14') {
+            sujetosExcluidos.count += item.count;
+            sujetosExcluidos.gravado += item.gravado;
+            sujetosExcluidos.exento += item.exento;
+            sujetosExcluidos.nosujeta += item.nosujeta;
+            sujetosExcluidos.iva += item.iva;
+            sujetosExcluidos.retencion += item.retencion;
+            sujetosExcluidos.percepcion += item.percepcion;
+            sujetosExcluidos.total += item.total;
+        } else {
+            otrosPurchases.count += item.count;
+            otrosPurchases.gravado += item.gravado;
+            otrosPurchases.exento += item.exento;
+            otrosPurchases.nosujeta += item.nosujeta;
+            otrosPurchases.iva += item.iva;
+            otrosPurchases.retencion += item.retencion;
+            otrosPurchases.percepcion += item.percepcion;
+            otrosPurchases.total += item.total;
+        }
+    });
+
+    expensesByTypeRows.forEach(row => {
+        const t = String(row.tipo_documento_id || '').trim();
+        const item = {
+            count: parseInt(row.count, 10) || 0,
+            gravado: n(row.total_gravada),
+            exento: n(row.total_exenta),
+            nosujeta: n(row.total_nosujeta),
+            iva: n(row.total_iva),
+            retencion: n(row.total_retencion),
+            percepcion: n(row.total_percepcion),
+            total: n(row.total_monto)
+        };
+        if (t === '02' || t === '04' || t === '05' || t === '08') {
+            ccfPurchases.count += item.count;
+            ccfPurchases.gravado += item.gravado;
+            ccfPurchases.exento += item.exento;
+            ccfPurchases.nosujeta += item.nosujeta;
+            ccfPurchases.iva += item.iva;
+            ccfPurchases.retencion += item.retencion;
+            ccfPurchases.percepcion += item.percepcion;
+            ccfPurchases.total += item.total;
+        } else if (t === '09') {
+            ncPurchases.count += item.count;
+            ncPurchases.gravado += item.gravado;
+            ncPurchases.exento += item.exento;
+            ncPurchases.nosujeta += item.nosujeta;
+            ncPurchases.iva += item.iva;
+            ncPurchases.retencion += item.retencion;
+            ncPurchases.percepcion += item.percepcion;
+            ncPurchases.total += item.total;
         } else {
             otrosPurchases.count += item.count;
             otrosPurchases.gravado += item.gravado;
@@ -1408,6 +1660,8 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
     const comprasExentasNetas = Math.round(Math.max(0, (ccfPurchases.exento + otrosPurchases.exento) - ncPurchases.exento) * 100) / 100;
     const comprasNosujetasNetas = Math.round(Math.max(0, (ccfPurchases.nosujeta + otrosPurchases.nosujeta) - ncPurchases.nosujeta) * 100) / 100;
     const percepcionesIvaSoportadas = Math.round((ccfPurchases.percepcion + otrosPurchases.percepcion) * 100) / 100;
+    const retencionesIvaComprasSoportadas = Math.round((ccfPurchases.retencion + otrosPurchases.retencion) * 100) / 100;
+    const totalRetencionesIvaSufridas = Math.round((retencionesIvaSufridas + retencionesIvaComprasSoportadas) * 100) / 100;
     const retencionesSujetosExcluidos = Math.round(sujetosExcluidos.retencion * 100) / 100;
 
     // 3. Liquidación de IVA (F-07)
@@ -1421,7 +1675,7 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         remanenteCreditoMes = Math.round(Math.abs(diferenciaIva) * 100) / 100;
     }
 
-    const totalAcreditaciones = remanenteAnterior + retencionesIvaSufridas + percepcionesIvaSoportadas;
+    const totalAcreditaciones = remanenteAnterior + totalRetencionesIvaSufridas + percepcionesIvaSoportadas;
     let ivaPagarOperaciones = 0;
     let nuevoRemanenteCredito = 0;
 
@@ -1534,7 +1788,7 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             impuesto_determinado: impuestoDeterminado,
             remanente_credito_mes: remanenteCreditoMes,
             remanente_anterior: remanenteAnterior,
-            retenciones_iva_sufridas: retencionesIvaSufridas,
+            retenciones_iva_sufridas: totalRetencionesIvaSufridas,
             percepciones_iva_soportadas: percepcionesIvaSoportadas,
             total_acreditaciones: totalAcreditaciones,
             iva_pagar_operaciones: ivaPagarOperaciones,
