@@ -22,6 +22,234 @@ const CLOSEOUT_SECTIONS = {
     nozzles: { label: 'Asignación de mangueras', table: 'gas_station_closeout_despachador_nozzles' }
 };
 
+const SECTION_BUSINESS_FIELDS = {
+    gastos: ['rubro', 'fecha', 'documento', 'tipo', 'provider_id', 'proveedor', 'valor', 'despachador_id', 'comentario'],
+    remesas: ['documento', 'descripcion', 'despachador_id', 'tipo_operacion', 'monto'],
+    cupones: ['distribuidora_id', 'cupon', 'valor', 'cantidad', 'monto', 'despachador_id'],
+    descuentos: ['descripcion', 'monto', 'despachador_id'],
+    adelantos: ['monto', 'comentario', 'despachador_id'],
+    tarjetas: ['num_tarjeta', 'num_autorizacion', 'pos_type_id', 'despachador_id', 'tipo_operacion', 'monto'],
+    creditos: ['documento', 'tipo_documento', 'cliente_id', 'cliente_nombre', 'producto_codigo', 'producto_descripcion', 'despachador_id', 'cantidad', 'precio', 'monto', 'placa', 'kilometraje'],
+    vales: ['cliente_id', 'cliente_nombre', 'documento', 'monto', 'despachador_id'],
+    anticipos: ['cliente_id', 'despachador_id', 'monto', 'comentario'],
+    trupput: ['cliente_id', 'despachador_id', 'galones', 'monto', 'comentario'],
+    lubricantes: ['producto_id', 'lectura_anterior', 'recarga', 'lectura_final', 'ventas'],
+    despachadores: ['despachador_id'],
+    nozzles: ['despachador_id', 'nozzle_id']
+};
+
+const NUMERIC_FIELDS = ['valor', 'monto', 'cantidad', 'precio', 'lectura_anterior', 'recarga', 'lectura_final', 'ventas', 'galones'];
+
+function formatItemLabel(section, row) {
+    if (!row) return '';
+    try {
+        if (section === 'remesas') {
+            return [
+                row.documento ? `Boleta #${row.documento}` : (row.codigo || (row.id ? `Remesa #${row.id}` : 'Remesa')),
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null,
+                row.despachador_descripcion ? `(Desp: ${row.despachador_descripcion})` : (row.despachador_id ? `(Desp #${row.despachador_id})` : null)
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'tarjetas') {
+            const cardNum = row.num_tarjeta ? `Tarjeta ****${String(row.num_tarjeta).slice(-4)}` : (row.id ? `Tarjeta #${row.id}` : 'Tarjeta');
+            return [
+                cardNum,
+                row.pos_type_nombre ? `(${row.pos_type_nombre})` : (row.pos_type_id ? `(POS #${row.pos_type_id})` : null),
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null,
+                row.num_autorizacion ? `[Aut: #${row.num_autorizacion}]` : null,
+                row.despachador_descripcion ? `· Desp: ${row.despachador_descripcion}` : (row.despachador_id ? `· Desp #${row.despachador_id}` : null)
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'creditos') {
+            return [
+                row.cliente_nombre ? `Cliente: ${row.cliente_nombre}` : (row.cliente_id ? `Cliente #${row.cliente_id}` : 'Crédito'),
+                row.documento ? `(Doc #${row.documento})` : null,
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null,
+                row.placa ? `· Placa: ${row.placa}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'gastos') {
+            return [
+                row.rubro || 'Gasto',
+                row.proveedor_nombre || row.proveedor ? `- ${row.proveedor_nombre || row.proveedor}` : (row.provider_id ? `- Proveedor #${row.provider_id}` : null),
+                row.valor != null ? `$${parseFloat(row.valor).toFixed(2)}` : null,
+                row.documento ? `[Doc #${row.documento}]` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'cupones') {
+            return [
+                row.distribuidora_nombre ? `${row.distribuidora_nombre}` : 'Cupón',
+                row.cupon ? `#${row.cupon}` : null,
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'descuentos') {
+            return [
+                row.descripcion || 'Descuento',
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'adelantos') {
+            return [
+                row.despachador_descripcion ? `Despachador: ${row.despachador_descripcion}` : (row.despachador_id ? `Despachador #${row.despachador_id}` : 'Adelanto'),
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'vales') {
+            return [
+                row.cliente_nombre ? `Cliente: ${row.cliente_nombre}` : 'Vale',
+                row.documento ? `(Doc: ${row.documento})` : null,
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'anticipos') {
+            return [
+                row.cliente_nombre ? `Cliente: ${row.cliente_nombre}` : 'Anticipo',
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'trupput') {
+            return [
+                row.cliente_nombre ? `Cliente: ${row.cliente_nombre}` : 'Trupput',
+                row.galones != null ? `${parseFloat(row.galones).toFixed(2)} gal` : null,
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'lubricantes') {
+            return [
+                row.producto_descripcion || row.producto_codigo || 'Lubricante',
+                row.ventas != null ? `Ventas: $${parseFloat(row.ventas).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'tanques') {
+            return [
+                row.codigo_tanque ? `Tanque ${row.codigo_tanque}` : (row.descripcion_tanque || 'Tanque'),
+                row.lectura_actual != null ? `Lect: ${parseFloat(row.lectura_actual).toFixed(2)}` : null
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'despachadores') {
+            return row.nombre || row.despachador_descripcion || (row.despachador_id ? `Despachador #${row.despachador_id}` : 'Despachador');
+        }
+        if (section === 'nozzles') {
+            return `Manguera ${row.nozzle_codigo || row.codigo_pistola || row.nozzle_id || ''}`.trim();
+        }
+    } catch {
+        return '';
+    }
+    return '';
+}
+
+function getNaturalKey(section, row) {
+    if (!row) return null;
+    if (section === 'remesas') {
+        return row.documento ? String(row.documento).trim() : (row.codigo ? String(row.codigo).trim() : null);
+    }
+    if (section === 'tarjetas') {
+        return row.num_tarjeta ? `${String(row.num_tarjeta).trim()}_${String(row.num_autorizacion || '').trim()}` : null;
+    }
+    if (section === 'creditos') {
+        return row.documento ? `${String(row.documento).trim()}_${row.cliente_id || ''}` : null;
+    }
+    if (section === 'gastos') {
+        return row.documento ? `${String(row.documento).trim()}_${row.provider_id || row.proveedor || ''}` : null;
+    }
+    if (section === 'cupones') {
+        return row.cupon ? `${String(row.cupon).trim()}_${row.distribuidora_id || ''}` : null;
+    }
+    if (section === 'descuentos') {
+        return row.descripcion ? String(row.descripcion).trim().toLowerCase() : null;
+    }
+    if (section === 'adelantos') {
+        return row.despachador_id ? `adelanto_${row.despachador_id}_${row.monto}` : null;
+    }
+    if (section === 'vales') {
+        return row.documento ? `${String(row.documento).trim()}_${row.cliente_id || ''}` : null;
+    }
+    if (section === 'anticipos') {
+        return row.cliente_id ? `anticipo_${row.cliente_id}_${row.monto}` : null;
+    }
+    if (section === 'trupput') {
+        return row.cliente_id ? `trupput_${row.cliente_id}_${row.despachador_id || ''}` : null;
+    }
+    if (section === 'lubricantes') {
+        return row.producto_id ? `lub_${row.producto_id}` : null;
+    }
+    if (section === 'despachadores') {
+        return row.despachador_id ? `desp_${row.despachador_id}` : null;
+    }
+    if (section === 'nozzles') {
+        return (row.despachador_id && row.nozzle_id) ? `nozzle_${row.despachador_id}_${row.nozzle_id}` : null;
+    }
+    return null;
+}
+
+async function enrichSectionRows(companyId, closeoutId, section, rows) {
+    if (!rows || !Array.isArray(rows) || rows.length === 0) return [];
+    const cloned = rows.map(r => ({ ...r }));
+
+    try {
+        const despIds = [...new Set(cloned.map(r => r.despachador_id).filter(Boolean))];
+        const posIds = [...new Set(cloned.map(r => r.pos_type_id).filter(Boolean))];
+        const provIds = [...new Set(cloned.map(r => r.provider_id).filter(Boolean))];
+        const custIds = [...new Set(cloned.map(r => r.cliente_id).filter(Boolean))];
+        const distIds = [...new Set(cloned.map(r => r.distribuidora_id).filter(Boolean))];
+        const prodIds = [...new Set(cloned.map(r => r.producto_id).filter(Boolean))];
+
+        const [despRows, posRows, provRows, custRows, distRows, prodRows] = await Promise.all([
+            despIds.length > 0
+                ? pool.query(`SELECT id, codigo, descripcion FROM gas_station_despachadores WHERE id IN (?)`, [despIds]).then(([r]) => r).catch(() => [])
+                : [],
+            posIds.length > 0
+                ? pool.query(`SELECT id, nombre FROM gas_station_pos_types WHERE id IN (?)`, [posIds]).then(([r]) => r).catch(() => [])
+                : [],
+            provIds.length > 0
+                ? pool.query(`SELECT id, nombre FROM providers WHERE id IN (?)`, [provIds]).then(([r]) => r).catch(() => [])
+                : [],
+            custIds.length > 0
+                ? pool.query(`SELECT id, nombre, razon_social FROM customers WHERE id IN (?)`, [custIds]).then(([r]) => r).catch(() => [])
+                : [],
+            distIds.length > 0
+                ? pool.query(`SELECT id, nombre FROM gas_station_distributors WHERE id IN (?)`, [distIds]).then(([r]) => r).catch(() => [])
+                : [],
+            prodIds.length > 0
+                ? pool.query(`SELECT id, codigo, descripcion FROM products WHERE id IN (?)`, [prodIds]).then(([r]) => r).catch(() => [])
+                : []
+        ]);
+
+        const despMap = Object.fromEntries(despRows.map(d => [d.id, d.descripcion || d.codigo]));
+        const posMap = Object.fromEntries(posRows.map(p => [p.id, p.nombre]));
+        const provMap = Object.fromEntries(provRows.map(p => [p.id, p.nombre]));
+        const custMap = Object.fromEntries(custRows.map(c => [c.id, c.nombre || c.razon_social]));
+        const distMap = Object.fromEntries(distRows.map(d => [d.id, d.nombre]));
+        const prodMap = Object.fromEntries(prodRows.map(p => [p.id, p.descripcion || p.codigo]));
+
+        for (const row of cloned) {
+            if (row.despachador_id && !row.despachador_descripcion) {
+                row.despachador_descripcion = despMap[row.despachador_id] || '';
+            }
+            if (row.pos_type_id && !row.pos_type_nombre) {
+                row.pos_type_nombre = posMap[row.pos_type_id] || '';
+            }
+            if (row.provider_id && !row.proveedor_nombre) {
+                row.proveedor_nombre = provMap[row.provider_id] || row.proveedor || '';
+            }
+            if (row.cliente_id && !row.cliente_nombre) {
+                row.cliente_nombre = custMap[row.cliente_id] || '';
+            }
+            if (row.distribuidora_id && !row.distribuidora_nombre) {
+                row.distribuidora_nombre = distMap[row.distribuidora_id] || '';
+            }
+            if (row.producto_id && !row.producto_descripcion) {
+                row.producto_descripcion = prodMap[row.producto_id] || '';
+            }
+        }
+    } catch (err) {
+        console.error('Error in enrichSectionRows:', err);
+    }
+
+    return cloned;
+}
+
 async function getSectionRows(closeoutId, section) {
     const cfg = CLOSEOUT_SECTIONS[section];
     if (!cfg) return [];
@@ -29,42 +257,106 @@ async function getSectionRows(closeoutId, section) {
     return rows;
 }
 
-function fieldChanges(oldRow, newRow) {
+function fieldChanges(section, oldRow, newRow) {
+    const allowed = SECTION_BUSINESS_FIELDS[section] || Object.keys(newRow);
     const changes = [];
-    for (const [key, newVal] of Object.entries(newRow)) {
-        if (key === 'id' || key === 'closeout_id') continue;
-        if (!(key in oldRow)) continue;
+    for (const key of allowed) {
+        if (key === 'id' || key === 'closeout_id' || key === 'created_at' || key === 'updated_at') continue;
+        if (!(key in oldRow) && !(key in newRow)) continue;
+
         const oldVal = oldRow[key];
-        if (String(oldVal ?? '') !== String(newVal ?? '')) {
-            changes.push({ field: key, old: oldVal, new: newVal });
+        const newVal = newRow[key];
+        if (NUMERIC_FIELDS.includes(key)) {
+            const oldNum = parseFloat(oldVal || 0);
+            const newNum = parseFloat(newVal || 0);
+            if (Math.abs(oldNum - newNum) > 0.001) {
+                changes.push({ field: key, old: oldNum, new: newNum });
+            }
+        } else {
+            const oldStr = String(oldVal ?? '').trim();
+            const newStr = String(newVal ?? '').trim();
+            if (oldStr !== newStr) {
+                changes.push({ field: key, old: oldVal ?? '', new: newVal ?? '' });
+            }
         }
     }
     return changes;
 }
 
-function buildSectionDiff(before, after) {
+function buildSectionDiff(section, beforeRows, incomingRows) {
+    const before = beforeRows || [];
+    const after = incomingRows || [];
     const added = [];
     const removed = [];
     const modified = [];
 
-    if (before.length === after.length) {
-        for (let i = 0; i < after.length; i++) {
-            const changes = fieldChanges(before[i], after[i]);
-            if (changes.length > 0) modified.push({ before: before[i], after: after[i], changes });
+    const beforeById = new Map();
+    for (const row of before) {
+        if (row.id) beforeById.set(Number(row.id), row);
+    }
+
+    const matchedBeforeIds = new Set();
+    const unmatchedIncoming = [];
+
+    // Step 1: Match by ID
+    for (const inc of after) {
+        const incId = Number(inc.id);
+        if (incId && beforeById.has(incId)) {
+            matchedBeforeIds.add(incId);
+            const oldRow = beforeById.get(incId);
+            const changes = fieldChanges(section, oldRow, inc);
+            if (changes.length > 0) {
+                modified.push({
+                    id: incId,
+                    identifier: formatItemLabel(section, inc) || formatItemLabel(section, oldRow),
+                    row: inc,
+                    oldRow,
+                    changes
+                });
+            }
+        } else {
+            unmatchedIncoming.push(inc);
         }
-        return { added, removed, modified };
     }
 
-    const beforeMap = new Map(before.map(r => [r.id, r]));
-    const afterMap = new Map(after.map(r => [r.id, r]));
-    for (const row of after) if (!beforeMap.has(row.id)) added.push(row);
-    for (const row of before) if (!afterMap.has(row.id)) removed.push(row);
+    // Step 2: Unmatched before rows
+    const unmatchedBefore = before.filter(r => !matchedBeforeIds.has(Number(r.id)));
 
-    const min = Math.min(before.length, after.length);
-    for (let i = 0; i < min; i++) {
-        const changes = fieldChanges(before[i], after[i]);
-        if (changes.length > 0) modified.push({ before: before[i], after: after[i], changes });
+    // Step 3: Match remaining by natural business key
+    const stillUnmatchedIncoming = [];
+    for (const inc of unmatchedIncoming) {
+        const key = getNaturalKey(section, inc);
+        let foundIdx = -1;
+        if (key) {
+            foundIdx = unmatchedBefore.findIndex(b => getNaturalKey(section, b) === key);
+        }
+        if (foundIdx >= 0) {
+            const oldRow = unmatchedBefore.splice(foundIdx, 1)[0];
+            const changes = fieldChanges(section, oldRow, inc);
+            if (changes.length > 0) {
+                modified.push({
+                    id: oldRow.id || inc.id,
+                    identifier: formatItemLabel(section, inc) || formatItemLabel(section, oldRow),
+                    row: inc,
+                    oldRow,
+                    changes
+                });
+            }
+        } else {
+            stillUnmatchedIncoming.push(inc);
+        }
     }
+
+    // Step 4: Any still unmatched in incoming are ADDED
+    for (const inc of stillUnmatchedIncoming) {
+        added.push(inc);
+    }
+
+    // Step 5: Any still in unmatchedBefore are REMOVED
+    for (const b of unmatchedBefore) {
+        removed.push(b);
+    }
+
     return { added, removed, modified };
 }
 
@@ -73,7 +365,7 @@ function summarizeDiff(sectionLabel, diff) {
     if (diff.added.length) parts.push(`${diff.added.length} agregado${diff.added.length > 1 ? 's' : ''}`);
     if (diff.removed.length) parts.push(`${diff.removed.length} eliminado${diff.removed.length > 1 ? 's' : ''}`);
     if (diff.modified.length) parts.push(`${diff.modified.length} modificado${diff.modified.length > 1 ? 's' : ''}`);
-    return parts.length ? `${sectionLabel}: ${parts.join(', ')}` : `${sectionLabel}: sin cambios`;
+    return parts.length ? `${sectionLabel}: ${parts.join(', ')}` : '';
 }
 
 async function logCloseoutChange(req, closeoutId, section, action, description, details) {
@@ -98,11 +390,34 @@ async function logCloseoutChange(req, closeoutId, section, action, description, 
     }
 }
 
-async function logSectionChange(req, closeoutId, section, before, after) {
+async function logSectionChange(req, closeoutId, section, beforeRows, incomingRows) {
     const cfg = CLOSEOUT_SECTIONS[section];
     if (!cfg) return;
-    const diff = buildSectionDiff(before, after);
-    await logCloseoutChange(req, closeoutId, section, 'update', summarizeDiff(cfg.label, diff), { before, after, added: diff.added, removed: diff.removed, modified: diff.modified });
+
+    const [enrichedBefore, enrichedAfter] = await Promise.all([
+        enrichSectionRows(req.company_id, closeoutId, section, beforeRows),
+        enrichSectionRows(req.company_id, closeoutId, section, incomingRows)
+    ]);
+
+    const diff = buildSectionDiff(section, enrichedBefore, enrichedAfter);
+
+    if (diff.added.length === 0 && diff.removed.length === 0 && diff.modified.length === 0) {
+        return;
+    }
+
+    const summary = summarizeDiff(cfg.label, diff);
+    let action = 'update';
+    if (diff.added.length > 0 && diff.removed.length === 0 && diff.modified.length === 0) {
+        action = 'create';
+    } else if (diff.removed.length > 0 && diff.added.length === 0 && diff.modified.length === 0) {
+        action = 'delete';
+    }
+
+    await logCloseoutChange(req, closeoutId, section, action, summary, {
+        added: diff.added,
+        removed: diff.removed,
+        modified: diff.modified
+    });
 }
 
 const toDateStr = (val) => {
@@ -247,7 +562,17 @@ async function recalcularLubricantesPosteriores(req, closeout, updatedReadings) 
 async function logDeleteRow(req, closeoutId, section, row) {
     const cfg = CLOSEOUT_SECTIONS[section];
     if (!cfg) return;
-    await logCloseoutChange(req, closeoutId, section, 'delete', `${cfg.label}: 1 eliminado`, { before: [row], after: [] });
+    const [enrichedRow] = await enrichSectionRows(req.company_id, closeoutId, section, [row]);
+    const itemLabel = formatItemLabel(section, enrichedRow);
+    const desc = itemLabel
+        ? `${cfg.label}: se eliminó ${itemLabel}`
+        : `${cfg.label}: 1 elemento eliminado`;
+
+    await logCloseoutChange(req, closeoutId, section, 'delete', desc, {
+        removed: [enrichedRow],
+        before: [enrichedRow],
+        after: []
+    });
 }
 
 exports.initCloseout = async (req, res) => {
@@ -825,7 +1150,48 @@ exports.getCloseoutChanges = async (req, res) => {
             [id, req.company_id]
         );
 
-        res.json(rows);
+        const sanitized = rows.map(r => {
+            let details = r.details;
+            if (typeof details === 'string') {
+                try { details = JSON.parse(details); } catch { details = null; }
+            }
+            if (!details) return { ...r, details: null };
+
+            // Normalize legacy delete details
+            if (r.action === 'delete' && (!details.removed || details.removed.length === 0) && details.before?.length > 0) {
+                details.removed = details.before;
+            }
+
+            // Remove technical fields from modified diffs and ensure identifier is populated
+            if (Array.isArray(details.modified)) {
+                details.modified = details.modified.map(m => {
+                    const cleanChanges = (m.changes || []).filter(c =>
+                        !['created_at', 'updated_at', 'id', 'closeout_id'].includes(c.field)
+                    );
+                    const rowData = { ...(m.before || {}), ...(m.oldRow || {}), ...(m.row || {}), ...(m.after || {}), ...(typeof m === 'object' ? m : {}) };
+                    const identifier = (m.identifier && m.identifier !== 'Tarjeta' && m.identifier !== 'Gasto' && m.identifier !== 'Remesa' && m.identifier !== 'Crédito')
+                        ? m.identifier
+                        : formatItemLabel(r.section, rowData);
+                    return { ...m, changes: cleanChanges, identifier };
+                }).filter(m => m.changes.length > 0);
+            }
+
+            let description = r.description;
+            if (description && Array.isArray(details.modified)) {
+                const cfg = CLOSEOUT_SECTIONS[r.section];
+                const label = cfg?.label || r.section;
+                const newSummary = summarizeDiff(label, {
+                    added: details.added || [],
+                    removed: details.removed || [],
+                    modified: details.modified || []
+                });
+                description = newSummary || `${label}: sin cambios en valores de negocio`;
+            }
+
+            return { ...r, description, details };
+        });
+
+        res.json(sanitized);
     } catch (error) {
         console.error('Error getCloseoutChanges:', error);
         res.status(500).json({ message: 'Error al obtener cambios del cierre' });
@@ -1484,8 +1850,7 @@ exports.saveExpenses = async (req, res) => {
         }));
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'gastos');
-            await logSectionChange(req, id, 'gastos', beforeRows, afterRows);
+            await logSectionChange(req, id, 'gastos', beforeRows, expenses);
         }
 
         res.json(mapped);
@@ -1619,8 +1984,7 @@ exports.saveRemesas = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'remesas');
-            await logSectionChange(req, id, 'remesas', beforeRows, afterRows);
+            await logSectionChange(req, id, 'remesas', beforeRows, remesas);
         }
 
         res.json(remaining);
@@ -1756,8 +2120,7 @@ exports.saveCupones = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'cupones');
-            await logSectionChange(req, id, 'cupones', beforeRows, afterRows);
+            await logSectionChange(req, id, 'cupones', beforeRows, cupones);
         }
 
         res.json(remaining);
@@ -1897,8 +2260,7 @@ exports.saveDescuentos = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'descuentos');
-            await logSectionChange(req, id, 'descuentos', beforeRows, afterRows);
+            await logSectionChange(req, id, 'descuentos', beforeRows, descuentos);
         }
 
         res.json(remaining);
@@ -2015,8 +2377,7 @@ exports.saveAdelantos = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'adelantos');
-            await logSectionChange(req, id, 'adelantos', beforeRows, afterRows);
+            await logSectionChange(req, id, 'adelantos', beforeRows, adelantos);
         }
 
         res.json(remaining);
@@ -2127,8 +2488,7 @@ exports.saveLubricantReadings = async (req, res) => {
         );
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'lubricantes');
-            await logSectionChange(req, id, 'lubricantes', beforeRows, afterRows);
+            await logSectionChange(req, id, 'lubricantes', beforeRows, readings);
         }
 
         await recalcularLubricantesPosteriores(req, closeouts[0], readings || []);
@@ -2203,8 +2563,7 @@ exports.updateCloseoutDespachadores = async (req, res) => {
         }
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'despachadores');
-            await logSectionChange(req, id, 'despachadores', beforeRows, afterRows);
+            await logSectionChange(req, id, 'despachadores', beforeRows, despachadores);
         }
 
         res.json({ despachadores: savedDespachadores });
@@ -2258,8 +2617,7 @@ exports.updateCloseoutDespachadorNozzles = async (req, res) => {
         );
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'nozzles');
-            await logSectionChange(req, id, 'nozzles', beforeRows, afterRows);
+            await logSectionChange(req, id, 'nozzles', beforeRows, assignments);
         }
 
         res.json(rows);
@@ -2343,8 +2701,7 @@ exports.saveTarjetas = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'tarjetas');
-            await logSectionChange(req, id, 'tarjetas', beforeRows, afterRows);
+            await logSectionChange(req, id, 'tarjetas', beforeRows, tarjetas);
         }
 
         res.json(remaining);
@@ -2466,8 +2823,7 @@ exports.saveCreditos = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'creditos');
-            await logSectionChange(req, id, 'creditos', beforeRows, afterRows);
+            await logSectionChange(req, id, 'creditos', beforeRows, creditos);
         }
 
         res.json(remaining);
@@ -2589,8 +2945,7 @@ exports.saveVales = async (req, res) => {
         `, [id]);
 
         if (isReabierto) {
-            const afterRows = await getSectionRows(id, 'vales');
-            await logSectionChange(req, id, 'vales', beforeRows, afterRows);
+            await logSectionChange(req, id, 'vales', beforeRows, vales);
         }
 
         res.json(remaining);
@@ -2835,8 +3190,7 @@ exports.saveAnticiposDesp = async (req, res) => {
             await connection.commit();
 
             if (isReabierto) {
-                const afterRows = await getSectionRows(id, 'anticipos');
-                await logSectionChange(req, id, 'anticipos', beforeRows, afterRows);
+                await logSectionChange(req, id, 'anticipos', beforeRows, anticipos);
             }
 
             res.json(remaining);
@@ -3040,8 +3394,7 @@ exports.saveTrupputDesp = async (req, res) => {
             await connection.commit();
 
             if (isReabierto) {
-                const afterRows = await getSectionRows(id, 'trupput');
-                await logSectionChange(req, id, 'trupput', beforeRows, afterRows);
+                await logSectionChange(req, id, 'trupput', beforeRows, despachos);
             }
 
             res.json(remaining);
