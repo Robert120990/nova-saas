@@ -32,6 +32,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
+import { getTodayString } from '../utils/dateUtils';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -73,7 +74,7 @@ const Purchases = () => {
     const [tipoDocId, setTipoDocId] = useState('03'); // Default CCF
     const [condicionId, setCondicionId] = useState('1'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
-    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+    const [fecha, setFecha] = useState(getTodayString());
     const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
     const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
     const [observaciones, setObservaciones] = useState('');
@@ -470,7 +471,7 @@ const Purchases = () => {
         setDocAfectado(''); setFechaAfectada('');
         setDiasCredito(0); setFechaVencimiento('');
         setManualRetencion(0); setManualPercepcion(0); setManualNosujeta(0); setManualExenta(0);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayString();
         setFecha(today);
         const [y, m] = today.split('-').map(Number);
         setPeriodYear(y);

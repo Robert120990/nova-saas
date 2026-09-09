@@ -9,11 +9,12 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
+import { getTodayString } from '../utils/dateUtils';
 
 const SalesDetailReport = () => {
     const { user } = useAuth();
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
 
     const [filters, setFilters] = useState({
         start_date: today,

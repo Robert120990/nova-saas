@@ -10,12 +10,13 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { getTodayString, getFirstDayOfMonth } from '../utils/dateUtils';
 
 const SalesReport = () => {
     const { user } = useAuth();
     
-    const today = new Date().toISOString().split('T')[0];
-    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const today = getTodayString();
+    const firstDayOfMonth = getFirstDayOfMonth();
 
     const [filters, setFilters] = useState({
         start_date: firstDayOfMonth,

@@ -15,6 +15,7 @@ import { downloadCloseoutPdf } from '../utils/closeoutPdf';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import * as XLSX from 'xlsx';
+import { getTodayString } from '../utils/dateUtils';
 
 const parseDecimal = (value) => {
     if (value == null) return NaN;
@@ -81,7 +82,7 @@ const GasCloseout = () => {
     const [readings, setReadings] = useState([]);
     const [sellerId, setSellerId] = useState('');
     const [sellerName, setSellerName] = useState('');
-    const [fechaTurno, setFechaTurno] = useState(new Date().toISOString().split('T')[0]);
+    const [fechaTurno, setFechaTurno] = useState(getTodayString());
     const [numeroTurno, setNumeroTurno] = useState('');
     const [userModifiedTurno, setUserModifiedTurno] = useState(false);
     const [closeoutDespachadores, setCloseoutDespachadores] = useState([]);
@@ -1196,7 +1197,7 @@ const GasCloseout = () => {
         setGastos(prev => [...prev, {
             id: Date.now(),
             rubro: '',
-            fecha: new Date().toISOString().split('T')[0],
+            fecha: getTodayString(),
             documento: '',
             tipo: 'ccf',
             provider_id: '',

@@ -14,8 +14,9 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
+import { getTodayString } from '../utils/dateUtils';
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => getTodayString();
 const formatDate = (dateStr) => {
     if (!dateStr) return '—';
     try {
@@ -132,7 +133,7 @@ const Quedan = () => {
         if (!fecha || !dias) return '';
         const d = new Date(fecha);
         d.setDate(d.getDate() + parseInt(dias));
-        return d.toISOString().split('T')[0];
+        return getTodayString(d);
     };
 
     const handleProviderChange = (e, option) => {

@@ -11,10 +11,11 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { getTodayString } from '../utils/dateUtils';
 
 const PendingDocumentsDetailedReport = () => {
     const { user } = useAuth();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
 
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [cutoffDate, setCutoffDate] = useState(today);

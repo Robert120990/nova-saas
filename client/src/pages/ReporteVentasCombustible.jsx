@@ -4,6 +4,7 @@ import axios from 'axios';
 import { BarChart3, Search, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
+import { getTodayString } from '../utils/dateUtils';
 
 const formatNum = (val, decimals = 2) => {
     const n = parseFloat(val) || 0;
@@ -12,7 +13,7 @@ const formatNum = (val, decimals = 2) => {
 
 const ReporteVentasCombustible = () => {
     const { user } = useAuth();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
     const [fecha, setFecha] = useState(today);
     const [turno, setTurno] = useState('0');
     const [consulted, setConsulted] = useState(false);

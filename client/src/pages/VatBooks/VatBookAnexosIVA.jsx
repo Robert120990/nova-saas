@@ -7,14 +7,15 @@ import { useAuth } from '../../context/AuthContext';
 import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import Money from '../../components/ui/Money';
+import { getTodayString, getFirstDayOfMonth } from '../../utils/dateUtils';
 
 const VatBookAnexosIVA = () => {
     const { user } = useAuth();
-    const currentDate = new Date();
-    const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
+    const firstDayOfMonth = getFirstDayOfMonth();
+    const today = getTodayString();
 
     const [fechaInicio, setFechaInicio] = useState(firstDayOfMonth);
-    const [fechaFin, setFechaFin] = useState(currentDate.toISOString().split('T')[0]);
+    const [fechaFin, setFechaFin] = useState(today);
     const [tipoDte, setTipoDte] = useState('');
     const [branchId, setBranchId] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');

@@ -9,8 +9,9 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { getTodayString } from '../utils/dateUtils';
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => getTodayString();
 const now = () => new Date().toTimeString().split(' ')[0].slice(0, 5);
 
 const SalesRemesaDeliveries = () => {

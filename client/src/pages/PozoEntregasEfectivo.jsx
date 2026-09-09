@@ -9,8 +9,9 @@ import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
 import Money, { MoneyInput } from '../components/ui/Money';
+import { getTodayString } from '../utils/dateUtils';
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => getTodayString();
 
 const PozoEntregasEfectivo = () => {
     const queryClient = useQueryClient();

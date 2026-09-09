@@ -27,6 +27,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
+import { getTodayString } from '../utils/dateUtils';
 
 // Helper for date formatting DD/MM/YYYY
 const formatDate = (dateStr) => {
@@ -73,7 +74,7 @@ const Expenses = () => {
     const [tipoDocId, setTipoDocId] = useState('03'); // Default CCF
     const [condicionId, setCondicionId] = useState('01'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
-    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+    const [fecha, setFecha] = useState(getTodayString());
     const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
     const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
     const [observaciones, setObservaciones] = useState('');
@@ -360,7 +361,7 @@ const Expenses = () => {
         setProviderId(''); setBranchId('');
         setManualIVA(0); setManualRetencion(0); setManualPercepcion(0); setManualFovial(0); setManualCotrans(0);
         setIsIvaDirty(false); setIsRetDirty(false); setIsPercDirty(false); setIsFovDirty(false); setIsCotDirty(false);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayString();
         setFecha(today);
         const [y, m] = today.split('-').map(Number);
         setPeriodYear(y);

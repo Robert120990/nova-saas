@@ -6,11 +6,12 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import { generateCloseoutPdfBlob } from '../utils/closeoutPdf';
+import { getTodayString } from '../utils/dateUtils';
 
 const GasAccumulatedDailyReport = () => {
     const { user } = useAuth();
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
 
     const [filters, setFilters] = useState({
         fecha: today,
