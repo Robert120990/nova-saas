@@ -1,5 +1,7 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { FileText, Download, Printer, ExternalLink, X, Loader2, RefreshCw } from 'lucide-react';
+import { extractPdfPageCount } from '../../utils/pdfPagination';
+import PdfPageNavigator from './PdfPageNavigator';
 
 /**
  * PdfViewerModal - Modal interactivo para visualizar reportes PDF con opciones de impresión y descarga.
@@ -32,6 +34,48 @@ const PdfViewerModal = ({
     footerNote = 'Formato contable estándar oficial • Presentación Carta sin firmas'
 }) => {
     const iframeRef = useRef(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+
+    // Extraer cantidad total de páginas cuando cambia pdfUrl
+    useEffect(() => {
+        let isCancelled = false;
+        if (pdfUrl) {
+            setCurrentPage(1);
+            extractPdfPageCount(pdfUrl).then((count) => {
+                if (!isCancelled) {
+                    setTotalPages(count);
+                }
+            });
+        } else {
+            setCurrentPage(1);
+            setTotalPages(1);
+        }
+        return () => {
+            isCancelled = true;
+        };
+    }, [pdfUrl]);
+
+    // Navegación por teclado (Flechas Izquierda/Derecha, RePág/AvPág)
+    useEffect(() => {
+        if (!isOpen || !pdfUrl || totalPages <= 1) return;
+
+        const handleKeyboardNav = (e) => {
+            const tag = e.target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+
+            if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                e.preventDefault();
+                setCurrentPage((p) => Math.max(1, p - 1));
+            } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+                e.preventDefault();
+                setCurrentPage((p) => Math.min(totalPages, p + 1));
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyboardNav);
+        return () => window.removeEventListener('keydown', handleKeyboardNav);
+    }, [isOpen, pdfUrl, totalPages]);
 
     // Manejo de atajo ESC para cerrar
     useEffect(() => {
@@ -102,6 +146,17 @@ const PdfViewerModal = ({
                             )}
                         </div>
                     </div>
+
+                    {/* Center / Pagination controls */}
+                    {pdfUrl && !isLoading && (
+                        <div className="flex items-center justify-center">
+                            <PdfPageNavigator
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={setCurrentPage}
+                            />
+                        </div>
+                    )}
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -179,7 +234,7 @@ const PdfViewerModal = ({
                     ) : pdfUrl ? (
                         <iframe
                             ref={iframeRef}
-                            src={`${pdfUrl}#view=FitH`}
+                            src={`${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`}
                             className="w-full flex-1 border-0 bg-slate-100"
                             title={title}
                         />
@@ -192,6 +247,13 @@ const PdfViewerModal = ({
                         {footerNote}
                     </span>
                     <div className="flex items-center gap-3 shrink-0">
+                        {totalPages > 1 && (
+                            <span className="hidden md:inline text-slate-400">
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono font-bold text-[10px] text-slate-600 shadow-xs mr-1">←</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono font-bold text-[10px] text-slate-600 shadow-xs mr-1">→</kbd>
+                                para cambiar página
+                            </span>
+                        )}
                         <span className="hidden sm:inline text-slate-400">
                             <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono font-bold text-[10px] text-slate-600 shadow-xs mr-1">ESC</kbd>
                             para salir

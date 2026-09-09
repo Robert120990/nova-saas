@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
     FileText, 
     Download, 
     Loader2, 
-    BarChart3,
-    FileSpreadsheet,
-    Maximize2
+    BarChart3, 
+    FileSpreadsheet, 
+    Maximize2 
 } from 'lucide-react';
 import PdfViewerModal from './PdfViewerModal';
+import PdfPageNavigator from './PdfPageNavigator';
+import { extractPdfPageCount } from '../../utils/pdfPagination';
 
 /**
  * ReportLayout - Componente base unificado para reportes "Premium"
@@ -44,6 +46,27 @@ const ReportLayout = ({
     showModalButton = true
 }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+
+    // Determinar cantidad de páginas al recibir o actualizar el PDF
+    useEffect(() => {
+        let isCancelled = false;
+        if (pdfUrl) {
+            setCurrentPage(1);
+            extractPdfPageCount(pdfUrl).then((count) => {
+                if (!isCancelled) {
+                    setTotalPages(count);
+                }
+            });
+        } else {
+            setCurrentPage(1);
+            setTotalPages(1);
+        }
+        return () => {
+            isCancelled = true;
+        };
+    }, [pdfUrl]);
 
     const effectiveFileName = fileName || `${(title || 'reporte').toLowerCase().replace(/[^a-z0-9]/gi, '_')}.pdf`;
 
@@ -138,11 +161,39 @@ const ReportLayout = ({
                 <div className="lg:col-span-3">
                     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden min-h-[420px] sm:min-h-[600px] lg:min-h-[750px] flex flex-col relative">
                         {pdfUrl ? (
-                            <iframe 
-                                src={`${pdfUrl}#view=FitH`} 
-                                className="w-full flex-1 border-none"
-                                title={`${title} Preview`}
-                            />
+                            <>
+                                <div className="px-4 sm:px-6 py-2.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between gap-3 text-xs shrink-0">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <FileText size={16} className="text-indigo-600 shrink-0" />
+                                        <span className="font-bold text-slate-700 truncate text-[11px] sm:text-xs">
+                                            {title}
+                                        </span>
+                                    </div>
+
+                                    <PdfPageNavigator
+                                        currentPage={currentPage}
+                                        totalPages={totalPages}
+                                        onPageChange={setCurrentPage}
+                                    />
+
+                                    {showModalButton && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsModalOpen(true)}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-indigo-700 hover:text-indigo-800 bg-white hover:bg-indigo-50 rounded-xl border border-indigo-200/80 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                            title="Expandir reporte en ventana modal amplia (pantalla completa)"
+                                        >
+                                            <Maximize2 size={13} className="text-indigo-600" />
+                                            <span className="hidden sm:inline">Expandir</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <iframe 
+                                    src={`${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`} 
+                                    className="w-full flex-1 border-none"
+                                    title={`${title} Preview`}
+                                />
+                            </>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-6">
                                 <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
