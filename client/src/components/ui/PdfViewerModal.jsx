@@ -233,6 +233,7 @@ const PdfViewerModal = ({
                         </div>
                     ) : pdfUrl ? (
                         <iframe
+                            key={`${pdfUrl}-${currentPage}`}
                             ref={iframeRef}
                             src={`${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`}
                             className="w-full flex-1 border-0 bg-slate-100"

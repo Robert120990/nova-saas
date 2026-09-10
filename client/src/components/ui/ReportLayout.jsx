@@ -189,6 +189,7 @@ const ReportLayout = ({
                                     )}
                                 </div>
                                 <iframe 
+                                    key={`${pdfUrl}-${currentPage}`}
                                     src={`${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`} 
                                     className="w-full flex-1 border-none"
                                     title={`${title} Preview`}
