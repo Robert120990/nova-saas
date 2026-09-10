@@ -195,6 +195,17 @@ async function enrichSectionRows(companyId, closeoutId, section, rows) {
         const distIds = [...new Set(cloned.map(r => r.distribuidora_id).filter(Boolean))];
         const prodIds = [...new Set(cloned.map(r => r.producto_id).filter(Boolean))];
 
+        let closeoutDespRows = [];
+        if (despIds.length > 0 && closeoutId) {
+            try {
+                [closeoutDespRows] = await pool.query(
+                    `SELECT despachador_id, nombre FROM gas_station_closeout_despachadores WHERE closeout_id = ? AND despachador_id IN (?)`,
+                    [closeoutId, despIds]
+                );
+            } catch { }
+        }
+        const closeoutDespMap = Object.fromEntries(closeoutDespRows.filter(cd => cd.nombre).map(cd => [cd.despachador_id, cd.nombre]));
+
         const [despRows, posRows, provRows, custRows, distRows, prodRows] = await Promise.all([
             despIds.length > 0
                 ? pool.query(`SELECT id, codigo, descripcion FROM gas_station_despachadores WHERE id IN (?)`, [despIds]).then(([r]) => r).catch(() => [])
@@ -216,7 +227,7 @@ async function enrichSectionRows(companyId, closeoutId, section, rows) {
                 : []
         ]);
 
-        const despMap = Object.fromEntries(despRows.map(d => [d.id, d.descripcion || d.codigo]));
+        const despMap = Object.fromEntries(despRows.map(d => [d.id, closeoutDespMap[d.id] || d.descripcion || d.codigo]));
         const posMap = Object.fromEntries(posRows.map(p => [p.id, p.nombre]));
         const provMap = Object.fromEntries(provRows.map(p => [p.id, p.nombre]));
         const custMap = Object.fromEntries(custRows.map(c => [c.id, c.nombre || c.razon_social]));
@@ -1021,7 +1032,7 @@ exports.getCloseout = async (req, res) => {
         } catch { }
 
         const [despachadores] = await pool.query(
-            `SELECT cd.despachador_id, cd.nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            `SELECT cd.despachador_id, cd.nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
              FROM gas_station_closeout_despachadores cd
              JOIN gas_station_despachadores d ON d.id = cd.despachador_id
              WHERE cd.closeout_id = ?`,
@@ -1037,46 +1048,77 @@ exports.getCloseout = async (req, res) => {
         } catch { }
 
         const [gastos] = await pool.query(
-            `SELECT e.*, p.nombre as proveedor_nombre FROM gas_station_closeout_expenses e
+            `SELECT e.*, p.nombre as proveedor_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_expenses e
              LEFT JOIN providers p ON e.provider_id = p.id
+             LEFT JOIN gas_station_despachadores d ON e.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = e.closeout_id AND cd.despachador_id = e.despachador_id
              WHERE e.closeout_id = ? ORDER BY e.id ASC`, [id]
         );
 
         const [remesas] = await pool.query(
-            `SELECT r.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            `SELECT r.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
              FROM gas_station_closeout_remesas r
              LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
              WHERE r.closeout_id = ? ORDER BY r.id ASC`, [id]
         );
 
         const [cupones] = await pool.query(
-            `SELECT * FROM gas_station_closeout_cupones WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_cupones c
+             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
+             WHERE c.closeout_id = ? ORDER BY c.id ASC`, [id]
         );
 
         const [descuentos] = await pool.query(
-            `SELECT * FROM gas_station_closeout_descuentos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT d.*, desp.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), desp.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_descuentos d
+             LEFT JOIN gas_station_despachadores desp ON d.despachador_id = desp.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = d.closeout_id AND cd.despachador_id = d.despachador_id
+             WHERE d.closeout_id = ? ORDER BY d.id ASC`, [id]
         );
 
         const [adelantos] = await pool.query(
-            `SELECT * FROM gas_station_closeout_adelantos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT a.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_adelantos a
+             LEFT JOIN gas_station_despachadores d ON a.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = a.closeout_id AND cd.despachador_id = a.despachador_id
+             WHERE a.closeout_id = ? ORDER BY a.id ASC`, [id]
         );
 
         const [tarjetas] = await pool.query(
-            `SELECT * FROM gas_station_closeout_tarjetas WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_tarjetas t
+             LEFT JOIN gas_station_pos_types p ON t.pos_type_id = p.id
+             LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = t.closeout_id AND cd.despachador_id = t.despachador_id
+             WHERE t.closeout_id = ? ORDER BY t.id ASC`, [id]
         );
 
         const [creditos] = await pool.query(
-            `SELECT * FROM gas_station_closeout_creditos WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_creditos c
+             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
+             WHERE c.closeout_id = ? ORDER BY c.id ASC`, [id]
         );
 
         const [vales] = await pool.query(
-            `SELECT * FROM gas_station_closeout_vales WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT v.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_vales v
+             LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = v.closeout_id AND cd.despachador_id = v.despachador_id
+             WHERE v.closeout_id = ? ORDER BY v.id ASC`, [id]
         );
 
         const [anticiposDesp] = await pool.query(
-            `SELECT ad.*,
+            `SELECT ad.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                     COALESCE(ga.total_disponible, 0) AS saldo_disponible
              FROM gas_station_closeout_anticipos_despachados ad
+             LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ad.closeout_id AND cd.despachador_id = ad.despachador_id
              LEFT JOIN (
                  SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
                  FROM gas_station_advances
@@ -1092,9 +1134,11 @@ exports.getCloseout = async (req, res) => {
         );
 
         const [trupputDesp] = await pool.query(
-            `SELECT td.*,
+            `SELECT td.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                     COALESCE(gt.total_galones, 0) AS galones_disponibles
              FROM gas_station_closeout_trupput_despachos td
+             LEFT JOIN gas_station_despachadores d ON td.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = td.closeout_id AND cd.despachador_id = td.despachador_id
              LEFT JOIN (
                  SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
                  FROM gas_station_trupput
@@ -1756,10 +1800,11 @@ exports.getExpenses = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT e.*, p.nombre as proveedor_nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT e.*, p.nombre as proveedor_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_expenses e
             LEFT JOIN providers p ON e.provider_id = p.id
             LEFT JOIN gas_station_despachadores d ON e.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = e.closeout_id AND cd.despachador_id = e.despachador_id
             WHERE e.closeout_id = ?
             ORDER BY e.id ASC
         `, [id]);
@@ -1836,10 +1881,11 @@ exports.saveExpenses = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT e.*, p.nombre as proveedor_nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT e.*, p.nombre as proveedor_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_expenses e
             LEFT JOIN providers p ON e.provider_id = p.id
             LEFT JOIN gas_station_despachadores d ON e.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = e.closeout_id AND cd.despachador_id = e.despachador_id
             WHERE e.closeout_id = ?
             ORDER BY e.id ASC
         `, [id]);
@@ -1904,9 +1950,10 @@ exports.getRemesas = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT r.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT r.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_remesas r
             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
             WHERE r.closeout_id = ?
             ORDER BY r.id ASC
         `, [id]);
@@ -1976,9 +2023,10 @@ exports.saveRemesas = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT r.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT r.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_remesas r
             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
             WHERE r.closeout_id = ?
             ORDER BY r.id ASC
         `, [id]);
@@ -2038,9 +2086,10 @@ exports.getCupones = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT c.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_cupones c
             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
             WHERE c.closeout_id = ?
             ORDER BY c.id ASC
         `, [id]);
@@ -2112,9 +2161,10 @@ exports.saveCupones = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT c.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_cupones c
             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
             WHERE c.closeout_id = ?
             ORDER BY c.id ASC
         `, [id]);
@@ -2174,9 +2224,10 @@ exports.getDescuentos = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT d.*, desp.codigo as despachador_codigo, desp.descripcion as despachador_descripcion
+            SELECT d.*, desp.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), desp.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_descuentos d
             LEFT JOIN gas_station_despachadores desp ON d.despachador_id = desp.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = d.closeout_id AND cd.despachador_id = d.despachador_id
             WHERE d.closeout_id = ?
             ORDER BY d.id ASC
         `, [id]);
@@ -2252,9 +2303,10 @@ exports.saveDescuentos = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT d.*, desp.codigo as despachador_codigo, desp.descripcion as despachador_descripcion
+            SELECT d.*, desp.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), desp.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_descuentos d
             LEFT JOIN gas_station_despachadores desp ON d.despachador_id = desp.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = d.closeout_id AND cd.despachador_id = d.despachador_id
             WHERE d.closeout_id = ?
             ORDER BY d.id ASC
         `, [id]);
@@ -2314,9 +2366,10 @@ exports.getAdelantos = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT a.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT a.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_adelantos a
             LEFT JOIN gas_station_despachadores d ON a.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = a.closeout_id AND cd.despachador_id = a.despachador_id
             WHERE a.closeout_id = ?
             ORDER BY a.id ASC
         `, [id]);
@@ -2369,9 +2422,10 @@ exports.saveAdelantos = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT a.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT a.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_adelantos a
             LEFT JOIN gas_station_despachadores d ON a.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = a.closeout_id AND cd.despachador_id = a.despachador_id
             WHERE a.closeout_id = ?
             ORDER BY a.id ASC
         `, [id]);
@@ -2633,10 +2687,11 @@ exports.getTarjetas = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_tarjetas t
             LEFT JOIN gas_station_pos_types p ON t.pos_type_id = p.id
             LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = t.closeout_id AND cd.despachador_id = t.despachador_id
             WHERE t.closeout_id = ?
             ORDER BY t.id ASC
         `, [id]);
@@ -2692,10 +2747,11 @@ exports.saveTarjetas = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT t.*, p.nombre as pos_type_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_tarjetas t
             LEFT JOIN gas_station_pos_types p ON t.pos_type_id = p.id
             LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = t.closeout_id AND cd.despachador_id = t.despachador_id
             WHERE t.closeout_id = ?
             ORDER BY t.id ASC
         `, [id]);
@@ -2751,9 +2807,10 @@ exports.getCreditos = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT c.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_creditos c
             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
             WHERE c.closeout_id = ?
             ORDER BY c.id ASC
         `, [id]);
@@ -2815,9 +2872,10 @@ exports.saveCreditos = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT c.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_creditos c
             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
             WHERE c.closeout_id = ?
             ORDER BY c.id ASC
         `, [id]);
@@ -2873,9 +2931,10 @@ exports.getVales = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT v.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT v.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_vales v
             LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = v.closeout_id AND cd.despachador_id = v.despachador_id
             WHERE v.closeout_id = ?
             ORDER BY v.id ASC
         `, [id]);
@@ -2937,9 +2996,10 @@ exports.saveVales = async (req, res) => {
         }
 
         const [remaining] = await pool.query(`
-            SELECT v.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT v.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_vales v
             LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = v.closeout_id AND cd.despachador_id = v.despachador_id
             WHERE v.closeout_id = ?
             ORDER BY v.id ASC
         `, [id]);
@@ -3063,10 +3123,11 @@ exports.getAnticiposDesp = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+            SELECT ad.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                    COALESCE(ga.total_disponible, 0) AS saldo_disponible
             FROM gas_station_closeout_anticipos_despachados ad
             LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ad.closeout_id AND cd.despachador_id = ad.despachador_id
             LEFT JOIN (
                 SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
                 FROM gas_station_advances
@@ -3151,8 +3212,7 @@ exports.saveAnticiposDesp = async (req, res) => {
                     }
 
                     await connection.query(
-                        `INSERT INTO gas_station_closeout_anticipos_despachados (closeout_id, cliente_id, cliente_nombre, documento, tipo_documento, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT INTO gas_station_closeout_anticipos_despachados (closeout_id, cliente_id, cliente_nombre, documento, tipo_documento, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             parseInt(id),
                             a.cliente_id ? parseInt(a.cliente_id) : null,
@@ -3173,10 +3233,11 @@ exports.saveAnticiposDesp = async (req, res) => {
             }
 
             const [remaining] = await connection.query(`
-                SELECT ad.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+                SELECT ad.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                        COALESCE(ga.total_disponible, 0) AS saldo_disponible
                 FROM gas_station_closeout_anticipos_despachados ad
                 LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
+                LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ad.closeout_id AND cd.despachador_id = ad.despachador_id
                 LEFT JOIN (
                     SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
                     FROM gas_station_advances
@@ -3268,10 +3329,11 @@ exports.getTrupputDesp = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(`
-            SELECT td.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+            SELECT td.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                    COALESCE(gt.total_galones, 0) AS galones_disponibles
             FROM gas_station_closeout_trupput_despachos td
             LEFT JOIN gas_station_despachadores d ON td.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = td.closeout_id AND cd.despachador_id = td.despachador_id
             LEFT JOIN (
                 SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
                 FROM gas_station_trupput
@@ -3377,10 +3439,11 @@ exports.saveTrupputDesp = async (req, res) => {
             }
 
             const [remaining] = await connection.query(`
-                SELECT td.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion,
+                SELECT td.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                        COALESCE(gt.total_galones, 0) AS galones_disponibles
                 FROM gas_station_closeout_trupput_despachos td
                 LEFT JOIN gas_station_despachadores d ON td.despachador_id = d.id
+                LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = td.closeout_id AND cd.despachador_id = td.despachador_id
                 LEFT JOIN (
                     SELECT cliente_id, COALESCE(SUM(galones_disponibles), 0) AS total_galones
                     FROM gas_station_trupput
@@ -3541,7 +3604,7 @@ exports.getCloseoutPrintData = async (req, res) => {
         } catch (e) { /* table may not exist */ }
 
         const [despachadores] = await pool.query(
-            `SELECT cd.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            `SELECT cd.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
              FROM gas_station_closeout_despachadores cd
              JOIN gas_station_despachadores d ON d.id = cd.despachador_id
              WHERE cd.closeout_id = ?`, [id]
@@ -4190,7 +4253,7 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
 
         // Despachadores - aggregate
         const [allDespachadores] = await pool.query(`
-            SELECT cd.*, d.codigo as despachador_codigo, d.descripcion as despachador_descripcion
+            SELECT cd.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_despachadores cd
             JOIN gas_station_despachadores d ON d.id = cd.despachador_id
             WHERE cd.closeout_id IN (${placeholders})

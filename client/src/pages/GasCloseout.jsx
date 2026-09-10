@@ -344,6 +344,49 @@ const GasCloseout = () => {
         queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } })).data?.data || []
     });
 
+    // Opciones de despachadores para selectores de modales (Remesas, Tarjetas, Créditos, etc.)
+    // Toma prioritariamente el nombre ingresado para este turno específico (closeoutDespachadores.nombre)
+    const despachadoresOptions = useMemo(() => {
+        const closeoutMap = new Map();
+        (closeoutDespachadores || []).forEach(cd => {
+            closeoutMap.set(cd.despachador_id, cd);
+        });
+
+        if (closeoutDespachadores && closeoutDespachadores.length > 0) {
+            const options = closeoutDespachadores.map(cd => {
+                const catalogDesp = allDespachadores.find(a => a.id === cd.despachador_id);
+                const code = catalogDesp?.codigo || cd.despachador_codigo || '';
+                const name = cd.nombre || catalogDesp?.descripcion || '';
+                return {
+                    id: cd.despachador_id,
+                    codigo: code,
+                    descripcion: name,
+                    label: name ? `${code} — ${name}` : code
+                };
+            });
+
+            allDespachadores.forEach(d => {
+                if (!closeoutMap.has(d.id)) {
+                    options.push({
+                        id: d.id,
+                        codigo: d.codigo,
+                        descripcion: d.descripcion,
+                        label: d.descripcion ? `${d.codigo} — ${d.descripcion}` : d.codigo
+                    });
+                }
+            });
+
+            return options;
+        }
+
+        return allDespachadores.map(d => ({
+            id: d.id,
+            codigo: d.codigo,
+            descripcion: d.descripcion,
+            label: d.descripcion ? `${d.codigo} — ${d.descripcion}` : d.codigo
+        }));
+    }, [closeoutDespachadores, allDespachadores]);
+
     const { data: lastTurno } = useQuery({
         queryKey: ['gas-last-turno'],
         queryFn: async () => (await axios.get('/api/gas-station/closeouts/last-turno')).data
@@ -561,6 +604,15 @@ const GasCloseout = () => {
 
     const updateDespachadoresMutation = useMutation({
         mutationFn: (despachadores) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachadores`, { despachadores }),
+        onSuccess: (res) => {
+            if (res.data?.despachadores) {
+                setCloseoutDespachadores(prev => prev.map(p => {
+                    const saved = res.data.despachadores.find(s => s.despachador_id === p.despachador_id);
+                    return saved ? { ...p, nombre: saved.nombre } : p;
+                }));
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit', closeoutId] });
+        },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachadores')
     });
 
@@ -2095,14 +2147,11 @@ const GasCloseout = () => {
                             className="w-full border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                         >
                             <option value="">-- Seleccionar despachador --</option>
-                            {closeoutDespachadores.map(d => {
-                                const desp = allDespachadores.find(a => a.id === d.despachador_id);
-                                return (
-                                    <option key={d.despachador_id} value={d.despachador_id}>
-                                        {desp?.codigo || ''} — {d.nombre || desp?.descripcion || ''}
-                                    </option>
-                                );
-                            })}
+                            {despachadoresOptions.map(d => (
+                                <option key={d.id} value={d.id}>
+                                    {d.label}
+                                </option>
+                            ))}
                         </select>
                         {modalSelectedDespachadorId && (
                             <div className="mt-5 border-t border-slate-100 pt-4">
@@ -2615,18 +2664,22 @@ const GasCloseout = () => {
                                                             {estado !== 'cerrado' ? (
                                                                 <input
                                                                     type="text"
-                                                                    value={d.nombre}
+                                                                    value={d.nombre || ''}
                                                                     onChange={(e) => {
                                                                         const updated = [...closeoutDespachadores];
                                                                         updated[i] = { ...updated[i], nombre: e.target.value };
                                                                         setCloseoutDespachadores(updated);
                                                                     }}
-                                                                    onBlur={() => updateDespachadoresMutation.mutate(closeoutDespachadores)}
+                                                                    onBlur={(e) => {
+                                                                        const updated = [...closeoutDespachadores];
+                                                                        updated[i] = { ...updated[i], nombre: e.target.value };
+                                                                        updateDespachadoresMutation.mutate(updated);
+                                                                    }}
                                                                     placeholder="Nombre"
                                                                     className="w-full px-1 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] font-medium"
                                                                 />
                                                             ) : (
-                                                                <span className="text-slate-600">{d.nombre}</span>
+                                                                <span className="text-slate-600">{d.nombre || ''}</span>
                                                             )}
                                                         </td>
                                                         <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-600"><Money value={venta} /></td>
@@ -3082,9 +3135,9 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                        {allDespachadores.map(d => (
-                                                            <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                        {despachadoresOptions.map(d => (
+                                                            <option key={d.id} value={d.id}>{d.label}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -3222,9 +3275,9 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                        {allDespachadores.map(disp => (
-                                                            <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
+                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                        {despachadoresOptions.map(disp => (
+                                                            <option key={disp.id} value={disp.id}>{disp.label}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -3406,9 +3459,9 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                        {allDespachadores.map(d => (
-                                                            <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                        {despachadoresOptions.map(d => (
+                                                            <option key={d.id} value={d.id}>{d.label}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -3572,9 +3625,9 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                        {allDespachadores.map(disp => (
-                                                            <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
+                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                        {despachadoresOptions.map(disp => (
+                                                            <option key={disp.id} value={disp.id}>{disp.label}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -3712,9 +3765,9 @@ const GasCloseout = () => {
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                        {allDespachadores.map(disp => (
-                                                            <option key={disp.id} value={disp.id}>{disp.codigo} — {disp.descripcion}</option>
+                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                        {despachadoresOptions.map(disp => (
+                                                            <option key={disp.id} value={disp.id}>{disp.label}</option>
                                                         ))}
                                                     </select>
                                                 </td>
@@ -3872,9 +3925,9 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                            {allDespachadores.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                            {despachadoresOptions.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.label}</option>
                                                             ))}
                                                         </select>
                                                     </td>
@@ -4384,9 +4437,9 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                            {allDespachadores.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                            {despachadoresOptions.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.label}</option>
                                                             ))}
                                                         </select>
                                                     </td>
@@ -4617,9 +4670,9 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                            {allDespachadores.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                            {despachadoresOptions.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.label}</option>
                                                             ))}
                                                         </select>
                                                     </td>
@@ -5103,9 +5156,9 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                            {allDespachadores.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                            {despachadoresOptions.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.label}</option>
                                                             ))}
                                                         </select>
                                                     </td>
@@ -5340,9 +5393,9 @@ const GasCloseout = () => {
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
-                                                            {allDespachadores.length === 0 && <option value="">Sin despachador</option>}
-                                                            {allDespachadores.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
+                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
+                                                            {despachadoresOptions.map(d => (
+                                                                <option key={d.id} value={d.id}>{d.label}</option>
                                                             ))}
                                                         </select>
                                                     </td>
@@ -5541,7 +5594,7 @@ const GasCloseout = () => {
                                     <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-lg min-w-[60px]">{desp?.codigo || ''}</span>
                                     <input
                                         type="text"
-                                        value={d.nombre}
+                                        value={d.nombre || ''}
                                         onChange={(e) => {
                                             const updated = [...closeoutDespachadores];
                                             updated[i] = { ...updated[i], nombre: e.target.value };
@@ -5578,7 +5631,7 @@ const GasCloseout = () => {
                         {allDespachadores
                             .filter(a => !closeoutDespachadores.find(d => d.despachador_id === a.id))
                             .map(a => (
-                                <option key={a.id} value={a.id}>{a.codigo} — {a.descripcion}</option>
+                                <option key={a.id} value={a.id}>{a.descripcion ? `${a.codigo} — ${a.descripcion}` : a.codigo}</option>
                             ))}
                     </select>
                 </div>
