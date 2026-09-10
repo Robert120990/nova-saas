@@ -758,18 +758,80 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 ];
                 break;
             }
-            case 'adelantos':
-            case 'vales':
-            case 'anticipos_desp': {
-                const tableMap = {
-                    adelantos: { table: 'gas_station_closeout_adelantos', montoField: 'monto' },
-                    vales: { table: 'gas_station_closeout_vales', montoField: 'monto' },
-                    anticipos_desp: { table: 'gas_station_closeout_anticipos_despachados', montoField: 'monto' }
-                };
-                const cfg = tableMap[tipo_reporte];
+            case 'vales': {
                 sql = `
-                    SELECT g.fecha_turno, g.numero_turno, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador, r.${cfg.montoField} as monto
-                    FROM ${cfg.table} r
+                    SELECT g.fecha_turno, 
+                           g.numero_turno, 
+                           COALESCE(NULLIF(r.documento, ''), '—') as documento,
+                           COALESCE(NULLIF(r.cliente_nombre, ''), NULLIF(c.nombre, ''), '—') as cliente,
+                           COALESCE(NULLIF(r.producto_descripcion, ''), NULLIF(r.producto_codigo, ''), '—') as producto,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           COALESCE(r.cantidad, 0) as cantidad,
+                           COALESCE(r.precio, 0) as precio,
+                           COALESCE(r.monto, 0) as monto
+                    FROM gas_station_closeout_vales r
+                    JOIN gas_station_closeouts g ON r.closeout_id = g.id
+                    LEFT JOIN customers c ON r.cliente_id = c.id
+                    LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+                    LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
+                    WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
+                    ORDER BY g.fecha_turno, g.numero_turno, r.id
+                `;
+                params = [companyId, start_date, end_date, ...branchParams];
+                columns = [
+                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 65, accessor: 'documento' },
+                    { label: 'Cliente', w: 170, accessor: 'cliente' },
+                    { label: 'Producto', w: 95, accessor: 'producto' },
+                    { label: 'Despachador', w: 105, accessor: 'despachador' },
+                    { label: 'Cantidad', w: 65, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 50, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Monto', w: 65, accessor: 'monto', format: 'money', align: 'right' }
+                ];
+                break;
+            }
+            case 'anticipos_desp': {
+                sql = `
+                    SELECT g.fecha_turno, 
+                           g.numero_turno, 
+                           COALESCE(NULLIF(r.documento, ''), '—') as documento,
+                           COALESCE(NULLIF(r.cliente_nombre, ''), NULLIF(c.nombre, ''), '—') as cliente,
+                           COALESCE(NULLIF(r.producto_descripcion, ''), NULLIF(r.producto_codigo, ''), '—') as producto,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           COALESCE(r.cantidad, 0) as cantidad,
+                           COALESCE(r.precio, 0) as precio,
+                           COALESCE(r.monto, 0) as monto
+                    FROM gas_station_closeout_anticipos_despachados r
+                    JOIN gas_station_closeouts g ON r.closeout_id = g.id
+                    LEFT JOIN customers c ON r.cliente_id = c.id
+                    LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+                    LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
+                    WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
+                    ORDER BY g.fecha_turno, g.numero_turno, r.id
+                `;
+                params = [companyId, start_date, end_date, ...branchParams];
+                columns = [
+                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 65, accessor: 'documento' },
+                    { label: 'Cliente', w: 170, accessor: 'cliente' },
+                    { label: 'Producto', w: 95, accessor: 'producto' },
+                    { label: 'Despachador', w: 105, accessor: 'despachador' },
+                    { label: 'Cantidad', w: 65, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 50, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Monto', w: 65, accessor: 'monto', format: 'money', align: 'right' }
+                ];
+                break;
+            }
+            case 'adelantos': {
+                sql = `
+                    SELECT g.fecha_turno, 
+                           g.numero_turno, 
+                           COALESCE(r.empleado, '—') as empleado,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador, 
+                           r.monto as monto
+                    FROM gas_station_closeout_adelantos r
                     JOIN gas_station_closeouts g ON r.closeout_id = g.id
                     LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
                     LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
@@ -778,10 +840,11 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 80, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 120, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Despachador', w: 300, accessor: 'despachador' },
-                    { label: 'Monto', w: 120, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 60, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 90, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Empleado', w: 220, accessor: 'empleado' },
+                    { label: 'Despachador', w: 220, accessor: 'despachador' },
+                    { label: 'Monto', w: 140, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
