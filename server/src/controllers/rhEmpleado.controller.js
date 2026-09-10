@@ -6,7 +6,7 @@ const LABEL = 'Empleado';
 
 const getEmpleados = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, solo_activos } = req.query;
+        const { search, page = 1, limit = 15, solo_activos, cargo_id, departamento_personal_id, branch_id, estado } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `
@@ -15,6 +15,7 @@ const getEmpleados = async (req, res) => {
                    d.descripcion as departamento_nombre,
                    a.descripcion as afp_nombre,
                    tc.descripcion as tipo_contrato_nombre,
+                   b.nombre as sucursal_nombre,
                    (SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT('id', ec.id, 'nombre', ec.nombre, 'telefono', ec.telefono, 'parentesco', ec.parentesco)), '[]')
                     FROM rh_empleado_emergency_contacts ec WHERE ec.empleado_id = e.id
                    ) AS emergency_contacts
@@ -23,6 +24,7 @@ const getEmpleados = async (req, res) => {
             LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
             LEFT JOIN rh_afp a ON e.afp_id = a.id
             LEFT JOIN rh_tipos_contrato tc ON e.tipo_contrato_id = tc.id
+            LEFT JOIN branches b ON e.branch_id = b.id
             WHERE e.company_id = ?
         `;
         let params = [req.company_id];
@@ -33,8 +35,25 @@ const getEmpleados = async (req, res) => {
             params.push(s, s, s, s);
         }
 
-        if (solo_activos === '1' || solo_activos === 'true') {
+        if (cargo_id && cargo_id !== 'all' && cargo_id !== '') {
+            query += ` AND e.cargo_id = ?`;
+            params.push(parseInt(cargo_id));
+        }
+
+        if (departamento_personal_id && departamento_personal_id !== 'all' && departamento_personal_id !== '') {
+            query += ` AND e.departamento_personal_id = ?`;
+            params.push(parseInt(departamento_personal_id));
+        }
+
+        if (branch_id && branch_id !== 'all' && branch_id !== '') {
+            query += ` AND e.branch_id = ?`;
+            params.push(parseInt(branch_id));
+        }
+
+        if (estado === 'activo' || estado === '1' || solo_activos === '1' || solo_activos === 'true') {
             query += ` AND e.es_activo = 1`;
+        } else if (estado === 'inactivo' || estado === '0') {
+            query += ` AND e.es_activo = 0`;
         }
 
         const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM (${query}) as sub`, params);
@@ -59,6 +78,7 @@ const getEmpleado = async (req, res) => {
                    d.descripcion as departamento_nombre,
                    a.descripcion as afp_nombre,
                    tc.descripcion as tipo_contrato_nombre,
+                   b.nombre as sucursal_nombre,
                    (SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT('id', ec.id, 'nombre', ec.nombre, 'telefono', ec.telefono, 'parentesco', ec.parentesco)), '[]')
                     FROM rh_empleado_emergency_contacts ec WHERE ec.empleado_id = e.id
                    ) AS emergency_contacts
@@ -67,6 +87,7 @@ const getEmpleado = async (req, res) => {
             LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
             LEFT JOIN rh_afp a ON e.afp_id = a.id
             LEFT JOIN rh_tipos_contrato tc ON e.tipo_contrato_id = tc.id
+            LEFT JOIN branches b ON e.branch_id = b.id
             WHERE e.id = ? AND e.company_id = ?
         `;
         const [rows] = await pool.query(query, [id, req.company_id]);
@@ -94,7 +115,7 @@ const createEmpleado = async (req, res) => {
     try {
         let { codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
               ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-              cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
+              cargo_id, departamento_personal_id, branch_id, num_isss, num_nup, fecha_ingreso,
               tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
               es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios,
               emergency_contacts } = req.body;
@@ -107,16 +128,18 @@ const createEmpleado = async (req, res) => {
             codigo = String(maxResult[0].next).padStart(4, '0');
         }
 
+        const cleanBranchId = branch_id && branch_id !== '' && branch_id !== 'null' ? parseInt(branch_id) : null;
+
         const [result] = await pool.query(
             `INSERT INTO ${TABLE} (company_id, codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
               ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-              cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
+              cargo_id, departamento_personal_id, branch_id, num_isss, num_nup, fecha_ingreso,
               tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
               es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [req.company_id, codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
              ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-             cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
+             cargo_id, departamento_personal_id, cleanBranchId, num_isss, num_nup, fecha_ingreso,
              tipo_contrato_id, sueldo_base || 0, bonificacion_fija || 0, cuenta_planillera,
              es_activo ?? 1, es_jubilado ?? 0, en_vacaciones ?? 0, incapacitado ?? 0, comentarios]
         );
@@ -133,7 +156,7 @@ const createEmpleado = async (req, res) => {
             }
         }
 
-        notificationService.notify('employee_created', req.company_id, req.user?.branch_id, {
+        notificationService.notify('employee_created', req.company_id, cleanBranchId || req.user?.branch_id, {
             empleado_nombre: `${nombres || ''} ${apellidos || ''}`.trim(),
             empleado_codigo: codigo || '',
             cargo: '',
@@ -155,21 +178,23 @@ const updateEmpleado = async (req, res) => {
         const { id } = req.params;
         const { codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
                 ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-                cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
+                cargo_id, departamento_personal_id, branch_id, num_isss, num_nup, fecha_ingreso,
                 tipo_contrato_id, sueldo_base, bonificacion_fija, cuenta_planillera,
                 es_activo, es_jubilado, en_vacaciones, incapacitado, comentarios,
                 emergency_contacts } = req.body;
 
+        const cleanBranchId = branch_id && branch_id !== '' && branch_id !== 'null' ? parseInt(branch_id) : null;
+
         const [result] = await pool.query(
             `UPDATE ${TABLE} SET codigo = ?, nombres = ?, apellidos = ?, fecha_nacimiento = ?, num_dui = ?, num_nit = ?, afp_id = ?,
              ocupacion = ?, direccion = ?, departamento = ?, municipio = ?, distrito = ?, telefono = ?, correo = ?,
-             cargo_id = ?, departamento_personal_id = ?, num_isss = ?, num_nup = ?, fecha_ingreso = ?,
+             cargo_id = ?, departamento_personal_id = ?, branch_id = ?, num_isss = ?, num_nup = ?, fecha_ingreso = ?,
              tipo_contrato_id = ?, sueldo_base = ?, bonificacion_fija = ?, cuenta_planillera = ?,
              es_activo = ?, es_jubilado = ?, en_vacaciones = ?, incapacitado = ?, comentarios = ?
              WHERE id = ? AND company_id = ?`,
             [codigo, nombres, apellidos, fecha_nacimiento, num_dui, num_nit, afp_id,
              ocupacion, direccion, departamento, municipio, distrito, telefono, correo,
-             cargo_id, departamento_personal_id, num_isss, num_nup, fecha_ingreso,
+             cargo_id, departamento_personal_id, cleanBranchId, num_isss, num_nup, fecha_ingreso,
              tipo_contrato_id, sueldo_base || 0, bonificacion_fija || 0, cuenta_planillera,
              es_activo ?? 1, es_jubilado ?? 0, en_vacaciones ?? 0, incapacitado ?? 0, comentarios,
              id, req.company_id]
