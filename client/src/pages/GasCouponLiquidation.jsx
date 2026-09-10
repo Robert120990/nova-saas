@@ -756,7 +756,7 @@ const GasCouponLiquidation = () => {
                 title="Nueva Liquidación de Cupones (Sistema vs Físicos)"
                 maxWidth="max-w-6xl"
             >
-                <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto">
+                <div className="space-y-6">
                     {/* Paso 1: Filtros para traer cupones del sistema */}
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
                         <div className="flex items-center justify-between">
@@ -1135,7 +1135,7 @@ const GasCouponLiquidation = () => {
                 title="Registrar Cupón Físico Sobrante (Sin Registro Previo)"
                 maxWidth="max-w-md"
             >
-                <div className="p-6 space-y-4">
+                <div className="space-y-4">
                     <p className="text-xs text-slate-500">
                         Este cupón fue recibido físicamente pero no se encuentra registrado en los turnos seleccionados. Ingrese los datos para incluirlo como sobrante:
                     </p>
@@ -1224,7 +1224,7 @@ const GasCouponLiquidation = () => {
                 title={`Detalle de Liquidación: ${selectedLiquidation?.correlativo || ''}`}
                 maxWidth="max-w-5xl"
             >
-                <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto">
+                <div className="space-y-6">
                     {detailLoading ? (
                         <div className="py-12 text-center text-slate-400">
                             <Loader2 className="animate-spin inline mr-2 text-indigo-600" size={24} />
