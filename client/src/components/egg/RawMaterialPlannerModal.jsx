@@ -3,6 +3,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
     Boxes,
     Truck,
@@ -11,6 +13,7 @@ import {
     CheckCircle2,
     Calendar,
     Printer,
+    FileDown,
     RefreshCw,
     Droplets,
     Sparkles,
@@ -52,8 +55,221 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
         }
     }, [isOpen, year, month]);
 
-    const handlePrint = () => {
-        window.print();
+    const buildMrpPdfDoc = () => {
+        if (!plannerData) {
+            toast.error('No hay datos de planificación disponibles para exportar.');
+            return null;
+        }
+
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'letter'
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const eggBal = plannerData?.raw_egg_balance || {};
+        const ingBal = plannerData?.ingredients_balance || {};
+        const packBal = plannerData?.packaging_balance || {};
+        const isDeficit = (eggBal.net_balance_boxes || 0) < 0;
+        const currentPeriod = `${monthNames[month - 1]} ${year}`;
+        const emissionDate = new Date().toLocaleDateString('es-SV', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        const mainProvider = plannerData?.trucks_schedule?.[0]?.suggested_provider || 'AVICOLA SALVADOREÑA, S.A. DE C.V.';
+
+        // 1. Header Corporativo Superior
+        doc.setFillColor(15, 23, 42); // slate-900
+        doc.rect(0, 0, pageWidth, 26, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('ANDELSA, S.A. DE C.V.', 14, 11);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(203, 213, 225); // slate-300
+        doc.text('PLANTA INDUSTRIAL DE PASTEURIZACIÓN Y QUEBRADO DE HUEVO LÍQUIDO', 14, 16);
+        doc.text('SISTEMA DE PLANIFICACIÓN DE REQUERIMIENTOS DE MATERIALES (MRP)', 14, 21);
+
+        // Etiqueta a la derecha
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(56, 189, 248); // sky-400
+        doc.text('PROGRAMA DE ABASTECIMIENTO', pageWidth - 14, 12, { align: 'right' });
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7.5);
+        doc.text(`PERIODO: ${currentPeriod.toUpperCase()}`, pageWidth - 14, 18, { align: 'right' });
+
+        // 2. Título de Documento y Metadatos de Emisión
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text('ORDEN CONSOLIDADA Y CRONOGRAMA DE ENTREGA DE MATERIA PRIMA', 14, 34);
+
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Documento Oficial de Programación | Fecha de Emisión: ${emissionDate} | Planta ANDELSA El Salvador`, 14, 39);
+
+        // 3. Tabla de Metadatos y Balance General
+        autoTable(doc, {
+            startY: 43,
+            theme: 'grid',
+            headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+            bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2 },
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 55 },
+                1: { fontStyle: 'bold', cellWidth: 50 },
+                2: { cellWidth: 83 }
+            },
+            head: [['Parámetro de Planificación', 'Valor Calculado', 'Detalle Logístico / Justificación']],
+            body: [
+                ['Proveedor Principal:', mainProvider, 'Proveedor preferente para suministro de huevo cáscara'],
+                ['Periodo de Cobertura:', currentPeriod, `${plannerData?.scheduled_productions_count || 0} corridas programadas / ${plannerData?.customer_orders_count || 0} pedidos CRM`],
+                ['Requerimiento Total Bruto:', `${(eggBal.total_boxes_needed || 0).toLocaleString()} cajas (~${(eggBal.total_liquid_lbs_needed || 0).toLocaleString()} Lbs)`, 'Demanda calculada para cubrir el programa de pasteurización'],
+                ['Stock Aprobado en Cuarto Frío:', `${(eggBal.current_stock_boxes || 0).toLocaleString()} cajas (${(eggBal.current_stock_lbs || 0).toLocaleString()} Lbs)`, 'Inventario disponible bajo cadena de frío 2°C - 6°C'],
+                ['Balance Neto Mensual:', `${isDeficit ? '-' : '+'}${Math.abs(eggBal.net_balance_boxes || 0).toLocaleString()} cajas`, isDeficit ? 'Déficit mensual: Requiere compra y despacho de camiones' : 'Superávit en inventario'],
+                ['VOLUMEN TOTAL A COMPRAR:', `${(eggBal.boxes_to_purchase || 0).toLocaleString()} CAJAS (~${(eggBal.estimated_purchase_cost_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`, 'Distribuido en despachos semanales para rotación óptima']
+            ]
+        });
+
+        // 4. Tabla de Cronograma Semanal de Camiones Refrigerados
+        const truckRows = (plannerData?.trucks_schedule || []).map(t => [
+            t.week_label || 'Semana',
+            t.suggested_delivery_date || 'A coordinar',
+            `${t.boxes_count || 0} cajas`,
+            `~${(t.weight_lbs || 0).toLocaleString()} Lbs`,
+            t.suggested_provider || mainProvider,
+            '4.0°C a 8.0°C',
+            'Muestreo LAB-004'
+        ]);
+
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 5,
+            theme: 'striped',
+            headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+            bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2 },
+            head: [['Entrega', 'Fecha Arribo', 'Carga Solicitada', 'Peso Est.', 'Proveedor', 'Temp. Furgón', 'Control Recepción']],
+            body: truckRows
+        });
+
+        // 5. Tabla de Consolidado de Insumos y Empaques
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 5,
+            theme: 'grid',
+            headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+            bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2 },
+            head: [['Material / Insumo Requerido', 'Cantidad Mensual', 'Presentación Sugerida', 'Aplicación en Planta']],
+            body: [
+                ['Huevo Cáscara Grado A', `${(eggBal.boxes_to_purchase || 0).toLocaleString()} cajas`, 'Cajas de 360 uds (12 cartones)', 'Materia prima base de quebrado y pasteurización'],
+                ['Agua Desmineralizada Purificada', `${ingBal.purified_water?.bottles_5gal || 0} garrafas (~${(ingBal.purified_water?.lbs || 0).toLocaleString()} Lbs)`, 'Garrafas 5 galones grado alimentario', 'Estandarización de sólidos totales según ficha técnica'],
+                ['Ácido Cítrico Grado Alimentario', `${ingBal.citric_acid?.lbs || 0} Lbs (${ingBal.citric_acid?.kg || 0} Kg)`, 'Sacos de 25 Kg anhidro USP', 'Regulador de pH y conservante inocuo de lote'],
+                ['Cubetas Plásticas 30 Lbs', `${(packBal.buckets_30lb || 0).toLocaleString()} unidades`, 'Pallets de 250 cubetas vírgenes', 'Envasado primario estandarizado para clientes'],
+                ['Tapaderas Herméticas con Anillo', `${(packBal.lids || 0).toLocaleString()} unidades`, 'Cajas de tapaderas precintadas', 'Cierre hermético con sello de seguridad inviolable'],
+                ['Bolsas / Liners Grado Alimento', `${(packBal.food_grade_liners || 0).toLocaleString()} unidades`, 'Fardos sellados (+2% merma)', 'Recubrimiento interno sanitario de cubeta']
+            ]
+        });
+
+        // 6. Directrices Técnicas de Calidad e Inocuidad para el Proveedor
+        let specY = doc.lastAutoTable.finalY + 5;
+        if (specY > pageHeight - 55) {
+            doc.addPage();
+            specY = 16;
+        }
+
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(203, 213, 225);
+        doc.roundedRect(14, specY, pageWidth - 28, 28, 1.5, 1.5, 'FD');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text('ESPECIFICACIONES TÉCNICAS Y POLÍTICA DE RECEPCIÓN EN PLANTA:', 17, specY + 4.5);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.8);
+        doc.setTextColor(71, 85, 105);
+        doc.text('1. Cadena de Frío: El transporte debe realizarse en furgón refrigerado a temperatura controlada de 4.0°C a 8.0°C con termógrafo legible.', 17, specY + 9);
+        doc.text('2. Frescura de Postura: El huevo cáscara debe contar con un máximo de 5 días post-postura para garantizar viscosidad y rendimiento de quebrado.', 17, specY + 13.5);
+        doc.text('3. Higiene y Embalaje: Las cajas y cartones deben ser de primer uso o tarimas plásticas desinfectadas, libres de humedad y suciedad externa.', 17, specY + 18);
+        doc.text('4. Muestreo HACCP LAB-004: La descarga está sujeta a verificación de temperatura, lote, ausencia de olor extraño y prueba de cámara fría.', 17, specY + 22.5);
+
+        // 7. Bloque de Firmas
+        let signY = specY + 40;
+        if (signY > pageHeight - 20) {
+            doc.addPage();
+            signY = 30;
+        }
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+
+        const colWidth = (pageWidth - 28) / 3;
+        const x1 = 14 + colWidth * 0.1;
+        const x2 = 14 + colWidth + colWidth * 0.1;
+        const x3 = 14 + colWidth * 2 + colWidth * 0.1;
+        const lineW = colWidth * 0.8;
+
+        doc.line(x1, signY, x1 + lineW, signY);
+        doc.text('Planificación y Producción', x1 + lineW / 2, signY + 3.5, { align: 'center' });
+        doc.text('ANDELSA Planta Industrial', x1 + lineW / 2, signY + 7, { align: 'center' });
+
+        doc.line(x2, signY, x2 + lineW, signY);
+        doc.text('Gerencia de Operaciones / Planta', x2 + lineW / 2, signY + 3.5, { align: 'center' });
+        doc.text('Aprobación de Abastecimiento', x2 + lineW / 2, signY + 7, { align: 'center' });
+
+        doc.line(x3, signY, x3 + lineW, signY);
+        doc.text('Recibido y Aceptado', x3 + lineW / 2, signY + 3.5, { align: 'center' });
+        doc.text(mainProvider.slice(0, 26), x3 + lineW / 2, signY + 7, { align: 'center' });
+
+        // Pie de página con numeración
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setFontSize(6.5);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(148, 163, 184);
+            doc.text(
+                `Planta Pasteurizadora ANDELSA — Documento Oficial MRP — Página ${i} de ${totalPages}`,
+                pageWidth / 2,
+                pageHeight - 6,
+                { align: 'center' }
+            );
+        }
+
+        return doc;
+    };
+
+    const handleDownloadPdf = () => {
+        try {
+            const doc = buildMrpPdfDoc();
+            if (!doc) return;
+            const filename = `Orden_Abastecimiento_MRP_${monthNames[month - 1]}_${year}.pdf`;
+            doc.save(filename);
+            toast.success(`Orden de abastecimiento MRP descargada: ${filename}`);
+        } catch (err) {
+            console.error('Error generando PDF de MRP:', err);
+            toast.error('Error al generar el PDF de abastecimiento.');
+        }
+    };
+
+    const handlePrintPdf = () => {
+        try {
+            const doc = buildMrpPdfDoc();
+            if (!doc) return;
+            doc.autoPrint();
+            const blobUrl = doc.output('bloburl');
+            window.open(blobUrl, '_blank');
+        } catch (err) {
+            console.error('Error imprimiendo PDF de MRP:', err);
+            toast.error('Error al preparar impresión del PDF.');
+        }
     };
 
     if (!isOpen) return null;
@@ -114,11 +330,22 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
-                            onClick={handlePrint}
+                            onClick={handleDownloadPdf}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                            title="Descargar Orden Formal de Abastecimiento en PDF para proveedores"
+                        >
+                            <FileDown className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Descargar PDF Formal</span>
+                            <span className="sm:hidden">PDF</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handlePrintPdf}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                            title="Imprimir documento oficial en PDF limpio"
                         >
                             <Printer className="w-3.5 h-3.5" />
-                            <span>Imprimir / PDF</span>
+                            <span>Imprimir</span>
                         </button>
                     </div>
                 </div>
@@ -520,7 +747,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         {activeTab === 'orders' && (
                             <div className="space-y-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
                                 <div className="border-b border-slate-200 pb-3">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                         <div>
                                             <h2 className="text-base font-bold text-slate-900">
                                                 Plan Consolidado de Abastecimiento de Materia Prima
@@ -529,9 +756,27 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                                 Planta Pasteurizadora ANDELSA — Periodo: {monthNames[month - 1]} {year}
                                             </p>
                                         </div>
-                                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
-                                            {eggBal.status === 'suficiente' ? 'Stock Cubierto' : 'Compra Requerida'}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 mr-1">
+                                                {eggBal.status === 'suficiente' ? 'Stock Cubierto' : 'Compra Requerida'}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={handleDownloadPdf}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                            >
+                                                <FileDown className="w-3.5 h-3.5" />
+                                                <span>Descargar PDF</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handlePrintPdf}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                                            >
+                                                <Printer className="w-3.5 h-3.5" />
+                                                <span>Imprimir</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 

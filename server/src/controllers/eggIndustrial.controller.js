@@ -30,6 +30,40 @@ const computeJulianLotCode = (productionDate, runNumber = 1) => {
     return `LOTE-${year2Digit}${dayOfYearStr}-${runStr}`;
 };
 
+
+// Auto-garantizar columnas requeridas en caliente para evitar ER_BAD_FIELD_ERROR
+let schemaEnsured = false;
+const ensureEggSchema = async () => {
+    if (schemaEnsured) return;
+    try {
+        const [schedCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'scheduled_production_id'"
+        );
+        if (schedCols.length === 0) {
+            await pool.query("ALTER TABLE egg_production_batches ADD COLUMN scheduled_production_id INT NULL AFTER batch_code_display");
+            console.log("[EggIndustrial] Auto-migrated scheduled_production_id in egg_production_batches.");
+        }
+        const [tarimaCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'batch_raw_materials' AND COLUMN_NAME = 'tarimas_json'"
+        );
+        if (tarimaCols.length === 0) {
+            await pool.query("ALTER TABLE batch_raw_materials ADD COLUMN tarimas_json JSON NULL AFTER quantity_lbs");
+            console.log("[EggIndustrial] Auto-migrated tarimas_json in batch_raw_materials.");
+        }
+        const [boxesCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'batch_raw_materials' AND COLUMN_NAME = 'boxes_count'"
+        );
+        if (boxesCols.length === 0) {
+            await pool.query("ALTER TABLE batch_raw_materials ADD COLUMN boxes_count INT DEFAULT 0 AFTER tarimas_json");
+            console.log("[EggIndustrial] Auto-migrated boxes_count in batch_raw_materials.");
+        }
+        schemaEnsured = true;
+    } catch (err) {
+        console.warn("[EggIndustrial] ensureEggSchema notice:", err.message);
+    }
+};
+ensureEggSchema().catch(() => {});
+
 // 1. RECEPCIÓN DE MATERIA PRIMA
 const getRawMaterials = async (req, res) => {
     try {
@@ -278,14 +312,28 @@ const quickSanitizeCip = async (req, res) => {
 // 3. LOTES DE PRODUCCIÓN
 const getProductionBatches = async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date
-             FROM egg_production_batches b
-             LEFT JOIN egg_scheduled_productions esp ON b.scheduled_production_id = esp.id
-             WHERE b.company_id = ? 
-             ORDER BY b.started_at DESC`,
-            [req.company_id]
-        );
+        await ensureEggSchema();
+        let rows = [];
+        try {
+            const [queriedRows] = await pool.query(
+                `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date
+                 FROM egg_production_batches b
+                 LEFT JOIN egg_scheduled_productions esp ON b.scheduled_production_id = esp.id
+                 WHERE b.company_id = ? 
+                 ORDER BY b.started_at DESC`,
+                [req.company_id]
+            );
+            rows = queriedRows;
+        } catch (queryErr) {
+            console.warn("[getProductionBatches] Query with join failed, falling back to direct batches query:", queryErr.message);
+            const [fallbackRows] = await pool.query(
+                `SELECT b.* FROM egg_production_batches b
+                 WHERE b.company_id = ? 
+                 ORDER BY b.started_at DESC`,
+                [req.company_id]
+            );
+            rows = fallbackRows;
+        }
 
         for (const batch of rows) {
             const [materials] = await pool.query(
@@ -296,7 +344,7 @@ const getProductionBatches = async (req, res) => {
                 [batch.id]
             );
             for (const m of materials) {
-                if (typeof m.tarimas_json === 'string') {
+                if (m.tarimas_json && typeof m.tarimas_json === 'string') {
                     try { m.tarimas = JSON.parse(m.tarimas_json); } catch (e) { m.tarimas = []; }
                 } else {
                     m.tarimas = m.tarimas_json || [];
@@ -319,6 +367,7 @@ const getProductionBatches = async (req, res) => {
 
         res.json(rows);
     } catch (error) {
+        console.error("Error in getProductionBatches:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -399,20 +448,39 @@ const createProductionBatch = async (req, res) => {
         const { ingredients_json, target_brix, target_solids_pct } = req.body;
         const scheduled_production_id = req.body.scheduled_production_id ? parseInt(req.body.scheduled_production_id, 10) : null;
 
-        const [result] = await connection.query(
-            `INSERT INTO egg_production_batches (
-                company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type, 
-                presentation, ingredients_json, status, input_weight_lbs, 
-                target_brix, target_solids_pct, operator_name
-            ) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
-            [
-                company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type, 
-                presentation, JSON.stringify(ingredients_json || {}), totalInputWeight, 
-                target_brix || null, target_solids_pct || null, operator_name
-            ]
-        );
-        const batchId = result.insertId;
+        let batchId;
+        try {
+            const [result] = await connection.query(
+                `INSERT INTO egg_production_batches (
+                    company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type, 
+                    presentation, ingredients_json, status, input_weight_lbs, 
+                    target_brix, target_solids_pct, operator_name
+                ) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+                [
+                    company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type, 
+                    presentation, JSON.stringify(ingredients_json || {}), totalInputWeight, 
+                    target_brix || null, target_solids_pct || null, operator_name
+                ]
+            );
+            batchId = result.insertId;
+        } catch (insertErr) {
+            console.warn("[createProductionBatch] Primary insert failed, falling back without scheduled_production_id:", insertErr.message);
+            const [result] = await connection.query(
+                `INSERT INTO egg_production_batches (
+                    company_id, branch_id, batch_uuid, batch_code_display, product_type, 
+                    presentation, ingredients_json, status, input_weight_lbs, 
+                    target_brix, target_solids_pct, operator_name
+                ) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+                [
+                    company_id, branch_id, batch_uuid, batch_code_display, product_type, 
+                    presentation, JSON.stringify(ingredients_json || {}), totalInputWeight, 
+                    target_brix || null, target_solids_pct || null, operator_name
+                ]
+            );
+            batchId = result.insertId;
+        }
 
         // Insert batch_raw_materials and deduct stock (with tarimas breakdown support)
         for (const rm of raw_materials) {
@@ -420,10 +488,18 @@ const createProductionBatch = async (req, res) => {
             const boxes = parseInt(rm.boxes_count || rm.total_boxes || 0, 10);
             const tarimasJson = rm.tarimas && Array.isArray(rm.tarimas) ? JSON.stringify(rm.tarimas) : (rm.tarimas_json || null);
 
-            await connection.query(
-                'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
-                [batchId, rm.raw_material_id, qty, tarimasJson, boxes]
-            );
+            try {
+                await connection.query(
+                    'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
+                    [batchId, rm.raw_material_id, qty, tarimasJson, boxes]
+                );
+            } catch (brmErr) {
+                console.warn("[createProductionBatch] Insert into batch_raw_materials with tarimas failed, falling back:", brmErr.message);
+                await connection.query(
+                    'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs) VALUES (?, ?, ?)',
+                    [batchId, rm.raw_material_id, qty]
+                );
+            }
 
             if (boxes > 0) {
                 await connection.query(
@@ -440,21 +516,25 @@ const createProductionBatch = async (req, res) => {
 
         // Si se vinculó a una producción programada del calendario, actualizar su estado y registrar evento
         if (scheduled_production_id) {
-            await connection.query(
-                'UPDATE egg_scheduled_productions SET batch_id = ?, status = "en_proceso" WHERE id = ? AND company_id = ?',
-                [batchId, scheduled_production_id, company_id]
-            );
+            try {
+                await connection.query(
+                    'UPDATE egg_scheduled_productions SET batch_id = ?, status = "en_proceso" WHERE id = ? AND company_id = ?',
+                    [batchId, scheduled_production_id, company_id]
+                );
 
-            await connection.query(
-                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
-                 VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
-                [
-                    company_id,
-                    `Lote ${batch_code_display} vinculado a la producción programada #${scheduled_production_id}.`,
-                    JSON.stringify({ batch_id: batchId, scheduled_production_id, batch_code_display }),
-                    operator_name
-                ]
-            );
+                await connection.query(
+                    `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+                     VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
+                    [
+                        company_id,
+                        `Lote ${batch_code_display} vinculado a la producción programada #${scheduled_production_id}.`,
+                        JSON.stringify({ batch_id: batchId, scheduled_production_id, batch_code_display }),
+                        operator_name
+                    ]
+                );
+            } catch (schedErr) {
+                console.warn("[createProductionBatch] Update egg_scheduled_productions notice:", schedErr.message);
+            }
         }
 
         // Crear evento
