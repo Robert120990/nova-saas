@@ -1970,8 +1970,8 @@ const exportPlanillaReportePDF = async (req, res) => {
         const colWResumen = {
             num: 14,
             code: 32,
-            name: 154,
-            cargo: 96,
+            name: 148,
+            cargo: 94,
             dias: 20,
             sueldoQuincenal: 48,
             ingresosAdic: 48,
@@ -1981,12 +1981,12 @@ const exportPlanillaReportePDF = async (req, res) => {
             renta: 40,
             otrasDed: 46,
             totalDed: 50,
-            neto: 58
+            neto: 64
         };
 
         const totalDynCols = dynamicIngresoCols.length + dynamicDeduccionCols.length;
-        const dynColW = totalDynCols > 0 ? Math.max(34, Math.min(56, Math.floor(310 / totalDynCols))) : 42;
-        const fixedDetWidth = 14 + 28 + 38 + (dynamicIngresoCols.length * dynColW) + 42 + 34 + 34 + 36 + (dynamicDeduccionCols.length * dynColW) + 42 + 46;
+        const dynColW = totalDynCols > 0 ? Math.max(34, Math.min(52, Math.floor(290 / totalDynCols))) : 40;
+        const fixedDetWidth = 14 + 28 + 38 + (dynamicIngresoCols.length * dynColW) + 42 + 34 + 34 + 36 + (dynamicDeduccionCols.length * dynColW) + 42 + 58;
         const detNameW = Math.max(75, contentWidth - fixedDetWidth);
 
         const colWDetallado = {
@@ -2000,7 +2000,7 @@ const exportPlanillaReportePDF = async (req, res) => {
             afp: 34,
             renta: 36,
             totalDed: 42,
-            neto: 46
+            neto: 58
         };
 
         const drawTableHeader = (yPos) => {
@@ -2022,7 +2022,8 @@ const exportPlanillaReportePDF = async (req, res) => {
                 doc.text('RENTA', x, yPos + 3.5, { width: colWResumen.renta - 3, align: 'right', lineBreak: false }); x += colWResumen.renta;
                 doc.text('OTRAS DED.', x, yPos + 3.5, { width: colWResumen.otrasDed - 3, align: 'right', lineBreak: false }); x += colWResumen.otrasDed;
                 doc.text('TOTAL DED.', x, yPos + 3.5, { width: colWResumen.totalDed - 3, align: 'right', lineBreak: false }); x += colWResumen.totalDed;
-                doc.text('NETO A PAGAR', x, yPos + 3.5, { width: colWResumen.neto - 3, align: 'right', lineBreak: false });
+                const netoHeaderRes = doc.widthOfString('NETO A PAGAR') <= (colWResumen.neto - 3) ? 'NETO A PAGAR' : 'NETO PAGAR';
+                doc.text(netoHeaderRes, x, yPos + 3.5, { width: colWResumen.neto - 3, align: 'right', lineBreak: false });
             } else {
                 doc.text('Nº', x, yPos + 3.5, { width: colWDetallado.num, align: 'center', lineBreak: false }); x += colWDetallado.num;
                 doc.text('CÓD.', x, yPos + 3.5, { width: colWDetallado.code, lineBreak: false }); x += colWDetallado.code;
@@ -2041,10 +2042,11 @@ const exportPlanillaReportePDF = async (req, res) => {
                     x += colWDetallado.dyn;
                 });
                 doc.text('TOTAL DED.', x, yPos + 3.5, { width: colWDetallado.totalDed - 2, align: 'right', lineBreak: false }); x += colWDetallado.totalDed;
-                doc.text('NETO A PAGAR', x, yPos + 3.5, { width: colWDetallado.neto - 2, align: 'right', lineBreak: false });
+                const netoHeaderDet = doc.widthOfString('NETO A PAGAR') <= (colWDetallado.neto - 2) ? 'NETO A PAGAR' : 'A PAGAR';
+                doc.text(netoHeaderDet, x, yPos + 3.5, { width: colWDetallado.neto - 2, align: 'right', lineBreak: false });
             }
 
-            return yPos + 17;
+            return yPos + 18;
         };
 
         const renderBranchBanner = (yPos, branchName, count) => {
@@ -2256,7 +2258,7 @@ const exportPlanillaReportePDF = async (req, res) => {
                             width: colWResumen.num + colWResumen.code + colWResumen.name + colWResumen.cargo + colWResumen.dias,
                             lineBreak: false
                         });
-                        let tx = startX + colWResumen.num + colWResumen.code + colWResumen.name + colWResumen.cargo + colWResumen.dias;
+                        let tx = startX + 2 + colWResumen.num + colWResumen.code + colWResumen.name + colWResumen.cargo + colWResumen.dias;
                         doc.text(formatCurrency(subTotals.sueldoQuincenal), tx, y, { width: colWResumen.sueldoQuincenal - 3, align: 'right', lineBreak: false }); tx += colWResumen.sueldoQuincenal;
                         doc.text(formatCurrency(subTotals.ingresosAdic), tx, y, { width: colWResumen.ingresosAdic - 3, align: 'right', lineBreak: false }); tx += colWResumen.ingresosAdic;
                         doc.text(formatCurrency(subTotals.devengado), tx, y, { width: colWResumen.devengado - 3, align: 'right', lineBreak: false }); tx += colWResumen.devengado;
@@ -2271,7 +2273,7 @@ const exportPlanillaReportePDF = async (req, res) => {
                             width: colWDetallado.num + colWDetallado.code + colWDetallado.name,
                             lineBreak: false
                         });
-                        let tx = startX + colWDetallado.num + colWDetallado.code + colWDetallado.name;
+                        let tx = startX + 2 + colWDetallado.num + colWDetallado.code + colWDetallado.name;
                         doc.text(formatCurrency(subTotals.sueldoQuincenal), tx, y, { width: colWDetallado.sueldo - 2, align: 'right', lineBreak: false }); tx += colWDetallado.sueldo;
                         dynamicIngresoCols.forEach(col => {
                             doc.text(formatCurrency(subTotals.dynIngresos[col.codigo]), tx, y, { width: colWDetallado.dyn - 2, align: 'right', lineBreak: false });
@@ -2309,7 +2311,7 @@ const exportPlanillaReportePDF = async (req, res) => {
 
             if (!isDetallado) {
                 doc.text(totalLabel, startX + 2, y, { lineBreak: false });
-                let tx = startX + colWResumen.num + colWResumen.code + colWResumen.name + colWResumen.cargo + colWResumen.dias;
+                let tx = startX + 2 + colWResumen.num + colWResumen.code + colWResumen.name + colWResumen.cargo + colWResumen.dias;
                 doc.text(formatCurrency(grandTotals.sueldoQuincenal), tx, y, { width: colWResumen.sueldoQuincenal - 3, align: 'right', lineBreak: false }); tx += colWResumen.sueldoQuincenal;
                 doc.text(formatCurrency(grandTotals.ingresosAdic), tx, y, { width: colWResumen.ingresosAdic - 3, align: 'right', lineBreak: false }); tx += colWResumen.ingresosAdic;
                 doc.text(formatCurrency(grandTotals.devengado), tx, y, { width: colWResumen.devengado - 3, align: 'right', lineBreak: false }); tx += colWResumen.devengado;
@@ -2321,7 +2323,7 @@ const exportPlanillaReportePDF = async (req, res) => {
                 doc.text(formatCurrency(grandTotals.neto), tx, y, { width: colWResumen.neto - 3, align: 'right', lineBreak: false });
             } else {
                 doc.text(totalLabel, startX + 2, y, { lineBreak: false });
-                let tx = startX + colWDetallado.num + colWDetallado.code + colWDetallado.name;
+                let tx = startX + 2 + colWDetallado.num + colWDetallado.code + colWDetallado.name;
                 doc.text(formatCurrency(grandTotals.sueldoQuincenal), tx, y, { width: colWDetallado.sueldo - 2, align: 'right', lineBreak: false }); tx += colWDetallado.sueldo;
                 dynamicIngresoCols.forEach(col => {
                     doc.text(formatCurrency(grandTotals.dynIngresos[col.codigo]), tx, y, { width: colWDetallado.dyn - 2, align: 'right', lineBreak: false });
