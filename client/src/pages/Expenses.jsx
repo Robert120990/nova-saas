@@ -23,7 +23,8 @@ import {
     ChevronDown,
     ChevronUp,
     Info,
-    RotateCcw
+    RotateCcw,
+    Sparkles
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -309,6 +310,8 @@ const Expenses = () => {
     // Form & Button Refs for Keyboard Navigation
     const formRef = useRef(null);
     const submitBtnRef = useRef(null);
+    const dteFileInputRef = useRef(null);
+    const [isScanningDte, setIsScanningDte] = useState(false);
 
     // Summary / Totals State
     const [totals, setTotals] = useState({
@@ -546,6 +549,144 @@ const Expenses = () => {
     const handleFocusSelect = (e) => {
         if (e.target && typeof e.target.select === 'function') {
             e.target.select();
+        }
+    };
+
+    // Escanear factura física o DTE digital con Inteligencia Artificial
+    const handleScanDteFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        e.target.value = '';
+        setIsScanningDte(true);
+        const loadingToast = toast.loading('Analizando documento / DTE con Inteligencia Artificial...');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await axios.post('/api/expenses/scan-dte', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const data = res.data?.data;
+            if (!data) throw new Error('No se pudieron extraer datos del documento');
+
+            let filledFields = [];
+
+            // 1. Código de Generación / Documento
+            if (data.codigo_generacion) {
+                setNumeroDoc(data.codigo_generacion.toUpperCase().trim());
+                filledFields.push('Cód. Generación');
+            }
+
+            // 2. Número de Control
+            if (data.numero_control) {
+                setNumControl(data.numero_control.toUpperCase().trim());
+                filledFields.push('Núm. Control');
+            }
+
+            // 3. Sello de Recepción
+            if (data.sello_recepcion) {
+                setSelloRecepcion(data.sello_recepcion.toUpperCase().trim());
+                filledFields.push('Sello');
+            }
+
+            // 4. Tipo de Documento (Mapeo DTE MH a Catálogo Gastos/Libro de Compras)
+            let mappedTipoDoc = '02'; // default Crédito Fiscal
+            if (data.tipo_documento_id === '01') {
+                mappedTipoDoc = '01'; // Factura
+            } else if (data.tipo_documento_id === '03' || data.tipo_documento_id === '02') {
+                mappedTipoDoc = '02'; // CCF
+            } else if (data.tipo_documento_id === '05' || data.tipo_documento_id === '09') {
+                mappedTipoDoc = '09'; // Nota de Crédito
+            } else if (data.tipo_documento_id === '06' || data.tipo_documento_id === '08') {
+                mappedTipoDoc = '08'; // Nota de Débito
+            } else if (DOCUMENT_TYPES.some(d => d.code === data.tipo_documento_id)) {
+                mappedTipoDoc = data.tipo_documento_id;
+            }
+
+            setTipoDocId(mappedTipoDoc);
+            filledFields.push('Tipo Doc');
+
+            // 5. Fecha de Emisión y Período
+            if (data.fecha_emision) {
+                setFecha(data.fecha_emision);
+                handleFechaChange({ target: { value: data.fecha_emision } });
+                filledFields.push('Fecha');
+            }
+
+            // 6. Proveedor
+            if (data.matchedProvider) {
+                setProviderId(String(data.matchedProvider.id));
+                setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
+                filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+            } else if (data.emisor?.nombre) {
+                toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
+            }
+
+            // 7. Totales e Impuestos
+            if (data.totales) {
+                const gravada = parseFloat(data.totales.total_gravada) || 0;
+                const exenta = parseFloat(data.totales.total_exenta) || 0;
+                const nosujeta = parseFloat(data.totales.total_nosujeta) || 0;
+                const iva = parseFloat(data.totales.iva) || 0;
+                const ret = parseFloat(data.totales.retencion) || 0;
+                const perc = parseFloat(data.totales.percepcion) || 0;
+                const total = parseFloat(data.totales.monto_total) || 0;
+
+                if (gravada > 0) {
+                    setTotalGravada(gravada);
+                    filledFields.push(`Gravada ($${gravada.toFixed(2)})`);
+                } else if (total > 0 && mappedTipoDoc === '01') {
+                    setTotalGravada(total);
+                    filledFields.push(`Total ($${total.toFixed(2)})`);
+                }
+
+                if (exenta > 0) {
+                    setTotalExenta(exenta);
+                    filledFields.push('Exenta');
+                }
+                if (nosujeta > 0) {
+                    setTotalNosujeta(nosujeta);
+                    filledFields.push('No Sujeta');
+                }
+
+                if (iva > 0) {
+                    setManualIVA(iva);
+                    setIsIvaDirty(true);
+                    filledFields.push(`IVA ($${iva.toFixed(2)})`);
+                } else if (mappedTipoDoc === '02' && gravada > 0) {
+                    setManualIVA(Math.round(gravada * 0.13 * 100) / 100);
+                    setIsIvaDirty(false);
+                }
+
+                if (ret > 0) {
+                    setManualRetencion(ret);
+                    setIsRetDirty(true);
+                    filledFields.push('Retención');
+                }
+
+                if (perc > 0) {
+                    setManualPercepcion(perc);
+                    setIsPercDirty(true);
+                    filledFields.push('Percepción');
+                }
+            }
+
+            toast.dismiss(loadingToast);
+            if (filledFields.length > 0) {
+                toast.success(`Datos detectados: ${filledFields.join(', ')}`, { duration: 6000 });
+            } else {
+                toast.info('No se detectaron campos legibles en el documento.');
+            }
+
+        } catch (err) {
+            console.error('Error al escanear DTE en gastos:', err);
+            toast.dismiss(loadingToast);
+            toast.error(err.response?.data?.message || 'Error al procesar el documento con IA');
+        } finally {
+            setIsScanningDte(false);
         }
     };
 
@@ -909,6 +1050,15 @@ const Expenses = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* Input oculto para escanear DTE desde listado */}
+                    <input 
+                        type="file" 
+                        ref={dteFileInputRef} 
+                        onChange={handleScanDteFile} 
+                        accept="image/*,.pdf" 
+                        capture="environment"
+                        className="hidden" 
+                    />
                     <button
                         type="button"
                         onClick={handleExportExcel}
@@ -917,6 +1067,18 @@ const Expenses = () => {
                     >
                         <FileSpreadsheet size={15} className="text-emerald-600" />
                         <span>Exportar</span>
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => {
+                            openCreateModal();
+                            setTimeout(() => dteFileInputRef.current?.click(), 150);
+                        }}
+                        className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-purple-600/20 active:scale-95 cursor-pointer"
+                        title="Abrir formulario y escanear DTE con IA"
+                    >
+                        <Sparkles size={15} className="text-amber-300" />
+                        <span>Escanear DTE (IA)</span>
                     </button>
                     <button 
                         type="button"
@@ -1322,7 +1484,19 @@ const Expenses = () => {
                                                 1. Datos del Documento y Proveedor
                                             </h3>
                                         </div>
-                                        <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => dteFileInputRef.current?.click()}
+                                                disabled={isScanningDte}
+                                                className="skip-enter-nav px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold tracking-wide shadow-xs hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer active:scale-95"
+                                                title="Escanear DTE o factura física/digital mediante Inteligencia Artificial para autocompletar datos"
+                                            >
+                                                <Sparkles size={13} className={isScanningDte ? 'animate-spin text-purple-200' : 'text-amber-300'} />
+                                                <span>{isScanningDte ? 'Escaneando...' : 'Escanear DTE (IA)'}</span>
+                                            </button>
+
+                                            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
                                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
                                                 <Calendar size={12} className="text-indigo-500" />
                                                 Período:
@@ -1373,6 +1547,7 @@ const Expenses = () => {
                                                     <span>Auto</span>
                                                 </button>
                                             )}
+                                        </div>
                                         </div>
                                     </div>
 

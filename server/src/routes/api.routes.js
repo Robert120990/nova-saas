@@ -335,6 +335,7 @@ router.get('/expenses', expenseController.getExpenses);
 router.get('/expenses/types', expenseController.getExpenseTypes);
 router.get('/expenses/reports/pdf', expenseController.getExpenseReportPDF);
 router.post('/expenses', expenseController.createExpense);
+router.post('/expenses/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
 router.get('/expenses/:id', expenseController.getExpenseById);
 router.put('/expenses/:id', expenseController.updateExpense);
 router.post('/expenses/:id/void', expenseController.voidExpense);

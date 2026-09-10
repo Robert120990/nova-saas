@@ -171,6 +171,7 @@ Extrae TODOS los campos visibles y responde EXCLUSIVAMENTE con un JSON válido y
 REGLAS:
 - Si un campo no es visible o está cortado en la foto, asígnalo como null (o 0.0 en valores numéricos).
 - Asegúrate de que el código de generación y número de control estén en MAYÚSCULAS y limpios de espacios.
+- IMPORTANTE: Tanto el código de generación (UUID) como el sello de recepción de Hacienda están compuestos ÚNICAMENTE por caracteres hexadecimales (dígitos 0-9 y letras A-F). En caracteres hexadecimales NUNCA existe la letra 'O'; si ves una forma redonda es el número cero '0'.
 - El sello de recepción debe contener todos los caracteres visibles sin espacios.`;
 
         const result = await model.generateContent([
@@ -185,7 +186,26 @@ REGLAS:
 
         const rawText = result.response.text();
         const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanJson);
+        const parsed = JSON.parse(cleanJson);
+
+        // Normalización post-procesamiento para evitar errores comunes de OCR en caracteres hexadecimales
+        if (parsed.codigo_generacion) {
+            let cg = String(parsed.codigo_generacion).trim().toUpperCase();
+            cg = cg.replace(/O/g, '0');
+            parsed.codigo_generacion = cg;
+        }
+
+        if (parsed.sello_recepcion) {
+            let sr = String(parsed.sello_recepcion).trim().toUpperCase().replace(/\s+/g, '');
+            sr = sr.replace(/O/g, '0');
+            parsed.sello_recepcion = sr;
+        }
+
+        if (parsed.numero_control) {
+            parsed.numero_control = String(parsed.numero_control).trim().toUpperCase().replace(/\s+/g, '');
+        }
+
+        return parsed;
     }
 }
 
