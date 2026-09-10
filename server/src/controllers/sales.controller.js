@@ -370,11 +370,110 @@ const createSale = async (req, res) => {
  * Obtiene el historial de ventas paginado.
  */
 const getSales = async (req, res) => {
-    const { page = 1, limit = 15, dte_type, start_date, end_date, search = '', customer_id, status, only_processed, exclude_has_nc, shift_id, has_dte } = req.query;
+    const { 
+        page = 1, 
+        limit = 15, 
+        dte_type, 
+        tipo_documento,
+        start_date, 
+        end_date, 
+        search = '', 
+        customer_id, 
+        status, 
+        dte_status,
+        branch_id,
+        only_processed, 
+        exclude_has_nc, 
+        shift_id, 
+        has_dte 
+    } = req.query;
     const offset = (page - 1) * limit;
 
     try {
-        let sql = `
+        let whereClause = ' WHERE h.company_id = ?';
+        const whereParams = [req.company_id];
+
+        if (req.user.branch_id) {
+            whereClause += ' AND h.branch_id = ?';
+            whereParams.push(req.user.branch_id);
+        } else if (branch_id && branch_id !== 'all') {
+            whereClause += ' AND h.branch_id = ?';
+            whereParams.push(branch_id);
+        }
+
+        if (search && search.trim()) {
+            const searchPattern = `%${search.trim()}%`;
+            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ?)';
+            whereParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+        }
+
+        const docType = tipo_documento || dte_type;
+        if (docType && docType !== 'all') {
+            whereClause += ' AND (h.tipo_documento = ? OR h.dte_type = ?)';
+            whereParams.push(docType, docType);
+        }
+
+        if (start_date && end_date) {
+            whereClause += ' AND h.fecha_emision BETWEEN ? AND ?';
+            whereParams.push(start_date, end_date);
+        } else if (start_date) {
+            whereClause += ' AND h.fecha_emision >= ?';
+            whereParams.push(start_date);
+        } else if (end_date) {
+            whereClause += ' AND h.fecha_emision <= ?';
+            whereParams.push(end_date);
+        }
+
+        if (customer_id) {
+            whereClause += ' AND h.customer_id = ?';
+            whereParams.push(customer_id);
+        }
+
+        if (shift_id) {
+            whereClause += ' AND h.shift_id = ?';
+            whereParams.push(shift_id);
+        }
+
+        if (has_dte === 'true') {
+            whereClause += ' AND (d_c.id IS NOT NULL OR d_v.id IS NOT NULL)';
+        }
+
+        const effectiveStatus = status || dte_status;
+        if (effectiveStatus && effectiveStatus !== 'all') {
+            if (effectiveStatus === 'ACCEPTED') {
+                whereClause += " AND ((d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED') AND h.estado NOT IN ('invalidado', 'anulado'))";
+            } else if (effectiveStatus === 'REJECTED') {
+                whereClause += " AND (d_c.status = 'REJECTED' OR d_v.status = 'REJECTED')";
+            } else if (effectiveStatus === 'INVALIDADO' || effectiveStatus === 'anulado') {
+                whereClause += " AND (h.estado IN ('invalidado', 'anulado') OR d_c.status = 'INVALIDADO' OR d_v.status = 'INVALIDADO')";
+            } else if (effectiveStatus === 'PENDING') {
+                whereClause += " AND ((d_c.id IS NULL AND d_v.id IS NULL) OR COALESCE(d_c.status, d_v.status) NOT IN ('ACCEPTED', 'REJECTED', 'INVALIDADO')) AND h.estado NOT IN ('invalidado', 'anulado')";
+            } else {
+                whereClause += ' AND h.estado = ?';
+                whereParams.push(effectiveStatus);
+            }
+        }
+
+        if (only_processed === 'true') {
+            whereClause += " AND (d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED')";
+        }
+
+        if (exclude_has_nc === 'true') {
+            whereClause += ` AND NOT EXISTS (
+                SELECT 1 FROM sales_linked_documents ld 
+                JOIN sales_headers h2 ON ld.sale_id = h2.id 
+                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
+                AND (
+                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
+                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
+                    (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
+                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
+                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
+                )
+            )`;
+        }
+
+        const sql = `
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
@@ -397,128 +496,26 @@ const getSales = async (req, res) => {
             LEFT JOIN companies comp ON h.company_id = comp.id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
-            WHERE h.company_id = ?
+            ${whereClause}
+            ORDER BY h.fecha_emision DESC, h.hora_emision DESC
+            LIMIT ? OFFSET ?
         `;
-        const params = [req.company_id];
+        const params = [...whereParams, parseInt(limit), parseInt(offset)];
 
-        if (req.user.branch_id) {
-            sql += ' AND h.branch_id = ?';
-            params.push(req.user.branch_id);
-        }
-
-        if (search) {
-            sql += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ?)';
-            const searchPattern = `%${search}%`;
-            params.push(searchPattern, searchPattern, searchPattern, searchPattern);
-        }
-
-        if (dte_type) {
-            sql += ' AND h.dte_type = ?';
-            params.push(dte_type);
-        }
-        if (start_date && end_date) {
-            sql += ' AND h.created_at BETWEEN ? AND ?';
-            params.push(start_date, end_date);
-        }
-
-        if (customer_id) {
-            sql += ' AND h.customer_id = ?';
-            params.push(customer_id);
-        }
-
-        if (shift_id) {
-            sql += ' AND h.shift_id = ?';
-            params.push(shift_id);
-        }
-
-        if (has_dte === 'true') {
-            sql += ' AND (d_c.id IS NOT NULL OR d_v.id IS NOT NULL)';
-        }
-
-        if (status) {
-            sql += ' AND h.estado = ?';
-            params.push(status);
-        }
-
-        if (only_processed === 'true') {
-            sql += " AND (d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED')";
-        }
-
-        if (exclude_has_nc === 'true') {
-            sql += ` AND NOT EXISTS (
-                SELECT 1 FROM sales_linked_documents ld 
-                JOIN sales_headers h2 ON ld.sale_id = h2.id 
-                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
-                AND (
-                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
-                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
-                    (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
-                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
-                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
-                )
-            )`;
-        }
-
-        let countSql = `SELECT COUNT(*) as total FROM sales_headers h LEFT JOIN customers c ON h.customer_id = c.id WHERE h.company_id = ?`;
-        const countParams = [req.company_id];
-        
-        if (req.user.branch_id) {
-            countSql += ' AND h.branch_id = ?';
-            countParams.push(req.user.branch_id);
-        }
-        if (search) {
-            countSql += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ?)';
-            countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-        }
-
-        if (dte_type) {
-            countSql += ' AND h.dte_type = ?';
-            countParams.push(dte_type);
-        }
-
-        if (customer_id) {
-            countSql += ' AND h.customer_id = ?';
-            countParams.push(customer_id);
-        }
-
-        if (shift_id) {
-            countSql += ' AND h.shift_id = ?';
-            countParams.push(shift_id);
-        }
-
-        if (has_dte === 'true') {
-            countSql += ` AND (EXISTS (SELECT 1 FROM dtes d2 WHERE d2.venta_id = h.id AND d2.company_id = h.company_id) OR EXISTS (SELECT 1 FROM dtes d2 WHERE d2.codigo_generacion = h.codigo_generacion AND d2.company_id = h.company_id))`;
-        }
-
-        if (status) {
-            countSql += ' AND h.estado = ?';
-            countParams.push(status);
-        }
-
-        if (only_processed === 'true') {
-            countSql += " AND (EXISTS (SELECT 1 FROM dtes d2 WHERE d2.venta_id = h.id AND d2.status = 'ACCEPTED') OR EXISTS (SELECT 1 FROM dtes d2 WHERE d2.codigo_generacion = h.codigo_generacion AND d2.status = 'ACCEPTED'))";
-        }
-
-        if (exclude_has_nc === 'true') {
-            countSql += ` AND NOT EXISTS (
-                SELECT 1 FROM sales_linked_documents ld 
-                JOIN sales_headers h2 ON ld.sale_id = h2.id 
-                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
-                AND (
-                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
-                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR
-                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
-                )
-            )`;
-        }
-
-        sql += ' ORDER BY h.fecha_emision DESC, h.hora_emision DESC LIMIT ? OFFSET ?';
-        params.push(parseInt(limit), parseInt(offset));
+        const countSql = `
+            SELECT COUNT(*) as total 
+            FROM sales_headers h 
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            ${whereClause}
+        `;
+        const countParams = [...whereParams];
 
         const [rows] = await pool.query(sql, params);
         const [totalRows] = await pool.query(countSql, countParams);
 
-        const totalItems = totalRows[0].total;
+        const totalItems = totalRows[0]?.total || 0;
 
         res.json({
             data: rows,
@@ -2003,6 +2000,99 @@ const exportSalesDetailPDF = async (req, res) => {
     }
 };
 
+async function resolveRTEELogo(companyId, branchId, branchLogo, compLogo) {
+    const checkFile = (rawUrl) => {
+        if (!rawUrl) return null;
+        const cleanPath = rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl;
+        const abs1 = path.join(__dirname, '..', '..', cleanPath);
+        if (fs.existsSync(abs1)) return abs1;
+        const fileName = path.basename(cleanPath);
+        const abs2 = path.join(__dirname, '..', '..', 'uploads', fileName);
+        if (fs.existsSync(abs2)) return abs2;
+        return null;
+    };
+
+    // 1. Priorizar estrictamente el logo configurado para la sucursal emisora
+    if (branchLogo) {
+        const found = checkFile(branchLogo);
+        if (found) return found;
+    }
+
+    if (branchId) {
+        try {
+            const [b] = await pool.query('SELECT logo_url FROM branches WHERE id = ?', [branchId]);
+            if (b.length && b[0].logo_url) {
+                const found = checkFile(b[0].logo_url);
+                if (found) return found;
+            }
+        } catch (_) {}
+    }
+
+    // 2. Si la sucursal no tiene logo propio, recurrir al logo corporativo de la empresa
+    if (compLogo) {
+        const found = checkFile(compLogo);
+        if (found) return found;
+    }
+
+    if (companyId) {
+        try {
+            const [c] = await pool.query('SELECT logo_url FROM companies WHERE id = ?', [companyId]);
+            if (c.length && c[0].logo_url) {
+                const found = checkFile(c[0].logo_url);
+                if (found) return found;
+            }
+        } catch (_) {}
+    }
+
+    // NUNCA tomar el logo de otra sucursal hermana porque pueden ser franquicias distintas (ej: Shell vs Puma)
+    return null;
+}
+
+async function resolveUbicacionCompleta(depCode, munCode, distCode, direccionComp) {
+    let depNombre = '';
+    let munNombre = '';
+    let distNombre = '';
+
+    try {
+        if (depCode) {
+            const [dep] = await pool.query('SELECT description FROM cat_012_departamento WHERE code = ? LIMIT 1', [depCode]);
+            if (dep.length) depNombre = dep[0].description;
+        }
+        if (depCode && munCode) {
+            const [mun] = await pool.query('SELECT description FROM cat_013_municipio WHERE dep_code = ? AND code = ? LIMIT 1', [depCode, munCode]);
+            if (mun.length) munNombre = mun[0].description;
+        }
+        if (depCode && munCode && distCode) {
+            const [dist] = await pool.query('SELECT description FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? AND code = ? LIMIT 1', [depCode, munCode, distCode]);
+            if (dist.length) distNombre = dist[0].description;
+        }
+    } catch (_) {}
+
+    const toTitleCase = (str) => {
+        if (!str) return '';
+        return str.toLowerCase().replace(/(?:^|\s)\S/g, (a) => a.toUpperCase());
+    };
+
+    const parts = [];
+    if (direccionComp) parts.push(direccionComp.trim().replace(/,\s*$/, ''));
+    if (distNombre) parts.push(toTitleCase(distNombre));
+    else if (munNombre) parts.push(toTitleCase(munNombre));
+    if (depNombre) parts.push(toTitleCase(depNombre));
+
+    const fullText = parts.reduce((acc, part) => {
+        if (!part) return acc;
+        if (!acc) return part;
+        if (acc.toLowerCase().includes(part.toLowerCase())) return acc;
+        return `${acc}, ${part}`;
+    }, '');
+
+    return {
+        textoCompleto: fullText,
+        departamento_nombre: toTitleCase(depNombre) || 'San Salvador',
+        municipio_nombre: toTitleCase(distNombre || munNombre) || 'San Salvador'
+    };
+}
+
 const exportRTEE = async (req, res) => {
     const { id } = req.params;
 
@@ -2044,36 +2134,42 @@ const exportRTEE = async (req, res) => {
         const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [req.company_id]);
         const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
 
-        // --- Lógica de Logo ---
-        let logoPath = null;
-        const rawLogoUrl = (branch[0]?.logo_url || company[0]?.logo_url);
-        
-        if (rawLogoUrl) {
-            const cleanPath = rawLogoUrl.startsWith('/') ? rawLogoUrl.substring(1) : rawLogoUrl;
-            const absoluteLogoPath = path.join(__dirname, '..', '..', cleanPath);
-            
-            if (fs.existsSync(absoluteLogoPath)) {
-                logoPath = absoluteLogoPath;
-            }
-        }
+        const branchRow = branch[0] || {};
+        const companyRow = company[0] || {};
 
-        // 3. Mapear datos para el servicio de PDF
-        const [emisorDescActividad, receptorDescActividad] = await Promise.all([
+        // --- Lógica de Logo Robusta sin préstamos entre sucursales ---
+        const logoPath = await resolveRTEELogo(req.company_id, venta.branch_id, branchRow.logo_url, companyRow.logo_url);
+
+        // Resolver ubicación detallada de la sucursal (dirección, distrito, municipio, departamento)
+        const depCode = branchRow.departamento || dteJson.emisor?.direccion?.departamento || companyRow.departamento;
+        const munCode = branchRow.municipio || dteJson.emisor?.direccion?.municipio || companyRow.municipio;
+        const distCode = branchRow.distrito || dteJson.emisor?.direccion?.distrito;
+        const dirComplemento = branchRow.direccion || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+        const [emisorDescActividad, receptorDescActividad, ubicacionInfo] = await Promise.all([
             resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
-            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad)
+            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad),
+            resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento)
         ]);
 
         const reportData = {
             emisor: {
-                nombre: company[0].razon_social,
-                nit: company[0].nit,
-                nrc: company[0].nrc,
+                nombre: companyRow.razon_social || dteJson.emisor?.nombre,
+                nombre_comercial: dteJson.emisor?.nombreComercial || companyRow.nombre_comercial || null,
+                sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
+                cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
+                tipo_establecimiento: branchRow.tipo_establecimiento || dteJson.emisor?.tipoEstablecimiento || null,
+                es_casa_matriz: branchRow.es_casa_matriz ?? 0,
+                nit: companyRow.nit || dteJson.emisor?.nit,
+                nrc: companyRow.nrc || dteJson.emisor?.nrc,
                 descActividad: emisorDescActividad,
-                direccion: dteJson.emisor.direccion,
-                telefono: dteJson.emisor.telefono,
-                correo: dteJson.emisor.correo,
-                departamento_nombre: 'San Salvador',
-                municipio_nombre: 'San Salvador',
+                direccion: dteJson.emisor?.direccion || branchRow.direccion,
+                direccion_completa: ubicacionInfo.textoCompleto,
+                telefono: dteJson.emisor?.telefono || branchRow.telefono,
+                correo: dteJson.emisor?.correo || branchRow.correo,
+                departamento_nombre: ubicacionInfo.departamento_nombre,
+                municipio_nombre: ubicacionInfo.municipio_nombre,
                 logoPath: logoPath
             },
             receptor: {
@@ -2136,7 +2232,9 @@ const exportRTEE = async (req, res) => {
             }))
         };
 
-        reportData.isVoided = (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO';
+        reportData.isVoided = ['anulado', 'invalidado'].includes((venta.estado || '').toLowerCase()) ||
+                              ['anulado', 'invalidado'].includes((venta.sale_estado || '').toLowerCase()) ||
+                              venta.dte_status === 'INVALIDADO';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
@@ -2188,31 +2286,42 @@ const getPublicRTEE = async (req, res) => {
         const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [venta.company_id]);
         const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
 
-        let logoPath = null;
-        const rawLogoUrl = (branch[0]?.logo_url || company[0]?.logo_url);
-        
-        if (rawLogoUrl) {
-            const cleanPath = rawLogoUrl.startsWith('/') ? rawLogoUrl.substring(1) : rawLogoUrl;
-            const absoluteLogoPath = path.join(__dirname, '..', '..', cleanPath);
-            if (fs.existsSync(absoluteLogoPath)) logoPath = absoluteLogoPath;
-        }
+        const branchRow = branch[0] || {};
+        const companyRow = company[0] || {};
 
-        const [emisorDescActividad, receptorDescActividad] = await Promise.all([
+        // --- Lógica de Logo Robusta sin préstamos entre sucursales ---
+        const logoPath = await resolveRTEELogo(venta.company_id, venta.branch_id, branchRow.logo_url, companyRow.logo_url);
+
+        // Resolver ubicación detallada de la sucursal (dirección, distrito, municipio, departamento)
+        const depCode = branchRow.departamento || dteJson.emisor?.direccion?.departamento || companyRow.departamento;
+        const munCode = branchRow.municipio || dteJson.emisor?.direccion?.municipio || companyRow.municipio;
+        const distCode = branchRow.distrito || dteJson.emisor?.direccion?.distrito;
+        const dirComplemento = branchRow.direccion || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+        const [emisorDescActividad, receptorDescActividad, ubicacionInfo] = await Promise.all([
             resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
-            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad)
+            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad),
+            resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento)
         ]);
 
         const reportData = {
             emisor: {
-                nombre: company[0].razon_social,
-                nit: company[0].nit,
-                nrc: company[0].nrc,
+                nombre: companyRow.razon_social || dteJson.emisor?.nombre,
+                nombre_comercial: dteJson.emisor?.nombreComercial || companyRow.nombre_comercial || null,
+                sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
+                cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
+                tipo_establecimiento: branchRow.tipo_establecimiento || dteJson.emisor?.tipoEstablecimiento || null,
+                es_casa_matriz: branchRow.es_casa_matriz ?? 0,
+                nit: companyRow.nit || dteJson.emisor?.nit,
+                nrc: companyRow.nrc || dteJson.emisor?.nrc,
                 descActividad: emisorDescActividad,
-                direccion: dteJson.emisor.direccion,
-                telefono: dteJson.emisor.telefono,
-                correo: dteJson.emisor.correo,
-                departamento_nombre: 'San Salvador',
-                municipio_nombre: 'San Salvador',
+                direccion: dteJson.emisor?.direccion || branchRow.direccion,
+                direccion_completa: ubicacionInfo.textoCompleto,
+                telefono: dteJson.emisor?.telefono || branchRow.telefono,
+                correo: dteJson.emisor?.correo || branchRow.correo,
+                departamento_nombre: ubicacionInfo.departamento_nombre,
+                municipio_nombre: ubicacionInfo.municipio_nombre,
                 logoPath: logoPath
             },
             receptor: {
@@ -2275,7 +2384,8 @@ const getPublicRTEE = async (req, res) => {
             }))
         };
 
-        reportData.isVoided = (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO';
+        reportData.isVoided = ['anulado', 'invalidado'].includes((venta.estado || '').toLowerCase()) ||
+                              venta.dte_status === 'INVALIDADO';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
@@ -3503,9 +3613,13 @@ const sendPublicDTEEmail = async (req, res) => {
     try {
         const [rows] = await pool.query(
             `SELECT h.*, d.status as dte_status, d.json_original, d.sello_recepcion, d.numero_control,
-                    c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                    c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
+                    c.departamento as company_dep, c.municipio as company_mun,
                     cu.nrc as customer_nrc,
-                    b.nombre as branch_name, cat.description as tipo_documento_name
+                    b.nombre as branch_name, b.codigo_mh as branch_codigo_mh, b.es_casa_matriz, b.tipo_establecimiento as branch_tipo_est,
+                    b.telefono as branch_telefono, b.correo as branch_correo, b.logo_url as branch_logo_url,
+                    b.direccion as branch_dir, b.departamento as branch_dep, b.municipio as branch_mun, b.distrito as branch_dist,
+                    cat.description as tipo_documento_name
              FROM dtes d
              JOIN sales_headers h ON d.codigo_generacion = h.codigo_generacion
              JOIN companies c ON h.company_id = c.id
@@ -3527,6 +3641,15 @@ const sendPublicDTEEmail = async (req, res) => {
             return res.status(400).json({ message: 'El DTE no tiene JSON original' });
         }
 
+        const logoPath = await resolveRTEELogo(venta.company_id, venta.branch_id, venta.branch_logo_url, venta.company_logo_url);
+
+        const depCode = venta.branch_dep || dteJson.emisor?.direccion?.departamento || venta.company_dep;
+        const munCode = venta.branch_mun || dteJson.emisor?.direccion?.municipio || venta.company_mun;
+        const distCode = venta.branch_dist || dteJson.emisor?.direccion?.distrito;
+        const dirComplemento = venta.branch_dir || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+        const ubicacionInfo = await resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento);
+
         const dteNames = {
             '01': 'Factura', '03': 'Crédito Fiscal', '04': 'Nota de Remisión',
             '05': 'Nota de Crédito', '06': 'Nota de Débito', '07': 'Comprobante de Retención',
@@ -3538,14 +3661,22 @@ const sendPublicDTEEmail = async (req, res) => {
         const reportData = {
             emisor: {
                 nombre: venta.company_name,
+                nombre_comercial: dteJson.emisor?.nombreComercial || null,
+                sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
+                cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || null,
+                tipo_establecimiento: venta.branch_tipo_est || dteJson.emisor?.tipoEstablecimiento || null,
+                es_casa_matriz: venta.es_casa_matriz ?? 0,
                 nit: venta.company_nit,
                 nrc: venta.company_nrc,
                 descActividad: dteJson.emisor?.descActividad,
-                direccion: dteJson.emisor?.direccion,
-                telefono: dteJson.emisor?.telefono,
-                correo: dteJson.emisor?.correo,
-                departamento_nombre: 'SS',
-                municipio_nombre: 'SS'
+                direccion: dteJson.emisor?.direccion || venta.branch_dir,
+                direccion_completa: ubicacionInfo.textoCompleto,
+                telefono: dteJson.emisor?.telefono || venta.branch_telefono,
+                correo: dteJson.emisor?.correo || venta.branch_correo,
+                departamento_nombre: ubicacionInfo.departamento_nombre,
+                municipio_nombre: ubicacionInfo.municipio_nombre,
+                logoPath: logoPath
             },
             receptor: {
                 nombre: dteJson.receptor?.nombre,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    ChevronDown, BarChart3
+    ChevronDown, BarChart3, Filter, RotateCcw, X
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import SaleDetailModal from '../components/sales/SaleDetailModal';
@@ -71,7 +71,13 @@ const SalesHistory = () => {
 
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [tipoDocumento, setTipoDocumento] = useState('');
+    const [status, setStatus] = useState('');
     const [selectedSaleId, setSelectedSaleId] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
@@ -106,12 +112,133 @@ const SalesHistory = () => {
     const [isDteStatsOpen, setIsDteStatsOpen] = useState(false);
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
-    const limit = 10;
 
-    const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['sales-history', search, page],
-        queryFn: async () => (await axios.get('/api/sales', { params: { search, page, limit } })).data
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearch(search);
+            setPage(1);
+        }, 350);
+        return () => clearTimeout(handler);
+    }, [search]);
+
+    const { data: tipoDocs = [] } = useQuery({
+        queryKey: ['catalog', '002'],
+        queryFn: async () => (await axios.get('/api/catalogs/cat_002_tipo_dte')).data
     });
+
+    const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading, isFetching } = useQuery({
+        queryKey: ['sales-history', debouncedSearch, page, limit, startDate, endDate, tipoDocumento, status],
+        queryFn: async () => {
+            const params = {
+                page,
+                limit,
+                search: debouncedSearch.trim() || undefined,
+                start_date: startDate || undefined,
+                end_date: endDate || undefined,
+                tipo_documento: tipoDocumento || undefined,
+                status: status || undefined
+            };
+            return (await axios.get('/api/sales', { params })).data;
+        },
+        keepPreviousData: true
+    });
+
+    const getTodayStr = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getYesterdayStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getStartOfWeekStr = () => {
+        const d = new Date();
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff));
+        const year = monday.getFullYear();
+        const month = String(monday.getMonth() + 1).padStart(2, '0');
+        const date = String(monday.getDate()).padStart(2, '0');
+        return `${year}-${month}-${date}`;
+    };
+
+    const getStartOfMonthStr = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        return `${year}-${month}-01`;
+    };
+
+    const handlePresetDate = (preset) => {
+        const today = getTodayStr();
+        if (preset === 'today') {
+            setStartDate(today);
+            setEndDate(today);
+        } else if (preset === 'yesterday') {
+            const yest = getYesterdayStr();
+            setStartDate(yest);
+            setEndDate(yest);
+        } else if (preset === 'this_week') {
+            setStartDate(getStartOfWeekStr());
+            setEndDate(today);
+        } else if (preset === 'this_month') {
+            setStartDate(getStartOfMonthStr());
+            setEndDate(today);
+        } else if (preset === 'all') {
+            setStartDate('');
+            setEndDate('');
+        }
+        setPage(1);
+    };
+
+    const activeFiltersCount = useMemo(() => {
+        let count = 0;
+        if (search.trim()) count++;
+        if (startDate) count++;
+        if (endDate) count++;
+        if (tipoDocumento) count++;
+        if (status) count++;
+        return count;
+    }, [search, startDate, endDate, tipoDocumento, status]);
+
+    const handleClearFilters = () => {
+        setSearch('');
+        setDebouncedSearch('');
+        setStartDate('');
+        setEndDate('');
+        setTipoDocumento('');
+        setStatus('');
+        setPage(1);
+    };
+
+    const documentTypes = useMemo(() => {
+        if (tipoDocs && tipoDocs.length > 0) {
+            return tipoDocs.map(t => ({
+                code: t.code,
+                name: t.description ? t.description.toUpperCase() : t.code
+            }));
+        }
+        return [
+            { code: '01', name: 'FACTURA' },
+            { code: '03', name: 'COMPROBANTE DE CRÉDITO FISCAL' },
+            { code: '04', name: 'NOTA DE REMISIÓN' },
+            { code: '05', name: 'NOTA DE CRÉDITO' },
+            { code: '06', name: 'NOTA DE DÉBITO' },
+            { code: '07', name: 'COMPROBANTE DE RETENCIÓN' },
+            { code: '08', name: 'COMPROBANTE DE LIQUIDACIÓN' },
+            { code: '11', name: 'FACTURA DE EXPORTACIÓN' },
+            { code: '14', name: 'FACTURA DE SUJETO EXCLUIDO' }
+        ];
+    }, [tipoDocs]);
 
     const handleViewSale = (id) => {
         setViewType('detalle');
@@ -595,16 +722,164 @@ const SalesHistory = () => {
                 </div>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
-                <div className="relative max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por nro. control o cliente..."
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+                {/* Header de Filtros y Botones Rápidos de Fecha */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1.5 text-slate-700">
+                            <Filter size={15} className="text-indigo-600" />
+                            <span className="text-xs font-black uppercase tracking-wider">Filtros de Búsqueda</span>
+                        </div>
+                        {activeFiltersCount > 0 && (
+                            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-full border border-indigo-200">
+                                {activeFiltersCount} {activeFiltersCount === 1 ? 'filtro activo' : 'filtros activos'}
+                            </span>
+                        )}
+                        {isFetching && (
+                            <span className="text-[10px] text-slate-400 font-bold animate-pulse flex items-center gap-1">
+                                <RefreshCcw size={10} className="animate-spin" /> Actualizando...
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Rango Rápido:</span>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('today')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getTodayStr() && endDate === getTodayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Hoy
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('yesterday')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getYesterdayStr() && endDate === getYesterdayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Ayer
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('this_week')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getStartOfWeekStr() && endDate === getTodayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Esta Semana
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('this_month')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getStartOfMonthStr() && endDate === getTodayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Este Mes
+                        </button>
+                        {activeFiltersCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleClearFilters}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 transition-all ml-1 cursor-pointer"
+                                title="Restablecer todos los filtros"
+                            >
+                                <RotateCcw size={12} />
+                                <span>Limpiar Filtros</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Grid de Controles de Filtro */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+                    {/* Búsqueda por texto */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Buscar</label>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <input 
+                                type="text" 
+                                placeholder="Cliente, control, cód..."
+                                className="w-full pl-8 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 placeholder:text-slate-400"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                            {search && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearch('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition-all cursor-pointer"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Fecha Desde */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Fecha Desde</label>
+                        <input 
+                            type="date" 
+                            value={startDate}
+                            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700"
+                        />
+                    </div>
+
+                    {/* Fecha Hasta */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Fecha Hasta</label>
+                        <input 
+                            type="date" 
+                            value={endDate}
+                            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700"
+                        />
+                    </div>
+
+                    {/* Tipo de Documento */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Tipo Documento</label>
+                        <select
+                            value={tipoDocumento}
+                            onChange={(e) => { setTipoDocumento(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 cursor-pointer truncate"
+                        >
+                            <option value="">Todos los tipos</option>
+                            {documentTypes.map(t => (
+                                <option key={t.code} value={t.code}>{t.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Estado MH / DTE */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Estado MH / DTE</label>
+                        <select
+                            value={status}
+                            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 cursor-pointer"
+                        >
+                            <option value="">Todos los estados</option>
+                            <option value="ACCEPTED">✅ Aceptado</option>
+                            <option value="REJECTED">❌ Rechazado</option>
+                            <option value="INVALIDADO">🚫 Anulado / Invalidado</option>
+                            <option value="PENDING">⏳ Pendiente</option>
+                        </select>
+                    </div>
                 </div>
 
                 <Table 
@@ -809,8 +1084,10 @@ const SalesHistory = () => {
                     totalPages={salesData.totalPages}
                     totalItems={salesData.totalItems}
                     onPageChange={setPage}
-                    itemsOnPage={salesData.data.length}
+                    itemsOnPage={salesData.data?.length || 0}
                     isLoading={isLoading}
+                    limit={limit}
+                    onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
                 />
             </div>
 
