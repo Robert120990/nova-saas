@@ -5,7 +5,6 @@ import {
     Ticket,
     Plus,
     Search,
-    X,
     Loader2,
     Eye,
     Barcode,
@@ -17,9 +16,7 @@ import {
     XCircle,
     CheckCheck,
     RotateCcw,
-    Calendar,
-    Building2,
-    ArrowUpDown
+    Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
