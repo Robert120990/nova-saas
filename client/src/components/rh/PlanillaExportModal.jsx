@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { 
     X, 
     FileText, 
@@ -34,19 +35,38 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     const tipo = periodo?.tipo || 'planilla'; // 'planilla' | 'recibos' | 'csv'
 
     // Fetch branches
-    const { data: branches = [] } = useQuery({
+    const { data: branchesResp } = useQuery({
         queryKey: ['branches'],
-        queryFn: async () => (await axios.get('/api/branches')).data || [],
+        queryFn: async () => {
+            const res = await axios.get('/api/branches');
+            return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        },
         enabled: isOpen
     });
+
+    const branches = useMemo(() => {
+        if (!branchesResp) return [];
+        if (Array.isArray(branchesResp)) return branchesResp;
+        if (Array.isArray(branchesResp.data)) return branchesResp.data;
+        return [];
+    }, [branchesResp]);
 
     // Fetch departamentos
     const { data: deptosResp } = useQuery({
         queryKey: ['rh-departamentos-all'],
-        queryFn: async () => (await axios.get('/api/rh/departamentos', { params: { limit: 5000 } })).data || { data: [] },
+        queryFn: async () => {
+            const res = await axios.get('/api/rh/departamentos', { params: { limit: 5000 } });
+            return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        },
         enabled: isOpen
     });
-    const departamentos = deptosResp?.data || [];
+
+    const departamentos = useMemo(() => {
+        if (!deptosResp) return [];
+        if (Array.isArray(deptosResp)) return deptosResp;
+        if (Array.isArray(deptosResp.data)) return deptosResp.data;
+        return [];
+    }, [deptosResp]);
 
     // Reset state when modal opens
     useEffect(() => {
@@ -76,15 +96,17 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     // Toggle branch selection
     const handleToggleBranch = (id) => {
         if (allBranchesSelected) {
+            // All were checked, uncheck only this one
+            const next = branches.map(b => b.id).filter(bId => bId !== id);
             setAllBranchesSelected(false);
-            setSelectedBranchIds([id]);
+            setSelectedBranchIds(next);
         } else {
             const exists = selectedBranchIds.includes(id);
             const next = exists 
                 ? selectedBranchIds.filter(bId => bId !== id)
                 : [...selectedBranchIds, id];
             
-            if (next.length === branches.length || next.length === 0) {
+            if (next.length === branches.length) {
                 setAllBranchesSelected(true);
                 setSelectedBranchIds([]);
             } else {
@@ -98,22 +120,24 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
         if (selectAll) {
             setSelectedBranchIds([]);
         } else {
-            setSelectedBranchIds(branches.map(b => b.id));
+            setSelectedBranchIds([]);
         }
     };
 
     // Toggle depto selection
     const handleToggleDepto = (id) => {
         if (allDeptosSelected) {
+            // All were checked, uncheck only this one
+            const next = departamentos.map(d => d.id).filter(dId => dId !== id);
             setAllDeptosSelected(false);
-            setSelectedDeptoIds([id]);
+            setSelectedDeptoIds(next);
         } else {
             const exists = selectedDeptoIds.includes(id);
             const next = exists 
                 ? selectedDeptoIds.filter(dId => dId !== id)
                 : [...selectedDeptoIds, id];
 
-            if (next.length === departamentos.length || next.length === 0) {
+            if (next.length === departamentos.length) {
                 setAllDeptosSelected(true);
                 setSelectedDeptoIds([]);
             } else {
@@ -127,7 +151,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
         if (selectAll) {
             setSelectedDeptoIds([]);
         } else {
-            setSelectedDeptoIds(departamentos.map(d => d.id));
+            setSelectedDeptoIds([]);
         }
     };
 
@@ -149,6 +173,15 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     const willGroupByBranch = tipo === 'planilla' && effectiveBranchCount > 1;
 
     const handleConfirm = () => {
+        if (!allBranchesSelected && selectedBranchIds.length === 0) {
+            toast.error('Debe seleccionar al menos una sucursal');
+            return;
+        }
+        if (!allDeptosSelected && selectedDeptoIds.length === 0) {
+            toast.error('Debe seleccionar al menos un departamento');
+            return;
+        }
+
         const branch_ids = allBranchesSelected ? [] : selectedBranchIds;
         const departamento_ids = allDeptosSelected ? [] : selectedDeptoIds;
 
