@@ -56,7 +56,7 @@ const Empleados = () => {
     const [filterCargo, setFilterCargo] = useState('');
     const [filterDept, setFilterDept] = useState('');
     const [filterBranch, setFilterBranch] = useState('');
-    const [filterEstado, setFilterEstado] = useState('todos');
+    const [filterEstado, setFilterEstado] = useState('activo');
     const [emergencyContacts, setEmergencyContacts] = useState([]);
     const [showEmergencyForm, setShowEmergencyForm] = useState(false);
     const [editEmergency, setEditEmergency] = useState(null);
@@ -289,14 +289,14 @@ const Empleados = () => {
         setIsModalOpen(true);
     };
 
-    const hasActiveFilters = Boolean(debouncedSearch || filterCargo || filterDept || filterBranch || filterEstado !== 'todos');
+    const hasActiveFilters = Boolean(debouncedSearch || filterCargo || filterDept || filterBranch || filterEstado !== 'activo');
     const handleResetFilters = () => {
         setSearchTerm('');
         setDebouncedSearch('');
         setFilterCargo('');
         setFilterDept('');
         setFilterBranch('');
-        setFilterEstado('todos');
+        setFilterEstado('activo');
         setPage(1);
     };
 
@@ -395,8 +395,8 @@ const Empleados = () => {
                             onChange={(e) => { setFilterEstado(e.target.value); setPage(1); }}
                             className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-medium text-slate-700 transition-all"
                         >
-                            <option value="todos">Todos los estados</option>
                             <option value="activo">Solo Activos</option>
+                            <option value="todos">Todos los estados</option>
                             <option value="inactivo">Solo Inactivos</option>
                         </select>
 
