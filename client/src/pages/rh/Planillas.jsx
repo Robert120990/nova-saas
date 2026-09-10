@@ -819,18 +819,33 @@ const Planillas = () => {
                                     <td className="px-3 py-2">{estadoBadge(item)}</td>
                                     <td className="px-3 py-2 flex items-center gap-1">
                                         <button
-                                            onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'planilla' })}
-                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                            title="Ver Planilla Oficial (PDF)"
-                                        >
-                                            <FileText size={16} />
-                                        </button>
-                                        <button
                                             onClick={() => handleVerDetalle(item)}
                                             className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                             title="Editar planilla"
                                         >
                                             <Edit size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleEliminarPeriodo(item)}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Eliminar período"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleCerrarPeriodo(item)}
+                                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            title="Cerrar período (Marcar pagada)"
+                                        >
+                                            <Lock size={16} />
+                                        </button>
+                                        <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                                        <button
+                                            onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'planilla' })}
+                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Ver Planilla Oficial (PDF)"
+                                        >
+                                            <FileText size={16} />
                                         </button>
                                         <button
                                             onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'recibos' })}
@@ -845,20 +860,6 @@ const Planillas = () => {
                                             title="Exportar CSV bancario"
                                         >
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                        </button>
-                                        <button
-                                            onClick={() => handleCerrarPeriodo(item)}
-                                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                            title="Cerrar período (Marcar pagada)"
-                                        >
-                                            <Lock size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleEliminarPeriodo(item)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Eliminar período"
-                                        >
-                                            <Trash2 size={16} />
                                         </button>
                                     </td>
                                 </tr>
