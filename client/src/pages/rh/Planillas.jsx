@@ -9,6 +9,7 @@ import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Loc
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
+import PlanillaExportModal from '../../components/rh/PlanillaExportModal';
 
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
@@ -94,6 +95,7 @@ const Planillas = () => {
 
     const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
     const [previewPeriodo, setPreviewPeriodo] = useState(null);
+    const [exportModalConfig, setExportModalConfig] = useState(null);
 
     const [empleadoId, setEmpleadoId] = useState('');
     const [empleadoData, setEmpleadoData] = useState(null);
@@ -542,13 +544,18 @@ const Planillas = () => {
         }
     };
 
-    const handleDownloadCSV = async (anio, mes, quincena) => {
+    const handleDownloadCSV = async (anio, mes, quincena, branchIds = [], departamentoIds = []) => {
         try {
-            const res = await axios.get('/api/rh/planillas', {
-                params: { anio, mes, quincena, limit: 9999 }
-            });
+            const params = { anio, mes, quincena, limit: 9999 };
+            if (branchIds && branchIds.length > 0) {
+                params.branch_ids = Array.isArray(branchIds) ? branchIds.join(',') : branchIds;
+            }
+            if (departamentoIds && departamentoIds.length > 0) {
+                params.departamento_ids = Array.isArray(departamentoIds) ? departamentoIds.join(',') : departamentoIds;
+            }
+            const res = await axios.get('/api/rh/planillas', { params });
             const rows = res.data.data || [];
-            if (!rows.length) return toast.error('Sin datos');
+            if (!rows.length) return toast.error('Sin datos para los filtros seleccionados');
             const csv = rows.map(r => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
                 return `${r.empleado_codigo || ''}\t${parseFloat(r.monto_recibir || 0).toFixed(2)}\t${nombre}`;
@@ -563,6 +570,22 @@ const Planillas = () => {
             link.remove();
             toast.success('CSV descargado');
         } catch { toast.error('Error al descargar CSV'); }
+    };
+
+    const handleConfirmExport = ({ tipo, anio, mes, quincena, branch_ids, departamento_ids, formato }) => {
+        if (tipo === 'csv') {
+            handleDownloadCSV(anio, mes, quincena, branch_ids, departamento_ids);
+        } else {
+            setPreviewPeriodo({
+                anio,
+                mes,
+                quincena,
+                tipo,
+                branch_ids,
+                departamento_ids,
+                formato
+            });
+        }
     };
 
     const cerrarMutation = useMutation({
@@ -647,7 +670,7 @@ const Planillas = () => {
             }
         }
 
-        setPreviewPeriodo({
+        setExportModalConfig({
             anio: periodoAnio,
             mes: periodoMes,
             quincena: quincena,
@@ -687,7 +710,7 @@ const Planillas = () => {
             }
         }
 
-        setPreviewPeriodo({
+        setExportModalConfig({
             anio: periodoAnio,
             mes: periodoMes,
             quincena: quincena,
@@ -841,21 +864,21 @@ const Planillas = () => {
                                         </button>
                                         <span className="w-px h-4 bg-slate-200 mx-0.5" />
                                         <button
-                                            onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'planilla' })}
+                                            onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'planilla' })}
                                             className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                             title="Ver Planilla Oficial (PDF)"
                                         >
                                             <FileText size={16} />
                                         </button>
                                         <button
-                                            onClick={() => setPreviewPeriodo({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'recibos' })}
+                                            onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'recibos' })}
                                             className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                                             title="Ver Recibos Masivos (PDF)"
                                         >
                                             <ReceiptText size={16} />
                                         </button>
                                         <button
-                                            onClick={() => handleDownloadCSV(item.periodo_anio, item.periodo_mes, item.quincena)}
+                                            onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'csv' })}
                                             className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
                                             title="Exportar CSV bancario"
                                         >
@@ -1392,6 +1415,14 @@ const Planillas = () => {
                 isOpen={!!previewPeriodo}
                 onClose={() => setPreviewPeriodo(null)}
                 periodo={previewPeriodo}
+            />
+
+            {/* --- Export Options & Filters Modal --- */}
+            <PlanillaExportModal
+                isOpen={!!exportModalConfig}
+                onClose={() => setExportModalConfig(null)}
+                periodo={exportModalConfig}
+                onConfirm={handleConfirmExport}
             />
         </div>
     );

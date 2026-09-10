@@ -49,9 +49,24 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
             } else if (isRecibos) {
                 endpoint = '/api/rh/planillas/recibos-masivos';
                 params = { anio, mes, quincena };
+                if (periodo?.branch_ids && periodo.branch_ids.length > 0) {
+                    params.branch_ids = Array.isArray(periodo.branch_ids) ? periodo.branch_ids.join(',') : periodo.branch_ids;
+                }
+                if (periodo?.departamento_ids && periodo.departamento_ids.length > 0) {
+                    params.departamento_ids = Array.isArray(periodo.departamento_ids) ? periodo.departamento_ids.join(',') : periodo.departamento_ids;
+                }
             } else {
                 endpoint = '/api/rh/planillas/reporte-pdf';
                 params = { anio, mes, quincena };
+                if (periodo?.branch_ids && periodo.branch_ids.length > 0) {
+                    params.branch_ids = Array.isArray(periodo.branch_ids) ? periodo.branch_ids.join(',') : periodo.branch_ids;
+                }
+                if (periodo?.departamento_ids && periodo.departamento_ids.length > 0) {
+                    params.departamento_ids = Array.isArray(periodo.departamento_ids) ? periodo.departamento_ids.join(',') : periodo.departamento_ids;
+                }
+                if (periodo?.formato) {
+                    params.formato = periodo.formato;
+                }
             }
 
             const res = await axios.get(endpoint, {
@@ -90,7 +105,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         return () => {
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         };
-    }, [isOpen, anio, mes, quincena, tipo, departamento_id]);
+    }, [isOpen, anio, mes, quincena, tipo, departamento_id, periodo?.branch_ids, periodo?.departamento_ids, periodo?.formato]);
 
     // Extraer cantidad total de páginas cuando cambia pdfUrl
     useEffect(() => {
