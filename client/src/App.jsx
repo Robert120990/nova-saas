@@ -124,6 +124,7 @@ import GasCouponLiquidation from './pages/GasCouponLiquidation';
 import SalesRemesaDeliveries from './pages/SalesRemesaDeliveries';
 import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
 import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
+import GasLubricantsReport from './pages/GasLubricantsReport';
 
 // Control de Pozo Pages
 import PozoServicios from './pages/PozoServicios';
@@ -333,6 +334,7 @@ function App() {
                         <Route path="/gas-station/galonaje-vendido" element={<GalonajeVendidoReport />} />
                         <Route path="/gas-station/reporte-acumulado-diario" element={<GasAccumulatedDailyReport />} />
                         <Route path="/gas-station/reporte-resumen-gln-vendidos" element={<FuelSalesSummaryReport />} />
+                        <Route path="/gas-station/reporte-lubricantes-vendidos" element={<GasLubricantsReport />} />
 
                         {/* Control de Pozo */}
                         <Route path="/pozo/servicios" element={<PozoServicios />} />

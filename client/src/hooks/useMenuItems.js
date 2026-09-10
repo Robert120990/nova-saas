@@ -228,6 +228,24 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Reporte de Lubricantes Vendidos en Reportes de Gasolinera
+    const gasReportsNode = Object.values(itemMap).find(i => 
+        (i.id === 90) ||
+        (i.children && i.children.some(c => c.path === '/gas-station/reporte-resumen-gln-vendidos'))
+    );
+    if (gasReportsNode && !gasReportsNode.children.some(c => c.path === '/gas-station/reporte-lubricantes-vendidos')) {
+        gasReportsNode.children.push({
+            id: 'virtual-gas-lubricants-report',
+            label: 'Lubricantes Vendidos',
+            path: '/gas-station/reporte-lubricantes-vendidos',
+            permission: 'view_gas_lubricants_report',
+            permission_key: 'view_gas_lubricants_report',
+            hideInMenu: false,
+            icon: iconMap.Droplets || iconMap.Circle,
+            children: []
+        });
+    }
+
     return roots;
 }
 

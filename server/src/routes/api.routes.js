@@ -775,6 +775,7 @@ router.get('/gas-station/reports/fuel-inventory/pdf', gasReporteController.getFu
 // Gas Station - Reporte Galonaje Vendido
 router.get('/gas-station/reports/galonaje-vendido/pdf', gasReporteController.getGalonajeVendidoPDF);
 router.get('/gas-station/reports/fuel-sales-summary/pdf', gasReporteController.getFuelSalesSummaryPDF);
+router.get('/gas-station/reports/lubricants-sold/pdf', gasReporteController.getLubricantsSoldPDF);
 
 // Gas Station - Remesa Deliveries
 router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);

@@ -1072,3 +1072,223 @@ function buildFuelSalesSummaryPDF(companyInfo, branchName, startDate, endDate, g
     });
 }
 
+exports.getLubricantsSoldPDF = async (req, res) => {
+    const { start_date, end_date, branch_id, only_with_sales } = req.query;
+    const companyId = req.company_id;
+
+    try {
+        if (!companyId) return res.status(401).json({ message: 'No session' });
+        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
+
+        const [companyRows] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
+        const companyInfo = companyRows[0] || { razon_social: 'Empresa', nit: '', nrc: '' };
+
+        let branchName = 'Todas';
+        if (branch_id && branch_id !== 'all') {
+            const [br] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (br.length > 0) branchName = br[0].nombre;
+        }
+
+        const branchFilter = branch_id && branch_id !== 'all' ? 'AND c.branch_id = ?' : '';
+        const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        // By default, only show rows with sales > 0 unless only_with_sales === 'false'
+        const salesFilter = only_with_sales === 'false' ? '' : 'AND lr.ventas > 0';
+
+        const [rows] = await pool.query(`
+            SELECT 
+                c.fecha_turno,
+                c.numero_turno,
+                c.branch_id,
+                COALESCE(b.nombre, 'Sin Sucursal') AS branch_name,
+                lr.producto_id,
+                lr.producto_codigo,
+                lr.producto_descripcion,
+                lr.lectura_inicial,
+                lr.recarga,
+                lr.lectura_final,
+                lr.ventas,
+                lr.precio,
+                lr.total
+            FROM gas_station_closeout_lubricant_readings lr
+            JOIN gas_station_closeouts c ON lr.closeout_id = c.id
+            LEFT JOIN branches b ON c.branch_id = b.id
+            WHERE c.company_id = ?
+              AND c.fecha_turno BETWEEN ? AND ?
+              AND c.estado IN ('cerrado', 'reabierto')
+              ${salesFilter}
+              ${branchFilter}
+            ORDER BY c.fecha_turno ASC, c.numero_turno ASC, lr.producto_descripcion ASC
+        `, [companyId, start_date, end_date, ...branchParams]);
+
+        // Group by fecha_turno
+        const grouped = {};
+        for (const r of rows) {
+            const fecha = r.fecha_turno instanceof Date
+                ? r.fecha_turno.toISOString().slice(0, 10)
+                : String(r.fecha_turno).slice(0, 10);
+            if (!grouped[fecha]) grouped[fecha] = [];
+            grouped[fecha].push(r);
+        }
+
+        // Summary by product
+        const summaryByProduct = {};
+        let grandUnits = 0;
+        let grandTotal = 0;
+
+        for (const r of rows) {
+            const code = r.producto_codigo || 'SIN_COD';
+            const units = parseFloat(r.ventas || 0);
+            const total = parseFloat(r.total || 0);
+            grandUnits += units;
+            grandTotal += total;
+
+            if (!summaryByProduct[code]) {
+                summaryByProduct[code] = {
+                    codigo: code,
+                    descripcion: r.producto_descripcion || '',
+                    unidades: 0,
+                    total: 0
+                };
+            }
+            summaryByProduct[code].unidades += units;
+            summaryByProduct[code].total += total;
+        }
+
+        const summaryList = Object.values(summaryByProduct).sort((a, b) => b.total - a.total);
+        summaryList.forEach(s => {
+            s.precio_promedio = s.unidades > 0 ? s.total / s.unidades : 0;
+            s.porcentaje = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0;
+        });
+
+        if (req.query.format === 'excel') {
+            const sheetData = [];
+            for (const [fecha, items] of Object.entries(grouped)) {
+                let dayUnits = 0, dayTotal = 0;
+                for (const r of items) {
+                    const u = parseFloat(r.ventas || 0);
+                    const t = parseFloat(r.total || 0);
+                    sheetData.push({
+                        fecha: r.fecha_turno instanceof Date ? r.fecha_turno.toLocaleDateString('es-SV') : String(fecha),
+                        turno: `Turno ${r.numero_turno}`,
+                        sucursal: r.branch_name,
+                        codigo: r.producto_codigo,
+                        descripcion: r.producto_descripcion,
+                        inicial: parseFloat(r.lectura_inicial || 0).toFixed(2),
+                        recarga: parseFloat(r.recarga || 0).toFixed(2),
+                        final: parseFloat(r.lectura_final || 0).toFixed(2),
+                        ventas: u.toFixed(2),
+                        precio: parseFloat(r.precio || 0).toFixed(2),
+                        total: t.toFixed(2)
+                    });
+                    dayUnits += u;
+                    dayTotal += t;
+                }
+                sheetData.push({
+                    fecha: `TOTAL DIARIO (${fecha})`,
+                    turno: '',
+                    sucursal: '',
+                    codigo: '',
+                    descripcion: '',
+                    inicial: '',
+                    recarga: '',
+                    final: '',
+                    ventas: dayUnits.toFixed(2),
+                    precio: '',
+                    total: dayTotal.toFixed(2)
+                });
+            }
+
+            sheetData.push({
+                fecha: 'TOTAL GENERAL',
+                turno: '',
+                sucursal: '',
+                codigo: '',
+                descripcion: '',
+                inicial: '',
+                recarga: '',
+                final: '',
+                ventas: grandUnits.toFixed(2),
+                precio: '',
+                total: grandTotal.toFixed(2)
+            });
+
+            // Summary sheet
+            const summarySheetData = summaryList.map(s => ({
+                codigo: s.codigo,
+                descripcion: s.descripcion,
+                unidades: s.unidades.toFixed(2),
+                precio_promedio: s.precio_promedio.toFixed(2),
+                total: s.total.toFixed(2),
+                porcentaje: `${s.porcentaje.toFixed(2)}%`
+            }));
+
+            summarySheetData.push({
+                codigo: 'TOTAL GENERAL',
+                descripcion: '',
+                unidades: grandUnits.toFixed(2),
+                precio_promedio: '',
+                total: grandTotal.toFixed(2),
+                porcentaje: '100.00%'
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [
+                    {
+                        name: 'Detalle Movimientos',
+                        columns: [
+                            { header: 'Fecha', key: 'fecha', width: 15 },
+                            { header: 'Turno', key: 'turno', width: 12 },
+                            { header: 'Sucursal', key: 'sucursal', width: 22 },
+                            { header: 'Código', key: 'codigo', width: 14 },
+                            { header: 'Descripción', key: 'descripcion', width: 35 },
+                            { header: 'Inv. Inicial', key: 'inicial', width: 13 },
+                            { header: 'Recarga', key: 'recarga', width: 13 },
+                            { header: 'Inv. Final', key: 'final', width: 13 },
+                            { header: 'Cant. Vendida', key: 'ventas', width: 15 },
+                            { header: 'Precio Unit.', key: 'precio', width: 13 },
+                            { header: 'Total ($)', key: 'total', width: 15 }
+                        ],
+                        data: sheetData
+                    },
+                    {
+                        name: 'Resumen por Producto',
+                        columns: [
+                            { header: 'Código', key: 'codigo', width: 14 },
+                            { header: 'Descripción', key: 'descripcion', width: 35 },
+                            { header: 'Unidades Vendidas', key: 'unidades', width: 18 },
+                            { header: 'Precio Promedio ($)', key: 'precio_promedio', width: 20 },
+                            { header: 'Monto Total ($)', key: 'total', width: 16 },
+                            { header: '% Participación', key: 'porcentaje', width: 16 }
+                        ],
+                        data: summarySheetData
+                    }
+                ]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Lubricantes_Vendidos_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        const pdfBuffer = await pdfService.generateLubricantsSoldPDF({
+            company: companyInfo,
+            company_id: companyId,
+            branch_name: branchName,
+            start_date,
+            end_date,
+            grouped,
+            summaryList,
+            grandUnits,
+            grandTotal,
+            totalItemsCount: rows.length
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Lubricantes_Vendidos_${start_date}_al_${end_date}.pdf`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Error en getLubricantsSoldPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de lubricantes vendidos' });
+    }
+};
+
+
