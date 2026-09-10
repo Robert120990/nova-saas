@@ -957,20 +957,20 @@ const GasCouponLiquidation = () => {
 
                     {/* Tabla de Cupones para Conciliación */}
                     <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                        <div className="max-h-72 overflow-y-auto">
-                            <table className="w-full text-left border-collapse">
+                        <div className="max-h-72 overflow-y-auto overflow-x-auto">
+                            <table className="min-w-full text-left border-collapse">
                                 <thead className="sticky top-0 bg-slate-100 z-10 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                                     <tr>
-                                        <th className="px-3 py-2 w-10 text-center">Físico</th>
-                                        <th className="px-3 py-2">Estado</th>
-                                        <th className="px-3 py-2">N° Cupón</th>
-                                        <th className="px-3 py-2">Distribuidora</th>
-                                        <th className="px-3 py-2">Fecha / Turno</th>
-                                        <th className="px-3 py-2">Despachador</th>
-                                        <th className="px-3 py-2">Producto</th>
-                                        <th className="px-3 py-2 text-right">Monto Sistema</th>
-                                        <th className="px-3 py-2 text-right">Monto Físico</th>
-                                        <th className="px-3 py-2 text-right">Diferencia</th>
+                                        <th className="px-3 py-2 w-10 text-center whitespace-nowrap">Físico</th>
+                                        <th className="px-3 py-2 whitespace-nowrap min-w-[100px]">Estado</th>
+                                        <th className="px-3 py-2 whitespace-nowrap min-w-[90px]">N° Cupón</th>
+                                        <th className="px-3 py-2 whitespace-nowrap min-w-[120px]">Distribuidora</th>
+                                        <th className="px-3 py-2 whitespace-nowrap min-w-[130px]">Fecha / Turno</th>
+                                        <th className="px-3 py-2 whitespace-nowrap min-w-[130px]">Despachador</th>
+                                        <th className="px-3 py-2 whitespace-nowrap min-w-[120px]">Producto</th>
+                                        <th className="px-3 py-2 text-right whitespace-nowrap min-w-[110px]">Monto Sistema</th>
+                                        <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">Monto Físico</th>
+                                        <th className="px-3 py-2 text-right whitespace-nowrap min-w-[110px]">Diferencia</th>
                                         <th className="px-3 py-2 w-10"></th>
                                     </tr>
                                 </thead>
@@ -993,7 +993,7 @@ const GasCouponLiquidation = () => {
                                                     key={i}
                                                     className={`transition-colors ${c.recibido_fisico ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}`}
                                                 >
-                                                    <td className="px-3 py-2 text-center">
+                                                    <td className="px-3 py-2 text-center whitespace-nowrap">
                                                         <input
                                                             type="checkbox"
                                                             checked={!!c.recibido_fisico}
@@ -1001,9 +1001,9 @@ const GasCouponLiquidation = () => {
                                                             className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                                         />
                                                     </td>
-                                                    <td className="px-3 py-2">
+                                                    <td className="px-3 py-2 whitespace-nowrap">
                                                         {c.estado_conciliacion === 'conciliado' && (
-                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1 w-max">
+                                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1 w-max">
                                                                 <CheckCircle2 size={12} /> Coincide
                                                             </span>
                                                         )}
@@ -1018,10 +1018,10 @@ const GasCouponLiquidation = () => {
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="px-3 py-2 font-bold text-slate-800">
+                                                    <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">
                                                         {c.cupon}
                                                     </td>
-                                                    <td className="px-3 py-2 text-slate-600 font-medium">
+                                                    <td className="px-3 py-2 text-slate-600 font-medium whitespace-nowrap">
                                                         {c.distribuidora_nombre || '-'}
                                                     </td>
                                                     <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
@@ -1033,19 +1033,19 @@ const GasCouponLiquidation = () => {
                                                     <td className="px-3 py-2 text-slate-600 truncate max-w-[110px]" title={c.producto_descripcion}>
                                                         {c.producto_descripcion || '-'}
                                                     </td>
-                                                    <td className="px-3 py-2 text-right font-medium text-slate-600">
+                                                    <td className="px-3 py-2 text-right font-medium text-slate-600 whitespace-nowrap">
                                                         <Money value={c.monto_sistema} />
                                                     </td>
-                                                    <td className="px-3 py-2 text-right">
+                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
                                                         <div className="w-24 ml-auto">
                                                             <MoneyInput
                                                                 value={c.monto_fisico}
                                                                 onChange={(val) => handleMontoFisicoChange(realIndex, val)}
-                                                                className="text-right font-bold text-xs py-1 px-1.5 border border-slate-300 rounded-lg bg-white"
+                                                                className="w-full text-right font-bold text-xs py-1 px-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                                             />
                                                         </div>
                                                     </td>
-                                                    <td className="px-3 py-2 text-right font-bold">
+                                                    <td className="px-3 py-2 text-right font-bold whitespace-nowrap">
                                                         <span className={diff < 0 ? 'text-rose-600' : (diff > 0 ? 'text-emerald-600' : 'text-slate-400')}>
                                                             <Money value={diff} />
                                                         </span>
@@ -1285,25 +1285,25 @@ const GasCouponLiquidation = () => {
 
                             {/* Tabla de Items Liquidados */}
                             <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                <div className="max-h-72 overflow-y-auto">
-                                    <table className="w-full text-left border-collapse text-xs">
+                                <div className="max-h-72 overflow-y-auto overflow-x-auto">
+                                    <table className="min-w-full text-left border-collapse text-xs">
                                         <thead className="sticky top-0 bg-slate-100 z-10 font-bold text-slate-600 uppercase tracking-wider">
                                             <tr>
-                                                <th className="px-3 py-2">Estado</th>
-                                                <th className="px-3 py-2">N° Cupón</th>
-                                                <th className="px-3 py-2">Distribuidora</th>
-                                                <th className="px-3 py-2">Fecha / Turno</th>
-                                                <th className="px-3 py-2">Despachador</th>
-                                                <th className="px-3 py-2">Producto</th>
-                                                <th className="px-3 py-2 text-right">Monto Sis.</th>
-                                                <th className="px-3 py-2 text-right">Monto Fís.</th>
-                                                <th className="px-3 py-2 text-right">Diferencia</th>
+                                                <th className="px-3 py-2 whitespace-nowrap min-w-[90px]">Estado</th>
+                                                <th className="px-3 py-2 whitespace-nowrap min-w-[90px]">N° Cupón</th>
+                                                <th className="px-3 py-2 whitespace-nowrap min-w-[120px]">Distribuidora</th>
+                                                <th className="px-3 py-2 whitespace-nowrap min-w-[130px]">Fecha / Turno</th>
+                                                <th className="px-3 py-2 whitespace-nowrap min-w-[130px]">Despachador</th>
+                                                <th className="px-3 py-2 whitespace-nowrap min-w-[120px]">Producto</th>
+                                                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">Monto Sis.</th>
+                                                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">Monto Fís.</th>
+                                                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">Diferencia</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {selectedLiquidation.items?.map((item, idx) => (
                                                 <tr key={idx} className="hover:bg-slate-50">
-                                                    <td className="px-3 py-2">
+                                                    <td className="px-3 py-2 whitespace-nowrap">
                                                         {item.estado_conciliacion === 'conciliado' && (
                                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                                                                 Conciliado
@@ -1320,20 +1320,20 @@ const GasCouponLiquidation = () => {
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="px-3 py-2 font-bold text-slate-800">{item.cupon}</td>
-                                                    <td className="px-3 py-2 text-slate-600">{item.distribuidora_nombre}</td>
+                                                    <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">{item.cupon}</td>
+                                                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{item.distribuidora_nombre}</td>
                                                     <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
                                                         {item.fecha_turno ? `${new Date(item.fecha_turno).toLocaleDateString('es-SV', { timeZone: 'UTC' })} (T${item.numero_turno})` : '-'}
                                                     </td>
-                                                    <td className="px-3 py-2 text-slate-600">{item.despachador_nombre || '-'}</td>
-                                                    <td className="px-3 py-2 text-slate-600">{item.producto_descripcion || '-'}</td>
-                                                    <td className="px-3 py-2 text-right font-medium text-slate-600">
+                                                    <td className="px-3 py-2 text-slate-600 truncate max-w-[130px]">{item.despachador_nombre || '-'}</td>
+                                                    <td className="px-3 py-2 text-slate-600 truncate max-w-[110px]">{item.producto_descripcion || '-'}</td>
+                                                    <td className="px-3 py-2 text-right font-medium text-slate-600 whitespace-nowrap">
                                                         <Money value={item.monto_sistema} />
                                                     </td>
-                                                    <td className="px-3 py-2 text-right font-bold text-slate-800">
+                                                    <td className="px-3 py-2 text-right font-bold text-slate-800 whitespace-nowrap">
                                                         <Money value={item.monto_fisico} />
                                                     </td>
-                                                    <td className="px-3 py-2 text-right font-bold">
+                                                    <td className="px-3 py-2 text-right font-bold whitespace-nowrap">
                                                         <span className={item.diferencia < 0 ? 'text-rose-600' : (item.diferencia > 0 ? 'text-emerald-600' : 'text-slate-400')}>
                                                             <Money value={item.diferencia} />
                                                         </span>
