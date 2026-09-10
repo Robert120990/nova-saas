@@ -632,6 +632,7 @@ const AccionPersonalModal = ({
                 isOpen={isEmpModalOpen}
                 onClose={() => setIsEmpModalOpen(false)}
                 onSelect={handleSelectEmployee}
+                showSalary={false}
             />
         </>
     );
