@@ -5130,17 +5130,17 @@ const generateLubricantsSoldPDF = async (data) => {
     const drawTableHeader = (y) => {
         doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
         doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-        doc.text('FECHA', colX.fecha, y + 3, { width: colW.fecha, align: 'center' });
-        doc.text('TURNO', colX.turno, y + 3, { width: colW.turno, align: 'center' });
-        doc.text('SUCURSAL', colX.sucursal, y + 3, { width: colW.sucursal });
-        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
-        doc.text('DESCRIPCIÓN', colX.descripcion, y + 3, { width: colW.descripcion });
-        doc.text('INICIAL', colX.inicial, y + 3, { width: colW.inicial - 2, align: 'right' });
-        doc.text('RECARGA', colX.recarga, y + 3, { width: colW.recarga - 2, align: 'right' });
-        doc.text('FINAL', colX.final, y + 3, { width: colW.final - 2, align: 'right' });
-        doc.text('VENDIDOS', colX.ventas, y + 3, { width: colW.ventas - 2, align: 'right' });
-        doc.text('PRECIO', colX.precio, y + 3, { width: colW.precio - 2, align: 'right' });
-        doc.text('TOTAL $', colX.total, y + 3, { width: colW.total - 2, align: 'right' });
+        doc.text('FECHA', colX.fecha, y + 3, { width: colW.fecha, align: 'center', lineBreak: false });
+        doc.text('TURNO', colX.turno, y + 3, { width: colW.turno, align: 'center', lineBreak: false });
+        doc.text('SUCURSAL', colX.sucursal, y + 3, { width: colW.sucursal, lineBreak: false });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo, lineBreak: false });
+        doc.text('DESCRIPCIÓN', colX.descripcion, y + 3, { width: colW.descripcion, lineBreak: false });
+        doc.text('INICIAL', colX.inicial, y + 3, { width: colW.inicial - 2, align: 'right', lineBreak: false });
+        doc.text('RECARGA', colX.recarga, y + 3, { width: colW.recarga - 2, align: 'right', lineBreak: false });
+        doc.text('FINAL', colX.final, y + 3, { width: colW.final - 2, align: 'right', lineBreak: false });
+        doc.text('VENDIDOS', colX.ventas, y + 3, { width: colW.ventas - 2, align: 'right', lineBreak: false });
+        doc.text('PRECIO', colX.precio, y + 3, { width: colW.precio - 2, align: 'right', lineBreak: false });
+        doc.text('TOTAL $', colX.total, y + 3, { width: colW.total - 2, align: 'right', lineBreak: false });
         doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
         return y + 15;
     };
@@ -5240,71 +5240,66 @@ const generateLubricantsSoldPDF = async (data) => {
     // === CUADRO RESUMEN DE VENTAS POR PRODUCTO ===
     const summaryList = data.summaryList || [];
     const summaryTableHeight = 16 + 14 + (summaryList.length * 12) + 20;
-    if (currentY + Math.min(summaryTableHeight, 150) > 500) {
+    if (currentY + Math.min(summaryTableHeight, 150) > 510) {
         doc.addPage();
         currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
     }
 
     doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text('CUADRO RESUMEN DE VENTAS POR PRODUCTO', startX, currentY, { width: pageW, align: 'center' });
+    doc.text('CUADRO RESUMEN DE VENTAS POR PRODUCTO', startX, currentY, { width: pageW, align: 'center', lineBreak: false });
     currentY += 14;
 
     const sumColX = {
-        codigo: startX,
-        descripcion: startX + 70,
-        unidades: startX + 70 + 300,
-        precio: startX + 70 + 300 + 100,
-        monto: startX + 70 + 300 + 100 + 110,
-        porcentaje: startX + 70 + 300 + 100 + 110 + 90
+        codigo: 30,
+        descripcion: 100,
+        unidades: 372,
+        precio: 462,
+        monto: 557,
+        porcentaje: 652
     };
     const sumColW = {
         codigo: 70,
-        descripcion: 300,
-        unidades: 100,
-        precio: 110,
-        monto: 90,
-        porcentaje: 62
+        descripcion: 272,
+        unidades: 90,
+        precio: 95,
+        monto: 95,
+        porcentaje: 110
     };
 
-    doc.rect(startX, currentY, pageW, 14).fill('#f1f5f9');
-    doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, currentY, pageW, 14).stroke();
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text('CÓDIGO', sumColX.codigo, currentY + 3, { width: sumColW.codigo, align: 'center' });
-    doc.text('DESCRIPCIÓN DEL PRODUCTO', sumColX.descripcion, currentY + 3, { width: sumColW.descripcion });
-    doc.text('UNIDADES VENDIDAS', sumColX.unidades, currentY + 3, { width: sumColW.unidades - 4, align: 'right' });
-    doc.text('PRECIO PROMEDIO', sumColX.precio, currentY + 3, { width: sumColW.precio - 4, align: 'right' });
-    doc.text('MONTO TOTAL', sumColX.monto, currentY + 3, { width: sumColW.monto - 4, align: 'right' });
-    doc.text('% PARTICIPACIÓN', sumColX.porcentaje, currentY + 3, { width: sumColW.porcentaje - 4, align: 'right' });
-    currentY += 14;
+    const drawSummaryHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, y, pageW, 14).stroke();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CÓDIGO', sumColX.codigo, y + 3, { width: sumColW.codigo, align: 'center', lineBreak: false });
+        doc.text('DESCRIPCIÓN DEL PRODUCTO', sumColX.descripcion, y + 3, { width: sumColW.descripcion, lineBreak: false });
+        doc.text('UNIDADES VENDIDAS', sumColX.unidades, y + 3, { width: sumColW.unidades - 4, align: 'right', lineBreak: false });
+        doc.text('PRECIO PROMEDIO', sumColX.precio, y + 3, { width: sumColW.precio - 4, align: 'right', lineBreak: false });
+        doc.text('MONTO TOTAL', sumColX.monto, y + 3, { width: sumColW.monto - 4, align: 'right', lineBreak: false });
+        doc.text('% PARTICIPACIÓN', sumColX.porcentaje, y + 3, { width: sumColW.porcentaje - 4, align: 'right', lineBreak: false });
+        return y + 14;
+    };
+
+    currentY = drawSummaryHeader(currentY);
 
     summaryList.forEach((s, idx) => {
         if (currentY > 510) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
-            doc.rect(startX, currentY, pageW, 14).fill('#f1f5f9');
-            doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, currentY, pageW, 14).stroke();
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('CÓDIGO', sumColX.codigo, currentY + 3, { width: sumColW.codigo, align: 'center' });
-            doc.text('DESCRIPCIÓN DEL PRODUCTO', sumColX.descripcion, currentY + 3, { width: sumColW.descripcion });
-            doc.text('UNIDADES VENDIDAS', sumColX.unidades, currentY + 3, { width: sumColW.unidades - 4, align: 'right' });
-            doc.text('PRECIO PROMEDIO', sumColX.precio, currentY + 3, { width: sumColW.precio - 4, align: 'right' });
-            doc.text('MONTO TOTAL', sumColX.monto, currentY + 3, { width: sumColW.monto - 4, align: 'right' });
-            doc.text('% PARTICIPACIÓN', sumColX.porcentaje, currentY + 3, { width: sumColW.porcentaje - 4, align: 'right' });
-            currentY += 14;
+            currentY = drawSummaryHeader(currentY);
         }
 
         if (idx % 2 === 1) doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
         doc.strokeColor('#cbd5e1').lineWidth(0.5).rect(startX, currentY, pageW, 12).stroke();
         doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
-        doc.text(s.codigo || '', sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center' });
+        doc.text(s.codigo || '', sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center', lineBreak: false });
         
         const desc = reportPdfHelper.fitText(doc, s.descripcion || '', sumColW.descripcion - 4);
         doc.text(desc, sumColX.descripcion, currentY + 2, { width: sumColW.descripcion, lineBreak: false });
 
-        doc.text(fmtQty(s.unidades), sumColX.unidades, currentY + 2, { width: sumColW.unidades - 4, align: 'right' });
-        doc.text(reportPdfHelper.fmt(s.precio_promedio), sumColX.precio, currentY + 2, { width: sumColW.precio - 4, align: 'right' });
-        doc.text(reportPdfHelper.fmt(s.total), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right' });
-        doc.text(`${(s.porcentaje || 0).toFixed(2)}%`, sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right' });
+        doc.text(fmtQty(s.unidades), sumColX.unidades, currentY + 2, { width: sumColW.unidades - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.precio_promedio), sumColX.precio, currentY + 2, { width: sumColW.precio - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.total), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right', lineBreak: false });
+        doc.text(`${(s.porcentaje || 0).toFixed(2)}%`, sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right', lineBreak: false });
         currentY += 12;
     });
 
@@ -5313,14 +5308,14 @@ const generateLubricantsSoldPDF = async (data) => {
         doc.rect(startX, currentY - 1, pageW, 14).fill('#f1f5f9');
         doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, currentY - 1, pageW, 14).stroke();
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-        doc.text('TOTAL:', sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center' });
-        doc.text(fmtQty(grandUnits), sumColX.unidades, currentY + 2, { width: sumColW.unidades - 4, align: 'right' });
-        doc.text(reportPdfHelper.fmt(grandTotal), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right' });
-        doc.text('100.00%', sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right' });
+        doc.text('TOTAL:', sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center', lineBreak: false });
+        doc.text(fmtQty(grandUnits), sumColX.unidades, currentY + 2, { width: sumColW.unidades - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotal), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right', lineBreak: false });
+        doc.text('100.00%', sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right', lineBreak: false });
         currentY += 20;
     }
 
-    reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsCount, 'Registros');
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsCount, 'Operaciones');
     reportPdfHelper.renderPageNumbers(doc);
 
     doc.end();
