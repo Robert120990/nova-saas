@@ -77,7 +77,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
         signature_data: null,
         signature_author_name: '',
         signature_author_title: 'Ejecutivo Comercial',
-        signature_author_phone: '(503) 7069-5335',
+        signature_author_phone: '(503) 7060-5040',
         items: []
     });
 
@@ -171,7 +171,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                 signature_data: null,
                 signature_author_name: '',
                 signature_author_title: 'Ejecutivo Comercial',
-                signature_author_phone: '(503) 7069-5335',
+                signature_author_phone: '(503) 7060-5040',
                 items: [initialItem]
             });
             setCustomerSearch('');
@@ -523,7 +523,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="Ej: Lic. Diego Reyes"
+                                        placeholder="Ej: Juan Pérez"
                                         value={formData.customer_contact}
                                         onChange={(e) => setFormData({ ...formData, customer_contact: e.target.value })}
                                         className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-white"
@@ -537,7 +537,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="Ej: 7069-5335"
+                                        placeholder="Ej: 7060-5040"
                                         value={formData.customer_phone}
                                         onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
                                         className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-white"
@@ -943,7 +943,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                         </label>
                                         <input
                                             type="text"
-                                            placeholder="Ej: (503) 7069-5335"
+                                            placeholder="Ej: (503) 7060-5040"
                                             value={formData.signature_author_phone}
                                             onChange={(e) => setFormData({ ...formData, signature_author_phone: e.target.value })}
                                             className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"

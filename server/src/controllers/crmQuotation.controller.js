@@ -910,7 +910,7 @@ const sendQuotationEmail = async (req, res) => {
                 <div style="font-size: 13px; color: #0f172a;">
                     <b>${quotation.signature_author_name || quotation.created_by_name || 'Raul Rafael Sosa M.'}</b><br>
                     <span style="color: #64748b; font-size: 12px;">${quotation.signature_author_title || 'Ejecutivo Comercial'}</span><br>
-                    <span style="color: #ea991c; font-weight: bold; font-size: 12px;">${quotation.signature_author_phone || '(503) 7069-5335'}</span>
+                    <span style="color: #ea991c; font-weight: bold; font-size: 12px;">${quotation.signature_author_phone || '(503) 7060-5040'}</span>
                 </div>
             </div>
         `;

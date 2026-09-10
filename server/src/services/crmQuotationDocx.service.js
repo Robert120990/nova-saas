@@ -176,7 +176,7 @@ async function generateQuotationDocx(quotation) {
 
     const authorName = quotation.signature_author_name || quotation.created_by_name || 'Raul Rafael Sosa M.';
     const authorTitle = quotation.signature_author_title || 'Ejecutivo Comercial';
-    const authorPhone = quotation.signature_author_phone || '(503) 7069-5335';
+    const authorPhone = quotation.signature_author_phone || '(503) 7060-5040';
 
     const doc = new Document({
         sections: [
