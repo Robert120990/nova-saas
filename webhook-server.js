@@ -73,17 +73,16 @@ function npmRunBuild(dir, envVars = {}) {
   console.log(out);
 }
 
-function deploy() {
+function deploy(force = false) {
   console.log('[webhook] Starting auto-deploy...');
 
   run('git fetch origin');
   const status = run('git status -b');
 
-  if (status.includes(`origin/${BRANCH}`) && !status.includes('up to date')) {
-    // Descarta cambios locales en archivos trackeados (ej: package-lock.json
-    // modificado por npm install) para no bloquear el pull
+  if (force || (status.includes(`origin/${BRANCH}`) && !status.includes('up to date'))) {
+    // Descarta cambios locales en archivos trackeados y fuerza sincronización limpia
     run('git checkout -- .');
-    run(`git pull origin ${BRANCH} --ff-only`);
+    run(`git reset --hard origin/${BRANCH}`);
 
     console.log('[webhook] Installing server dependencies...');
     npmInstall(path.join(PROJECT_DIR, 'server'));
@@ -165,7 +164,22 @@ const server = http.createServer((req, res) => {
     });
   } else if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      branch: BRANCH,
+      port: PORT,
+      uptime_seconds: Math.floor(process.uptime()),
+    }));
+  } else if (req.method === 'POST' && req.url === '/deploy') {
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Despliegue iniciado en segundo plano' }));
+    setImmediate(() => {
+      try {
+        deploy(true);
+      } catch (e) {
+        console.error('[webhook] Manual deploy failed:', e.message);
+      }
+    });
   } else {
     res.writeHead(404);
     res.end('Not found');

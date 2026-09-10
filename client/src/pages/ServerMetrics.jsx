@@ -15,6 +15,7 @@ import {
     Layers,
     Shield,
     Table,
+    GitBranch,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -44,6 +45,27 @@ export default function ServerMetrics() {
     const [refreshInterval, setRefreshInterval] = useState(5000);
     const [isRestartingDte, setIsRestartingDte] = useState(false);
     const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+    const [isDeploying, setIsDeploying] = useState(false);
+    const [showDeployConfirm, setShowDeployConfirm] = useState(false);
+
+    const handleTriggerDeploy = async () => {
+        setShowDeployConfirm(false);
+        setIsDeploying(true);
+        const toastId = toast.loading('Iniciando auto-despliegue y compilación...');
+        try {
+            const res = await axios.post('/api/system/trigger-deploy');
+            if (res.data?.success || res.status === 200) {
+                toast.success('Despliegue iniciado en segundo plano. La aplicación se actualizará automáticamente.', { id: toastId, duration: 6000 });
+            } else {
+                toast.warning('Solicitud enviada al servicio de auto-despliegue', { id: toastId });
+            }
+            setTimeout(() => refetch(), 3000);
+        } catch (err) {
+            toast.error('Error al iniciar despliegue: ' + (err.response?.data?.message || err.message), { id: toastId });
+        } finally {
+            setIsDeploying(false);
+        }
+    };
 
     const {
         data: metrics,
@@ -425,6 +447,67 @@ export default function ServerMetrics() {
                                 CONECTADO
                             </span>
                         </div>
+
+                        {/* Servicio Auto-Despliegue (Webhook GitHub) */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-750">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${
+                                    metrics?.services?.webhook?.online
+                                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+                                }`}>
+                                    {metrics?.services?.webhook?.online ? (
+                                        <CheckCircle2 className="w-4 h-4" />
+                                    ) : (
+                                        <XCircle className="w-4 h-4" />
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-[13px] font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                        Servicio de Auto-Despliegue (Webhook GitHub)
+                                        {metrics?.services?.webhook?.latency_ms !== null && metrics?.services?.webhook?.latency_ms !== undefined && (
+                                            <span className="text-[11px] font-normal text-slate-400">
+                                                ({metrics.services.webhook.latency_ms} ms)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                        <span>Puerto {metrics?.services?.webhook?.port || 7777}</span>
+                                        <span>•</span>
+                                        <span className="inline-flex items-center gap-1 font-mono">
+                                            <GitBranch className="w-3 h-3 text-indigo-500" />
+                                            {metrics?.services?.webhook?.branch || 'main'}
+                                        </span>
+                                        {metrics?.services?.webhook?.uptime_seconds ? (
+                                            <>
+                                                <span>•</span>
+                                                <span>Uptime: {formatDuration(metrics.services.webhook.uptime_seconds)}</span>
+                                            </>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-start sm:self-center">
+                                <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                    metrics?.services?.webhook?.online
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                        : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
+                                }`}>
+                                    {metrics?.services?.webhook?.online ? 'OPERATIVO' : 'SIN CONEXIÓN'}
+                                </span>
+
+                                <button
+                                    onClick={() => setShowDeployConfirm(true)}
+                                    disabled={isDeploying || !metrics?.services?.webhook?.online}
+                                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors disabled:opacity-50"
+                                    title="Sincronizar cambios desde GitHub y compilar en producción"
+                                >
+                                    <RotateCw className={`w-3 h-3 ${isDeploying ? 'animate-spin' : ''}`} />
+                                    <span>Desplegar</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -570,6 +653,43 @@ export default function ServerMetrics() {
                                 className="px-4 py-2 text-[12px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
                             >
                                 Confirmar Reinicio
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Confirmación de Despliegue Manual */}
+            {showDeployConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                        <div className="flex items-center gap-3 text-indigo-600 dark:text-indigo-400">
+                            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl">
+                                <GitBranch className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                                ¿Ejecutar Auto-Despliegue Ahora?
+                            </h3>
+                        </div>
+
+                        <p className="text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                            Se ordenará al servidor webhook sincronizar la rama <strong>{metrics?.services?.webhook?.branch || 'main'}</strong> desde GitHub, instalar dependencias, compilar el frontend y reiniciar los servicios. El proceso se ejecuta en segundo plano.
+                        </p>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowDeployConfirm(false)}
+                                className="px-4 py-2 text-[12px] font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleTriggerDeploy}
+                                className="px-4 py-2 text-[12px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
+                            >
+                                Confirmar Despliegue
                             </button>
                         </div>
                     </div>
