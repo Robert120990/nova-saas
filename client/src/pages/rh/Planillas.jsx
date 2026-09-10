@@ -544,7 +544,7 @@ const Planillas = () => {
         }
     };
 
-    const handleDownloadCSV = async (anio, mes, quincena, branchIds = [], departamentoIds = []) => {
+    const handleDownloadCSV = async (anio, mes, quincena, branchIds = [], departamentoIds = [], formatoBancario = 'ambos') => {
         try {
             const params = { anio, mes, quincena, limit: 9999 };
             if (branchIds && branchIds.length > 0) {
@@ -556,25 +556,55 @@ const Planillas = () => {
             const res = await axios.get('/api/rh/planillas', { params });
             const rows = res.data.data || [];
             if (!rows.length) return toast.error('Sin datos para los filtros seleccionados');
-            const csv = rows.map(r => {
+            
+            const content = rows.map(r => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
                 return `${r.empleado_codigo || ''}\t${parseFloat(r.monto_recibir || 0).toFixed(2)}\t${nombre}`;
             }).join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `PLANILLAS_${anio}${String(mes).padStart(2,'0')}_${quincena}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            toast.success('CSV descargado');
-        } catch { toast.error('Error al descargar CSV'); }
+
+            const baseName = `PLANILLAS_${anio}${String(mes).padStart(2, '0')}_${quincena}`;
+
+            const triggerDownload = (text, filename, mimeType) => {
+                const blob = new Blob([text], { type: mimeType });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', filename);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            };
+
+            if (formatoBancario === 'csv' || formatoBancario === 'ambos') {
+                triggerDownload(content, `${baseName}.csv`, 'text/csv;charset=utf-8');
+            }
+
+            if (formatoBancario === 'txt' || formatoBancario === 'ambos') {
+                if (formatoBancario === 'ambos') {
+                    setTimeout(() => {
+                        triggerDownload(content, `${baseName}.txt`, 'text/plain;charset=utf-8');
+                    }, 250);
+                } else {
+                    triggerDownload(content, `${baseName}.txt`, 'text/plain;charset=utf-8');
+                }
+            }
+
+            if (formatoBancario === 'ambos') {
+                toast.success('Archivos CSV y TXT descargados con éxito');
+            } else if (formatoBancario === 'txt') {
+                toast.success('Archivo TXT descargado con éxito');
+            } else {
+                toast.success('Archivo CSV descargado con éxito');
+            }
+        } catch { 
+            toast.error('Error al descargar el archivo bancario'); 
+        }
     };
 
-    const handleConfirmExport = ({ tipo, anio, mes, quincena, branch_ids, departamento_ids, formato }) => {
+    const handleConfirmExport = ({ tipo, anio, mes, quincena, branch_ids, departamento_ids, formato, formatoBancario }) => {
         if (tipo === 'csv') {
-            handleDownloadCSV(anio, mes, quincena, branch_ids, departamento_ids);
+            handleDownloadCSV(anio, mes, quincena, branch_ids, departamento_ids, formatoBancario);
         } else {
             setPreviewPeriodo({
                 anio,
@@ -880,7 +910,7 @@ const Planillas = () => {
                                         <button
                                             onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'csv' })}
                                             className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
-                                            title="Exportar CSV bancario"
+                                            title="Exportar archivo bancario (CSV / TXT)"
                                         >
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                         </button>

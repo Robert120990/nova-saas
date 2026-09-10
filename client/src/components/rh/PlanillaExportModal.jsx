@@ -13,7 +13,9 @@ import {
     Search, 
     Info, 
     LayoutList, 
-    Columns3 
+    Columns3,
+    FileSpreadsheet,
+    Files
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -23,6 +25,7 @@ const MONTH_NAMES = [
 
 const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     const [formato, setFormato] = useState('resumen'); // 'resumen' | 'detallado'
+    const [formatoBancario, setFormatoBancario] = useState('ambos'); // 'csv' | 'txt' | 'ambos'
     const [allBranchesSelected, setAllBranchesSelected] = useState(true);
     const [selectedBranchIds, setSelectedBranchIds] = useState([]);
     const [allDeptosSelected, setAllDeptosSelected] = useState(true);
@@ -72,6 +75,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
     useEffect(() => {
         if (isOpen) {
             setFormato('resumen');
+            setFormatoBancario('ambos');
             setAllBranchesSelected(true);
             setSelectedBranchIds([]);
             setAllDeptosSelected(true);
@@ -192,7 +196,8 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
             quincena,
             branch_ids,
             departamento_ids,
-            formato
+            formato,
+            formatoBancario
         });
         onClose();
     };
@@ -206,7 +211,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
         ? 'Generar Planilla de Sueldos (PDF)'
         : tipo === 'recibos'
             ? 'Generar Recibos de Pago (PDF)'
-            : 'Exportar Archivo Bancario (CSV)';
+            : 'Exportar Archivo Bancario';
 
     const ActionIcon = tipo === 'planilla' 
         ? FileText 
@@ -218,7 +223,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
         ? 'Ver Planilla' 
         : tipo === 'recibos' 
             ? 'Ver Recibos' 
-            : 'Descargar CSV';
+            : (formatoBancario === 'ambos' ? 'Descargar CSV + TXT' : (formatoBancario === 'txt' ? 'Descargar TXT' : 'Descargar CSV'));
 
     const actionThemeColor = tipo === 'planilla' 
         ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/25' 
@@ -323,6 +328,100 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
                                     {formato === 'detallado' && (
                                         <div className="text-indigo-600 p-0.5"><Check size={16} /></div>
                                     )}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Format Toggle (Solo para Archivo Bancario CSV / TXT) */}
+                    {tipo === 'csv' && (
+                        <div className="space-y-2 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                Formato de Archivo Bancario
+                            </label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormatoBancario('csv')}
+                                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
+                                        formatoBancario === 'csv'
+                                            ? 'bg-white border-sky-600 shadow-sm ring-2 ring-sky-600/10'
+                                            : 'bg-white/50 border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className={`p-2 rounded-lg ${
+                                            formatoBancario === 'csv' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                            <FileSpreadsheet size={16} />
+                                        </div>
+                                        {formatoBancario === 'csv' && (
+                                            <div className="text-sky-600"><Check size={16} /></div>
+                                        )}
+                                    </div>
+                                    <div className="mt-2.5">
+                                        <span className="text-xs font-bold text-slate-900">Solo CSV (.csv)</span>
+                                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                            Valores separados para Excel u hojas de cálculo.
+                                        </p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setFormatoBancario('txt')}
+                                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
+                                        formatoBancario === 'txt'
+                                            ? 'bg-white border-sky-600 shadow-sm ring-2 ring-sky-600/10'
+                                            : 'bg-white/50 border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className={`p-2 rounded-lg ${
+                                            formatoBancario === 'txt' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                            <FileText size={16} />
+                                        </div>
+                                        {formatoBancario === 'txt' && (
+                                            <div className="text-sky-600"><Check size={16} /></div>
+                                        )}
+                                    </div>
+                                    <div className="mt-2.5">
+                                        <span className="text-xs font-bold text-slate-900">Solo TXT (.txt)</span>
+                                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                            Texto plano para plataformas bancarias.
+                                        </p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setFormatoBancario('ambos')}
+                                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
+                                        formatoBancario === 'ambos'
+                                            ? 'bg-white border-sky-600 shadow-sm ring-2 ring-sky-600/10'
+                                            : 'bg-white/50 border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className={`p-2 rounded-lg ${
+                                            formatoBancario === 'ambos' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                            <Files size={16} />
+                                        </div>
+                                        {formatoBancario === 'ambos' && (
+                                            <div className="text-sky-600"><Check size={16} /></div>
+                                        )}
+                                    </div>
+                                    <div className="mt-2.5">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-xs font-bold text-slate-900">Ambos (.csv + .txt)</span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.2 text-emerald-700 bg-emerald-50 rounded">Recomendado</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                            Descarga ambos archivos simultáneamente.
+                                        </p>
+                                    </div>
                                 </button>
                             </div>
                         </div>
