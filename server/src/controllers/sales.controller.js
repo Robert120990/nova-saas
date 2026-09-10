@@ -378,7 +378,7 @@ const getSales = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
-            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.ambiente, d_c.ambiente, '00') as dte_ambiente, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
+            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.ambiente, d_v.ambiente, '00') as dte_ambiente, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
             comp.nit as company_nit,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'
@@ -395,8 +395,8 @@ const getSales = async (req, res) => {
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id
-            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             WHERE h.company_id = ?
         `;
         const params = [req.company_id];
@@ -432,7 +432,7 @@ const getSales = async (req, res) => {
         }
 
         if (has_dte === 'true') {
-            sql += ' AND (d_v.id IS NOT NULL OR d_c.id IS NOT NULL)';
+            sql += ' AND (d_c.id IS NOT NULL OR d_v.id IS NOT NULL)';
         }
 
         if (status) {
@@ -441,7 +441,7 @@ const getSales = async (req, res) => {
         }
 
         if (only_processed === 'true') {
-            sql += " AND (d_v.status = 'ACCEPTED' OR d_c.status = 'ACCEPTED')";
+            sql += " AND (d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED')";
         }
 
         if (exclude_has_nc === 'true') {
@@ -452,8 +452,8 @@ const getSales = async (req, res) => {
                 AND (
                     (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
                     (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
-                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
                     (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
+                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
                     (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
                 )
             )`;
@@ -547,15 +547,15 @@ const getSaleById = async (req, res) => {
             COALESCE(NULLIF(TRIM(cb.distrito), ''), c.distrito) as customer_distrito,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             comp.nit as company_nit,
-            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error, COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
+            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error, COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN customer_branches cb ON h.customer_branch_id = cb.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id
-            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ?
         `, [id, req.company_id]);
 
@@ -2012,14 +2012,14 @@ const exportRTEE = async (req, res) => {
             `SELECT h.*, h.estado as sale_estado,
             s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
             c.nrc as customer_nrc,
-            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
-            COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
+            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
+            COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
-            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ? LIMIT 1`, [id, req.company_id]);
 
         if (header.length === 0) {
@@ -2791,6 +2791,12 @@ const regenerateDTE = async (req, res) => {
             if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
         }
 
+        // 1. Desvincular cualquier DTE previo en 'dtes' para esta venta (se conserva para auditoría con venta_id = NULL)
+        await connection.query(
+            'UPDATE dtes SET venta_id = NULL WHERE venta_id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+
         connection.release();
         connection = null;
 
@@ -2903,6 +2909,15 @@ const regenerateDTE = async (req, res) => {
         const dteInfo = dteResult.data;
 
         connection = await pool.getConnection();
+        // 2. Desvincular cualquier intento anterior y vincular exclusivamente el nuevo DTE a la venta
+        await connection.query(
+            'UPDATE dtes SET venta_id = NULL WHERE venta_id = ? AND codigo_generacion != ? AND company_id = ?',
+            [id, dteInfo.codigo_generacion, req.company_id]
+        );
+        await connection.query(
+            'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
+            [id, dteInfo.codigo_generacion, req.company_id]
+        );
         await connection.query(
             'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
             [dteInfo.codigo_generacion, dteInfo.numero_control, dteInfo.sello_recepcion || null, dteInfo.fh_procesamiento || null, id]

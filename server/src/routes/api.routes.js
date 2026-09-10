@@ -375,7 +375,7 @@ router.get('/sales/dte-stats', salesController.getDteStats);
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
-router.post('/sales/:id/regenerate-dte', salesController.regenerateDTE);
+router.post('/sales/:id/regenerate-dte', checkPermission('regenerate_dte'), salesController.regenerateDTE);
 router.put('/sales/:id/edit-dte-items', salesController.editDTEItems);
 
 // Contingency (proxy to dte-api)

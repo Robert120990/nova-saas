@@ -389,7 +389,8 @@ export function useMenuPermissions() {
                     extras.forEach(perm => {
                         if (!seen[perm]) {
                             seen[perm] = true;
-                            groups[groupId].permissions.push({ id: perm, label: `${item.label} (${perm})` });
+                            const permLabel = perm === 'regenerate_dte' ? 'Regenerar DTEs' : `${item.label} (${perm})`;
+                            groups[groupId].permissions.push({ id: perm, label: permLabel });
                         }
                     });
                 }

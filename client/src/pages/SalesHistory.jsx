@@ -56,6 +56,18 @@ const SalesHistory = () => {
     const isSuperAdmin = currentUser?.role === 'SuperAdmin' || 
                          currentUser?.role?.toLowerCase() === 'superadmin' || 
                          currentUser?.role_name === 'SuperAdmin';
+    const userPermissions = (() => {
+        const raw = currentUser?.permissions;
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    })();
+    const canRegenerateDTE = isSuperAdmin || userPermissions.includes('regenerate_dte');
 
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
@@ -684,7 +696,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                                         </button>
                                                     )}
 
-                                                    {sale.codigo_generacion && (
+                                                    {sale.codigo_generacion && canRegenerateDTE && (
                                                         <button onClick={() => { handleRegenerateDTE(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Regenerar DTE</span>
@@ -880,7 +892,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                         <RefreshCcw size={20} className="shrink-0" />
                         <div>
                             <p className="font-black uppercase tracking-widest mb-1">Confirmar Regeneración</p>
-                            <p className="font-medium text-Spanish">Se creará un nuevo DTE con nuevos códigos de Hacienda (codigoGeneracion y numeroControl). El DTE anterior quedará intacto.</p>
+                            <p className="font-medium text-Spanish">Se creará un nuevo DTE con un nuevo número de control y código de generación ante Hacienda. El registro anterior quedará totalmente desvinculado de esta venta y archivado para auditoría.</p>
                         </div>
                     </div>
 
