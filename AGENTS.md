@@ -153,6 +153,10 @@ TODO nuevo reporte en PDF debe implementar el estándar contable unificado usand
 
 ## Git Workflow & Commit Rules — OBLIGATORIO
 
+- **Autorización Expresa Obligatoria del Usuario — NUNCA SUBIR AUTOMÁTICAMENTE**:
+  - Queda ESTRICTAMENTE PROHIBIDO ejecutar `git commit` o `git push` de forma automática o por iniciativa propia del agente.
+  - Todos los cambios deben permanecer exclusivamente en el entorno local del usuario para su revisión y prueba.
+  - ÚNICAMENTE se debe realizar commit o push cuando el usuario dé la instrucción expresa y directa (por ejemplo: "sube los cambios", "haz commit y push", etc.).
 - **Idioma de los Commits**:
   - TODOS los mensajes de commit DEBEN redactarse en **español** (por ejemplo: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...` con descripción clara en español).
   - Queda estrictamente prohibido redactar mensajes de commit en inglés.
