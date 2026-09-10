@@ -5,17 +5,13 @@ import {
     QrCode, 
     RefreshCcw, 
     AlertTriangle, 
-    CheckCircle2, 
     Search, 
-    Barcode,
-    Layers,
-    Volume2
+    Barcode
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { toast } from 'sonner';
 
 /**
- * Helper to emit a subtle high-frequency audio beep on successful scan
+ * Helper to emit a subtle audio beep on successful scan
  */
 const playSuccessBeep = () => {
     try {
@@ -25,7 +21,7 @@ const playSuccessBeep = () => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
         gain.gain.setValueAtTime(0.15, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
@@ -34,7 +30,7 @@ const playSuccessBeep = () => {
         osc.start();
         osc.stop(ctx.currentTime + 0.13);
     } catch (e) {
-        // AudioContext not allowed before user gesture or not supported
+        // Ignore audio restrictions
     }
 };
 
@@ -58,7 +54,7 @@ export const parseTarimaScan = (rawText) => {
                 rawText: text
             };
         } catch (e) {
-            // Ignore json parse error and proceed to regex
+            // Proceed to regex
         }
     }
 
@@ -75,7 +71,7 @@ export const parseTarimaScan = (rawText) => {
         };
     }
 
-    // 3. Simple TAR-NUM or plain LOT-NUM format
+    // 3. Fallback format
     return {
         lotCode: text.toUpperCase(),
         tarimaNumber: null,
@@ -87,30 +83,28 @@ export const parseTarimaScan = (rawText) => {
 };
 
 export default function ProductionTarimaScannerModal({
-    isOpen,
+    isOpen = true,
     onClose,
     onScanTarima
 }) {
-    const [scanner, setScanner] = useState(null);
     const [isScanning, setIsScanning] = useState(false);
     const [cameraError, setCameraError] = useState(null);
     const [manualCode, setManualCode] = useState('');
-    const [facingMode, setFacingMode] = useState('environment'); // 'environment' (trasera) o 'user' (frontal)
-    const [lastScannedText, setLastScannedText] = useState(null);
+    const [facingMode, setFacingMode] = useState('environment'); // 'environment' o 'user'
 
     const manualInputRef = useRef(null);
-    const scannerInstanceRef = useRef(null);
-    const isScanningRef = useRef(false);
+    const scannerRef = useRef(null);
+    const isMountedRef = useRef(true);
+    const lastScanRef = useRef(null);
 
     // Manejar el resultado decodificado
     const handleScanDecoded = (decodedText) => {
-        if (!decodedText) return;
+        if (!decodedText || !isMountedRef.current) return;
         const clean = decodedText.trim();
-        if (clean === lastScannedText) return; // evitar rebote en milisegundos
+        if (clean === lastScanRef.current) return;
 
-        setLastScannedText(clean);
+        lastScanRef.current = clean;
 
-        // Feedback háptico y sonoro
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
             try { navigator.vibrate([100, 50, 100]); } catch (e) {}
         }
@@ -122,103 +116,100 @@ export default function ProductionTarimaScannerModal({
         }
     };
 
-    // Inicializar y detener el escáner al abrir/cerrar modal
+    // Inicializar cámara de forma segura
     useEffect(() => {
-        if (!isOpen) {
-            if (scannerInstanceRef.current && isScanningRef.current) {
-                scannerInstanceRef.current.stop().catch(() => {}).finally(() => {
-                    isScanningRef.current = false;
-                    setIsScanning(false);
-                });
-            }
-            setScanner(null);
-            setCameraError(null);
-            setLastScannedText(null);
-            setManualCode('');
-            return;
-        }
-
-        // Si se abre el modal, intentar iniciar escáner con html5-qrcode
-        let html5Qrcode;
+        isMountedRef.current = true;
         const readerElementId = 'production-tarima-qr-reader';
+        let localScanner = null;
 
-        const initScanner = async () => {
+        const startCamera = async () => {
             try {
-                // Esperar a que el DOM monte el elemento
-                await new Promise(r => setTimeout(r, 150));
-                const element = document.getElementById(readerElementId);
-                if (!element) return;
+                // Esperar a que el modal se renderice en el DOM
+                await new Promise(r => setTimeout(r, 120));
+                if (!isMountedRef.current) return;
 
-                html5Qrcode = new Html5Qrcode(readerElementId);
-                scannerInstanceRef.current = html5Qrcode;
-                setScanner(html5Qrcode);
-                setCameraError(null);
+                const elem = document.getElementById(readerElementId);
+                if (!elem) return;
+
+                localScanner = new Html5Qrcode(readerElementId);
+                scannerRef.current = localScanner;
 
                 const config = {
                     fps: 10,
-                    qrbox: { width: 260, height: 260 },
+                    qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0
                 };
 
-                await html5Qrcode.start(
+                await localScanner.start(
                     { facingMode },
                     config,
-                    (decodedText) => {
-                        handleScanDecoded(decodedText);
-                    },
+                    (decoded) => handleScanDecoded(decoded),
                     () => {}
                 );
 
-                isScanningRef.current = true;
-                setIsScanning(true);
-            } catch (err) {
-                console.warn('[ProductionTarimaScannerModal] Camera start error:', err);
-                const msg = err?.message || err?.name || String(err);
-                if (err.name === 'NotAllowedError' || msg.includes('Permission')) {
-                    setCameraError('Permiso de cámara denegado. Puedes usar el lector físico de código de barras o ingresar el código manualmente abajo.');
-                } else if (err.name === 'NotFoundError') {
-                    setCameraError('No se encontró una cámara en este dispositivo. Usa el campo de búsqueda manual abajo.');
-                } else if (err.name === 'OverconstrainedError' && facingMode === 'environment') {
-                    // Si falla la cámara trasera, intentar con la frontal
-                    setFacingMode('user');
-                } else {
-                    setCameraError('No se pudo acceder a la cámara en vivo. Puedes ingresar el código de la tarima manualmente.');
+                if (isMountedRef.current) {
+                    setIsScanning(true);
+                    setCameraError(null);
                 }
-                isScanningRef.current = false;
-                setIsScanning(false);
+            } catch (err) {
+                if (!isMountedRef.current) return;
+                console.warn('[ProductionTarimaScannerModal] Camera error:', err);
+                const msg = err?.message || err?.name || String(err);
 
-                // Dar foco automático al campo manual
+                if (err.name === 'NotAllowedError' || msg.includes('Permission')) {
+                    setCameraError('Permiso de cámara denegado. Actívalo en tu navegador o ingresa el código abajo.');
+                } else if (err.name === 'NotFoundError') {
+                    setCameraError('No se encontró una cámara en este dispositivo. Puedes ingresar el código manualmente.');
+                } else if (err.name === 'OverconstrainedError' && facingMode === 'environment') {
+                    setFacingMode('user');
+                    return;
+                } else {
+                    setCameraError('No fue posible abrir la cámara en vivo. Puedes ingresar el código de la tarima abajo.');
+                }
+
+                setIsScanning(false);
                 setTimeout(() => {
-                    manualInputRef.current?.focus();
+                    if (isMountedRef.current && manualInputRef.current) {
+                        manualInputRef.current.focus();
+                    }
                 }, 200);
             }
         };
 
-        initScanner();
+        startCamera();
 
         return () => {
-            if (scannerInstanceRef.current && isScanningRef.current) {
-                scannerInstanceRef.current.stop().catch(() => {}).finally(() => {
-                    isScanningRef.current = false;
-                    setIsScanning(false);
-                });
+            isMountedRef.current = false;
+            if (scannerRef.current) {
+                const s = scannerRef.current;
+                scannerRef.current = null;
+                try {
+                    if (s.isScanning) {
+                        s.stop().catch(() => {}).finally(() => {
+                            try { s.clear(); } catch (e) {}
+                        });
+                    } else {
+                        try { s.clear(); } catch (e) {}
+                    }
+                } catch (e) {}
             }
         };
-    }, [isOpen, facingMode]);
+    }, [facingMode]);
 
     // Conmutar entre cámara trasera y frontal
     const toggleCameraFacing = async () => {
-        if (scannerInstanceRef.current && isScanningRef.current) {
+        if (scannerRef.current) {
             try {
-                await scannerInstanceRef.current.stop();
-                isScanningRef.current = false;
-                setIsScanning(false);
+                if (scannerRef.current.isScanning) {
+                    await scannerRef.current.stop();
+                }
             } catch (e) {}
         }
+        setIsScanning(false);
         setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
     };
 
-    // Manejar envío manual (teclado o pistola lectora USB)
+    // Manejar envío manual
     const handleManualSubmit = (e) => {
         e.preventDefault();
         if (!manualCode.trim()) return;
@@ -234,7 +225,7 @@ export default function ProductionTarimaScannerModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
                 
                 {/* Cabecera del Modal */}
@@ -256,6 +247,7 @@ export default function ProductionTarimaScannerModal({
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
                         className="p-1.5 rounded-xl hover:bg-white/20 text-white/80 hover:text-white transition-colors"
                         title="Cerrar escáner"
@@ -341,7 +333,7 @@ export default function ProductionTarimaScannerModal({
                             </button>
                         </form>
                         <p className="text-[10px] text-slate-400 font-medium">
-                            Tip: Si usas lector de mano USB o Bluetooth, simplemente apunta a la etiqueta y el código se cargará al instante.
+                            Tip: Si usas lector de mano USB o Bluetooth, apunta a la etiqueta y el código se cargará al presionar el gatillo.
                         </p>
                     </div>
 

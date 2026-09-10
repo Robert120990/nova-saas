@@ -1756,7 +1756,7 @@ const EggProduction = () => {
                         <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="text-center">
                                 <span className="text-[10px] font-bold text-slate-500 block uppercase">Entrada</span>
-                                <span className="text-xs font-bold text-slate-900">{parseFloat(selectedBatchForComplete.input_weight_lbs).toLocaleString()} Lbs</span>
+                                <span className="text-xs font-bold text-slate-900">{parseFloat(selectedBatchForComplete.input_weight_lbs || 0).toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
                                 <span className="text-[10px] font-bold text-slate-500 block uppercase">Esperado ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 85}%)</span>
@@ -1827,11 +1827,13 @@ const EggProduction = () => {
                 </div>
             )}
             {/* Modal de Escáner de Tarima con Cámara (QR y Código de Barras) */}
-            <ProductionTarimaScannerModal
-                isOpen={scannerModalOpen}
-                onClose={() => setScannerModalOpen(false)}
-                onScanTarima={handleScanTarimaResult}
-            />
+            {scannerModalOpen && (
+                <ProductionTarimaScannerModal
+                    isOpen={scannerModalOpen}
+                    onClose={() => setScannerModalOpen(false)}
+                    onScanTarima={handleScanTarimaResult}
+                />
+            )}
         </div>
     );
 };
