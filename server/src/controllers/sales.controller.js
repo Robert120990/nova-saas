@@ -403,14 +403,18 @@ const getSales = async (req, res) => {
 
         if (search && search.trim()) {
             const searchPattern = `%${search.trim()}%`;
-            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ?)';
-            whereParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ? OR h.observaciones LIKE ?)';
+            whereParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
         }
 
         const docType = tipo_documento || dte_type;
         if (docType && docType !== 'all') {
-            whereClause += ' AND (h.tipo_documento = ? OR h.dte_type = ?)';
-            whereParams.push(docType, docType);
+            if (docType === 'COMPLEMENTARIA') {
+                whereClause += " AND h.observaciones LIKE '%Complementaria%'";
+            } else {
+                whereClause += ' AND (h.tipo_documento = ? OR h.dte_type = ?)';
+                whereParams.push(docType, docType);
+            }
         }
 
         if (start_date && end_date) {

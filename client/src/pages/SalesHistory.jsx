@@ -788,6 +788,21 @@ const SalesHistory = () => {
                         >
                             Este Mes
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTipoDocumento(prev => prev === 'COMPLEMENTARIA' ? '' : 'COMPLEMENTARIA');
+                                setPage(1);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                tipoDocumento === 'COMPLEMENTARIA'
+                                    ? 'bg-purple-600 text-white shadow-sm'
+                                    : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/80'
+                            }`}
+                            title="Filtrar solo DTEs emitidos como Complementarias de Cierre de Turno"
+                        >
+                            <span>⚡ Complementarias</span>
+                        </button>
                         {activeFiltersCount > 0 && (
                             <button
                                 type="button"
@@ -859,6 +874,7 @@ const SalesHistory = () => {
                             className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 cursor-pointer truncate"
                         >
                             <option value="">Todos los tipos</option>
+                            <option value="COMPLEMENTARIA">⚡ COMPLEMENTARIA (CIERRE DE TURNO)</option>
                             {documentTypes.map(t => (
                                 <option key={t.code} value={t.code}>{t.name}</option>
                             ))}
@@ -913,6 +929,14 @@ const SalesHistory = () => {
                                  <div className="flex flex-col leading-[1.1]">
                                      <div className="flex items-center gap-1.5 mb-0.5">
                                          <span className="font-bold text-slate-900 text-[10px] truncate leading-none">{sale.tipo_documento_name}</span>
+                                         {sale.observaciones && String(sale.observaciones).toLowerCase().includes('complementaria') && (
+                                             <span 
+                                                 className="text-[7px] px-1 py-px bg-purple-50 text-purple-700 border border-purple-200/80 rounded font-black uppercase tracking-wider leading-none cursor-help"
+                                                 title={sale.observaciones}
+                                             >
+                                                 Complementaria
+                                             </span>
+                                         )}
                                          {sale.codigo_generacion && (
                                              sale.dte_ambiente === '01' ? (
                                                  <span className="text-[7px] px-1 py-px bg-emerald-50 text-emerald-600 rounded font-black uppercase tracking-wider leading-none">Prod</span>
