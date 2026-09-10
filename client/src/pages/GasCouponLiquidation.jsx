@@ -74,15 +74,17 @@ const GasCouponLiquidation = () => {
     const [sobranteNotas, setSobranteNotas] = useState('');
 
     // Consultas maestras (Sucursales y Distribuidores)
-    const { data: branches = [] } = useQuery({
+    const { data: rawBranches = [] } = useQuery({
         queryKey: ['branches'],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
+    const branches = Array.isArray(rawBranches) ? rawBranches : (rawBranches?.data || []);
 
-    const { data: distributors = [] } = useQuery({
-        queryKey: ['gas-distributors'],
-        queryFn: async () => (await axios.get('/api/gas-station/distributors')).data
+    const { data: rawDistributors } = useQuery({
+        queryKey: ['gas-distributors-all'],
+        queryFn: async () => (await axios.get('/api/gas-station/distributors', { params: { limit: 1000 } })).data
     });
+    const distributors = Array.isArray(rawDistributors) ? rawDistributors : (rawDistributors?.data || []);
 
     // Listado de liquidaciones paginadas
     const { data: liquidationsData, isLoading: listLoading } = useQuery({
