@@ -272,7 +272,8 @@ REGLAS DE MULTI-TENENCIA:
 - observaciones, created_at, updated_at
 
 ### purchase_items (Ítems de Compras)
-- id, purchase_id, product_id
+- id, purchase_id, product_id (NULL para ítems sin código)
+- descripcion VARCHAR(255) (descripción libre o del producto)
 - cantidad DECIMAL, precio_unitario DECIMAL, total DECIMAL
 
 ---

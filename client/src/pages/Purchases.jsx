@@ -112,6 +112,7 @@ const Purchases = () => {
     
     // Quick Add State
     const [quickBarcode, setQuickBarcode] = useState('');
+    const [quickDesc, setQuickDesc] = useState('');
     const [quickCant, setQuickCant] = useState('1');
     const [quickCosto, setQuickCosto] = useState('0');
     const [quickProd, setQuickProd] = useState(null);
@@ -121,6 +122,7 @@ const Purchases = () => {
     const [modalPage, setModalPage] = useState(1);
 
     const barcodeInputRef = useRef(null);
+    const descInputRef = useRef(null);
     const fileInputRef = useRef(null);
     const [isScanningDte, setIsScanningDte] = useState(false);
 
@@ -505,10 +507,21 @@ const Purchases = () => {
 
     const handleSelectProduct = (product) => {
         setQuickProd(product);
+        setQuickBarcode(product.codigo || '');
+        setQuickDesc(product.nombre || '');
         setQuickCosto(product.costo || '0');
         setIsProductModalOpen(false);
         setProductSearch('');
         setTimeout(() => qtyInputRef.current?.focus(), 100);
+    };
+
+    const handleClearQuickProduct = () => {
+        setQuickProd(null);
+        setQuickBarcode('');
+        setQuickDesc('');
+        setQuickCosto('0');
+        setQuickCant('1');
+        setTimeout(() => descInputRef.current?.focus(), 100);
     };
 
     const filteredProducts = useMemo(() => {
@@ -534,6 +547,7 @@ const Purchases = () => {
                 return toast.error('El producto seleccionado se encuentra inactivo');
             }
             setQuickProd(data);
+            setQuickDesc(data.nombre || '');
             setQuickCosto(data.costo || '0');
             qtyInputRef.current?.focus();
         } catch {
@@ -549,50 +563,74 @@ const Purchases = () => {
     };
 
     const handleAddQuick = () => {
-        if (!quickProd) return;
         const qty = parseFloat(quickCant);
         const cost = parseFloat(quickCosto);
-        if (qty <= 0) return toast.error('Cantidad inválida');
+        const desc = (quickProd ? quickProd.nombre : quickDesc).trim();
 
-        const existing = selectedItems.find(i => i.product_id === quickProd.id);
-        if (existing) {
-            setSelectedItems(selectedItems.map(i => i.product_id === quickProd.id ? { 
-                ...i, 
-                cantidad: i.cantidad + qty,
-                precio_unitario: cost,
-                total: (i.cantidad + qty) * cost
-            } : i));
+        if (!desc && !quickProd) return toast.error('Ingrese una descripción o seleccione un producto');
+        if (isNaN(qty) || qty <= 0) return toast.error('Cantidad inválida');
+        if (isNaN(cost) || cost < 0) return toast.error('Costo inválido');
+
+        if (quickProd) {
+            const existing = selectedItems.find(i => i.product_id === quickProd.id);
+            if (existing) {
+                setSelectedItems(selectedItems.map(i => i.uid === existing.uid ? { 
+                    ...i, 
+                    cantidad: i.cantidad + qty,
+                    precio_unitario: cost,
+                    total: Math.round((i.cantidad + qty) * cost * 100) / 100
+                } : i));
+            } else {
+                setSelectedItems([...selectedItems, {
+                    uid: `prod_${quickProd.id}_${Date.now()}`,
+                    product_id: quickProd.id,
+                    nombre: quickProd.nombre,
+                    codigo: quickProd.codigo,
+                    tipo_combustible: quickProd.tipo_combustible || 0,
+                    cantidad: qty,
+                    precio_unitario: cost,
+                    total: Math.round(qty * cost * 100) / 100
+                }]);
+            }
         } else {
+            // Ítem sin código (solo descripción, cantidad y costo)
             setSelectedItems([...selectedItems, {
-                product_id: quickProd.id,
-                nombre: quickProd.nombre,
-                codigo: quickProd.codigo,
-                tipo_combustible: quickProd.tipo_combustible || 0,
+                uid: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                product_id: null,
+                nombre: desc.toUpperCase(),
+                codigo: '—',
+                tipo_combustible: 0,
                 cantidad: qty,
                 precio_unitario: cost,
-                total: qty * cost
+                total: Math.round(qty * cost * 100) / 100
             }]);
         }
 
-        setQuickBarcode(''); setQuickProd(null); setQuickCant('1'); setQuickCosto('0');
+        setQuickBarcode(''); 
+        setQuickProd(null); 
+        setQuickDesc(''); 
+        setQuickCant('1'); 
+        setQuickCosto('0');
         barcodeInputRef.current?.focus();
     };
 
-    const updateItem = (id, field, value) => {
+    const updateItem = (uid, field, value) => {
         setSelectedItems(selectedItems.map(item => {
-            if (item.product_id === id) {
+            if (item.uid === uid) {
                 const updated = { ...item, [field]: value };
-                const c = parseFloat(updated.cantidad) || 0;
-                const p = parseFloat(updated.precio_unitario) || 0;
-                updated.total = Math.round(c * p * 100) / 100;
+                if (field === 'cantidad' || field === 'precio_unitario') {
+                    const c = parseFloat(updated.cantidad) || 0;
+                    const p = parseFloat(updated.precio_unitario) || 0;
+                    updated.total = Math.round(c * p * 100) / 100;
+                }
                 return updated;
             }
             return item;
         }));
     };
 
-    const removeItem = (id) => {
-        setSelectedItems(selectedItems.filter(item => item.product_id !== id));
+    const removeItem = (uid) => {
+        setSelectedItems(selectedItems.filter(item => item.uid !== uid));
     };
 
     const resetForm = () => {
@@ -602,6 +640,7 @@ const Purchases = () => {
         setManualRetencion(''); setManualPercepcion(''); setManualNosujeta(''); setManualExenta('');
         setManualFovial(''); setManualCotrans('');
         setIsRetDirty(false); setIsPercDirty(false); setIsFovialDirty(false); setIsCotransDirty(false);
+        setQuickBarcode(''); setQuickProd(null); setQuickDesc(''); setQuickCant('1'); setQuickCosto('0');
         const today = getTodayString();
         setFecha(today);
         const [y, m] = today.split('-').map(Number);
@@ -693,6 +732,7 @@ const Purchases = () => {
                         
                         if (prod) {
                             newItems.push({
+                                uid: `prod_${prod.id}_${Date.now()}_${Math.random()}`,
                                 product_id: prod.id,
                                 nombre: prod.nombre,
                                 codigo: prod.codigo,
@@ -703,6 +743,16 @@ const Purchases = () => {
                             });
                             matchedCount++;
                         } else {
+                            newItems.push({
+                                uid: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                                product_id: null,
+                                nombre: (item.descripcion || 'ÍTEM SIN CÓDIGO').toUpperCase(),
+                                codigo: code || '—',
+                                tipo_combustible: 0,
+                                cantidad: parseFloat(item.cantidad || 0),
+                                precio_unitario: parseFloat(item.precioUni || 0),
+                                total: (parseFloat(item.cantidad || 0) * parseFloat(item.precioUni || 0))
+                            });
                             missingProducts.push(code || item.descripcion);
                         }
                     }
@@ -710,7 +760,11 @@ const Purchases = () => {
                     if (newItems.length > 0) {
                         setSelectedItems(newItems);
                         setActiveTab('nuevo');
-                        toast.success(`Se cargaron ${matchedCount} productos.`);
+                        if (missingProducts.length > 0) {
+                            toast.success(`Se cargaron ${matchedCount} productos del catálogo y ${missingProducts.length} ítems sin código.`, { duration: 6000 });
+                        } else {
+                            toast.success(`Se cargaron ${matchedCount} productos.`);
+                        }
                     }
 
                     if (missingProducts.length > 0) {
@@ -780,7 +834,14 @@ const Purchases = () => {
             fovial: totals.fovial, cotrans: totals.cotrans, monto_total: totals.total,
             documento_afectado: docAfectado, fecha_afectada: fechaAfectada,
             period_year: finalPeriodYear, period_month: finalPeriodMonth,
-            items: selectedItems
+            items: selectedItems.map(it => ({
+                product_id: it.product_id || null,
+                nombre: it.nombre,
+                descripcion: it.nombre,
+                cantidad: it.cantidad,
+                precio_unitario: it.precio_unitario,
+                total: it.total
+            }))
         };
 
         if (isEditing && editingId) {
@@ -853,10 +914,11 @@ const Purchases = () => {
             setIsFovialDirty(true);
             setIsCotransDirty(true);
 
-            setSelectedItems(detail.items.map(it => ({
-                product_id: it.product_id,
-                nombre: it.nombre,
-                codigo: it.codigo,
+            setSelectedItems(detail.items.map((it, idx) => ({
+                uid: `item_${it.id || idx}_${Date.now()}`,
+                product_id: it.product_id || null,
+                nombre: it.nombre || it.descripcion || 'Sin descripción',
+                codigo: it.codigo || '—',
                 tipo_combustible: it.tipo_combustible || 0,
                 cantidad: parseFloat(it.cantidad),
                 precio_unitario: parseFloat(it.precio_unitario),
@@ -1241,32 +1303,90 @@ const Purchases = () => {
                                 </div>
                             )}
                             {/* Quick Add Bar */}
-                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-[110px_1fr_70px_90px_90px_40px] gap-2 items-end">
+                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-[120px_1fr_80px_100px_100px_44px] gap-2 items-end">
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
                                     <div className="relative">
                                         <Barcode className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
-                                        <input ref={barcodeInputRef} type="text" value={quickBarcode} onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSubmit} placeholder="SCAN..." className="w-full pl-7 pr-8 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-[10px] font-bold" />
-                                        <button onClick={performBarcodeLookup} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors">
+                                        <input 
+                                            ref={barcodeInputRef} 
+                                            type="text" 
+                                            value={quickBarcode} 
+                                            onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} 
+                                            onKeyDown={handleBarcodeSubmit} 
+                                            placeholder="SCAN / F3..." 
+                                            className="w-full pl-7 pr-8 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-[10px] font-bold" 
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={performBarcodeLookup} 
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                            title="Buscar producto"
+                                        >
                                             <Search size={14} />
                                         </button>
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Descripción</label>
-                                    <div className="w-full px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black text-slate-500 truncate h-[26px] flex items-center">
-                                        {quickProd?.nombre?.toUpperCase() || '---'}
+                                    <div className="flex justify-between items-center mb-1 ml-1">
+                                        <label className="text-[8px] font-black text-slate-400 uppercase">
+                                            {quickProd ? 'Producto (Catálogo)' : 'Descripción (Libre o Catálogo)'}
+                                        </label>
+                                        {quickProd && (
+                                            <button
+                                                type="button"
+                                                onClick={handleClearQuickProduct}
+                                                className="text-[7px] text-rose-500 hover:text-rose-700 font-black uppercase flex items-center gap-0.5"
+                                                title="Quitar producto y escribir descripción libre"
+                                            >
+                                                <X size={10} /> Quitar Cód.
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="relative">
+                                        <input
+                                            ref={descInputRef}
+                                            type="text"
+                                            value={quickProd ? quickProd.nombre : quickDesc}
+                                            disabled={Boolean(quickProd)}
+                                            onChange={(e) => setQuickDesc(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && qtyInputRef.current?.focus()}
+                                            placeholder={quickProd ? quickProd.nombre : "ESCRIBA DESCRIPCIÓN DEL ÍTEM..."}
+                                            className={`w-full px-2 py-1 border rounded-lg text-[10px] font-black outline-none h-[26px] ${
+                                                quickProd 
+                                                    ? 'bg-slate-100 text-slate-700 border-slate-200 cursor-not-allowed uppercase' 
+                                                    : 'bg-white text-slate-800 border-slate-200 focus:ring-1 focus:ring-indigo-500 uppercase placeholder:text-slate-300'
+                                            }`}
+                                        />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1 text-center">Cant.</label>
-                                    <input ref={qtyInputRef} type="number" value={quickCant} onChange={(e) => setQuickCant(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && costInputRef.current?.focus()} onFocus={(e) => e.target.select()} className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-center h-[26px]" />
+                                    <input 
+                                        ref={qtyInputRef} 
+                                        type="number" 
+                                        step="0.01"
+                                        value={quickCant} 
+                                        onChange={(e) => setQuickCant(e.target.value)} 
+                                        onKeyDown={(e) => e.key === 'Enter' && costInputRef.current?.focus()} 
+                                        onFocus={(e) => e.target.select()} 
+                                        className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-center h-[26px]" 
+                                    />
                                 </div>
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1 text-right">Costo Neto</label>
                                     <div className="relative">
                                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-[9px]">$</span>
-                                        <input ref={costInputRef} type="number" value={quickCosto} onChange={(e) => setQuickCosto(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddQuick()} onFocus={(e) => e.target.select()} className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-right h-[26px]" />
+                                        <input 
+                                            ref={costInputRef} 
+                                            type="number" 
+                                            step="0.0001"
+                                            value={quickCosto} 
+                                            onChange={(e) => setQuickCosto(e.target.value)} 
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddQuick()} 
+                                            onFocus={(e) => e.target.select()} 
+                                            className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-right h-[26px]" 
+                                        />
                                     </div>
                                 </div>
                                 <div>
@@ -1275,7 +1395,13 @@ const Purchases = () => {
                                         ${(parseFloat(quickCant || 0) * parseFloat(quickCosto || 0)).toFixed(2)}
                                     </div>
                                 </div>
-                                <button onClick={handleAddQuick} disabled={!quickProd} className="h-[26px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-slate-800 disabled:opacity-20 active:scale-95 transition-all">
+                                <button 
+                                    type="button"
+                                    onClick={handleAddQuick} 
+                                    disabled={!quickProd && (!quickDesc || !quickDesc.trim())} 
+                                    title="Agregar ítem a la compra"
+                                    className="h-[26px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-slate-800 disabled:opacity-20 active:scale-95 transition-all"
+                                >
                                     <Plus size={14} />
                                 </button>
                             </div>
@@ -1286,7 +1412,7 @@ const Purchases = () => {
                                     <thead className="bg-slate-50/50 border-b border-slate-100 font-bold text-[9px] text-slate-400 uppercase tracking-[0.2em]">
                                         <tr>
                                             <th className="px-5 py-2">Código</th>
-                                            <th className="px-5 py-2">Producto</th>
+                                            <th className="px-5 py-2">Producto / Descripción</th>
                                             <th className="px-5 py-2 text-center w-20">Cant.</th>
                                             <th className="px-5 py-2 text-right w-24">Costo U.</th>
                                             <th className="px-5 py-2 text-right w-24">Subtotal</th>
@@ -1295,20 +1421,51 @@ const Purchases = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {selectedItems.length === 0 ? (
-                                            <tr><td colSpan="6" className="px-5 py-16 text-center text-[9px] font-black text-slate-200 uppercase tracking-widest">Esperando Productos...</td></tr>
+                                            <tr><td colSpan="6" className="px-5 py-16 text-center text-[9px] font-black text-slate-200 uppercase tracking-widest">Esperando Productos o Ítems...</td></tr>
                                         ) : selectedItems.map(item => (
-                                            <tr key={item.product_id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600" data-label="Código">{item.codigo}</td>
-                                                <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase" data-label="Producto">{item.nombre}</td>
+                                            <tr key={item.uid} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600" data-label="Código">
+                                                    {item.codigo || '—'}
+                                                </td>
+                                                <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase" data-label="Producto">
+                                                    {item.product_id ? (
+                                                        <span>{item.nombre}</span>
+                                                    ) : (
+                                                        <input
+                                                            type="text"
+                                                            value={item.nombre}
+                                                            onChange={(e) => updateItem(item.uid, 'nombre', e.target.value.toUpperCase())}
+                                                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-400 rounded px-2 py-0.5 text-[10px] font-bold outline-none uppercase"
+                                                            placeholder="DESCRIPCIÓN..."
+                                                        />
+                                                    )}
+                                                </td>
                                                 <td className="px-5 py-1.5" data-label="Cant.">
-                                                    <input type="number" step="0.01" value={item.cantidad} onChange={(e) => updateItem(item.product_id, 'cantidad', e.target.value)} onFocus={(e) => e.target.select()} className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" />
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01" 
+                                                        value={item.cantidad} 
+                                                        onChange={(e) => updateItem(item.uid, 'cantidad', e.target.value)} 
+                                                        onFocus={(e) => e.target.select()} 
+                                                        className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" 
+                                                    />
                                                 </td>
                                                 <td className="px-5 py-1.5" data-label="Costo U.">
-                                                    <MoneyInput step="0.0001" value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', e.target.value)} onFocus={(e) => e.target.select()} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
+                                                    <MoneyInput 
+                                                        step="0.0001" 
+                                                        value={item.precio_unitario} 
+                                                        onChange={(e) => updateItem(item.uid, 'precio_unitario', e.target.value)} 
+                                                        onFocus={(e) => e.target.select()} 
+                                                        className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" 
+                                                    />
                                                 </td>
-                                                <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]" data-label="Subtotal"><Money value={item.total} /></td>
+                                                <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]" data-label="Subtotal">
+                                                    <Money value={item.total} />
+                                                </td>
                                                 <td className="px-5 py-1.5 text-right" data-label="">
-                                                    <button onClick={() => removeItem(item.product_id)} className="p-1 text-slate-300 hover:text-rose-500"><Trash2 size={12} /></button>
+                                                    <button onClick={() => removeItem(item.uid)} className="p-1 text-slate-300 hover:text-rose-500">
+                                                        <Trash2 size={12} />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}

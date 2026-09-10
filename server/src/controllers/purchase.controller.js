@@ -95,9 +95,12 @@ const getPurchaseById = async (req, res) => {
         }
 
         const [items] = await pool.query(`
-            SELECT pi.*, p.nombre, p.codigo, p.tipo_combustible
+            SELECT pi.*, 
+                   COALESCE(NULLIF(pi.descripcion, ''), p.nombre, 'Sin descripción') AS nombre, 
+                   COALESCE(p.codigo, '—') AS codigo, 
+                   COALESCE(p.tipo_combustible, 0) AS tipo_combustible
             FROM purchase_items pi
-            JOIN products p ON pi.product_id = p.id
+            LEFT JOIN products p ON pi.product_id = p.id
             WHERE pi.purchase_id = ?
         `, [id]);
 
@@ -224,15 +227,20 @@ const createPurchase = async (req, res) => {
 
         // 2. Insertar Items y Actualizar Inventario
         for (const item of items) {
-            const { product_id, cantidad, precio_unitario } = item;
+            const { product_id, cantidad, precio_unitario, descripcion, nombre } = item;
             const qty = parseFloat(cantidad);
             const price = parseFloat(precio_unitario);
-            const total = qty * price;
+            const total = Math.round(qty * price * 10000) / 10000;
+            const finalProductId = product_id ? parseInt(product_id, 10) : null;
+            const itemDesc = (descripcion || nombre || '').trim() || null;
 
             await connection.query(`
-                INSERT INTO purchase_items (purchase_id, product_id, cantidad, precio_unitario, total)
-                VALUES (?, ?, ?, ?, ?)
-            `, [purchaseId, product_id, qty, price, total]);
+                INSERT INTO purchase_items (purchase_id, product_id, descripcion, cantidad, precio_unitario, total)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [purchaseId, finalProductId, itemDesc, qty, price, total]);
+
+            // Si no tiene product_id (ítem sin código), no afecta inventario ni kardex
+            if (!finalProductId) continue;
 
             // Determinar impacto (Entrada por defecto, Salida si es Nota de Crédito 06)
             const esNotaCredito = tipo_documento_id === '06';
@@ -242,7 +250,7 @@ const createPurchase = async (req, res) => {
             const movTipo = esNotaCredito ? 'SALIDA' : 'ENTRADA';
 
             // Resolver ID efectivo para inventario
-            const effectiveProductId = await getEffectiveProductId(connection, product_id);
+            const effectiveProductId = await getEffectiveProductId(connection, finalProductId);
 
             // Actualizar Inventario
             const [stockRows] = await connection.query(
@@ -278,7 +286,7 @@ const createPurchase = async (req, res) => {
             if (esIngreso) {
                 await connection.query(
                     'UPDATE products SET costo = ? WHERE id = ?',
-                    [price, product_id]
+                    [price, finalProductId]
                 );
             }
         }
@@ -340,6 +348,7 @@ const updatePurchase = async (req, res) => {
 
         // REVERSAR IMPACTO ANTIGUO
         for (const oldItem of oldItems) {
+            if (!oldItem.product_id) continue;
             const esNC = oldTipoDoc === '06';
             const reverseSql = esNC 
                 ? 'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?'
@@ -453,18 +462,22 @@ const updatePurchase = async (req, res) => {
 
         // 3. Insertar Nuevos Items y Aplicar NUEVO IMPACTO
         for (const item of items) {
-            const { product_id, cantidad, precio_unitario } = item;
+            const { product_id, cantidad, precio_unitario, descripcion, nombre } = item;
             const qty = parseFloat(cantidad);
             const price = parseFloat(precio_unitario);
-            const total = qty * price;
+            const total = Math.round(qty * price * 10000) / 10000;
+            const finalProductId = product_id ? parseInt(product_id, 10) : null;
+            const itemDesc = (descripcion || nombre || '').trim() || null;
 
             await connection.query(`
-                INSERT INTO purchase_items (purchase_id, product_id, cantidad, precio_unitario, total)
-                VALUES (?, ?, ?, ?, ?)
-            `, [id, product_id, qty, price, total]);
+                INSERT INTO purchase_items (purchase_id, product_id, descripcion, cantidad, precio_unitario, total)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [id, finalProductId, itemDesc, qty, price, total]);
+
+            if (!finalProductId) continue;
 
             // Resolver ID efectivo para inventario
-            const effectiveProductId = await getEffectiveProductId(connection, product_id);
+            const effectiveProductId = await getEffectiveProductId(connection, finalProductId);
 
             const newEsNC = tipo_documento_id === '06';
             const applySql = newEsNC
@@ -496,6 +509,7 @@ const updatePurchase = async (req, res) => {
         // Registrar movimientos por DELTA (efecto_nuevo - efecto_viejo); el movimiento COMPRA original queda intacto
         const oldEffects = {};
         for (const oldItem of oldItems) {
+            if (!oldItem.product_id) continue;
             const efectoViejo = (oldTipoDoc === '06' ? -1 : 1) * parseFloat(oldItem.cantidad);
             oldEffects[oldItem.product_id] = (oldEffects[oldItem.product_id] || 0) + efectoViejo;
         }
@@ -503,9 +517,11 @@ const updatePurchase = async (req, res) => {
         const newEffects = {};
         const newPrices = {};
         for (const item of items) {
+            const finalPId = item.product_id ? parseInt(item.product_id, 10) : null;
+            if (!finalPId) continue;
             const efectoNuevo = (tipo_documento_id === '06' ? -1 : 1) * parseFloat(item.cantidad);
-            newEffects[item.product_id] = (newEffects[item.product_id] || 0) + efectoNuevo;
-            newPrices[item.product_id] = parseFloat(item.precio_unitario);
+            newEffects[finalPId] = (newEffects[finalPId] || 0) + efectoNuevo;
+            newPrices[finalPId] = parseFloat(item.precio_unitario);
         }
 
         for (const productKey of new Set([...Object.keys(oldEffects), ...Object.keys(newEffects)])) {
@@ -567,6 +583,7 @@ const voidPurchase = async (req, res) => {
 
         for (const item of items) {
             const { product_id, cantidad } = item;
+            if (!product_id) continue;
             const qty = parseFloat(cantidad);
 
             // Resolver ID efectivo para reversión
@@ -642,9 +659,11 @@ const exportPurchasePDF = async (req, res) => {
 
         // 2. Obtener items
         const [items] = await pool.query(`
-            SELECT pi.*, prod.nombre, prod.codigo
+            SELECT pi.*, 
+                   COALESCE(NULLIF(pi.descripcion, ''), prod.nombre, 'Sin descripción') AS nombre, 
+                   COALESCE(prod.codigo, '—') AS codigo
             FROM purchase_items pi
-            JOIN products prod ON pi.product_id = prod.id
+            LEFT JOIN products prod ON pi.product_id = prod.id
             WHERE pi.purchase_id = ?
         `, [id]);
 
