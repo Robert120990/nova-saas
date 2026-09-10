@@ -87,18 +87,23 @@ const EggCostsMaintenance = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [cRes, bRes, mRes, fRes, ccRes] = await Promise.all([
+            const [cRes, bRes, mRes, fRes, ccRes] = await Promise.allSettled([
                 axios.get('/api/egg-industrial/costs'),
                 axios.get('/api/egg-industrial/batches'),
                 axios.get('/api/egg-industrial/maintenance'),
                 axios.get('/api/egg-industrial/forecast'),
                 axios.get('/api/egg-industrial/cost-concepts')
             ]);
-            setCosts(cRes.data);
-            setBatches(bRes.data);
-            setMaintenanceLogs(mRes.data);
-            setCostConcepts(ccRes.data);
-            setForecast(fRes.data);
+            if (cRes.status === 'fulfilled') setCosts(cRes.value.data || []);
+            if (bRes.status === 'fulfilled') setBatches(bRes.value.data || []);
+            if (mRes.status === 'fulfilled') setMaintenanceLogs(mRes.value.data || []);
+            if (ccRes.status === 'fulfilled') setCostConcepts(ccRes.value.data || []);
+            if (fRes.status === 'fulfilled') setForecast(fRes.value.data || null);
+
+            const allFailed = [cRes, bRes, mRes, fRes, ccRes].every(r => r.status === 'rejected');
+            if (allFailed) {
+                toast.error('Error al cargar datos de costos y mantenimiento.');
+            }
         } catch (error) {
             console.error('Error fetching cost and maintenance data:', error);
             toast.error('Error al cargar datos de costos y mantenimiento.');
