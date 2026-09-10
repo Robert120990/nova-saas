@@ -8,6 +8,7 @@ import { ConfirmProvider } from './context/ConfirmContext';
 // Pages
 import Login from './pages/Login';
 import PublicDTE from './pages/PublicDTE';
+import MobileDteScanner from './pages/MobileDteScanner';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
 import CompanyModules from './pages/CompanyModules';
@@ -223,6 +224,7 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/dte" element={<PublicDTE />} />
                     <Route path="/scan/:token" element={<ScanInventory />} />
+                    <Route path="/scan-dte/:sessionId" element={<MobileDteScanner />} />
                     
                     {/* Protected Shell */}
                     <Route element={<ProtectedRoute />}>

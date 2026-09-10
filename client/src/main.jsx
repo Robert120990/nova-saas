@@ -44,21 +44,21 @@ const updateSW = registerSW({
         swRegistration = registration || null;
     },
     onNeedReload() {
-        if (isDev) return;
+        if (isDev || window.location.pathname.startsWith('/scan-dte')) return;
         // Interceptamos la recarga automática de Workbox para que no recargue a espaldas del usuario
         handleUpdateDetected(pendingVersion || 'sw-update');
     }
 });
 
 const checkForUpdates = () => {
-    if (isDev || isUpdating) return;
+    if (isDev || isUpdating || window.location.pathname.startsWith('/scan-dte')) return;
     try {
         swRegistration?.update().catch(() => {});
     } catch (e) {}
 };
 
 const doReload = async (version) => {
-    if (isDev) return;
+    if (isDev || window.location.pathname.startsWith('/scan-dte')) return;
     if (version && version !== 'sw-update') {
         localStorage.setItem('app_version', version);
         sessionStorage.setItem('last_update_reload_version', version);
@@ -158,8 +158,8 @@ const triggerCountdownReload = (version, initialPrefix = 'Nueva versión disponi
 };
 
 const handleUpdateDetected = (version) => {
-    // En desarrollo local no realizar recargas automáticas por desajuste de versión con Git
-    if (isDev || isUpdating) return;
+    // En desarrollo local o escáner móvil no realizar recargas automáticas
+    if (isDev || isUpdating || window.location.pathname.startsWith('/scan-dte')) return;
 
     // Protección contra bucles si tras recargar el navegador sigue recibiendo la misma versión pendiente
     const lastAttemptVersion = sessionStorage.getItem('last_update_reload_version');
@@ -200,7 +200,7 @@ window.__onVersionReceived = (version) => {
 };
 
 const checkVersion = async () => {
-    if (isDev || isUpdating || document.visibilityState !== 'visible') return;
+    if (isDev || isUpdating || document.visibilityState !== 'visible' || window.location.pathname.startsWith('/scan-dte')) return;
     try {
         const { data } = await axios.get('/health');
         const version = data.version || '';
@@ -233,6 +233,7 @@ if (!isDev) {
     }, 10000);
 
     document.addEventListener('visibilitychange', () => {
+        if (window.location.pathname.startsWith('/scan-dte')) return;
         if (document.visibilityState === 'visible') {
             checkForUpdates();
             checkVersion();

@@ -23,8 +23,14 @@ import {
     Zap,
     Calendar,
     Sparkles,
-    Loader2
+    Loader2,
+    QrCode,
+    Smartphone,
+    CheckCircle2,
+    Copy,
+    RefreshCw
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -123,88 +129,18 @@ const Purchases = () => {
 
     const barcodeInputRef = useRef(null);
     const descInputRef = useRef(null);
-    const fileInputRef = useRef(null);
+    const jsonFileInputRef = useRef(null);
+    const aiFileInputRef = useRef(null);
     const [isScanningDte, setIsScanningDte] = useState(false);
+    const [recognizeProducts, setRecognizeProducts] = useState(false);
 
-    const handleScanDteFile = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        e.target.value = '';
-        setIsScanningDte(true);
-        const loadingToast = toast.loading('Analizando factura / DTE con Inteligencia Artificial...');
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const res = await axios.post('/api/purchases/scan-dte', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            const data = res.data?.data;
-            if (!data) throw new Error('No se pudieron extraer datos del documento');
-
-            let filledFields = [];
-
-            // 1. Código de Generación / Documento
-            if (data.codigo_generacion) {
-                setNumeroDoc(data.codigo_generacion.toUpperCase().trim());
-                filledFields.push('Cód. Generación');
-            }
-
-            // 2. Número de Control
-            if (data.numero_control) {
-                setNumControl(data.numero_control.toUpperCase().trim());
-                filledFields.push('Núm. Control');
-            }
-
-            // 3. Sello de Recepción
-            if (data.sello_recepcion) {
-                setSelloRecepcion(data.sello_recepcion.toUpperCase().trim());
-                filledFields.push('Sello');
-            }
-
-            // 4. Tipo de Documento
-            if (data.tipo_documento_id) {
-                const foundType = tipoDocs.find(t => t.code === data.tipo_documento_id);
-                if (foundType) {
-                    setTipoDocId(data.tipo_documento_id);
-                    filledFields.push('Tipo Doc');
-                }
-            }
-
-            // 5. Fecha de Emisión
-            if (data.fecha_emision) {
-                setFecha(data.fecha_emision);
-                handleFechaChange({ target: { value: data.fecha_emision } });
-                filledFields.push('Fecha');
-            }
-
-            // 6. Proveedor
-            if (data.matchedProvider) {
-                setProviderId(String(data.matchedProvider.id));
-                setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
-                filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
-            } else if (data.emisor?.nombre) {
-                toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
-            }
-
-            toast.dismiss(loadingToast);
-            if (filledFields.length > 0) {
-                toast.success(`Datos detectados: ${filledFields.join(', ')}`, { duration: 6000 });
-            } else {
-                toast.info('No se detectaron campos de DTE legibles en la imagen.');
-            }
-
-        } catch (err) {
-            console.error('Error al escanear DTE:', err);
-            toast.dismiss(loadingToast);
-            toast.error(err.response?.data?.message || 'Error al procesar la imagen con IA');
-        } finally {
-            setIsScanningDte(false);
-        }
-    };
+    // QR Mobile Scan State
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [qrSessionId, setQrSessionId] = useState(null);
+    const [qrLanIp, setQrLanIp] = useState(null);
+    const [qrLoading, setQrLoading] = useState(false);
+    const [qrError, setQrError] = useState(null);
+    const [qrStatus, setQrStatus] = useState('pending'); // 'pending' | 'processing' | 'completed' | 'expired' | 'error'
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -349,6 +285,195 @@ const Purchases = () => {
         queryKey: ['catalog', '016'],
         queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
     });
+
+    const applyExtractedDteData = (data) => {
+        if (!data) return;
+
+        let filledFields = [];
+
+        // 1. Código de Generación / Documento
+        if (data.codigo_generacion) {
+            setNumeroDoc(data.codigo_generacion.toUpperCase().trim());
+            filledFields.push('Cód. Generación');
+        }
+
+        // 2. Número de Control
+        if (data.numero_control) {
+            setNumControl(data.numero_control.toUpperCase().trim());
+            filledFields.push('Núm. Control');
+        }
+
+        // 3. Sello de Recepción
+        if (data.sello_recepcion) {
+            setSelloRecepcion(data.sello_recepcion.toUpperCase().trim());
+            filledFields.push('Sello');
+        }
+
+        // 4. Tipo de Documento
+        if (data.tipo_documento_id && tipoDocs?.length) {
+            const foundType = tipoDocs.find(t => t.code === data.tipo_documento_id);
+            if (foundType) {
+                setTipoDocId(data.tipo_documento_id);
+                filledFields.push('Tipo Doc');
+            }
+        }
+
+        // 5. Fecha de Emisión
+        if (data.fecha_emision) {
+            setFecha(data.fecha_emision);
+            handleFechaChange({ target: { value: data.fecha_emision } });
+            filledFields.push('Fecha');
+        }
+
+        // 6. Proveedor
+        if (data.matchedProvider) {
+            setProviderId(String(data.matchedProvider.id));
+            setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
+            filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+        } else if (data.emisor?.nombre) {
+            toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
+        }
+
+        // 7. Productos / Líneas de detalle de la compra
+        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+            const newItems = data.items.map(it => {
+                const prod = it.matchedProduct;
+                const cant = parseFloat(it.cantidad || 1);
+                const precio = parseFloat(it.precio_unitario || (it.total ? it.total / cant : 0));
+                const tot = parseFloat(it.total || (cant * precio));
+                if (prod) {
+                    return {
+                        uid: `prod_${prod.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        product_id: prod.id,
+                        nombre: prod.nombre,
+                        codigo: prod.codigo,
+                        tipo_combustible: prod.tipo_combustible || 0,
+                        cantidad: cant,
+                        precio_unitario: precio,
+                        total: tot
+                    };
+                } else {
+                    return {
+                        uid: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        product_id: null,
+                        nombre: (it.descripcion || 'ÍTEM').toUpperCase(),
+                        codigo: it.codigo || '—',
+                        tipo_combustible: 0,
+                        cantidad: cant,
+                        precio_unitario: precio,
+                        total: tot
+                    };
+                }
+            });
+            setSelectedItems(newItems);
+            filledFields.push(`${newItems.length} Producto(s)`);
+        }
+
+        if (filledFields.length > 0) {
+            toast.success(`Datos detectados: ${filledFields.join(', ')}`, { duration: 6000 });
+        } else {
+            toast.info('No se detectaron campos de DTE legibles en la imagen.');
+        }
+    };
+
+    const handleScanDteFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        e.target.value = '';
+        setIsScanningDte(true);
+        const loadingToast = toast.loading('Analizando factura / DTE con Inteligencia Artificial...');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('recognizeItems', recognizeProducts ? 'true' : 'false');
+
+            const res = await axios.post('/api/purchases/scan-dte', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const data = res.data?.data;
+            if (!data) throw new Error('No se pudieron extraer datos del documento');
+
+            applyExtractedDteData(data);
+            toast.dismiss(loadingToast);
+
+        } catch (err) {
+            console.error('Error al escanear DTE:', err);
+            toast.dismiss(loadingToast);
+            toast.error(err.response?.data?.message || 'Error al procesar la imagen con IA');
+        } finally {
+            setIsScanningDte(false);
+        }
+    };
+
+    const handleOpenQrModal = async () => {
+        setIsQrModalOpen(true);
+        setQrLoading(true);
+        setQrError(null);
+        setQrStatus('pending');
+        setQrSessionId(null);
+
+        try {
+            const res = await axios.post('/api/purchases/scan-session', { branch_id: branchId });
+            if (res.data.success && res.data.sessionId) {
+                setQrSessionId(res.data.sessionId);
+                setQrLanIp(res.data.lanIp || null);
+            } else {
+                throw new Error(res.data.message || 'Error al generar sesión');
+            }
+        } catch (err) {
+            console.error('Error al crear sesión QR:', err);
+            setQrError(err.response?.data?.message || err.message || 'Error al generar código QR');
+        } finally {
+            setQrLoading(false);
+        }
+    };
+
+    const handleCloseQrModal = () => {
+        setIsQrModalOpen(false);
+        setQrSessionId(null);
+        setQrStatus('pending');
+        setQrError(null);
+    };
+
+    useEffect(() => {
+        let intervalId;
+        if (isQrModalOpen && qrSessionId) {
+            intervalId = setInterval(async () => {
+                try {
+                    const res = await axios.get(`/api/purchases/scan-session/${qrSessionId}`);
+                    const { status, data, error } = res.data;
+                    setQrStatus(status);
+
+                    if (status === 'completed' && data) {
+                        clearInterval(intervalId);
+                        setIsQrModalOpen(false);
+                        setQrSessionId(null);
+                        applyExtractedDteData(data);
+                        toast.success('¡DTE recibido y procesado desde el teléfono con éxito!');
+                    } else if (status === 'error') {
+                        clearInterval(intervalId);
+                        setQrError(error || 'Error al procesar la imagen con IA');
+                    } else if (status === 'expired') {
+                        clearInterval(intervalId);
+                        setQrError('La sesión de escaneo ha expirado');
+                    }
+                } catch (err) {
+                    if (err.response?.status === 404 || err.response?.status === 410) {
+                        clearInterval(intervalId);
+                        setQrStatus('expired');
+                        setQrError('La sesión de escaneo ha expirado o no es válida.');
+                    }
+                }
+            }, 2000);
+        }
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [isQrModalOpen, qrSessionId, tipoDocs]);
 
     const { data: purchasesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
         queryKey: ['purchases', historySearch, historyPage, branchId],
@@ -808,7 +933,9 @@ const Purchases = () => {
     };
 
     const handleSubmit = () => {
-        if (!branchId || !providerId || !numeroDoc) return toast.error('Cabecera incompleta');
+        if (!branchId) return toast.error('Seleccione una sucursal');
+        if (!providerId) return toast.error('Seleccione un proveedor');
+        if (!numeroDoc) return toast.error('Ingrese el número de documento o factura');
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
 
@@ -1022,7 +1149,7 @@ const Purchases = () => {
                 <div className="flex items-center gap-2">
                     <input 
                         type="file" 
-                        ref={fileInputRef} 
+                        ref={jsonFileInputRef} 
                         onChange={handleFileChange} 
                         accept=".json" 
                         className="hidden" 
@@ -1031,8 +1158,8 @@ const Purchases = () => {
                     {activeTab === 'historial' ? (
                         <>
                             <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                onClick={() => jsonFileInputRef.current?.click()}
+                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                                 title="Importar desde archivo JSON oficial (Hacienda SV)"
                             >
                                 <Zap size={13} className="fill-amber-500 text-amber-500" /> Importar DTE
@@ -1051,8 +1178,8 @@ const Purchases = () => {
                         <>
                             {!isEditing && (
                                 <button 
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                    onClick={() => jsonFileInputRef.current?.click()}
+                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                                     title="Importar desde archivo JSON oficial (Hacienda SV)"
                                 >
                                     <Zap size={13} className="fill-amber-500 text-amber-500" /> Importar DTE
@@ -1092,14 +1219,14 @@ const Purchases = () => {
                                     {/* Botón de Escaneo con IA */}
                                     <input 
                                         type="file" 
-                                        ref={fileInputRef} 
+                                        ref={aiFileInputRef} 
                                         onChange={handleScanDteFile} 
                                         accept="image/*,.pdf" 
                                         className="hidden" 
                                     />
                                     <button
                                         type="button"
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() => aiFileInputRef.current?.click()}
                                         disabled={isScanningDte}
                                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100/80 border border-violet-200/80 transition-all shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
                                         title="Subir foto o PDF del DTE para auto-completar los datos con Inteligencia Artificial"
@@ -1116,6 +1243,36 @@ const Purchases = () => {
                                             </>
                                         )}
                                     </button>
+
+                                    {/* Botón de Escaneo con Teléfono Móvil mediante QR */}
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenQrModal}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/80 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                        title="Escanear factura física con la cámara de tu smartphone mediante código QR"
+                                    >
+                                        <QrCode size={13} className="text-indigo-600" />
+                                        <span>Escanear con Teléfono (QR)</span>
+                                    </button>
+
+                                    {/* Toggle Reconocer productos con IA */}
+                                    <label 
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all shadow-2xs cursor-pointer select-none ${
+                                            recognizeProducts 
+                                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                                : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                        title="Al activar, el escáner con IA extraerá la lista de productos, cantidades y precios para llenar la tabla de la compra"
+                                    >
+                                        <input 
+                                            type="checkbox" 
+                                            checked={recognizeProducts} 
+                                            onChange={(e) => setRecognizeProducts(e.target.checked)} 
+                                            className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <Package size={13} className={recognizeProducts ? 'text-indigo-600' : 'text-slate-400'} />
+                                        <span>Productos IA</span>
+                                    </label>
 
                                     <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
                                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
@@ -1251,17 +1408,21 @@ const Purchases = () => {
                                     />
                                 </div>
                                 <div className="md:col-span-1">
-                                    <label className={labelCls}>Número de Control (DTE)</label>
+                                    <label className={labelCls}>
+                                        Número de Control (DTE) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                    </label>
                                     <input 
                                         type="text" 
                                         value={numControl} 
                                         onChange={(e) => setNumControl(e.target.value.toUpperCase())} 
-                                        placeholder="DTE-03-M001P001-00001" 
+                                        placeholder="DTE-03-M001P001-00001 (OPCIONAL)" 
                                         className={`${inputCls} uppercase font-mono text-[11px]`} 
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className={labelCls}>Sello de Recepción (MH)</label>
+                                    <label className={labelCls}>
+                                        Sello de Recepción (MH) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                    </label>
                                     <input 
                                         type="text" 
                                         value={selloRecepcion} 
@@ -1934,6 +2095,20 @@ const Purchases = () => {
                 fileName={`Reporte_Compras_${new Date().toISOString().split('T')[0]}.pdf`}
                 footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
             />
+
+            {/* Modal de Escaneo con Cámara Móvil vía Código QR */}
+            <QrScanModal
+                isOpen={isQrModalOpen}
+                onClose={handleCloseQrModal}
+                sessionId={qrSessionId}
+                lanIp={qrLanIp}
+                isLoading={qrLoading}
+                error={qrError}
+                status={qrStatus}
+                onRetry={handleOpenQrModal}
+                recognizeProducts={recognizeProducts}
+                onToggleRecognizeProducts={setRecognizeProducts}
+            />
         </div>
     );
 };
@@ -2007,6 +2182,208 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                         />
                     </div>
                 )}
+            </div>
+        </div>
+    );
+};
+
+const QrScanModal = ({ 
+    isOpen, 
+    onClose, 
+    sessionId, 
+    lanIp, 
+    isLoading, 
+    error, 
+    status, 
+    onRetry,
+    recognizeProducts,
+    onToggleRecognizeProducts
+}) => {
+    const [copied, setCopied] = useState(false);
+    if (!isOpen) return null;
+
+    const queryParam = recognizeProducts ? '?recognize_items=1' : '';
+    let qrUrl = '';
+    if (sessionId) {
+        if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && lanIp) {
+            qrUrl = `${window.location.protocol}//${lanIp}:${window.location.port}/scan-dte/${sessionId}${queryParam}`;
+        } else {
+            qrUrl = `${window.location.origin}/scan-dte/${sessionId}${queryParam}`;
+        }
+    }
+
+    const handleCopy = () => {
+        if (!qrUrl) return;
+        navigator.clipboard.writeText(qrUrl);
+        setCopied(true);
+        toast.success('Enlace copiado al portapapeles');
+        setTimeout(() => setCopied(false), 2500);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-slate-100">
+                {/* Header */}
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-linear-to-r from-indigo-50/50 via-white to-violet-50/50">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                            <Smartphone size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">
+                                Escanear con Teléfono
+                            </h3>
+                            <p className="text-[11px] text-slate-500 font-medium mt-1">
+                                Usa la cámara de tu smartphone para capturar el DTE
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 flex flex-col items-center text-center space-y-4">
+                    {isLoading ? (
+                        <div className="py-12 flex flex-col items-center gap-3">
+                            <Loader2 size={36} className="animate-spin text-indigo-600" />
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                                Generando sesión segura de escaneo...
+                            </p>
+                        </div>
+                    ) : error ? (
+                        <div className="py-8 flex flex-col items-center gap-3">
+                            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+                                <AlertCircle size={32} />
+                            </div>
+                            <p className="text-sm font-bold text-rose-700">{error}</p>
+                            <button
+                                onClick={onRetry}
+                                className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all cursor-pointer shadow-sm"
+                            >
+                                <RefreshCw size={14} /> Reintentar
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Toggle Reconocimiento de Productos */}
+                            <div className="w-full p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-left">
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <Package size={14} className="text-indigo-600" />
+                                        <span>Reconocer productos con IA</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 leading-tight">
+                                        Extrae automáticamente las líneas de productos, cantidades y precios
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={recognizeProducts} 
+                                        onChange={(e) => onToggleRecognizeProducts?.(e.target.checked)} 
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                </label>
+                            </div>
+
+                            {/* QR Code Container */}
+                            <div className="relative p-4 bg-white rounded-2xl border-2 border-indigo-100 shadow-inner flex items-center justify-center">
+                                {sessionId && (
+                                    <QRCodeSVG
+                                        value={qrUrl}
+                                        size={210}
+                                        level="M"
+                                        includeMargin={false}
+                                        className="rounded-lg"
+                                    />
+                                )}
+
+                                {status === 'processing' && (
+                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-4 gap-2 animate-in fade-in">
+                                        <Loader2 size={36} className="animate-spin text-violet-600" />
+                                        <span className="text-xs font-black uppercase tracking-wider text-violet-700">
+                                            Analizando DTE con IA...
+                                        </span>
+                                        <span className="text-[11px] text-slate-500 font-medium text-center">
+                                            La foto fue recibida del teléfono. Extrayendo datos...
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Status Indicator */}
+                            {status === 'pending' && (
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/70 rounded-full text-xs font-bold">
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </span>
+                                    <span>Esperando captura desde el teléfono...</span>
+                                </div>
+                            )}
+
+                            {status === 'processing' && (
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-violet-50 text-violet-700 border border-violet-200/70 rounded-full text-xs font-bold">
+                                    <Loader2 size={13} className="animate-spin text-violet-600" />
+                                    <span>Procesando imagen con IA...</span>
+                                </div>
+                            )}
+
+                            {/* Steps / Instructions */}
+                            <div className="w-full bg-slate-50 rounded-2xl p-3.5 text-left border border-slate-100 space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    Instrucciones rápidas:
+                                </p>
+                                <ol className="text-[12px] text-slate-600 space-y-1.5 font-medium">
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">1</span>
+                                        <span>Abre la app de cámara de tu teléfono y enfoca el código QR.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">2</span>
+                                        <span>Toca el enlace para abrir la pantalla de escaneo móvil.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">3</span>
+                                        <span>Toma la foto del DTE/factura física y presiona procesar.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">✓</span>
+                                        <span>Los datos se completarán aquí automáticamente en tiempo real.</span>
+                                    </li>
+                                </ol>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    {sessionId && !error && (
+                        <button
+                            type="button"
+                            onClick={handleCopy}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                            title="Copiar enlace directo"
+                        >
+                            {copied ? <CheckCircle2 size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                            <span>{copied ? 'Copiado' : 'Copiar enlace'}</span>
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="ml-auto px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                        Cerrar
+                    </button>
+                </div>
             </div>
         </div>
     );

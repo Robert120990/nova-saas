@@ -5,6 +5,37 @@ const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const aiService = require('../services/ai.service');
+const crypto = require('crypto');
+const os = require('os');
+
+const getLocalIpAddress = () => {
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    return iface.address;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error al detectar IP local:', e);
+    }
+    return null;
+};
+
+// In-memory store for mobile QR scanning sessions
+const scanSessions = new Map();
+
+// Periodic cleanup of expired sessions every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of scanSessions.entries()) {
+        if (session.expiresAt && session.expiresAt < now) {
+            scanSessions.delete(id);
+        }
+    }
+}, 10 * 60 * 1000);
 
 /**
  * Obtener lista de compras con búsqueda y paginación
@@ -1084,6 +1115,39 @@ const getPurchaseReportPDF = async (req, res) => {
 /**
  * Escanear factura/DTE físico o digital mediante IA y extraer datos
  */
+const matchProductsForItems = async (items, companyId) => {
+    if (!items || !Array.isArray(items) || items.length === 0) return items;
+    try {
+        const [dbProducts] = await pool.query(
+            `SELECT id, codigo, nombre, tipo_combustible FROM products WHERE company_id = ? AND status = 'activo'`,
+            [companyId]
+        );
+        return items.map(item => {
+            const rawCode = (item.codigo || '').trim().toLowerCase();
+            const rawDesc = (item.descripcion || '').trim().toLowerCase();
+            let matched = null;
+            if (rawCode) {
+                matched = dbProducts.find(p => (p.codigo || '').trim().toLowerCase() === rawCode);
+            }
+            if (!matched && rawDesc && rawDesc.length > 2) {
+                matched = dbProducts.find(p => (p.nombre || '').trim().toLowerCase() === rawDesc);
+            }
+            return {
+                ...item,
+                matchedProduct: matched ? {
+                    id: matched.id,
+                    codigo: matched.codigo,
+                    nombre: matched.nombre,
+                    tipo_combustible: matched.tipo_combustible || 0
+                } : null
+            };
+        });
+    } catch (err) {
+        console.error('Error al cotejar productos con base de datos:', err);
+        return items;
+    }
+};
+
 const scanDteInvoice = async (req, res) => {
     try {
         if (!req.file && !req.body?.image) {
@@ -1107,9 +1171,14 @@ const scanDteInvoice = async (req, res) => {
         }
 
         const companyId = req.company_id || req.user?.company_id;
+        const recognizeItems = req.body?.recognizeItems === 'true' || req.body?.recognizeItems === true || req.query?.recognizeItems === 'true';
 
         // Llamar a servicio de IA
-        const extracted = await aiService.extractDteFromImage(buffer, mimeType);
+        const extracted = await aiService.extractDteFromImage(buffer, mimeType, { recognizeItems });
+
+        if (extracted.items && extracted.items.length > 0) {
+            extracted.items = await matchProductsForItems(extracted.items, companyId);
+        }
 
         // Buscar si existe un proveedor que coincida por NIT, NRC o nombre
         let matchedProvider = null;
@@ -1150,9 +1219,201 @@ const scanDteInvoice = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error al escanear DTE con IA:', error);
+        console.error("Error al escanear DTE con IA:", error);
         return res.status(500).json({
-            message: error.message || 'Error al procesar la imagen del DTE con IA'
+            message: error.message || "Error al procesar la imagen del DTE con IA"
+        });
+    }
+};
+
+/**
+ * Crear una nueva sesión temporal de escaneo móvil con QR
+ */
+const createScanSession = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const branchId = req.user?.branch_id || req.body?.branch_id || null;
+        const userId = req.user?.id || null;
+
+        if (!companyId) {
+            return res.status(401).json({ message: "Sesión no válida o sin empresa asignada" });
+        }
+
+        const sessionId = crypto.randomUUID();
+        const now = Date.now();
+        const ttlMs = 10 * 60 * 1000; // 10 minutes
+
+        const session = {
+            id: sessionId,
+            companyId,
+            branchId,
+            userId,
+            status: "pending", // "pending" | "processing" | "completed" | "error"
+            data: null,
+            error: null,
+            createdAt: now,
+            expiresAt: now + ttlMs,
+        };
+
+        scanSessions.set(sessionId, session);
+
+        res.json({
+            success: true,
+            sessionId,
+            lanIp: getLocalIpAddress(),
+            expiresAt: session.expiresAt,
+            expiresInSeconds: Math.floor(ttlMs / 1000),
+        });
+    } catch (error) {
+        console.error("Error al crear sesión de escaneo móvil:", error);
+        res.status(500).json({ message: "Error al iniciar sesión de escaneo móvil" });
+    }
+};
+
+/**
+ * Consultar el estado de una sesión de escaneo móvil
+ */
+const getScanSessionStatus = async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const session = scanSessions.get(sessionId);
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                status: "expired",
+                message: "La sesión de escaneo no existe o ha expirado.",
+            });
+        }
+
+        if (session.expiresAt && session.expiresAt < Date.now()) {
+            scanSessions.delete(sessionId);
+            return res.status(410).json({
+                success: false,
+                status: "expired",
+                message: "La sesión de escaneo ha expirado.",
+            });
+        }
+
+        res.json({
+            success: true,
+            status: session.status,
+            data: session.data,
+            error: session.error,
+            expiresAt: session.expiresAt,
+        });
+    } catch (error) {
+        console.error("Error al consultar estado de escaneo:", error);
+        res.status(500).json({ message: "Error al consultar estado de la sesión" });
+    }
+};
+
+/**
+ * Subir foto desde el celular para procesar con IA y asociar a la sesión
+ */
+const uploadMobileScan = async (req, res) => {
+    const { sessionId } = req.params;
+    const session = scanSessions.get(sessionId);
+
+    if (!session) {
+        return res.status(404).json({
+            success: false,
+            message: "La sesión de escaneo no existe o ha expirado. Genere un nuevo código QR.",
+        });
+    }
+
+    if (session.expiresAt && session.expiresAt < Date.now()) {
+        scanSessions.delete(sessionId);
+        return res.status(410).json({
+            success: false,
+            message: "La sesión de escaneo ha expirado. Por favor genere un nuevo código QR.",
+        });
+    }
+
+    if (!req.file && !req.body?.image) {
+        return res.status(400).json({ message: "No se recibió ninguna imagen para procesar." });
+    }
+
+    session.status = "processing";
+
+    try {
+        let buffer;
+        let mimeType = 'image/jpeg';
+
+        if (req.file) {
+            buffer = req.file.buffer;
+            mimeType = req.file.mimetype;
+        } else if (req.body.image) {
+            const matches = req.body.image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                mimeType = matches[1];
+                buffer = Buffer.from(matches[2], 'base64');
+            } else {
+                buffer = Buffer.from(req.body.image, 'base64');
+            }
+        }
+
+        const companyId = session.companyId;
+        const recognizeItems = req.body?.recognizeItems === 'true' || req.body?.recognizeItems === true || req.query?.recognizeItems === 'true';
+
+        // Procesar con IA
+        const extracted = await aiService.extractDteFromImage(buffer, mimeType, { recognizeItems });
+
+        if (extracted.items && extracted.items.length > 0) {
+            extracted.items = await matchProductsForItems(extracted.items, companyId);
+        }
+
+        // Buscar proveedor en la base de datos de la empresa
+        let matchedProvider = null;
+        if (extracted.emisor && (extracted.emisor.nit || extracted.emisor.nrc || extracted.emisor.nombre)) {
+            const cleanNit = (extracted.emisor.nit || '').replace(/[^0-9]/g, '');
+            const cleanNrc = (extracted.emisor.nrc || '').replace(/[^0-9]/g, '');
+            const searchName = (extracted.emisor.nombre || '').trim();
+
+            let pQuery = `SELECT id, nombre, nit, nrc, dias_credito FROM providers WHERE company_id = ? AND (1=0`;
+            const pParams = [companyId];
+
+            if (cleanNit.length > 5) {
+                pQuery += ` OR REPLACE(nit, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNit}%`);
+            }
+            if (cleanNrc.length > 2) {
+                pQuery += ` OR REPLACE(nrc, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNrc}%`);
+            }
+            if (searchName.length > 3) {
+                pQuery += ` OR nombre LIKE ?`;
+                pParams.push(`%${searchName}%`);
+            }
+            pQuery += `) LIMIT 1`;
+
+            const [pRows] = await pool.query(pQuery, pParams);
+            if (pRows.length > 0) {
+                matchedProvider = pRows[0];
+            }
+        }
+
+        const resultData = {
+            ...extracted,
+            matchedProvider,
+        };
+
+        session.status = 'completed';
+        session.data = resultData;
+        session.error = null;
+
+        return res.json({
+            success: true,
+            status: 'completed',
+            data: resultData,
+        });
+    } catch (error) {
+        console.error('Error al procesar escaneo móvil con IA:', error);
+        session.status = 'error';
+        session.error = error.message || 'Error al procesar la imagen con IA';
+        return res.status(500).json({
+            success: false,
+            message: session.error,
         });
     }
 };
@@ -1165,5 +1426,8 @@ module.exports = {
     exportPurchasePDF,
     updatePurchase,
     getPurchaseReportPDF,
-    scanDteInvoice
+    scanDteInvoice,
+    createScanSession,
+    getScanSessionStatus,
+    uploadMobileScan
 };
