@@ -13,7 +13,8 @@ import {
     X,
     ExternalLink,
     Settings,
-    Layers
+    Layers,
+    Calendar
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
 import { useAuth } from '../../context/AuthContext';
@@ -464,6 +465,15 @@ export default function CustomerAgreements() {
                         <Calculator className="w-4 h-4 text-indigo-600" />
                         <span className="hidden sm:inline">Simulador de Costeo</span>
                         <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/industrial/calendario')}
+                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 border border-emerald-200 transition-all shadow-2xs"
+                        title="Ver pedidos y programación en Calendario de Producción"
+                    >
+                        <Calendar className="w-4 h-4 text-emerald-600" />
+                        <span className="hidden sm:inline">Calendario de Producción</span>
                     </button>
 
                     <button

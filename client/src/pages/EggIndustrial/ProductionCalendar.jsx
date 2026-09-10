@@ -1343,6 +1343,24 @@ const ProductionCalendar = () => {
                                                                     <Wand2 className="w-2.5 h-2.5" />
                                                                 </button>
                                                             )}
+                                                            {(!prod.batch_id && prod.status !== 'completado' && prod.status !== 'cancelado') && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigate('/industrial/produccion', {
+                                                                            state: {
+                                                                                openNewBatchModal: true,
+                                                                                scheduledProduction: prod
+                                                                            }
+                                                                        });
+                                                                    }}
+                                                                    className="p-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[8px] font-bold transition-all flex items-center"
+                                                                    title="Llevar actividad a Producción"
+                                                                >
+                                                                    <Play className="w-2.5 h-2.5 fill-emerald-700" />
+                                                                </button>
+                                                            )}
                                                             {prod.priority === 'urgente' && (
                                                                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Prioridad Urgente" />
                                                             )}
@@ -1502,14 +1520,22 @@ const ProductionCalendar = () => {
 
                                                 <td className="px-4 py-3 text-center">
                                                     <div className="flex items-center justify-center gap-1">
-                                                        {!prod.batch_id && prod.status === 'programado' && (
+                                                        {!prod.batch_id && prod.status !== 'completado' && prod.status !== 'cancelado' && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleStartBatchInPlant(prod.id, prod.lot_code)}
-                                                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
-                                                                title="Iniciar lote real en planta"
+                                                                onClick={() => {
+                                                                    navigate('/industrial/produccion', {
+                                                                        state: {
+                                                                            openNewBatchModal: true,
+                                                                            scheduledProduction: prod
+                                                                        }
+                                                                    });
+                                                                }}
+                                                                className="px-2 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors flex items-center gap-1 shadow-2xs"
+                                                                title="Llevar actividad a Producción e iniciar lote"
                                                             >
-                                                                <Play className="w-4 h-4 fill-emerald-600" />
+                                                                <Play className="w-3.5 h-3.5 fill-emerald-600" />
+                                                                <span className="text-[10px] font-bold">A Producción</span>
                                                             </button>
                                                         )}
                                                         <button
@@ -1966,21 +1992,44 @@ const ProductionCalendar = () => {
                     </div>
 
                     {/* Botones de Acción */}
-                    <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
-                        <button
-                            type="button"
-                            onClick={() => setIsFormModalOpen(false)}
-                            className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-colors"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 active:scale-95 transition-all disabled:opacity-50"
-                        >
-                            {isSubmitting ? 'Guardando...' : formData.id ? 'Guardar Cambios' : 'Programar Producción'}
-                        </button>
+                    <div className="flex items-center justify-between gap-2.5 pt-4 border-t border-slate-100">
+                        <div>
+                            {formData.id && formData.status !== 'completado' && formData.status !== 'cancelado' && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsFormModalOpen(false);
+                                        navigate('/industrial/produccion', {
+                                            state: {
+                                                openNewBatchModal: true,
+                                                scheduledProduction: formData
+                                            }
+                                        });
+                                    }}
+                                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-200 transition-all"
+                                    title="Llevar actividad a Producción e iniciar lote real"
+                                >
+                                    <Play className="w-3.5 h-3.5 fill-white" />
+                                    <span>Llevar a Producción</span>
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                            <button
+                                type="button"
+                                onClick={() => setIsFormModalOpen(false)}
+                                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                {isSubmitting ? 'Guardando...' : formData.id ? 'Guardar Cambios' : 'Programar Producción'}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </Modal>

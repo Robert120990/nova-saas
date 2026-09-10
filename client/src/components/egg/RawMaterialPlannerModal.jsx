@@ -123,6 +123,30 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     </div>
                 </div>
 
+                {/* INDICADORES DE ORIGEN DE DEMANDA (CRM / CALENDARIO) */}
+                {plannerData && (
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold px-1">
+                        {plannerData.scheduled_productions_count > 0 && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
+                                <CheckCircle2 size={12} className="text-indigo-600" />
+                                {plannerData.scheduled_productions_count} producciones programadas en el mes
+                            </span>
+                        )}
+                        {plannerData.customer_orders_count > 0 && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                <Sparkles size={12} className="text-emerald-600" />
+                                {plannerData.customer_orders_count} pedidos de clientes (CRM) enlazados
+                            </span>
+                        )}
+                        {plannerData.is_simulation && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+                                <AlertTriangle size={12} className="text-amber-600" />
+                                Proyección estándar de planta (sin corridas programadas para este mes)
+                            </span>
+                        )}
+                    </div>
+                )}
+
                 {/* TARJETAS EJECUTIVAS KPI */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
                     <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-sm">

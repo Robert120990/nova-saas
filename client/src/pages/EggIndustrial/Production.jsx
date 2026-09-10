@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -16,13 +16,23 @@ import {
     Lock,
     Calendar,
     ShieldAlert,
-    Sparkles
+    Sparkles,
+    Layers,
+    ChevronDown,
+    ChevronUp,
+    Trash2,
+    Check
 } from 'lucide-react';
 
 const EggProduction = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const companyId = user?.company_id || 1;
+
+    // Scheduled productions from Calendar
+    const [scheduledProductions, setScheduledProductions] = useState([]);
+    const [selectedScheduledProd, setSelectedScheduledProd] = useState(null);
 
     // Lists
     const [batches, setBatches] = useState([]);
@@ -39,6 +49,7 @@ const EggProduction = () => {
         product_type: 'huevo entero',
         presentation: 'cubeta 32LB',
         run_number: 1,
+        scheduled_production_id: null,
         raw_materials: [],
         ingredients: {
             boxes_count: '',
@@ -107,9 +118,172 @@ const EggProduction = () => {
         }
     };
 
+    const fetchScheduledProductions = async () => {
+        try {
+            const res = await axios.get('/api/egg-industrial/calendar', {
+                params: { status: 'programado' }
+            });
+            setScheduledProductions(res.data || []);
+        } catch (err) {
+            console.error('Error al cargar producciones programadas:', err);
+        }
+    };
+
     useEffect(() => {
         fetchData();
+        fetchScheduledProductions();
     }, [companyId]);
+
+    // Handle calendar navigation
+    useEffect(() => {
+        if (location.state?.openNewBatchModal || location.state?.scheduledProduction) {
+            setIsNewBatchModalOpen(true);
+            if (location.state?.scheduledProduction) {
+                handleSelectScheduledProduction(location.state.scheduledProduction);
+            }
+        }
+    }, [location.state]);
+
+    const handleSelectScheduledProduction = (sched) => {
+        if (!sched) {
+            setSelectedScheduledProd(null);
+            setBatchForm(prev => ({
+                ...prev,
+                scheduled_production_id: null
+            }));
+            return;
+        }
+
+        setSelectedScheduledProd(sched);
+
+        const p = (sched.product_profile || '').toLowerCase();
+        let pType = 'huevo entero';
+        if (p.includes('clara')) pType = 'clara';
+        else if (p.includes('azucar') || p.includes('azúcar')) pType = 'yema azucarada';
+        else if (p.includes('sal')) pType = 'yema salada';
+        else if (p.includes('plus') || p.includes('formulado') || p.includes('separaci')) pType = 'fórmula especial';
+
+        const pres = (sched.presentation || '').toLowerCase();
+        let presType = 'cubeta 32LB';
+        if (pres.includes('30')) presType = 'cubeta 30LB';
+        else if (pres.includes('32')) presType = 'cubeta 32LB';
+        else if (pres.includes('medio')) presType = 'medio galón 4LB';
+        else if (pres.includes('gal')) presType = 'galón 8LB';
+        else if (pres.includes('litro')) presType = 'litro 2LB';
+
+        let runNum = 1;
+        const match = (sched.lot_code || '').match(/^(\d+)/);
+        if (match) runNum = parseInt(match[1], 10);
+
+        let formula = {};
+        try {
+            formula = typeof sched.mix_formula_json === 'string'
+                ? JSON.parse(sched.mix_formula_json)
+                : (sched.mix_formula_json || {});
+        } catch (e) { formula = {}; }
+
+        setBatchForm(prev => ({
+            ...prev,
+            scheduled_production_id: sched.id,
+            product_type: pType,
+            presentation: presType,
+            run_number: runNum,
+            ingredients: {
+                boxes_count: formula.raw_egg_boxes || prev.ingredients.boxes_count || '',
+                water_bottles: formula.water_bottles || (formula.water_h2o_lbs ? Math.round(formula.water_h2o_lbs / 41.8) : '') || prev.ingredients.water_bottles || '',
+                sugar_lbs: formula.sugar_lbs || prev.ingredients.sugar_lbs || '',
+                salt_lbs: formula.salt_lbs || prev.ingredients.salt_lbs || '',
+                citric_acid_lbs: formula.citric_acid_lbs || prev.ingredients.citric_acid_lbs || '',
+                milk_powder_lbs: formula.milk_powder_lbs || prev.ingredients.milk_powder_lbs || '',
+                ppg_g: formula.ppg_g || prev.ingredients.ppg_g || ''
+            }
+        }));
+
+        toast.success(`Producción programada cargada: ${sched.lot_code} (${sched.product_profile})`);
+    };
+
+    // Funciones de gestión de tarimas en materias primas
+    const handleAddTarimaToRm = (rmIdx, tarimaData = null) => {
+        const updated = [...batchForm.raw_materials];
+        const rm = updated[rmIdx];
+        const tarimas = rm.tarimas || [];
+        const nextNum = tarimas.length + 1;
+
+        const newTarima = tarimaData || {
+            tarima_number: nextNum,
+            boxes_count: '',
+            quantity_lbs: ''
+        };
+
+        const newTarimas = [...tarimas, newTarima];
+        const sumLbs = newTarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        const sumBoxes = newTarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
+
+        rm.tarimas = newTarimas;
+        if (sumLbs > 0) rm.quantity_lbs = sumLbs.toFixed(2);
+        if (sumBoxes > 0) rm.boxes_count = sumBoxes;
+
+        setBatchForm({ ...batchForm, raw_materials: updated });
+    };
+
+    const handleUpdateTarimaInRm = (rmIdx, tIdx, field, value) => {
+        const updated = [...batchForm.raw_materials];
+        const rm = updated[rmIdx];
+        const tarimas = [...(rm.tarimas || [])];
+        tarimas[tIdx] = { ...tarimas[tIdx], [field]: value };
+
+        if (field === 'boxes_count' && value && (!tarimas[tIdx].quantity_lbs || tarimas[tIdx].quantity_lbs === '0')) {
+            tarimas[tIdx].quantity_lbs = (parseInt(value) * 36.1).toFixed(2);
+        }
+
+        const sumLbs = tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        const sumBoxes = tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
+
+        rm.tarimas = tarimas;
+        if (sumLbs > 0) rm.quantity_lbs = sumLbs.toFixed(2);
+        if (sumBoxes > 0) rm.boxes_count = sumBoxes;
+
+        setBatchForm({ ...batchForm, raw_materials: updated });
+    };
+
+    const handleRemoveTarimaFromRm = (rmIdx, tIdx) => {
+        const updated = [...batchForm.raw_materials];
+        const rm = updated[rmIdx];
+        const tarimas = (rm.tarimas || []).filter((_, i) => i !== tIdx);
+
+        const sumLbs = tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        const sumBoxes = tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
+
+        rm.tarimas = tarimas;
+        if (tarimas.length > 0) {
+            rm.quantity_lbs = sumLbs.toFixed(2);
+            rm.boxes_count = sumBoxes;
+        }
+
+        setBatchForm({ ...batchForm, raw_materials: updated });
+    };
+
+    const handleLoadAllReceptionTarimas = (rmIdx, availableTarimas) => {
+        if (!availableTarimas || availableTarimas.length === 0) return;
+        const updated = [...batchForm.raw_materials];
+        const rm = updated[rmIdx];
+
+        const mapped = availableTarimas.map((t, i) => ({
+            tarima_number: t.tarima_number || (i + 1),
+            boxes_count: t.boxes_count || 0,
+            quantity_lbs: t.net_weight_lbs || t.gross_weight_lbs || 0
+        }));
+
+        const sumLbs = mapped.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        const sumBoxes = mapped.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
+
+        rm.tarimas = mapped;
+        rm.quantity_lbs = sumLbs.toFixed(2);
+        rm.boxes_count = sumBoxes;
+
+        setBatchForm({ ...batchForm, raw_materials: updated });
+        toast.success(`${mapped.length} tarimas cargadas al lote.`);
+    };
 
     // Handle new production batch with optional bypass
     const handleCreateBatch = async (e, forceBypass = false) => {
@@ -137,10 +311,13 @@ const EggProduction = () => {
                 bypass_cip_check: shouldBypass
             });
             toast.success(shouldBypass ? 'Lote de producción iniciado bajo excepción de sanitización.' : 'Lote de producción iniciado exitosamente.');
+            setSelectedScheduledProd(null);
+            fetchScheduledProductions();
             setBatchForm({
                 product_type: 'huevo entero',
                 presentation: 'cubeta 32LB',
                 run_number: 1,
+                scheduled_production_id: null,
                 raw_materials: [],
                 ingredients: {
                     boxes_count: '',
@@ -437,10 +614,26 @@ const EggProduction = () => {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-2.5">
-                                                <div className="font-bold text-slate-900 text-xs capitalize">{b.product_type}</div>
+                                                <div className="font-bold text-slate-900 text-xs capitalize flex items-center gap-1.5">
+                                                    <span>{b.product_type}</span>
+                                                    {b.scheduled_lot_code && (
+                                                        <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-[9px] font-bold px-1.5 py-0.2 rounded" title="Originado en Calendario de Producción">
+                                                            Prog: {b.scheduled_lot_code}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 {b.raw_materials && b.raw_materials.length > 0 && (
-                                                    <div className="text-[10px] text-slate-500 mt-0.5">
-                                                        {b.raw_materials.map(m => `${m.egg_type} (${parseFloat(m.quantity_lbs).toFixed(0)} Lbs)`).join(', ')}
+                                                    <div className="text-[10px] text-slate-500 mt-0.5 space-y-0.5">
+                                                        {b.raw_materials.map((m, mi) => (
+                                                            <div key={mi}>
+                                                                <span>{m.egg_type} - {parseFloat(m.quantity_lbs).toFixed(0)} Lbs{m.boxes_count > 0 ? ` (${m.boxes_count} cjs)` : ''}</span>
+                                                                {Array.isArray(m.tarimas) && m.tarimas.length > 0 && (
+                                                                    <div className="text-[9px] text-indigo-600 font-medium pl-1">
+                                                                        Tarimas: {m.tarimas.map(t => `#${t.tarima_number || 1} (${t.boxes_count || 0}cjs - ${parseFloat(t.quantity_lbs || 0).toFixed(0)}Lbs)`).join(', ')}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </td>
@@ -723,6 +916,54 @@ const EggProduction = () => {
                     )}
 
                     <form onSubmit={handleCreateBatch} className="space-y-5">
+                        {/* Selector de Producción Programada del Calendario */}
+                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-black text-indigo-900 uppercase tracking-wide flex items-center gap-1.5">
+                                    <Calendar className="w-4 h-4 text-indigo-600" />
+                                    <span>Vincular con Producción Programada del Calendario</span>
+                                </label>
+                                {selectedScheduledProd && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectScheduledProduction(null)}
+                                        className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline transition-colors"
+                                    >
+                                        Desvincular
+                                    </button>
+                                )}
+                            </div>
+                            <select
+                                value={selectedScheduledProd?.id || ''}
+                                onChange={(e) => {
+                                    const found = scheduledProductions.find(p => String(p.id) === e.target.value);
+                                    handleSelectScheduledProduction(found || null);
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
+                            >
+                                <option value="">-- Iniciar Producción Libre / Sin Programación Previa --</option>
+                                {scheduledProductions.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.priority || 'media'})
+                                    </option>
+                                ))}
+                            </select>
+                            {selectedScheduledProd ? (
+                                <div className="text-[11px] text-indigo-800 font-medium flex items-center gap-2 pt-1 border-t border-indigo-200/60">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
+                                    <span>
+                                        Programado: <strong>{selectedScheduledProd.production_date?.split('T')[0]}</strong> • 
+                                        Operador Asignado: <strong>{selectedScheduledProd.assigned_operator_name || 'Sin asignar'}</strong> • 
+                                        Meta: <strong>{parseFloat(selectedScheduledProd.target_quantity_lbs || 0).toLocaleString()} Lbs</strong>
+                                    </span>
+                                </div>
+                            ) : (
+                                <p className="text-[10px] text-slate-500">
+                                    Selecciona una orden del calendario para precargar automáticamente producto, presentación, corrida y fórmula.
+                                </p>
+                            )}
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
@@ -769,63 +1010,234 @@ const EggProduction = () => {
                             </div>
                         </div>
 
-                        {/* Materias Primas */}
-                        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Materia Prima Base (Lotes en Recepción)</label>
-                                <span className="text-xs font-bold text-emerald-700">
-                                    Total: {batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs
-                                </span>
-                            </div>
-                            {batchForm.raw_materials.map((rm, idx) => (
-                                <div key={idx} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-2.5">
-                                    <select
-                                        value={rm.raw_material_id}
-                                        onChange={(e) => {
-                                            const updated = [...batchForm.raw_materials];
-                                            updated[idx].raw_material_id = e.target.value;
-                                            setBatchForm({ ...batchForm, raw_materials: updated });
-                                        }}
-                                        className="flex-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
-                                    >
-                                        <option value="">Seleccionar lote recepcionado...</option>
-                                        {rawMaterials.map(m => (
-                                            <option key={m.id} value={m.id} disabled={batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id))}>
-                                                {m.egg_type} - Lote: {m.provider_lot} (Stock: {parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs)
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <input
-                                        type="number"
-                                        value={rm.quantity_lbs}
-                                        onChange={(e) => {
-                                            const updated = [...batchForm.raw_materials];
-                                            updated[idx].quantity_lbs = e.target.value;
-                                            setBatchForm({ ...batchForm, raw_materials: updated });
-                                        }}
-                                        className="w-28 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold focus:outline-none text-right"
-                                        placeholder="Lbs"
-                                        step="0.01"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setBatchForm({ ...batchForm, raw_materials: batchForm.raw_materials.filter((_, i) => i !== idx) });
-                                        }}
-                                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
-                                        title="Eliminar línea"
-                                    >
-                                        <XCircle size={16} />
-                                    </button>
+                        {/* Materias Primas con Desglose de Tarimas y Cantidades */}
+                        <div className="space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
+                                <div>
+                                    <label className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                        <Layers className="w-4 h-4 text-indigo-600" />
+                                        <span>Materia Prima Base (Lotes en Recepción & Tarimas)</span>
+                                    </label>
+                                    <p className="text-[11px] text-slate-500">
+                                        Selecciona lotes aprobados y desglosa las tarimas y cajas a quebrar en esta corrida.
+                                    </p>
                                 </div>
-                            ))}
+                                <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs shadow-2xs">
+                                    <span className="text-slate-500 font-medium">Total Cajas: <strong className="text-indigo-700">{batchForm.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="text-slate-500 font-medium">Total Entrada: <strong className="text-emerald-700">{batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
+                                </div>
+                            </div>
+
+                            {batchForm.raw_materials.map((rm, idx) => {
+                                const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
+                                let availableTarimas = [];
+                                if (selectedLot) {
+                                    try {
+                                        availableTarimas = typeof selectedLot.tarimas_json === 'string'
+                                            ? JSON.parse(selectedLot.tarimas_json || '[]')
+                                            : (selectedLot.tarimas_json || []);
+                                    } catch (e) {
+                                        availableTarimas = [];
+                                    }
+                                }
+
+                                return (
+                                    <div key={idx} className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs space-y-3">
+                                        {/* Cabecera de línea de lote */}
+                                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                            <div className="flex-1">
+                                                <select
+                                                    value={rm.raw_material_id}
+                                                    onChange={(e) => {
+                                                        const lotId = e.target.value;
+                                                        const lotObj = rawMaterials.find(m => String(m.id) === String(lotId));
+                                                        const updated = [...batchForm.raw_materials];
+                                                        updated[idx].raw_material_id = lotId;
+                                                        updated[idx].tarimas = [];
+                                                        if (lotObj) {
+                                                            // Si tiene stock inicial
+                                                            updated[idx].quantity_lbs = '';
+                                                            updated[idx].boxes_count = '';
+                                                        }
+                                                        setBatchForm({ ...batchForm, raw_materials: updated });
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
+                                                >
+                                                    <option value="">Seleccionar lote recepcionado...</option>
+                                                    {rawMaterials.map(m => (
+                                                        <option key={m.id} value={m.id} disabled={batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id))}>
+                                                            {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | Stock: {parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs ({m.total_boxes || 0} cjs)
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-28">
+                                                    <input
+                                                        type="number"
+                                                        value={rm.quantity_lbs}
+                                                        onChange={(e) => {
+                                                            const updated = [...batchForm.raw_materials];
+                                                            updated[idx].quantity_lbs = e.target.value;
+                                                            setBatchForm({ ...batchForm, raw_materials: updated });
+                                                        }}
+                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:bg-white text-right"
+                                                        placeholder="Total Lbs"
+                                                        step="0.01"
+                                                    />
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setBatchForm({ ...batchForm, raw_materials: batchForm.raw_materials.filter((_, i) => i !== idx) });
+                                                    }}
+                                                    className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors shrink-0"
+                                                    title="Eliminar este lote"
+                                                >
+                                                    <XCircle size={17} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Espacio para desglose de Tarimas y Cantidades */}
+                                        {selectedLot && (
+                                            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+                                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                                                            <Layers size={13} className="text-indigo-600" />
+                                                            Tarimas & Cantidades
+                                                        </span>
+                                                        {availableTarimas.length > 0 && (
+                                                            <span className="bg-indigo-100/70 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                                {availableTarimas.length} en recepción
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        {availableTarimas.length > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleLoadAllReceptionTarimas(idx, availableTarimas)}
+                                                                className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
+                                                            >
+                                                                <Check size={11} /> Cargar todas ({availableTarimas.length})
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleAddTarimaToRm(idx)}
+                                                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
+                                                        >
+                                                            <Plus size={11} /> Agregar Tarima
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Botones rápidos de tarimas de recepción si no se han agregado aún */}
+                                                {availableTarimas.length > 0 && (!rm.tarimas || rm.tarimas.length === 0) && (
+                                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                                        <span className="text-[10px] text-slate-500 self-center">Sugeridas:</span>
+                                                        {availableTarimas.map((t, ti) => (
+                                                            <button
+                                                                key={ti}
+                                                                type="button"
+                                                                onClick={() => handleAddTarimaToRm(idx, {
+                                                                    tarima_number: t.tarima_number || (ti + 1),
+                                                                    boxes_count: t.boxes_count || 0,
+                                                                    quantity_lbs: t.net_weight_lbs || t.gross_weight_lbs || 0
+                                                                })}
+                                                                className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-md text-[10px] font-bold text-slate-700 transition-all flex items-center gap-1 shadow-2xs"
+                                                            >
+                                                                <span>Tarima #{t.tarima_number || (ti + 1)}</span>
+                                                                <span className="text-indigo-600">({t.boxes_count || 0} cjs • {parseFloat(t.net_weight_lbs || t.gross_weight_lbs || 0).toFixed(0)} Lbs)</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Lista de tarimas configuradas para este lote */}
+                                                {rm.tarimas && rm.tarimas.length > 0 && (
+                                                    <div className="space-y-1.5 pt-1">
+                                                        <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-500 uppercase px-2">
+                                                            <div className="col-span-3 sm:col-span-3">N° Tarima</div>
+                                                            <div className="col-span-4 sm:col-span-4">Cajas Huevo</div>
+                                                            <div className="col-span-4 sm:col-span-4 text-right">Peso (Lbs)</div>
+                                                            <div className="col-span-1 text-center"></div>
+                                                        </div>
+
+                                                        {rm.tarimas.map((t, ti) => (
+                                                            <div key={ti} className="grid grid-cols-12 gap-2 items-center bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
+                                                                <div className="col-span-3 sm:col-span-3 flex items-center gap-1">
+                                                                    <span className="text-[11px] font-bold text-slate-500">#</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={t.tarima_number}
+                                                                        onChange={(e) => handleUpdateTarimaInRm(idx, ti, 'tarima_number', e.target.value)}
+                                                                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800 text-center focus:bg-white"
+                                                                        placeholder="N°"
+                                                                    />
+                                                                </div>
+
+                                                                <div className="col-span-4 sm:col-span-4">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={t.boxes_count}
+                                                                        onChange={(e) => handleUpdateTarimaInRm(idx, ti, 'boxes_count', e.target.value)}
+                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-center focus:border-indigo-500"
+                                                                        placeholder="0 cjs"
+                                                                    />
+                                                                </div>
+
+                                                                <div className="col-span-4 sm:col-span-4">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={t.quantity_lbs}
+                                                                        onChange={(e) => handleUpdateTarimaInRm(idx, ti, 'quantity_lbs', e.target.value)}
+                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:border-indigo-500"
+                                                                        placeholder="0.00 Lbs"
+                                                                        step="0.01"
+                                                                    />
+                                                                </div>
+
+                                                                <div className="col-span-1 text-center">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRemoveTarimaFromRm(idx, ti)}
+                                                                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                                                                        title="Quitar tarima"
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+
+                                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 pt-1 px-2">
+                                                            <span>Subtotal Lote:</span>
+                                                            <span className="text-indigo-700">
+                                                                {rm.tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0)} Cajas • {rm.tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0).toFixed(2)} Lbs
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
                             <button
                                 type="button"
-                                onClick={() => setBatchForm({ ...batchForm, raw_materials: [...batchForm.raw_materials, { raw_material_id: '', quantity_lbs: '' }] })}
-                                className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200 flex items-center justify-center gap-1.5"
+                                onClick={() => setBatchForm({ ...batchForm, raw_materials: [...batchForm.raw_materials, { raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }] })}
+                                className="w-full py-2.5 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200/80 flex items-center justify-center gap-1.5 shadow-2xs"
                             >
                                 <Plus size={14} />
-                                Agregar Lote de Materia Prima
+                                Agregar Otro Lote de Materia Prima
                             </button>
                         </div>
 

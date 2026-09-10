@@ -1,5 +1,4 @@
-const mysql = require('mysql2/promise');
-const fs = require('fs');
+﻿const mysql = require('mysql2/promise');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
 
@@ -13,27 +12,50 @@ async function runMigration() {
     });
 
     try {
-        console.log('Running migration v183 - Add branch_id to rh_empleados...');
+        console.log('Iniciando migración v183: detalle de tarimas en producción y vínculo con calendario...');
 
-        // Check if column already exists
-        const [[exists]] = await pool.query(
+        // 1. Columnas en batch_raw_materials
+        const [[hasTarimasJson]] = await pool.query(
             `SELECT COUNT(*) AS n FROM information_schema.COLUMNS 
-             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'rh_empleados' AND COLUMN_NAME = 'branch_id'`,
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'batch_raw_materials' AND COLUMN_NAME = 'tarimas_json'`,
             [process.env.DB_NAME]
         );
-
-        if (exists && exists.n > 0) {
-            console.log('  → Column branch_id already exists in rh_empleados.');
-        } else {
-            const migrationPath = path.join(__dirname, 'migration_v183_rh_empleados_branch_id.sql');
-            const sql = fs.readFileSync(migrationPath, 'utf8');
-            await pool.query(sql);
-            console.log('  → Column branch_id and foreign key added successfully.');
+        if (!hasTarimasJson || hasTarimasJson.n === 0) {
+            await pool.query('ALTER TABLE batch_raw_materials ADD COLUMN tarimas_json JSON NULL AFTER quantity_lbs');
+            console.log('OK: Columna batch_raw_materials.tarimas_json agregada.');
         }
 
-        console.log('OK: migration v183 completed successfully.');
+        const [[hasBoxesCount]] = await pool.query(
+            `SELECT COUNT(*) AS n FROM information_schema.COLUMNS 
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'batch_raw_materials' AND COLUMN_NAME = 'boxes_count'`,
+            [process.env.DB_NAME]
+        );
+        if (!hasBoxesCount || hasBoxesCount.n === 0) {
+            await pool.query('ALTER TABLE batch_raw_materials ADD COLUMN boxes_count INT DEFAULT 0 AFTER tarimas_json');
+            console.log('OK: Columna batch_raw_materials.boxes_count agregada.');
+        }
+
+        // 2. Columna en egg_production_batches
+        const [[hasSchedId]] = await pool.query(
+            `SELECT COUNT(*) AS n FROM information_schema.COLUMNS 
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'scheduled_production_id'`,
+            [process.env.DB_NAME]
+        );
+        if (!hasSchedId || hasSchedId.n === 0) {
+            await pool.query('ALTER TABLE egg_production_batches ADD COLUMN scheduled_production_id INT NULL AFTER batch_code_display');
+            console.log('OK: Columna egg_production_batches.scheduled_production_id agregada.');
+            
+            try {
+                await pool.query('CREATE INDEX idx_epb_scheduled_prod ON egg_production_batches(scheduled_production_id)');
+                console.log('OK: Índice idx_epb_scheduled_prod creado.');
+            } catch (e) {
+                // Índice podría ya existir
+            }
+        }
+
+        console.log('OK: Migración v183 finalizada con éxito.');
     } catch (err) {
-        console.error('Error in migration v183:', err.message);
+        console.error('Error en migración v183:', err.message);
         process.exitCode = 1;
     } finally {
         await pool.end();

@@ -279,8 +279,9 @@ const quickSanitizeCip = async (req, res) => {
 const getProductionBatches = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT b.*
+            `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date
              FROM egg_production_batches b
+             LEFT JOIN egg_scheduled_productions esp ON b.scheduled_production_id = esp.id
              WHERE b.company_id = ? 
              ORDER BY b.started_at DESC`,
             [req.company_id]
@@ -294,6 +295,13 @@ const getProductionBatches = async (req, res) => {
                  WHERE brm.batch_id = ?`,
                 [batch.id]
             );
+            for (const m of materials) {
+                if (typeof m.tarimas_json === 'string') {
+                    try { m.tarimas = JSON.parse(m.tarimas_json); } catch (e) { m.tarimas = []; }
+                } else {
+                    m.tarimas = m.tarimas_json || [];
+                }
+            }
             batch.raw_materials = materials;
 
             const [pkgSum] = await pool.query(
@@ -384,35 +392,68 @@ const createProductionBatch = async (req, res) => {
             'SELECT COUNT(*) as count FROM egg_production_batches WHERE company_id = ? AND DATE(started_at) = CURDATE()',
             [company_id]
         );
-        const runNumber = String((todayBatches[0]?.count || 0) + 1).padStart(2, '0');
+        const autoRunNumber = String((todayBatches[0]?.count || 0) + 1).padStart(2, '0');
+        const runNumber = req.body.run_number ? String(req.body.run_number).padStart(2, '0') : autoRunNumber;
         const batch_code_display = `${runNumber} - ${String(dayOfYear).padStart(3, '0')} - ${year2Digit}`;
 
         const { ingredients_json, target_brix, target_solids_pct } = req.body;
+        const scheduled_production_id = req.body.scheduled_production_id ? parseInt(req.body.scheduled_production_id, 10) : null;
 
         const [result] = await connection.query(
             `INSERT INTO egg_production_batches (
-                company_id, branch_id, batch_uuid, batch_code_display, product_type, 
+                company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type, 
                 presentation, ingredients_json, status, input_weight_lbs, 
                 target_brix, target_solids_pct, operator_name
             ) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
             [
-                company_id, branch_id, batch_uuid, batch_code_display, product_type, 
+                company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type, 
                 presentation, JSON.stringify(ingredients_json || {}), totalInputWeight, 
                 target_brix || null, target_solids_pct || null, operator_name
             ]
         );
         const batchId = result.insertId;
 
-        // Insert batch_raw_materials and deduct stock
+        // Insert batch_raw_materials and deduct stock (with tarimas breakdown support)
         for (const rm of raw_materials) {
+            const qty = parseFloat(rm.quantity_lbs || 0);
+            const boxes = parseInt(rm.boxes_count || rm.total_boxes || 0, 10);
+            const tarimasJson = rm.tarimas && Array.isArray(rm.tarimas) ? JSON.stringify(rm.tarimas) : (rm.tarimas_json || null);
+
             await connection.query(
-                'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs) VALUES (?, ?, ?)',
-                [batchId, rm.raw_material_id, parseFloat(rm.quantity_lbs)]
+                'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
+                [batchId, rm.raw_material_id, qty, tarimasJson, boxes]
             );
+
+            if (boxes > 0) {
+                await connection.query(
+                    'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?), total_boxes = GREATEST(0, total_boxes - ?) WHERE id = ? AND company_id = ?',
+                    [qty, boxes, rm.raw_material_id, req.company_id]
+                );
+            } else {
+                await connection.query(
+                    'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?) WHERE id = ? AND company_id = ?',
+                    [qty, rm.raw_material_id, req.company_id]
+                );
+            }
+        }
+
+        // Si se vinculó a una producción programada del calendario, actualizar su estado y registrar evento
+        if (scheduled_production_id) {
             await connection.query(
-                'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ? WHERE id = ? AND company_id = ?',
-                [parseFloat(rm.quantity_lbs), rm.raw_material_id, req.company_id]
+                'UPDATE egg_scheduled_productions SET batch_id = ?, status = "en_proceso" WHERE id = ? AND company_id = ?',
+                [batchId, scheduled_production_id, company_id]
+            );
+
+            await connection.query(
+                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+                 VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
+                [
+                    company_id,
+                    `Lote ${batch_code_display} vinculado a la producción programada #${scheduled_production_id}.`,
+                    JSON.stringify({ batch_id: batchId, scheduled_production_id, batch_code_display }),
+                    operator_name
+                ]
             );
         }
 
@@ -3248,13 +3289,34 @@ const getRawMaterialPlanning = async (req, res) => {
         const currentStockLbs = parseFloat(rmRows[0]?.total_stock_lbs || 0);
         const currentStockBoxes = parseInt(rmRows[0]?.total_boxes || 0);
 
-        // 3. Obtener lista de proveedores principales para recomendaciones
-        const [providers] = await pool.query(
-            `SELECT id, nombre, contacto, telefono FROM providers 
-             WHERE company_id = ? AND (nombre LIKE '%avicol%' OR nombre LIKE '%granja%' OR nombre LIKE '%huevo%' OR nombre LIKE '%agro%')
-             LIMIT 5`,
-            [company_id]
-        );
+        // 3. Obtener lista de proveedores principales para recomendaciones (defensivo sin campo contacto)
+        let providers = [];
+        try {
+            const [provRows] = await pool.query(
+                `SELECT id, nombre, nombre_comercial, telefono, correo FROM providers 
+                 WHERE company_id = ? AND (nombre LIKE '%avicol%' OR nombre LIKE '%granja%' OR nombre LIKE '%huevo%' OR nombre LIKE '%agro%')
+                 LIMIT 5`,
+                [company_id]
+            );
+            providers = provRows;
+        } catch (provErr) {
+            console.warn('Aviso: no se pudieron cargar proveedores específicos en MRP:', provErr.message);
+        }
+
+        // 3.1 Obtener pedidos de clientes del CRM para ovoproductos en el mes
+        let customerOrders = [];
+        try {
+            const [coRows] = await pool.query(
+                `SELECT * FROM egg_customer_orders
+                 WHERE company_id = ? AND MONTH(required_delivery_date) = ? AND YEAR(required_delivery_date) = ?
+                   AND status IN ('pendiente', 'programado')
+                 ORDER BY required_delivery_date ASC`,
+                [company_id, targetMonth, targetYear]
+            );
+            customerOrders = coRows;
+        } catch (coErr) {
+            console.warn('Aviso: error consultando pedidos de ovoproductos en MRP:', coErr.message);
+        }
 
         // 4. Calcular consumos consolidados
         let totalLiquidLbsNeeded = 0;
@@ -3293,8 +3355,21 @@ const getRawMaterialPlanning = async (req, res) => {
             totalBuckets30Lb += Math.ceil(qty / 30);
         });
 
-        // Si no hay producciones programadas aún, proyectar una base estándar mensual para que el planificador sea útil de inmediato
-        const isProjectedSimulation = scheduledProds.length === 0;
+        // Si no hay producciones programadas pero sí pedidos de clientes del CRM, calcular con base en pedidos
+        if (scheduledProds.length === 0 && customerOrders.length > 0) {
+            customerOrders.forEach(o => {
+                const qty = parseFloat(o.quantity_lbs || 0);
+                const pBoxes = Math.round(qty / 36.1);
+                totalLiquidLbsNeeded += qty;
+                totalRawEggBoxesNeeded += pBoxes;
+                totalWaterH2oLbs += Math.round(qty * 0.077);
+                totalCitricAcidLbs += parseFloat((qty * 0.00015).toFixed(2));
+                totalBuckets30Lb += Math.ceil(qty / 30);
+            });
+        }
+
+        // Si no hay producciones programadas ni pedidos aún, proyectar una base estándar mensual para simulación
+        const isProjectedSimulation = scheduledProds.length === 0 && customerOrders.length === 0;
         if (isProjectedSimulation) {
             totalLiquidLbsNeeded = 54000;
             totalRawEggBoxesNeeded = Math.round(54000 / 36.1); // ~1496 cajas
@@ -3339,6 +3414,8 @@ const getRawMaterialPlanning = async (req, res) => {
             year: targetYear,
             is_simulation: isProjectedSimulation,
             scheduled_productions_count: scheduledProds.length,
+            customer_orders_count: customerOrders.length,
+            customer_orders: customerOrders,
             raw_egg_balance: {
                 total_liquid_lbs_needed: Math.round(totalLiquidLbsNeeded),
                 total_boxes_needed: totalRawEggBoxesNeeded,
