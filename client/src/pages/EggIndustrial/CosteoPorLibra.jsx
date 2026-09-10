@@ -1586,6 +1586,116 @@ export default function EggCosteoPorLibra() {
                                 })}
                             </div>
                         </div>
+
+                        {/* Matriz Comparativa por Presentación y Empaque (A la derecha) */}
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div>
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                        <Package className="w-4 h-4 text-indigo-600" />
+                                        <span>Matriz de Costeo por Presentación y Empaque</span>
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                        Costo base operacional líquido: <strong className="text-indigo-700 font-bold"><Money value={calculationResult?.breakdown?.base_operating_cost_per_lb || 0} /> /lb</strong>. El costo de empaque modifica el costo final por libra y por envase:
+                                    </p>
+                                </div>
+                                <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+                                    Lote: {(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                            <th className="py-3 px-3.5">Presentación</th>
+                                            <th className="py-3 px-3 text-right">Empaque / Envase</th>
+                                            <th className="py-3 px-3 text-right">Empaque / Lb</th>
+                                            <th className="py-3 px-3.5 text-right">Costo Total / Lb</th>
+                                            <th className="py-3 px-3.5 text-right">Costo / Envase</th>
+                                            <th className="py-3 px-3 text-right">Precio Sug. (20% Margen)</th>
+                                            <th className="py-3 px-3 text-right">Rendimiento</th>
+                                            <th className="py-3 px-3 text-center">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                        {(calculationResult?.presentations_comparison || []).map((row, idx) => {
+                                            const isSelected = row.is_current || (calcParams.presentation || '').toLowerCase().includes(row.lbs.toString());
+                                            const packPct = row.total_cost_per_lb > 0 ? ((row.packaging_cost_lb / row.total_cost_per_lb) * 100).toFixed(1) : 0;
+                                            return (
+                                                <tr key={idx} className={`transition-colors ${isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50/80'}`}>
+                                                    <td className="py-3 px-3.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                                <Package className="w-3.5 h-3.5" />
+                                                            </div>
+                                                            <div>
+                                                                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                                    <span>{row.short_name}</span>
+                                                                    {isSelected && (
+                                                                        <span className="text-[9px] font-black uppercase bg-indigo-600 text-white px-1.5 py-0.2 rounded tracking-wider">
+                                                                            Activo
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[10px] text-slate-400 font-medium">{row.lbs} Libras netas</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-medium text-slate-700">
+                                                        <div><Money value={row.packaging_cost_unit} /></div>
+                                                        <span className="text-[9px] text-slate-400 font-normal">
+                                                            Env: ${(row.packaging_breakdown?.container_cost || 0).toFixed(2)} + Tap: ${(row.packaging_breakdown?.lid_cost || 0).toFixed(2)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right">
+                                                        <div className="font-bold text-blue-700"><Money value={row.packaging_cost_lb} />/lb</div>
+                                                        <span className="text-[9px] text-slate-400 font-normal">{packPct}% del costo</span>
+                                                    </td>
+                                                    <td className="py-3 px-3.5 text-right">
+                                                        <span className="font-black text-indigo-950 text-sm">
+                                                            <Money value={row.total_cost_per_lb} />
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-normal block">/lb</span>
+                                                    </td>
+                                                    <td className="py-3 px-3.5 text-right font-black text-slate-900">
+                                                        <Money value={row.total_cost_per_unit} />
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right">
+                                                        <span className="font-black text-emerald-700">
+                                                            <Money value={row.suggested_prices?.margin_20?.price_unit || 0} />
+                                                        </span>
+                                                        <span className="text-[9px] text-slate-500 block font-normal">
+                                                            (<Money value={row.suggested_prices?.margin_20?.price_lb || 0} />/lb)
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right">
+                                                        <span className="font-bold text-slate-800">{row.units_in_batch?.toLocaleString()}</span>
+                                                        <span className="text-[10px] text-slate-400 block font-normal">unidades</span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center">
+                                                        {isSelected ? (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                <span>Seleccionado</span>
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleParamChange('presentation', row.id)}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 px-2.5 py-1 rounded-lg shadow-sm transition-all"
+                                                            >
+                                                                Seleccionar
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1669,52 +1779,194 @@ export default function EggCosteoPorLibra() {
                         </div>
                     </div>
 
-                    {/* Matriz Comparativa de Márgenes */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-                            Tabla Comparativa de Precios Sugeridos por Margen
-                        </h3>
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                            <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                        <th className="py-3 px-4">Margen Deseado</th>
-                                        <th className="py-3 px-4 text-right">Precio Sugerido / Lb</th>
-                                        <th className="py-3 px-4 text-right">Precio / {calcParams.presentation}</th>
-                                        <th className="py-3 px-4 text-right">Ganancia / Lb</th>
-                                        <th className="py-3 px-4 text-right">Utilidad Lote ({(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                    {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                            <td className="py-3 px-4">
-                                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                                                    row.margin_target_pct >= 25
-                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                        : row.margin_target_pct >= 15
-                                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                }`}>
-                                                    {row.margin_target_pct}% Margen
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-slate-900">
-                                                <Money value={row.suggested_price_per_lb} />
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-medium text-slate-700">
-                                                <Money value={row.suggested_price_per_presentation} />
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                                                <Money value={row.gain_per_lb} />
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-indigo-700">
-                                                <Money value={row.batch_gain} />
-                                            </td>
+                    {/* Grid en 2 Columnas: Izquierda = Matriz Escalonada de Margen | Derecha = Simulación Multiformato por Presentación */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        {/* Columna Izquierda: Matriz de Precios Sugeridos por Margen */}
+                        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                            <div className="pb-3 border-b border-slate-100">
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4 text-indigo-600" />
+                                    <span>Escala de Precios por Margen</span>
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                    Presentación activa: <strong className="text-indigo-700 font-bold">{calcParams.presentation}</strong>
+                                </p>
+                            </div>
+                            <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                            <th className="py-3 px-3">Margen</th>
+                                            <th className="py-3 px-3 text-right">Precio / Lb</th>
+                                            <th className="py-3 px-3 text-right">Precio / Envase</th>
+                                            <th className="py-3 px-3 text-right">Utilidad Lote</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                        {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-3 px-3">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${
+                                                        row.margin_target_pct >= 25
+                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                            : row.margin_target_pct >= 15
+                                                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    }`}>
+                                                        {row.margin_target_pct}%
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-black text-slate-900">
+                                                    <Money value={row.suggested_price_per_lb} />
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-medium text-slate-700">
+                                                    <Money value={row.suggested_price_per_presentation} />
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-black text-indigo-700">
+                                                    <Money value={row.batch_gain} />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Columna Derecha: Simulación Multiformato por Presentación (A la derecha) */}
+                        <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div>
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                        <Package className="w-4 h-4 text-emerald-600" />
+                                        <span>Simulación por Presentación y Empaque (A la derecha)</span>
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                        Impacto del precio simulado de <strong className="text-slate-900 font-bold"><Money value={parseFloat(calcParams.target_sale_price_per_lb) || 0} /> /lb</strong> en cada formato:
+                                    </p>
+                                </div>
+                                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+                                    Lote: {(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                            <th className="py-3 px-3.5">Presentación</th>
+                                            <th className="py-3 px-3 text-right">Costo / Envase</th>
+                                            <th className="py-3 px-3 text-right">Precio Venta</th>
+                                            <th className="py-3 px-3 text-right">Margen / Envase</th>
+                                            <th className="py-3 px-3 text-center">Margen %</th>
+                                            <th className="py-3 px-3.5 text-right">Utilidad Lote</th>
+                                            <th className="py-3 px-3 text-right">Precio Sug. 20%</th>
+                                            <th className="py-3 px-3 text-center">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                        {(calculationResult?.presentations_comparison || []).map((row, idx) => {
+                                            const isSelected = row.is_current || (calcParams.presentation || '').toLowerCase().includes(row.lbs.toString());
+                                            const hasSimPrice = (parseFloat(calcParams.target_sale_price_per_lb) || 0) > 0;
+                                            const marginPct = row.simulation?.margin_pct || 0;
+                                            const marginPerUnit = row.simulation?.gain_per_unit || 0;
+                                            const totalBatchGain = row.simulation?.total_batch_gain || 0;
+
+                                            return (
+                                                <tr key={idx} className={`transition-colors ${isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50/80'}`}>
+                                                    <td className="py-3 px-3.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                                <Package className="w-3.5 h-3.5" />
+                                                            </div>
+                                                            <div>
+                                                                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                                    <span>{row.short_name}</span>
+                                                                    {isSelected && (
+                                                                        <span className="text-[9px] font-black uppercase bg-indigo-600 text-white px-1.5 py-0.2 rounded tracking-wider">
+                                                                            Activo
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    Empaque: <Money value={row.packaging_cost_lb} />/lb
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right">
+                                                        <div className="font-bold text-slate-900"><Money value={row.total_cost_per_unit} /></div>
+                                                        <span className="text-[9px] text-slate-400 font-normal">(<Money value={row.total_cost_per_lb} />/lb)</span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-black text-slate-900">
+                                                        {hasSimPrice ? (
+                                                            <Money value={row.simulation?.sale_price_unit || 0} />
+                                                        ) : (
+                                                            <span className="text-slate-400 text-[11px] font-normal italic">Sin precio</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right">
+                                                        {hasSimPrice ? (
+                                                            <span className={`font-black ${marginPerUnit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                {marginPerUnit >= 0 ? '+' : ''}<Money value={marginPerUnit} />
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-400 font-normal">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center">
+                                                        {hasSimPrice ? (
+                                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black inline-block ${
+                                                                marginPct >= 20
+                                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                    : marginPct >= 10
+                                                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                            }`}>
+                                                                {marginPct.toFixed(1)}%
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-400 font-normal">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-3.5 text-right font-black text-indigo-900">
+                                                        {hasSimPrice ? (
+                                                            <span className={totalBatchGain >= 0 ? 'text-indigo-900' : 'text-rose-600'}>
+                                                                <Money value={totalBatchGain} />
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-400 font-normal">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right">
+                                                        <span className="font-bold text-emerald-700">
+                                                            <Money value={row.suggested_prices?.margin_20?.price_unit || 0} />
+                                                        </span>
+                                                        <span className="text-[9px] text-slate-400 block font-normal">
+                                                            (<Money value={row.suggested_prices?.margin_20?.price_lb || 0} />/lb)
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center">
+                                                        {isSelected ? (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                <span>Seleccionado</span>
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleParamChange('presentation', row.id)}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 px-2.5 py-1 rounded-lg shadow-sm transition-all"
+                                                            >
+                                                                Seleccionar
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>

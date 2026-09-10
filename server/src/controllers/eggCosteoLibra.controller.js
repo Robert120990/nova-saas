@@ -4,13 +4,8 @@ const pool = require('../config/db');
 const ensureSeedData = async (companyId) => {
     try {
         if (!companyId) return;
-        const [comp] = await pool.query('SELECT enabled_modules FROM companies WHERE id = ?', [companyId]);
+        const [comp] = await pool.query('SELECT id FROM companies WHERE id = ?', [companyId]);
         if (comp.length === 0) return;
-        let mods = [];
-        try { mods = typeof comp[0].enabled_modules === 'string' ? JSON.parse(comp[0].enabled_modules) : (comp[0].enabled_modules || []); } catch (e) { mods = []; }
-        if (!Array.isArray(mods) || !mods.includes('egg_industrial')) {
-            return; // No sembrar datos de huevo si la empresa no maneja este módulo
-        }
 
         const [cRows] = await pool.query('SELECT COUNT(*) as c FROM egg_costing_configurations WHERE company_id = ?', [companyId]);
         if (cRows[0].c === 0) {
@@ -53,7 +48,13 @@ const ensureSeedData = async (companyId) => {
                     (?, 'ETIQ-4X2', 'Etiqueta Térmica Polipropileno 4x2 Pulgadas', 0.0350, 'etiqueta'),
                     (?, 'ETIQ-4X4', 'Etiqueta Térmica de Lote y Trazabilidad 4x4 Pulgadas', 0.0500, 'etiqueta'),
                     (?, 'GALON-8LB', 'Envase Plástico Galón 8 LBS con Asa', 0.8500, 'recipiente'),
-                    (?, 'TAPA-GALON', 'Tapa con Sello de Seguridad para Galón', 0.1500, 'tapadera')
+                    (?, 'TAPA-GALON', 'Tapa con Sello de Seguridad para Galón', 0.1500, 'tapadera'),
+                    (?, 'MEDIO-GALON', 'Envase Plástico Medio Galón 4 LBS', 0.5500, 'recipiente'),
+                    (?, 'TAPA-MEDIO-GALON', 'Tapa con Sello para Medio Galón', 0.1000, 'tapadera'),
+                    (?, 'LITRO-2LB', 'Botella Plástica Litro 2 LBS', 0.3500, 'recipiente'),
+                    (?, 'TAPA-LITRO', 'Tapa con Sello para Botella 2 LBS', 0.0800, 'tapadera'),
+                    (?, 'MEDIO-LITRO-1LB', 'Botella Plástica Medio Litro 1 LB', 0.2500, 'recipiente'),
+                    (?, 'TAPA-MEDIO-LITRO', 'Tapa con Sello para Botella 1 LB', 0.0500, 'tapadera')
             `, [companyId, companyId, companyId, companyId, companyId, companyId, companyId]);
         }
 
@@ -786,42 +787,7 @@ const calculateDynamicCost = async (req, res) => {
             mp_cost_savings_per_lb: Math.max(0, baseLiquidCostPerLb - mpCostPerLb)
         };
 
-        // B. COSTO DE EMPAQUE POR LIBRA SEGÚN PRESENTACIÓN
-        let packagingCostPerUnit = 0;
-        let presentationLbs = 30.0;
-
-        const presLower = (presentation || '').toLowerCase();
-        if (presLower.includes('30')) {
-            presentationLbs = 30.0;
-            packagingCostPerUnit = (packMap['CUBETA-30LB'] || 2.40) + 
-                                  (packMap['TAPA-30LB'] || 0.65) + 
-                                  (packMap['LINER-30LB'] || 0.30) + 
-                                  (packMap['ETIQ-4X2'] || 0.035);
-        } else if (presLower.includes('32')) {
-            presentationLbs = 32.0;
-            packagingCostPerUnit = (packMap['CUBETA-30LB'] || 2.40) + 
-                                  (packMap['TAPA-30LB'] || 0.65) + 
-                                  (packMap['LINER-30LB'] || 0.30) + 
-                                  (packMap['ETIQ-4X2'] || 0.035);
-        } else if (presLower.includes('8') || presLower.includes('galón') || presLower.includes('galon')) {
-            presentationLbs = 8.0;
-            packagingCostPerUnit = (packMap['GALON-8LB'] || 0.85) + 
-                                  (packMap['TAPA-GALON'] || 0.15) + 
-                                  (packMap['ETIQ-4X2'] || 0.035);
-        } else if (presLower.includes('4') || presLower.includes('medio gal')) {
-            presentationLbs = 4.0;
-            packagingCostPerUnit = 0.55 + 0.10 + 0.035;
-        } else if (presLower.includes('2') || presLower.includes('litro')) {
-            presentationLbs = 2.0;
-            packagingCostPerUnit = 0.35 + 0.08 + 0.035;
-        } else {
-            presentationLbs = 1.0;
-            packagingCostPerUnit = 0.25 + 0.05 + 0.035;
-        }
-
-        const packagingCostPerLb = packagingCostPerUnit / Math.max(presentationLbs, 0.1);
-
-        // C. COSTO DE LIMPIEZA CIP POR BATCH Y POR LIBRA
+        // B. COSTO DE LIMPIEZA CIP POR BATCH Y POR LIBRA
         let totalCipBatchCost = 0;
         cipRows.forEach(item => {
             const unitPrice = parseFloat(item.presentation_cost) / (parseFloat(item.presentation_qty) || 1);
@@ -830,7 +796,7 @@ const calculateDynamicCost = async (req, res) => {
         if (totalCipBatchCost === 0) totalCipBatchCost = 50.85;
         const cipCostPerLb = totalCipBatchCost / safeBatchSize;
 
-        // D. COSTO DE CALDERA, ENERGÍA, DIESEL Y AGUA (PASTEURIZADOR)
+        // C. COSTO DE CALDERA, ENERGÍA, DIESEL Y AGUA (PASTEURIZADOR)
         const dieselGal = configs.boiler_diesel_gal_batch || 20.84;
         const dieselPrice = configs.boiler_diesel_price_gal || 4.14;
         const dieselTotal = dieselGal * dieselPrice;
@@ -839,18 +805,210 @@ const calculateDynamicCost = async (req, res) => {
         const totalBoilerEnergyBatchCost = dieselTotal + electricityTotal + waterTotal;
         const boilerEnergyCostPerLb = totalBoilerEnergyBatchCost / safeBatchSize;
 
-        // E. MANO DE OBRA DIRECTA (MOD)
+        // D. MANO DE OBRA DIRECTA (MOD)
         const modCostPerLb = configs.mod_cost_per_lb || 0.0500;
 
-        // F. GASTOS INDIRECTOS DE FABRICACIÓN (GIF) PRORRATEADOS
+        // E. GASTOS INDIRECTOS DE FABRICACIÓN (GIF) PRORRATEADOS
         const monthlyGifTotal = custom_gif_monthly !== null ? custom_gif_monthly : (configs.monthly_gif_total || 24537.00);
         const monthlyProjectedLbs = Math.max(custom_monthly_volume_lbs !== null ? custom_monthly_volume_lbs : (configs.monthly_projected_lbs || 100000.00), 1);
         const gifCostPerLb = monthlyGifTotal / monthlyProjectedLbs;
 
-        // G. COSTO TOTAL POR LIBRA
-        const totalCostPerLb = mpCostPerLb + packagingCostPerLb + cipCostPerLb + boilerEnergyCostPerLb + modCostPerLb + gifCostPerLb;
+        // F. COSTO BASE OPERACIONAL POR LIBRA (SIN EMPAQUE)
+        // La materia prima formulada, el lavado CIP, la caldera/energía, la MOD y los GIF aplican por igual al lote líquido
+        const baseOperatingCostPerLb = mpCostPerLb + cipCostPerLb + boilerEnergyCostPerLb + modCostPerLb + gifCostPerLb;
 
-        // H. ANÁLISIS DE RENTABILIDAD CON CLIENTES
+        // G. CATÁLOGO COMPLETO DE PRESENTACIONES COMERCIALES Y EMPAQUES
+        const presentationsCatalog = [
+            {
+                id: 'cubeta 30LB',
+                name: 'Cubeta 30 Lbs (Estándar)',
+                short_name: 'Cubeta 30 Lb',
+                lbs: 30.0,
+                type: 'bucket',
+                container_code: 'CUBETA-30LB',
+                container_cost: parseFloat(packMap['CUBETA-30LB'] !== undefined ? packMap['CUBETA-30LB'] : 2.40),
+                lid_code: 'TAPA-30LB',
+                lid_cost: parseFloat(packMap['TAPA-30LB'] !== undefined ? packMap['TAPA-30LB'] : 0.65),
+                liner_code: 'LINER-30LB',
+                liner_cost: parseFloat(packMap['LINER-30LB'] !== undefined ? packMap['LINER-30LB'] : 0.30),
+                label_code: 'ETIQ-4X2',
+                label_cost: parseFloat(packMap['ETIQ-4X2'] !== undefined ? packMap['ETIQ-4X2'] : 0.035)
+            },
+            {
+                id: 'cubeta 32LB',
+                name: 'Cubeta 32 Lbs',
+                short_name: 'Cubeta 32 Lb',
+                lbs: 32.0,
+                type: 'bucket',
+                container_code: 'CUBETA-30LB',
+                container_cost: parseFloat(packMap['CUBETA-30LB'] !== undefined ? packMap['CUBETA-30LB'] : 2.40),
+                lid_code: 'TAPA-30LB',
+                lid_cost: parseFloat(packMap['TAPA-30LB'] !== undefined ? packMap['TAPA-30LB'] : 0.65),
+                liner_code: 'LINER-30LB',
+                liner_cost: parseFloat(packMap['LINER-30LB'] !== undefined ? packMap['LINER-30LB'] : 0.30),
+                label_code: 'ETIQ-4X2',
+                label_cost: parseFloat(packMap['ETIQ-4X2'] !== undefined ? packMap['ETIQ-4X2'] : 0.035)
+            },
+            {
+                id: 'galon 8LB',
+                name: 'Galón 8 Lbs',
+                short_name: 'Galón 8 Lb',
+                lbs: 8.0,
+                type: 'bottle',
+                container_code: 'GALON-8LB',
+                container_cost: parseFloat(packMap['GALON-8LB'] !== undefined ? packMap['GALON-8LB'] : 0.85),
+                lid_code: 'TAPA-GALON',
+                lid_cost: parseFloat(packMap['TAPA-GALON'] !== undefined ? packMap['TAPA-GALON'] : 0.15),
+                liner_code: null,
+                liner_cost: 0,
+                label_code: 'ETIQ-4X2',
+                label_cost: parseFloat(packMap['ETIQ-4X2'] !== undefined ? packMap['ETIQ-4X2'] : 0.035)
+            },
+            {
+                id: 'medio galon 4LB',
+                name: 'Medio Galón 4 Lbs',
+                short_name: 'Medio Galón 4 Lb',
+                lbs: 4.0,
+                type: 'bottle',
+                container_code: 'MEDIO-GALON',
+                container_cost: parseFloat(packMap['MEDIO-GALON'] !== undefined ? packMap['MEDIO-GALON'] : 0.55),
+                lid_code: 'TAPA-MEDIO-GALON',
+                lid_cost: parseFloat(packMap['TAPA-MEDIO-GALON'] !== undefined ? packMap['TAPA-MEDIO-GALON'] : 0.10),
+                liner_code: null,
+                liner_cost: 0,
+                label_code: 'ETIQ-4X2',
+                label_cost: parseFloat(packMap['ETIQ-4X2'] !== undefined ? packMap['ETIQ-4X2'] : 0.035)
+            },
+            {
+                id: 'litro 2LB',
+                name: 'Litro 2 Lbs',
+                short_name: 'Litro 2 Lb',
+                lbs: 2.0,
+                type: 'flask',
+                container_code: 'LITRO-2LB',
+                container_cost: parseFloat(packMap['LITRO-2LB'] !== undefined ? packMap['LITRO-2LB'] : 0.35),
+                lid_code: 'TAPA-LITRO',
+                lid_cost: parseFloat(packMap['TAPA-LITRO'] !== undefined ? packMap['TAPA-LITRO'] : 0.08),
+                liner_code: null,
+                liner_cost: 0,
+                label_code: 'ETIQ-4X2',
+                label_cost: parseFloat(packMap['ETIQ-4X2'] !== undefined ? packMap['ETIQ-4X2'] : 0.035)
+            },
+            {
+                id: 'medio litro 1LB',
+                name: 'Medio Litro 1 Lb',
+                short_name: 'Medio Litro 1 Lb',
+                lbs: 1.0,
+                type: 'flask',
+                container_code: 'MEDIO-LITRO-1LB',
+                container_cost: parseFloat(packMap['MEDIO-LITRO-1LB'] !== undefined ? packMap['MEDIO-LITRO-1LB'] : 0.25),
+                lid_code: 'TAPA-MEDIO-LITRO',
+                lid_cost: parseFloat(packMap['TAPA-MEDIO-LITRO'] !== undefined ? packMap['TAPA-MEDIO-LITRO'] : 0.05),
+                liner_code: null,
+                liner_cost: 0,
+                label_code: 'ETIQ-4X2',
+                label_cost: parseFloat(packMap['ETIQ-4X2'] !== undefined ? packMap['ETIQ-4X2'] : 0.035)
+            }
+        ];
+
+        // Determinar presentación activa seleccionada en el formulario
+        const presLower = (presentation || '').toLowerCase();
+        let activePresentation = presentationsCatalog.find(p => {
+            return p.id.toLowerCase() === presLower || 
+                   (presLower.includes('32') && p.lbs === 32) ||
+                   (presLower.includes('30') && p.lbs === 30) ||
+                   (presLower.includes('8') && p.lbs === 8) ||
+                   (presLower.includes('4') && p.lbs === 4) ||
+                   (presLower.includes('2') && p.lbs === 2) ||
+                   (presLower.includes('1') && p.lbs === 1);
+        });
+        if (!activePresentation) {
+            activePresentation = presentationsCatalog[0]; // Cubeta 30 Lb por defecto
+        }
+
+        const presentationLbs = activePresentation.lbs;
+        const packagingCostPerUnit = activePresentation.container_cost + activePresentation.lid_cost + activePresentation.liner_cost + activePresentation.label_cost;
+        const packagingCostPerLb = packagingCostPerUnit / presentationLbs;
+
+        // H. COSTO TOTAL POR LIBRA DE LA PRESENTACIÓN SELECCIONADA
+        const totalCostPerLb = baseOperatingCostPerLb + packagingCostPerLb;
+
+        // I. MATRIZ MULTIFORMATO COMPARATIVA POR PRESENTACIÓN (IMPACTO DE EMPAQUE)
+        const targetPriceNum = parseFloat(target_sale_price_per_lb) || 0;
+        const presentationsComparison = presentationsCatalog.map(p => {
+            const packCostUnit = p.container_cost + p.lid_cost + p.liner_cost + p.label_cost;
+            const packCostLb = packCostUnit / p.lbs;
+            const totCostLb = baseOperatingCostPerLb + packCostLb;
+            const totCostUnit = totCostLb * p.lbs;
+            const unitsInBatch = Math.floor(safeBatchSize / p.lbs);
+
+            // Precios sugeridos con márgenes comunes
+            const priceSug15Lb = totCostLb / (1 - 0.15);
+            const priceSug20Lb = totCostLb / (1 - 0.20);
+            const priceSug25Lb = totCostLb / (1 - 0.25);
+            const priceSug30Lb = totCostLb / (1 - 0.30);
+
+            // Simulación con precio libre
+            let simSalePriceUnit = 0;
+            let simMarginLb = 0;
+            let simMarginPct = 0;
+            let simGainUnit = 0;
+            let simBatchGain = 0;
+            let simStatus = 'red';
+
+            if (targetPriceNum > 0) {
+                simSalePriceUnit = targetPriceNum * p.lbs;
+                simMarginLb = targetPriceNum - totCostLb;
+                simMarginPct = (simMarginLb / targetPriceNum) * 100;
+                simGainUnit = simMarginLb * p.lbs;
+                simBatchGain = simGainUnit * unitsInBatch;
+                simStatus = simMarginPct >= 20 ? 'green' : (simMarginPct >= 10 ? 'yellow' : 'red');
+            }
+
+            const isCurrent = p.id.toLowerCase() === activePresentation.id.toLowerCase();
+
+            return {
+                id: p.id,
+                name: p.name,
+                short_name: p.short_name,
+                lbs: p.lbs,
+                type: p.type,
+                is_current: isCurrent,
+                packaging_cost_unit: packCostUnit,
+                packaging_cost_lb: packCostLb,
+                packaging_breakdown: {
+                    container_code: p.container_code,
+                    container_cost: p.container_cost,
+                    lid_code: p.lid_code,
+                    lid_cost: p.lid_cost,
+                    liner_code: p.liner_code,
+                    liner_cost: p.liner_cost,
+                    label_code: p.label_code,
+                    label_cost: p.label_cost
+                },
+                base_operating_cost_per_lb: baseOperatingCostPerLb,
+                total_cost_per_lb: totCostLb,
+                total_cost_per_unit: totCostUnit,
+                units_in_batch: unitsInBatch,
+                suggested_prices: {
+                    margin_15: { price_lb: priceSug15Lb, price_unit: priceSug15Lb * p.lbs },
+                    margin_20: { price_lb: priceSug20Lb, price_unit: priceSug20Lb * p.lbs },
+                    margin_25: { price_lb: priceSug25Lb, price_unit: priceSug25Lb * p.lbs },
+                    margin_30: { price_lb: priceSug30Lb, price_unit: priceSug30Lb * p.lbs }
+                },
+                simulation: {
+                    target_price_lb: targetPriceNum,
+                    sale_price_unit: simSalePriceUnit,
+                    margin_per_lb: simMarginLb,
+                    margin_pct: simMarginPct,
+                    gain_per_unit: simGainUnit,
+                    total_batch_gain: simBatchGain,
+                    status: simStatus
+                }
+            };
+        });
+
+        // J. ANÁLISIS DE RENTABILIDAD CON CLIENTES
         const todayStr = new Date().toISOString().split('T')[0];
         const clientsComparison = agreements.map(agr => {
             const clientPrice = parseFloat(agr.agreed_price_per_lb) || 0;
@@ -955,6 +1113,7 @@ const calculateDynamicCost = async (req, res) => {
             batch_size_lbs,
             raw_egg_box_cost,
             breakdown: {
+                base_operating_cost_per_lb: baseOperatingCostPerLb,
                 mp_cost_per_lb: mpCostPerLb,
                 packaging_cost_per_lb: packagingCostPerLb,
                 packaging_cost_per_unit: packagingCostPerUnit,
@@ -970,6 +1129,7 @@ const calculateDynamicCost = async (req, res) => {
             },
             formulation,
             separation_data: separationData,
+            presentations_comparison: presentationsComparison,
             clients_comparison: clientsComparison,
             target_simulation: targetSimulation,
             parameters_used: {
