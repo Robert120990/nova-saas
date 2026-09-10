@@ -120,7 +120,102 @@ const getRawMaterials = async (req, res) => {
         }
         sql += ' ORDER BY rm.created_at DESC';
         const [rows] = await pool.query(sql, params);
-        res.json(rows);
+
+        // Consultar consumos previos por lote y tarima en batch_raw_materials
+        const [consumedRows] = await pool.query(
+            `SELECT brm.raw_material_id, brm.tarimas_json, brm.quantity_lbs, brm.boxes_count
+             FROM batch_raw_materials brm
+             JOIN egg_production_batches b ON b.id = brm.batch_id
+             WHERE b.company_id = ? AND b.status != 'cancelado'`,
+            [req.company_id]
+        );
+
+        const consumedMap = {};
+        for (const c of consumedRows) {
+            const rmId = c.raw_material_id;
+            if (!consumedMap[rmId]) consumedMap[rmId] = { tarimas: {}, totalBoxes: 0, totalLbs: 0 };
+            consumedMap[rmId].totalBoxes += parseInt(c.boxes_count) || 0;
+            consumedMap[rmId].totalLbs += parseFloat(c.quantity_lbs) || 0;
+
+            let parsed = [];
+            if (c.tarimas_json) {
+                try {
+                    parsed = typeof c.tarimas_json === 'string' ? JSON.parse(c.tarimas_json) : c.tarimas_json;
+                } catch (e) {}
+            }
+            if (Array.isArray(parsed)) {
+                for (const t of parsed) {
+                    const num = parseInt(t.tarima_number) || 1;
+                    if (!consumedMap[rmId].tarimas[num]) {
+                        consumedMap[rmId].tarimas[num] = { boxes: 0, lbs: 0 };
+                    }
+                    consumedMap[rmId].tarimas[num].boxes += parseInt(t.boxes_count) || 0;
+                    consumedMap[rmId].tarimas[num].lbs += parseFloat(t.quantity_lbs) || 0;
+                }
+            }
+        }
+
+        const enrichedRows = rows.map(rm => {
+            const consumed = consumedMap[rm.id] || { tarimas: {}, totalBoxes: 0, totalLbs: 0 };
+            let originalTarimas = [];
+            if (rm.tarimas_json) {
+                try {
+                    originalTarimas = typeof rm.tarimas_json === 'string' ? JSON.parse(rm.tarimas_json) : rm.tarimas_json;
+                } catch (e) {}
+            }
+
+            const lotCode = (rm.provider_lot || 'LOTE').trim().toUpperCase();
+
+            // Si no tiene desglose de tarimas pero tiene peso/cajas, crear tarima default #1
+            if (!Array.isArray(originalTarimas) || originalTarimas.length === 0) {
+                const origBoxes = parseInt(rm.total_boxes) || 0;
+                const origLbs = parseFloat(rm.weight_lbs) || 0;
+                originalTarimas = [{
+                    tarima_number: 1,
+                    boxes_count: origBoxes,
+                    net_weight_lbs: origLbs
+                }];
+            }
+
+            const tarimasAvailable = originalTarimas.map((t, idx) => {
+                const tarimaNum = parseInt(t.tarima_number) || (idx + 1);
+                const origBoxes = parseInt(t.boxes_count) || 0;
+                const origLbs = parseFloat(t.net_weight_lbs || t.gross_weight_lbs) || 0;
+
+                const used = consumed.tarimas[tarimaNum] || { boxes: 0, lbs: 0 };
+                const availBoxes = Math.max(0, origBoxes - used.boxes);
+                const availLbs = Math.max(0, Math.round((origLbs - used.lbs) * 100) / 100);
+
+                const barcode = `TAR-${lotCode}-${String(tarimaNum).padStart(2, '0')}`;
+                const isDepleted = (availBoxes <= 0 && availLbs <= 0.01) || parseFloat(rm.stock_lbs) <= 0.01;
+
+                return {
+                    tarima_number: tarimaNum,
+                    original_boxes: origBoxes,
+                    original_lbs: origLbs,
+                    consumed_boxes: used.boxes,
+                    consumed_lbs: used.lbs,
+                    available_boxes: availBoxes,
+                    available_lbs: availLbs,
+                    barcode: barcode,
+                    is_depleted: isDepleted
+                };
+            });
+
+            const isDepleted = parseFloat(rm.stock_lbs) <= 0.01 || (tarimasAvailable.length > 0 && tarimasAvailable.every(t => t.is_depleted));
+
+            return {
+                ...rm,
+                tarimas_available: tarimasAvailable,
+                is_depleted: isDepleted
+            };
+        });
+
+        const finalResult = only_with_stock === 'true'
+            ? enrichedRows.filter(r => !r.is_depleted && parseFloat(r.stock_lbs) > 0.01)
+            : enrichedRows;
+
+        res.json(finalResult);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -453,17 +548,24 @@ const createProductionBatch = async (req, res) => {
         // Validate stock availability for each raw material
         for (const rm of raw_materials) {
             const [rows] = await connection.query(
-                'SELECT id, stock_lbs, egg_type FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
+                'SELECT id, stock_lbs, total_boxes, egg_type, provider_lot FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
                 [rm.raw_material_id, company_id]
             );
             if (rows.length === 0) {
                 await connection.rollback();
                 return res.status(400).json({ message: `Materia prima #${rm.raw_material_id} no encontrada.` });
             }
-            if (parseFloat(rows[0].stock_lbs) < parseFloat(rm.quantity_lbs)) {
+            const currentStock = parseFloat(rows[0].stock_lbs || 0);
+            if (currentStock <= 0.01) {
                 await connection.rollback();
                 return res.status(400).json({
-                    message: `Stock insuficiente para ${rows[0].egg_type} (disponible: ${parseFloat(rows[0].stock_lbs).toFixed(2)} Lbs, solicitado: ${parseFloat(rm.quantity_lbs).toFixed(2)} Lbs).`
+                    message: `El lote ${rows[0].provider_lot} (${rows[0].egg_type}) ya está 100% agotado y no tiene saldo disponible.`
+                });
+            }
+            if (currentStock < parseFloat(rm.quantity_lbs)) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `Stock insuficiente para lote ${rows[0].provider_lot} (disponible: ${currentStock.toFixed(2)} Lbs, solicitado: ${parseFloat(rm.quantity_lbs).toFixed(2)} Lbs).`
                 });
             }
         }

@@ -21,8 +21,12 @@ import {
     ChevronDown,
     ChevronUp,
     Trash2,
-    Check
+    Check,
+    Camera,
+    Barcode,
+    QrCode
 } from 'lucide-react';
+import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 
 const EggProduction = () => {
     const { user } = useAuth();
@@ -33,6 +37,9 @@ const EggProduction = () => {
     // Scheduled productions from Calendar
     const [scheduledProductions, setScheduledProductions] = useState([]);
     const [selectedScheduledProd, setSelectedScheduledProd] = useState(null);
+
+    // Modal de escáner con cámara para tarimas QR / Código de barras
+    const [scannerModalOpen, setScannerModalOpen] = useState(false);
 
     // Lists
     const [batches, setBatches] = useState([]);
@@ -202,46 +209,145 @@ const EggProduction = () => {
         toast.success(`Producción programada cargada: ${sched.lot_code} (${sched.product_profile})`);
     };
 
-    // Funciones de gestión de tarimas en materias primas
-    const handleAddTarimaToRm = (rmIdx, tarimaData = null) => {
+    // Funciones de gestión de tarimas vinculadas a recepción y escáner
+    const handleAddSpecificTarimaToRm = (rmIdx, tarimaObj) => {
         const updated = [...batchForm.raw_materials];
         const rm = updated[rmIdx];
         const tarimas = rm.tarimas || [];
-        const nextNum = tarimas.length + 1;
 
-        const newTarima = tarimaData || {
-            tarima_number: nextNum,
-            boxes_count: '',
-            quantity_lbs: ''
+        if (tarimas.some(t => parseInt(t.tarima_number) === parseInt(tarimaObj.tarima_number))) {
+            toast.warning(`La Tarima #${tarimaObj.tarima_number} ya está agregada a este lote.`);
+            return;
+        }
+
+        const availBoxes = parseInt(tarimaObj.available_boxes ?? tarimaObj.boxes_count) || 0;
+        const availLbs = parseFloat(tarimaObj.available_lbs ?? tarimaObj.net_weight_lbs ?? tarimaObj.gross_weight_lbs) || 0;
+
+        const newTarimaItem = {
+            tarima_number: tarimaObj.tarima_number,
+            boxes_count: availBoxes,
+            available_boxes: availBoxes,
+            quantity_lbs: availLbs.toFixed(2),
+            available_lbs: availLbs,
+            barcode: tarimaObj.barcode || '',
+            is_partial: false
         };
 
-        const newTarimas = [...tarimas, newTarima];
+        const newTarimas = [...tarimas, newTarimaItem];
         const sumLbs = newTarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
         const sumBoxes = newTarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
 
         rm.tarimas = newTarimas;
-        if (sumLbs > 0) rm.quantity_lbs = sumLbs.toFixed(2);
-        if (sumBoxes > 0) rm.boxes_count = sumBoxes;
+        rm.quantity_lbs = sumLbs.toFixed(2);
+        rm.boxes_count = sumBoxes;
 
         setBatchForm({ ...batchForm, raw_materials: updated });
+        toast.success(`Tarima #${tarimaObj.tarima_number} agregada (${availBoxes} cjs • ${availLbs.toFixed(1)} Lbs).`);
     };
 
-    const handleUpdateTarimaInRm = (rmIdx, tIdx, field, value) => {
+    const handleLoadAllAvailableTarimas = (rmIdx, availableTarimas) => {
+        if (!availableTarimas || availableTarimas.length === 0) return;
+        const updated = [...batchForm.raw_materials];
+        const rm = updated[rmIdx];
+        const existingTarimas = rm.tarimas || [];
+
+        const nonDepleted = availableTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
+        if (nonDepleted.length === 0) {
+            toast.warning('No hay tarimas con saldo disponible en este lote.');
+            return;
+        }
+
+        const toAdd = nonDepleted.filter(t => !existingTarimas.some(et => parseInt(et.tarima_number) === parseInt(t.tarima_number)));
+        if (toAdd.length === 0) {
+            toast.info('Todas las tarimas disponibles ya están en la lista.');
+            return;
+        }
+
+        const mapped = toAdd.map(t => {
+            const availBoxes = parseInt(t.available_boxes ?? t.boxes_count) || 0;
+            const availLbs = parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs) || 0;
+            return {
+                tarima_number: t.tarima_number,
+                boxes_count: availBoxes,
+                available_boxes: availBoxes,
+                quantity_lbs: availLbs.toFixed(2),
+                available_lbs: availLbs,
+                barcode: t.barcode || '',
+                is_partial: false
+            };
+        });
+
+        const combined = [...existingTarimas, ...mapped];
+        const sumLbs = combined.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        const sumBoxes = combined.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
+
+        rm.tarimas = combined;
+        rm.quantity_lbs = sumLbs.toFixed(2);
+        rm.boxes_count = sumBoxes;
+
+        setBatchForm({ ...batchForm, raw_materials: updated });
+        toast.success(`${mapped.length} tarimas cargadas con éxito.`);
+    };
+
+    const handleUpdateTarimaBoxesInRm = (rmIdx, tIdx, newBoxesVal) => {
         const updated = [...batchForm.raw_materials];
         const rm = updated[rmIdx];
         const tarimas = [...(rm.tarimas || [])];
-        tarimas[tIdx] = { ...tarimas[tIdx], [field]: value };
+        const currentItem = tarimas[tIdx];
+        if (!currentItem) return;
 
-        if (field === 'boxes_count' && value && (!tarimas[tIdx].quantity_lbs || tarimas[tIdx].quantity_lbs === '0')) {
-            tarimas[tIdx].quantity_lbs = (parseInt(value) * 36.1).toFixed(2);
+        const maxAvail = currentItem.available_boxes || 99999;
+        let enteredBoxes = parseInt(newBoxesVal) || 0;
+        if (enteredBoxes < 0) enteredBoxes = 0;
+        if (enteredBoxes > maxAvail) {
+            toast.warning(`La cantidad máxima disponible en la Tarima #${currentItem.tarima_number} es de ${maxAvail} cajas.`);
+            enteredBoxes = maxAvail;
         }
+
+        // Recálculo proporcional del peso en libras
+        const availLbs = currentItem.available_lbs || (parseFloat(currentItem.quantity_lbs) || 0);
+        const propLbs = maxAvail > 0 ? ((enteredBoxes / maxAvail) * availLbs).toFixed(2) : '0.00';
+
+        tarimas[tIdx] = {
+            ...currentItem,
+            boxes_count: enteredBoxes,
+            quantity_lbs: propLbs,
+            is_partial: enteredBoxes < maxAvail
+        };
 
         const sumLbs = tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
         const sumBoxes = tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
 
         rm.tarimas = tarimas;
-        if (sumLbs > 0) rm.quantity_lbs = sumLbs.toFixed(2);
-        if (sumBoxes > 0) rm.boxes_count = sumBoxes;
+        rm.quantity_lbs = sumLbs.toFixed(2);
+        rm.boxes_count = sumBoxes;
+
+        setBatchForm({ ...batchForm, raw_materials: updated });
+    };
+
+    const handleUpdateTarimaLbsInRm = (rmIdx, tIdx, newLbsVal) => {
+        const updated = [...batchForm.raw_materials];
+        const rm = updated[rmIdx];
+        const tarimas = [...(rm.tarimas || [])];
+        const currentItem = tarimas[tIdx];
+        if (!currentItem) return;
+
+        const maxAvail = currentItem.available_lbs || 999999;
+        let enteredLbs = parseFloat(newLbsVal) || 0;
+        if (enteredLbs < 0) enteredLbs = 0;
+        if (enteredLbs > maxAvail) {
+            toast.warning(`El peso máximo disponible en la Tarima #${currentItem.tarima_number} es de ${maxAvail.toFixed(2)} Lbs.`);
+            enteredLbs = maxAvail;
+        }
+
+        tarimas[tIdx] = {
+            ...currentItem,
+            quantity_lbs: enteredLbs.toFixed(2)
+        };
+
+        const sumLbs = tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        rm.tarimas = tarimas;
+        rm.quantity_lbs = sumLbs.toFixed(2);
 
         setBatchForm({ ...batchForm, raw_materials: updated });
     };
@@ -255,34 +361,110 @@ const EggProduction = () => {
         const sumBoxes = tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
 
         rm.tarimas = tarimas;
-        if (tarimas.length > 0) {
-            rm.quantity_lbs = sumLbs.toFixed(2);
-            rm.boxes_count = sumBoxes;
-        }
-
-        setBatchForm({ ...batchForm, raw_materials: updated });
-    };
-
-    const handleLoadAllReceptionTarimas = (rmIdx, availableTarimas) => {
-        if (!availableTarimas || availableTarimas.length === 0) return;
-        const updated = [...batchForm.raw_materials];
-        const rm = updated[rmIdx];
-
-        const mapped = availableTarimas.map((t, i) => ({
-            tarima_number: t.tarima_number || (i + 1),
-            boxes_count: t.boxes_count || 0,
-            quantity_lbs: t.net_weight_lbs || t.gross_weight_lbs || 0
-        }));
-
-        const sumLbs = mapped.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
-        const sumBoxes = mapped.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
-
-        rm.tarimas = mapped;
         rm.quantity_lbs = sumLbs.toFixed(2);
         rm.boxes_count = sumBoxes;
 
         setBatchForm({ ...batchForm, raw_materials: updated });
-        toast.success(`${mapped.length} tarimas cargadas al lote.`);
+    };
+
+    // Resultado del escaneo de QR / Código de barras de tarima
+    const handleScanTarimaResult = (scannedData) => {
+        if (!scannedData) return;
+        const { lotCode, tarimaNumber, palletId, rawText } = scannedData;
+
+        // 1. Buscar lote en rawMaterials
+        const lot = rawMaterials.find(m => 
+            (m.provider_lot || '').trim().toUpperCase() === (lotCode || '').trim().toUpperCase() ||
+            String(m.id) === String(lotCode)
+        );
+
+        if (!lot) {
+            toast.error(`Lote "${lotCode || rawText}" no encontrado en las recepciones de materia prima.`);
+            return;
+        }
+
+        if (lot.is_depleted || parseFloat(lot.stock_lbs || 0) <= 0.01) {
+            toast.error(`El lote ${lot.provider_lot} ya está 100% agotado y no tiene saldo disponible.`);
+            return;
+        }
+
+        // 2. Buscar tarima en el lote
+        let availableTarimas = lot.tarimas_available || [];
+        if (availableTarimas.length === 0 && lot.tarimas_json) {
+            try {
+                availableTarimas = typeof lot.tarimas_json === 'string' ? JSON.parse(lot.tarimas_json) : lot.tarimas_json;
+            } catch (e) {}
+        }
+
+        let targetTarima = null;
+        if (tarimaNumber) {
+            targetTarima = availableTarimas.find(t => parseInt(t.tarima_number) === parseInt(tarimaNumber));
+        }
+        if (!targetTarima && availableTarimas.length > 0) {
+            targetTarima = availableTarimas.find(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
+        }
+
+        if (!targetTarima) {
+            toast.error(`Tarima #${tarimaNumber || '1'} no disponible o no encontrada en el lote ${lot.provider_lot}.`);
+            return;
+        }
+
+        if (targetTarima.is_depleted || (targetTarima.available_boxes <= 0 && targetTarima.available_lbs <= 0.01)) {
+            toast.error(`La Tarima #${targetTarima.tarima_number} del lote ${lot.provider_lot} ya fue 100% consumida.`);
+            return;
+        }
+
+        // 3. Agregar o ubicar la fila del lote en el formulario
+        let updatedRms = [...batchForm.raw_materials];
+        let rmIdx = updatedRms.findIndex(r => String(r.raw_material_id) === String(lot.id));
+
+        if (rmIdx === -1) {
+            const newRm = {
+                raw_material_id: String(lot.id),
+                quantity_lbs: '',
+                boxes_count: '',
+                tarimas: []
+            };
+            updatedRms.push(newRm);
+            rmIdx = updatedRms.length - 1;
+        }
+
+        const currentRm = updatedRms[rmIdx];
+        const currentTarimas = currentRm.tarimas || [];
+
+        if (currentTarimas.some(t => parseInt(t.tarima_number) === parseInt(targetTarima.tarima_number))) {
+            toast.warning(`La Tarima #${targetTarima.tarima_number} del lote ${lot.provider_lot} ya está agregada en esta corrida.`);
+            return;
+        }
+
+        const availBoxes = parseInt(targetTarima.available_boxes ?? targetTarima.boxes_count) || 0;
+        const availLbs = parseFloat(targetTarima.available_lbs ?? targetTarima.net_weight_lbs ?? targetTarima.gross_weight_lbs) || 0;
+
+        const newTarimaItem = {
+            tarima_number: targetTarima.tarima_number,
+            boxes_count: availBoxes,
+            available_boxes: availBoxes,
+            quantity_lbs: availLbs.toFixed(2),
+            available_lbs: availLbs,
+            barcode: targetTarima.barcode || `TAR-${lot.provider_lot}-${String(targetTarima.tarima_number).padStart(2, '0')}`,
+            is_partial: false
+        };
+
+        const updatedTarimas = [...currentTarimas, newTarimaItem];
+        const sumLbs = updatedTarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0);
+        const sumBoxes = updatedTarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0);
+
+        currentRm.tarimas = updatedTarimas;
+        currentRm.quantity_lbs = sumLbs.toFixed(2);
+        currentRm.boxes_count = sumBoxes;
+
+        setBatchForm({
+            ...batchForm,
+            raw_materials: updatedRms
+        });
+
+        toast.success(`✅ Tarima #${targetTarima.tarima_number} del lote ${lot.provider_lot} agregada (${availBoxes} cjs • ${availLbs.toFixed(1)} Lbs).`);
+        setScannerModalOpen(false);
     };
 
     // Handle new production batch with optional bypass
@@ -1012,33 +1194,44 @@ const EggProduction = () => {
 
                         {/* Materias Primas con Desglose de Tarimas y Cantidades */}
                         <div className="space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-2.5">
                                 <div>
                                     <label className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                                         <Layers className="w-4 h-4 text-indigo-600" />
                                         <span>Materia Prima Base (Lotes en Recepción & Tarimas)</span>
                                     </label>
                                     <p className="text-[11px] text-slate-500">
-                                        Selecciona lotes aprobados y desglosa las tarimas y cajas a quebrar en esta corrida.
+                                        Selecciona lotes aprobados con saldo disponible o escanea las tarimas con la cámara.
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs shadow-2xs">
-                                    <span className="text-slate-500 font-medium">Total Cajas: <strong className="text-indigo-700">{batchForm.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
-                                    <span className="text-slate-300">|</span>
-                                    <span className="text-slate-500 font-medium">Total Entrada: <strong className="text-emerald-700">{batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setScannerModalOpen(true)}
+                                        className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-500/20"
+                                        title="Abrir cámara para escanear QR o código de barra de la tarima"
+                                    >
+                                        <Camera className="w-4 h-4" />
+                                        <span>Escanear Tarima (Cámara / QR)</span>
+                                    </button>
+                                    <div className="flex items-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                                        <span className="text-slate-500 font-medium">Cajas: <strong className="text-indigo-700">{batchForm.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
+                                        <span className="text-slate-300">|</span>
+                                        <span className="text-slate-500 font-medium">Entrada: <strong className="text-emerald-700">{batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
+                                    </div>
                                 </div>
                             </div>
 
                             {batchForm.raw_materials.map((rm, idx) => {
                                 const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
-                                let availableTarimas = [];
-                                if (selectedLot) {
+                                let lotTarimas = selectedLot?.tarimas_available || [];
+                                if (lotTarimas.length === 0 && selectedLot?.tarimas_json) {
                                     try {
-                                        availableTarimas = typeof selectedLot.tarimas_json === 'string'
+                                        lotTarimas = typeof selectedLot.tarimas_json === 'string'
                                             ? JSON.parse(selectedLot.tarimas_json || '[]')
                                             : (selectedLot.tarimas_json || []);
                                     } catch (e) {
-                                        availableTarimas = [];
+                                        lotTarimas = [];
                                     }
                                 }
 
@@ -1056,7 +1249,6 @@ const EggProduction = () => {
                                                         updated[idx].raw_material_id = lotId;
                                                         updated[idx].tarimas = [];
                                                         if (lotObj) {
-                                                            // Si tiene stock inicial
                                                             updated[idx].quantity_lbs = '';
                                                             updated[idx].boxes_count = '';
                                                         }
@@ -1065,11 +1257,20 @@ const EggProduction = () => {
                                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
                                                 >
                                                     <option value="">Seleccionar lote recepcionado...</option>
-                                                    {rawMaterials.map(m => (
-                                                        <option key={m.id} value={m.id} disabled={batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id))}>
-                                                            {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | Stock: {parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs ({m.total_boxes || 0} cjs)
-                                                        </option>
-                                                    ))}
+                                                    {rawMaterials.map(m => {
+                                                        const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
+                                                        const isAlreadyChosen = batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
+                                                        return (
+                                                            <option 
+                                                                key={m.id} 
+                                                                value={m.id} 
+                                                                disabled={isAgotado || isAlreadyChosen}
+                                                                className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
+                                                            >
+                                                                {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
+                                                            </option>
+                                                        );
+                                                    })}
                                                 </select>
                                             </div>
 
@@ -1078,14 +1279,10 @@ const EggProduction = () => {
                                                     <input
                                                         type="number"
                                                         value={rm.quantity_lbs}
-                                                        onChange={(e) => {
-                                                            const updated = [...batchForm.raw_materials];
-                                                            updated[idx].quantity_lbs = e.target.value;
-                                                            setBatchForm({ ...batchForm, raw_materials: updated });
-                                                        }}
-                                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:bg-white text-right"
+                                                        readOnly
+                                                        className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold text-right cursor-not-allowed"
                                                         placeholder="Total Lbs"
-                                                        step="0.01"
+                                                        title="Suma automática de las tarimas seleccionadas"
                                                     />
                                                 </div>
 
@@ -1102,123 +1299,164 @@ const EggProduction = () => {
                                             </div>
                                         </div>
 
-                                        {/* Espacio para desglose de Tarimas y Cantidades */}
+                                        {/* Espacio para selección y desglose de Tarimas de Recepción */}
                                         {selectedLot && (
-                                            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+                                            <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
                                                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
                                                             <Layers size={13} className="text-indigo-600" />
-                                                            Tarimas & Cantidades
+                                                            Tarimas Registradas en Recepción
                                                         </span>
-                                                        {availableTarimas.length > 0 && (
-                                                            <span className="bg-indigo-100/70 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                                                {availableTarimas.length} en recepción
+                                                        {lotTarimas.length > 0 && (
+                                                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                                {lotTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01)).length} disponibles de {lotTarimas.length}
                                                             </span>
                                                         )}
                                                     </div>
 
                                                     <div className="flex flex-wrap items-center gap-1.5">
-                                                        {availableTarimas.length > 0 && (
+                                                        {lotTarimas.some(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01) && !(rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number))) && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleLoadAllReceptionTarimas(idx, availableTarimas)}
+                                                                onClick={() => handleLoadAllAvailableTarimas(idx, lotTarimas)}
                                                                 className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
                                                             >
-                                                                <Check size={11} /> Cargar todas ({availableTarimas.length})
+                                                                <Check size={11} /> Cargar todas disponibles
                                                             </button>
                                                         )}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleAddTarimaToRm(idx)}
-                                                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
-                                                        >
-                                                            <Plus size={11} /> Agregar Tarima
-                                                        </button>
                                                     </div>
                                                 </div>
 
-                                                {/* Botones rápidos de tarimas de recepción si no se han agregado aún */}
-                                                {availableTarimas.length > 0 && (!rm.tarimas || rm.tarimas.length === 0) && (
+                                                {/* Chips de tarimas registradas para seleccionar con 1 clic */}
+                                                {lotTarimas.length > 0 ? (
                                                     <div className="flex flex-wrap gap-1.5 pt-1">
-                                                        <span className="text-[10px] text-slate-500 self-center">Sugeridas:</span>
-                                                        {availableTarimas.map((t, ti) => (
-                                                            <button
-                                                                key={ti}
-                                                                type="button"
-                                                                onClick={() => handleAddTarimaToRm(idx, {
-                                                                    tarima_number: t.tarima_number || (ti + 1),
-                                                                    boxes_count: t.boxes_count || 0,
-                                                                    quantity_lbs: t.net_weight_lbs || t.gross_weight_lbs || 0
-                                                                })}
-                                                                className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-md text-[10px] font-bold text-slate-700 transition-all flex items-center gap-1 shadow-2xs"
-                                                            >
-                                                                <span>Tarima #{t.tarima_number || (ti + 1)}</span>
-                                                                <span className="text-indigo-600">({t.boxes_count || 0} cjs • {parseFloat(t.net_weight_lbs || t.gross_weight_lbs || 0).toFixed(0)} Lbs)</span>
-                                                            </button>
-                                                        ))}
+                                                        {lotTarimas.map((t) => {
+                                                            const isAdded = (rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number));
+                                                            const isDepleted = t.is_depleted || (t.available_boxes <= 0 && t.available_lbs <= 0.01);
+                                                            const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
+                                                            const availLbs = t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0;
+
+                                                            return (
+                                                                <button
+                                                                    key={t.tarima_number}
+                                                                    type="button"
+                                                                    disabled={isAdded || isDepleted}
+                                                                    onClick={() => handleAddSpecificTarimaToRm(idx, t)}
+                                                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
+                                                                        isAdded
+                                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
+                                                                            : isDepleted
+                                                                            ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
+                                                                            : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
+                                                                    }`}
+                                                                    title={isDepleted ? 'Tarima 100% consumida en corridas anteriores' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar a esta corrida'}
+                                                                >
+                                                                    <span>Tarima #{t.tarima_number}</span>
+                                                                    <span className="text-[10px] font-semibold opacity-80">
+                                                                        ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
+                                                                    </span>
+                                                                    {isAdded && <Check size={12} className="text-emerald-600" />}
+                                                                    {isDepleted && <span className="text-[9px] text-rose-500 font-bold ml-0.5">Agotada</span>}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
+                                                ) : (
+                                                    <p className="text-xs text-slate-400 italic py-1">
+                                                        Este lote no tiene tarimas registradas en recepción.
+                                                    </p>
                                                 )}
 
-                                                {/* Lista de tarimas configuradas para este lote */}
+                                                {/* Lista de tarimas agregadas para consumir en esta corrida (admite consumo parcial) */}
                                                 {rm.tarimas && rm.tarimas.length > 0 && (
-                                                    <div className="space-y-1.5 pt-1">
-                                                        <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-500 uppercase px-2">
-                                                            <div className="col-span-3 sm:col-span-3">N° Tarima</div>
-                                                            <div className="col-span-4 sm:col-span-4">Cajas Huevo</div>
-                                                            <div className="col-span-4 sm:col-span-4 text-right">Peso (Lbs)</div>
-                                                            <div className="col-span-1 text-center"></div>
+                                                    <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                                                        <div className="text-[10px] font-bold text-slate-500 uppercase px-1 flex items-center justify-between">
+                                                            <span>Tarimas a Quebrar en esta Corrida</span>
+                                                            <span className="text-indigo-600 font-medium lowercase">admite consumo parcial de cajas</span>
                                                         </div>
 
-                                                        {rm.tarimas.map((t, ti) => (
-                                                            <div key={ti} className="grid grid-cols-12 gap-2 items-center bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
-                                                                <div className="col-span-3 sm:col-span-3 flex items-center gap-1">
-                                                                    <span className="text-[11px] font-bold text-slate-500">#</span>
-                                                                    <input
-                                                                        type="number"
-                                                                        value={t.tarima_number}
-                                                                        onChange={(e) => handleUpdateTarimaInRm(idx, ti, 'tarima_number', e.target.value)}
-                                                                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800 text-center focus:bg-white"
-                                                                        placeholder="N°"
-                                                                    />
-                                                                </div>
+                                                        <div className="space-y-1.5">
+                                                            {rm.tarimas.map((t, ti) => {
+                                                                const maxBoxes = t.available_boxes || t.boxes_count || 0;
+                                                                const maxLbs = t.available_lbs || parseFloat(t.quantity_lbs) || 0;
+                                                                const currentBoxes = parseInt(t.boxes_count) || 0;
+                                                                const isPartial = currentBoxes < maxBoxes;
 
-                                                                <div className="col-span-4 sm:col-span-4">
-                                                                    <input
-                                                                        type="number"
-                                                                        value={t.boxes_count}
-                                                                        onChange={(e) => handleUpdateTarimaInRm(idx, ti, 'boxes_count', e.target.value)}
-                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-center focus:border-indigo-500"
-                                                                        placeholder="0 cjs"
-                                                                    />
-                                                                </div>
+                                                                return (
+                                                                    <div key={ti} className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
+                                                                                    Tarima #{t.tarima_number}
+                                                                                </span>
+                                                                                {t.barcode && (
+                                                                                    <span className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                                        {t.barcode}
+                                                                                    </span>
+                                                                                )}
+                                                                                <span className="text-[11px] text-slate-500">
+                                                                                    (Disponible: <strong className="text-slate-700">{maxBoxes} cjs</strong> • <strong className="text-slate-700">{parseFloat(maxLbs).toFixed(1)} Lbs</strong>)
+                                                                                </span>
+                                                                            </div>
 
-                                                                <div className="col-span-4 sm:col-span-4">
-                                                                    <input
-                                                                        type="number"
-                                                                        value={t.quantity_lbs}
-                                                                        onChange={(e) => handleUpdateTarimaInRm(idx, ti, 'quantity_lbs', e.target.value)}
-                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:border-indigo-500"
-                                                                        placeholder="0.00 Lbs"
-                                                                        step="0.01"
-                                                                    />
-                                                                </div>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleRemoveTarimaFromRm(idx, ti)}
+                                                                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                                                                                title="Quitar esta tarima"
+                                                                            >
+                                                                                <Trash2 size={14} />
+                                                                            </button>
+                                                                        </div>
 
-                                                                <div className="col-span-1 text-center">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleRemoveTarimaFromRm(idx, ti)}
-                                                                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                                                                        title="Quitar tarima"
-                                                                    >
-                                                                        <Trash2 size={13} />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ))}
+                                                                        <div className="grid grid-cols-12 gap-2 items-center">
+                                                                            <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5">
+                                                                                <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Cajas a quebrar:</label>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    min="1"
+                                                                                    max={maxBoxes}
+                                                                                    value={t.boxes_count}
+                                                                                    onChange={(e) => handleUpdateTarimaBoxesInRm(idx, ti, e.target.value)}
+                                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-center focus:border-indigo-500"
+                                                                                    placeholder="0 cjs"
+                                                                                />
+                                                                            </div>
 
-                                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 pt-1 px-2">
-                                                            <span>Subtotal Lote:</span>
+                                                                            <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5">
+                                                                                <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Peso (Lbs):</label>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.01"
+                                                                                    min="0.01"
+                                                                                    max={maxLbs}
+                                                                                    value={t.quantity_lbs}
+                                                                                    onChange={(e) => handleUpdateTarimaLbsInRm(idx, ti, e.target.value)}
+                                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:border-indigo-500"
+                                                                                    placeholder="0.00 Lbs"
+                                                                                />
+                                                                            </div>
+
+                                                                            <div className="col-span-12 sm:col-span-2 text-right">
+                                                                                {isPartial ? (
+                                                                                    <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md" title={`Quedarán ${maxBoxes - currentBoxes} cajas en inventario`}>
+                                                                                        Parcial (-{maxBoxes - currentBoxes} cjs)
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                                                                        Completa
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 pt-1.5 px-2 bg-slate-100/90 p-2 rounded-lg border border-slate-200">
+                                                            <span>Subtotal a Quebrar de este Lote:</span>
                                                             <span className="text-indigo-700">
                                                                 {rm.tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0)} Cajas • {rm.tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0).toFixed(2)} Lbs
                                                             </span>
@@ -1588,6 +1826,12 @@ const EggProduction = () => {
                     </div>
                 </div>
             )}
+            {/* Modal de Escáner de Tarima con Cámara (QR y Código de Barras) */}
+            <ProductionTarimaScannerModal
+                isOpen={scannerModalOpen}
+                onClose={() => setScannerModalOpen(false)}
+                onScanTarima={handleScanTarimaResult}
+            />
         </div>
     );
 };
