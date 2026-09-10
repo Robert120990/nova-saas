@@ -3,6 +3,8 @@ const router = express.Router();
 const { verifyToken, checkPermission } = require('../middlewares/auth');
 const tenantMiddleware = require('../middlewares/tenant');
 const upload = require('../config/upload');
+const multer = require('multer');
+const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // Import Controllers
 const companyController = require('../controllers/company.controller');
@@ -291,6 +293,7 @@ router.post('/inventory/adjustments/:id/void', inventoryAdjustmentController.voi
 // Purchases
 router.get('/purchases', purchaseController.getPurchases);
 router.post('/purchases', purchaseController.createPurchase);
+router.post('/purchases/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
 router.get('/purchases/reports/pdf', purchaseController.getPurchaseReportPDF);
 router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
 

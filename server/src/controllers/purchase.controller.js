@@ -4,6 +4,7 @@ const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const aiService = require('../services/ai.service');
 
 /**
  * Obtener lista de compras con búsqueda y paginación
@@ -1061,6 +1062,82 @@ const getPurchaseReportPDF = async (req, res) => {
     }
 };
 
+/**
+ * Escanear factura/DTE físico o digital mediante IA y extraer datos
+ */
+const scanDteInvoice = async (req, res) => {
+    try {
+        if (!req.file && !req.body?.image) {
+            return res.status(400).json({ message: 'No se recibió ninguna imagen o archivo para escanear.' });
+        }
+
+        let buffer;
+        let mimeType = 'image/jpeg';
+
+        if (req.file) {
+            buffer = req.file.buffer;
+            mimeType = req.file.mimetype;
+        } else if (req.body.image) {
+            const matches = req.body.image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                mimeType = matches[1];
+                buffer = Buffer.from(matches[2], 'base64');
+            } else {
+                buffer = Buffer.from(req.body.image, 'base64');
+            }
+        }
+
+        const companyId = req.company_id || req.user?.company_id;
+
+        // Llamar a servicio de IA
+        const extracted = await aiService.extractDteFromImage(buffer, mimeType);
+
+        // Buscar si existe un proveedor que coincida por NIT, NRC o nombre
+        let matchedProvider = null;
+        if (extracted.emisor && (extracted.emisor.nit || extracted.emisor.nrc || extracted.emisor.nombre)) {
+            const cleanNit = (extracted.emisor.nit || '').replace(/[^0-9]/g, '');
+            const cleanNrc = (extracted.emisor.nrc || '').replace(/[^0-9]/g, '');
+            const searchName = (extracted.emisor.nombre || '').trim();
+
+            let pQuery = `SELECT id, nombre, nit, nrc, dias_credito FROM providers WHERE company_id = ? AND (1=0`;
+            const pParams = [companyId];
+
+            if (cleanNit.length > 5) {
+                pQuery += ` OR REPLACE(nit, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNit}%`);
+            }
+            if (cleanNrc.length > 2) {
+                pQuery += ` OR REPLACE(nrc, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNrc}%`);
+            }
+            if (searchName.length > 3) {
+                pQuery += ` OR nombre LIKE ?`;
+                pParams.push(`%${searchName}%`);
+            }
+            pQuery += `) LIMIT 1`;
+
+            const [pRows] = await pool.query(pQuery, pParams);
+            if (pRows.length > 0) {
+                matchedProvider = pRows[0];
+            }
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                ...extracted,
+                matchedProvider
+            }
+        });
+
+    } catch (error) {
+        console.error('Error al escanear DTE con IA:', error);
+        return res.status(500).json({
+            message: error.message || 'Error al procesar la imagen del DTE con IA'
+        });
+    }
+};
+
 module.exports = {
     getPurchases,
     getPurchaseById,
@@ -1068,5 +1145,6 @@ module.exports = {
     voidPurchase,
     exportPurchasePDF,
     updatePurchase,
-    getPurchaseReportPDF
+    getPurchaseReportPDF,
+    scanDteInvoice
 };

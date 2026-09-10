@@ -31,9 +31,9 @@ class AIService {
 
         if (this.gemini) {
             try {
-                console.log('[AI Service] Falling back to Gemini (using gemini-2.0-flash)...');
+                console.log('[AI Service] Falling back to Gemini (using gemini-3.6-flash)...');
                 const model = this.gemini.getGenerativeModel({
-                    model: "gemini-2.0-flash",
+                    model: "gemini-3.6-flash",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -111,7 +111,7 @@ class AIService {
             } else {
                 console.log('[AI Service] Generating final Gemini response...');
                 const model = this.gemini.getGenerativeModel({
-                    model: "gemini-2.0-flash",
+                    model: "gemini-3.6-flash",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -131,6 +131,61 @@ class AIService {
             }
             throw error;
         }
+    }
+
+    async extractDteFromImage(imageBuffer, mimeType = 'image/jpeg') {
+        if (!this.gemini) {
+            throw new Error('El servicio de IA no está configurado (falta GEMINI_API_KEY).');
+        }
+
+        const model = this.gemini.getGenerativeModel({ model: 'gemini-3.6-flash' });
+        const base64Data = imageBuffer.toString('base64');
+
+        const prompt = `Eres un asistente contable experto en Documentos Tributarios Electrónicos (DTE) de El Salvador del Ministerio de Hacienda.
+Analiza con máxima precisión la imagen de este DTE, factura o comprobante de crédito fiscal.
+
+Extrae TODOS los campos visibles y responde EXCLUSIVAMENTE con un JSON válido y estricto (sin bloques markdown ni explicaciones adicionales):
+{
+  "codigo_generacion": "Código de generación en mayúsculas (UUID de 36 caracteres: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)",
+  "numero_control": "Número de control oficial (ejemplo: DTE-03-M001P003-000000000002053 o DTE-01-...)",
+  "sello_recepcion": "Sello de recepción oficial otorgado por Hacienda (cadena de 40 caracteres)",
+  "fecha_emision": "Fecha de emisión en formato YYYY-MM-DD si es visible, o null",
+  "tipo_documento_id": "03 para Crédito Fiscal (CCF), 01 para Factura, 05 para Nota de Crédito, 06 para Nota de Débito",
+  "tipo_documento_nombre": "Nombre descriptivo del tipo de documento",
+  "emisor": {
+    "nombre": "Nombre o Razón Social del emisor / proveedor si es visible, o null",
+    "nit": "NIT del emisor si es visible, o null",
+    "nrc": "NRC del emisor si es visible, o null"
+  },
+  "totales": {
+    "total_gravada": 0.0,
+    "total_exenta": 0.0,
+    "total_nosujeta": 0.0,
+    "iva": 0.0,
+    "retencion": 0.0,
+    "percepcion": 0.0,
+    "monto_total": 0.0
+  }
+}
+
+REGLAS:
+- Si un campo no es visible o está cortado en la foto, asígnalo como null (o 0.0 en valores numéricos).
+- Asegúrate de que el código de generación y número de control estén en MAYÚSCULAS y limpios de espacios.
+- El sello de recepción debe contener todos los caracteres visibles sin espacios.`;
+
+        const result = await model.generateContent([
+            {
+                inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType || 'image/jpeg'
+                }
+            },
+            prompt
+        ]);
+
+        const rawText = result.response.text();
+        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
     }
 }
 

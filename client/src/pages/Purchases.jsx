@@ -21,7 +21,9 @@ import {
     Settings,
     Edit,
     Zap,
-    Calendar
+    Calendar,
+    Sparkles,
+    Loader2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -120,6 +122,87 @@ const Purchases = () => {
 
     const barcodeInputRef = useRef(null);
     const fileInputRef = useRef(null);
+    const [isScanningDte, setIsScanningDte] = useState(false);
+
+    const handleScanDteFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        e.target.value = '';
+        setIsScanningDte(true);
+        const loadingToast = toast.loading('Analizando factura / DTE con Inteligencia Artificial...');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await axios.post('/api/purchases/scan-dte', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const data = res.data?.data;
+            if (!data) throw new Error('No se pudieron extraer datos del documento');
+
+            let filledFields = [];
+
+            // 1. Código de Generación / Documento
+            if (data.codigo_generacion) {
+                setNumeroDoc(data.codigo_generacion.toUpperCase().trim());
+                filledFields.push('Cód. Generación');
+            }
+
+            // 2. Número de Control
+            if (data.numero_control) {
+                setNumControl(data.numero_control.toUpperCase().trim());
+                filledFields.push('Núm. Control');
+            }
+
+            // 3. Sello de Recepción
+            if (data.sello_recepcion) {
+                setSelloRecepcion(data.sello_recepcion.toUpperCase().trim());
+                filledFields.push('Sello');
+            }
+
+            // 4. Tipo de Documento
+            if (data.tipo_documento_id) {
+                const foundType = tipoDocs.find(t => t.code === data.tipo_documento_id);
+                if (foundType) {
+                    setTipoDocId(data.tipo_documento_id);
+                    filledFields.push('Tipo Doc');
+                }
+            }
+
+            // 5. Fecha de Emisión
+            if (data.fecha_emision) {
+                setFecha(data.fecha_emision);
+                handleFechaChange({ target: { value: data.fecha_emision } });
+                filledFields.push('Fecha');
+            }
+
+            // 6. Proveedor
+            if (data.matchedProvider) {
+                setProviderId(String(data.matchedProvider.id));
+                setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
+                filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+            } else if (data.emisor?.nombre) {
+                toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
+            }
+
+            toast.dismiss(loadingToast);
+            if (filledFields.length > 0) {
+                toast.success(`Datos detectados: ${filledFields.join(', ')}`, { duration: 6000 });
+            } else {
+                toast.info('No se detectaron campos de DTE legibles en la imagen.');
+            }
+
+        } catch (err) {
+            console.error('Error al escanear DTE:', err);
+            toast.dismiss(loadingToast);
+            toast.error(err.response?.data?.message || 'Error al procesar la imagen con IA');
+        } finally {
+            setIsScanningDte(false);
+        }
+    };
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -943,7 +1026,36 @@ const Purchases = () => {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {/* Botón de Escaneo con IA */}
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputRef} 
+                                        onChange={handleScanDteFile} 
+                                        accept="image/*,.pdf" 
+                                        className="hidden" 
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={isScanningDte}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100/80 border border-violet-200/80 transition-all shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
+                                        title="Subir foto o PDF del DTE para auto-completar los datos con Inteligencia Artificial"
+                                    >
+                                        {isScanningDte ? (
+                                            <>
+                                                <Loader2 size={13} className="animate-spin text-violet-600" />
+                                                <span>Escaneando con IA...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles size={13} className="text-violet-600" />
+                                                <span>Escanear DTE (IA)</span>
+                                            </>
+                                        )}
+                                    </button>
+
+                                    <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
                                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
                                         <Calendar size={12} className="text-indigo-500" />
                                         Período:
@@ -970,6 +1082,7 @@ const Purchases = () => {
                                     </select>
                                 </div>
                             </div>
+                        </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3">
                                 <div className="md:col-span-1">
