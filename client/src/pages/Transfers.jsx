@@ -24,8 +24,7 @@ import {
     Maximize2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 
@@ -58,6 +57,18 @@ const Transfers = () => {
     const [productSearchModal, setProductSearchModal] = useState('');
     const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
     const [modalPage, setModalPage] = useState(1);
+
+    // PDF Report Modal State
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
 
     useDirtyTracker('transferencias', origenBranch && destinoBranch && selectedItems.length > 0);
 
@@ -185,31 +196,41 @@ const Transfers = () => {
         XLSX.writeFile(workbook, `Traslados_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    const exportToPDF = () => {
-        if (!transfersData?.data?.length) return;
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text("Reporte de Traslados de Inventario", 14, 22);
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Fecha Reporte: ${new Date().toLocaleString()}`, 14, 30);
-        const tableColumn = ["Documento", "Fecha", "Origen", "Destino", "Items", "Estado"];
-        const tableRows = transfersData.data.map(t => [
-            `TR-${String(t.id).padStart(6, '0')}`,
-            new Date(t.fecha).toLocaleString(),
-            t.origen_nombre,
-            t.destino_nombre,
-            t.items_count,
-            t.status
-        ]);
-        autoTable(doc, {
-            head: [tableColumn],
-            body: tableRows,
-            startY: 35,
-            styles: { fontSize: 8 },
-            headStyles: { fillColor: [79, 70, 229] }
-        });
-        doc.save(`Traslados_${new Date().toISOString().split('T')[0]}.pdf`);
+    const handleOpenPdfModal = async () => {
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
+
+        try {
+            const params = {
+                branch_id: user?.branch_id || undefined,
+                search: historySearch?.trim() ? historySearch.trim() : undefined
+            };
+
+            const response = await axios.get('/api/inventory/transfers/reports/pdf', {
+                params,
+                responseType: 'blob'
+            });
+
+            if (response.data.type !== 'application/pdf') {
+                const text = await response.data.text();
+                let errorMsg = 'Error al generar el reporte en formato PDF';
+                try {
+                    const errObj = JSON.parse(text);
+                    errorMsg = errObj.message || errorMsg;
+                } catch {}
+                throw new Error(errorMsg);
+            }
+
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(response.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching transfers PDF:', err);
+            setPdfError(err.message || 'Ocurrió un error al generar el PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
     };
 
     const resetForm = () => {
@@ -568,7 +589,7 @@ const Transfers = () => {
                                 Excel
                             </button>
                             <button 
-                                onClick={exportToPDF}
+                                onClick={handleOpenPdfModal}
                                 className="px-4 py-2 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-rose-100 transition-all"
                             >
                                 <FilePdf size={14} />
@@ -745,6 +766,22 @@ const Transfers = () => {
                     </div>
                 </div>
             )}
+
+            {/* Modal de Visualización Interactiva de Reporte PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Reporte de Traslados de Inventario"
+                subtitle={historySearch ? `Búsqueda: "${historySearch}"` : (user?.branch_id ? `Sucursal: ${branches.find(b => String(b.id) === String(user.branch_id))?.nombre || ''}` : 'Historial general de traslados')}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando reporte de traslados en formato contable oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Traslados_${new Date().toISOString().split('T')[0]}.pdf`}
+                footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
+            />
         </div>
     );
 };

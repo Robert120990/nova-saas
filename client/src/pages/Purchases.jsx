@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
 import { 
     Plus, 
     Trash2, 
@@ -21,7 +20,8 @@ import {
     FileText as FilePdf,
     Settings,
     Edit,
-    Zap
+    Zap,
+    Calendar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -74,6 +74,8 @@ const Purchases = () => {
     const [tipoDocId, setTipoDocId] = useState('03'); // Default CCF
     const [condicionId, setCondicionId] = useState('1'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
+    const [numControl, setNumControl] = useState('');
+    const [selloRecepcion, setSelloRecepcion] = useState('');
     const [fecha, setFecha] = useState(getTodayString());
     const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
     const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
@@ -162,13 +164,24 @@ const Purchases = () => {
     const [isFovialDirty, setIsFovialDirty] = useState(false);
     const [isCotransDirty, setIsCotransDirty] = useState(false);
 
-    // History State
     const [historySearch, setHistorySearch] = useState('');
     const [historyPage, setHistoryPage] = useState(1);
     const [viewingPurchase, setViewingPurchase] = useState(null);
     const limit = 10;
 
-    useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc);
+    // PDF Report Modal State
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
+
+    useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc || numControl || selloRecepcion);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -500,7 +513,7 @@ const Purchases = () => {
     };
 
     const resetForm = () => {
-        setSelectedItems([]); setNumeroDoc(''); setObservaciones('');
+        setSelectedItems([]); setNumeroDoc(''); setNumControl(''); setSelloRecepcion(''); setObservaciones('');
         setDocAfectado(''); setFechaAfectada('');
         setDiasCredito(0); setFechaVencimiento('');
         setManualRetencion(''); setManualPercepcion(''); setManualNosujeta(''); setManualExenta('');
@@ -537,7 +550,13 @@ const Purchases = () => {
                 if (json.identificacion) {
                     setFecha(json.identificacion.fecEmi || new Date().toISOString().split('T')[0]);
                     setNumeroDoc(json.identificacion.codigoGeneracion || json.identificacion.numeroControl || '');
+                    setNumControl(json.identificacion.numeroControl || '');
                     if (json.identificacion.tipoDte) setTipoDocId(json.identificacion.tipoDte);
+                }
+
+                const importedSello = json.respuestaHacienda?.selloRecibido || json.selloRecepcion || json.selloRecibido || '';
+                if (importedSello) {
+                    setSelloRecepcion(importedSello);
                 }
 
                 // 2. Identify Provider
@@ -669,6 +688,8 @@ const Purchases = () => {
 
         const payload = {
             branch_id: branchId, provider_id: providerId, fecha, numero_documento: numeroDoc,
+            numero_control: (numControl || '').trim().toUpperCase() || null,
+            sello_recepcion: (selloRecepcion || '').trim().toUpperCase() || null,
             tipo_documento_id: tipoDocId, condicion_operacion_id: condicionId, observaciones,
             dias_credito: diasCredito, fecha_vencimiento: fechaVencimiento || null,
             total_nosujeta: totals.nosujeta, total_exenta: totals.exenta, total_gravada: totals.gravada,
@@ -720,6 +741,8 @@ const Purchases = () => {
             setTipoDocId(detail.tipo_documento_id);
             setCondicionId(detail.condicion_operacion_id);
             setNumeroDoc(detail.numero_documento);
+            setNumControl(detail.numero_control || detail.num_control || '');
+            setSelloRecepcion(detail.sello_recepcion || '');
             setFecha(new Date(detail.fecha).toISOString().split('T')[0]);
             if (detail.period_year && detail.period_month) {
                 setPeriodYear(parseInt(detail.period_year, 10));
@@ -776,6 +799,8 @@ const Purchases = () => {
             'NRC': p.provider_nrc || '---',
             'TIPO DOC.': p.tipo_doc_nombre || '---',
             'NÚMERO': p.numero_documento || '---',
+            'N° CONTROL': p.numero_control || '---',
+            'SELLO RECEPCIÓN': p.sello_recepcion || '---',
             'SUCURSAL': p.branch_nombre || '---',
             'GRAVADA': parseFloat(p.total_gravada || 0),
             'IVA': parseFloat(p.iva || 0),
@@ -793,50 +818,41 @@ const Purchases = () => {
         XLSX.writeFile(wb, `Reporte_Compras_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    const handleExportPDF = () => {
-        if (!purchasesData.data || purchasesData.data.length === 0) {
-            return toast.error('No hay datos para exportar');
-        }
+    const handleOpenPdfModal = async () => {
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
 
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text('REPORTE DE COMPRAS', 14, 22);
-        doc.setFontSize(10);
-        doc.setTextColor(100);
-        doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, 28);
+        try {
+            const params = {
+                branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+                search: historySearch?.trim() ? historySearch.trim() : undefined
+            };
 
-        const tableColumn = ["FECHA", "PROVEEDOR", "DOC.", "NÚMERO", "GRAVADA", "IVA", "TOTAL", "ESTADO"];
-        const tableRows = purchasesData.data.map(p => [
-            new Date(p.fecha).toLocaleDateString(),
-            (p.provider_nombre || '---').substring(0, 25).toUpperCase(),
-            p.tipo_doc_nombre || '---',
-            p.numero_documento || '---',
-            `$${parseFloat(p.total_gravada || 0).toFixed(2)}`,
-            `$${parseFloat(p.iva || 0).toFixed(2)}`,
-            `$${parseFloat(p.monto_total || 0).toFixed(2)}`,
-            p.status === 'voided' ? 'ANULADO' : 'ACTIVO'
-        ]);
+            const response = await axios.get('/api/purchases/reports/pdf', {
+                params,
+                responseType: 'blob'
+            });
 
-        autoTable(doc, {
-            head: [tableColumn],
-            body: tableRows,
-            startY: 35,
-            theme: 'striped',
-            headStyles: { 
-                fillColor: [79, 70, 229],
-                fontSize: 8,
-                halign: 'center'
-            },
-            bodyStyles: { fontSize: 7 },
-            columnStyles: {
-                4: { halign: 'right' },
-                5: { halign: 'right' },
-                6: { halign: 'right' },
-                7: { halign: 'center' }
+            if (response.data.type !== 'application/pdf') {
+                const text = await response.data.text();
+                let errorMsg = 'Error al generar el reporte en formato PDF';
+                try {
+                    const errObj = JSON.parse(text);
+                    errorMsg = errObj.message || errorMsg;
+                } catch {}
+                throw new Error(errorMsg);
             }
-        });
 
-        doc.save(`Reporte_Compras_${new Date().toISOString().split('T')[0]}.pdf`);
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(response.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching purchases PDF:', err);
+            setPdfError(err.message || 'Ocurrió un error al generar el PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
     };
 
     const inputCls = "w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-[11px] font-bold uppercase tracking-tight";
@@ -916,17 +932,43 @@ const Purchases = () => {
                     <div className="lg:col-span-3 space-y-4">
                         {/* Cabecera */}
                         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                                 <div className="flex items-center gap-2">
                                     <Truck size={16} className="text-indigo-600" />
                                     <h3 className="font-black text-slate-800 text-[10px] uppercase tracking-widest text-[Spanish]">Datos del Comprobante</h3>
+                                    {tipoDocId === '06' && (
+                                        <div className="flex items-center gap-1.5 animate-pulse ml-2">
+                                            <AlertCircle size={14} className="text-rose-500" />
+                                            <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-[Spanish]">Requiere Referencia</span>
+                                        </div>
+                                    )}
                                 </div>
-                                {tipoDocId === '06' && (
-                                    <div className="flex items-center gap-1.5 animate-pulse">
-                                        <AlertCircle size={14} className="text-rose-500" />
-                                        <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-[Spanish]">Requiere Referencia</span>
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                        <Calendar size={12} className="text-indigo-500" />
+                                        Período:
+                                    </span>
+                                    <select 
+                                        value={periodMonth} 
+                                        onChange={(e) => setPeriodMonth(parseInt(e.target.value, 10))}
+                                        className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                                        title="Mes del Período"
+                                    >
+                                        {MONTHS.map(m => (
+                                            <option key={m.value} value={m.value}>{m.label}</option>
+                                        ))}
+                                    </select>
+                                    <select 
+                                        value={periodYear} 
+                                        onChange={(e) => setPeriodYear(parseInt(e.target.value, 10))}
+                                        className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                                        title="Año del Período"
+                                    >
+                                        {YEARS.map(y => (
+                                            <option key={y} value={y}>{y}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-3">
@@ -939,7 +981,14 @@ const Purchases = () => {
                                 </div>
                                 <div className="md:col-span-2">
                                     <div className="flex items-center justify-between mb-1">
-                                        <label className={labelCls}>Proveedor / Emisor</label>
+                                        <div className="flex items-center gap-1.5">
+                                            <label className={labelCls}>Proveedor / Emisor</label>
+                                            {selectedProvider?.es_gran_contribuyente && (
+                                                <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 uppercase tracking-tight">
+                                                    Gran Contribuyente
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex items-center gap-1">
                                             <button
                                                 type="button"
@@ -981,65 +1030,30 @@ const Purchases = () => {
                                             selectedLabel={selectedProvider?.nombre}
                                             dropdownWidth={420}
                                         />
-                                        {selectedProvider && (
-                                            <span className={`absolute -bottom-4 right-1 text-[8px] font-black uppercase tracking-tighter ${selectedProvider.es_gran_contribuyente ? 'text-indigo-500' : 'text-slate-400'}`}>
-                                                {selectedProvider.es_gran_contribuyente ? 'Gran Contribuyente' : 'Otros'}
-                                            </span>
-                                        )}
                                     </div>
-                                </div>
-                                <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                        <label className={labelCls}>Fecha de Emisión</label>
-                                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 uppercase tracking-tight">
-                                            Periodo: {String(periodMonth).padStart(2, '0')}/{periodYear}
-                                        </span>
-                                    </div>
-                                    <input 
-                                        type="date" 
-                                        value={fecha} 
-                                        onChange={handleFechaChange} 
-                                        className={inputCls} 
-                                    />
-                                    <div className="mt-1.5 flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest pl-1">Per:</span>
-                                        <select 
-                                            value={periodMonth} 
-                                            onChange={(e) => setPeriodMonth(parseInt(e.target.value, 10))}
-                                            className="flex-1 bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
-                                            title="Mes del Periodo"
-                                        >
-                                            {MONTHS.map(m => (
-                                                <option key={m.value} value={m.value}>{m.label}</option>
-                                            ))}
-                                        </select>
-                                        <select 
-                                            value={periodYear} 
-                                            onChange={(e) => setPeriodYear(parseInt(e.target.value, 10))}
-                                            className="w-20 bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
-                                            title="Año del Periodo"
-                                        >
-                                            {YEARS.map(y => (
-                                                <option key={y} value={y}>{y}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className={labelCls}>Tipo Documento</label>
-                                    <select value={tipoDocId} onChange={(e) => setTipoDocId(e.target.value)} className={inputCls}>
-                                        {tipoDocs.map(t => <option key={t.code} value={t.code}>{t.description.toUpperCase()}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>No. Documento</label>
-                                    <input type="text" value={numeroDoc} onChange={(e) => setNumeroDoc(e.target.value)} placeholder="0000-0000" className={inputCls} />
                                 </div>
                                 <div className="md:col-span-1">
                                     <label className={labelCls}>Condición Pago</label>
                                     <select value={condicionId} onChange={(e) => setCondicionId(e.target.value)} className={inputCls}>
                                         {condiciones.map(c => <option key={c.code} value={c.code} disabled={c.code === '2' && !selectedProvider?.es_credito}>{c.description.toUpperCase()}</option>)}
                                     </select>
+                                </div>
+
+                                <div className="md:col-span-2">
+                                    <label className={labelCls}>Tipo Documento</label>
+                                    <select value={tipoDocId} onChange={(e) => setTipoDocId(e.target.value)} className={inputCls}>
+                                        {tipoDocs.map(t => <option key={t.code} value={t.code}>{t.description.toUpperCase()}</option>)}
+                                    </select>
+                                </div>
+                                <div className={condicionId === '2' ? 'md:col-span-1' : 'md:col-span-2'}>
+                                    <label className={labelCls}>Documento / Cód. Generación</label>
+                                    <input 
+                                        type="text" 
+                                        value={numeroDoc} 
+                                        onChange={(e) => setNumeroDoc(e.target.value.toUpperCase())} 
+                                        placeholder="NO. FACTURA O CÓDIGO GENERACIÓN DTE" 
+                                        className={`${inputCls} font-mono`} 
+                                    />
                                 </div>
 
                                 {condicionId === '2' && (
@@ -1051,7 +1065,37 @@ const Purchases = () => {
                                         )}
                                     </div>
                                 )}
-                                
+
+                                <div className="md:col-span-1">
+                                    <label className={labelCls}>Fecha de Emisión</label>
+                                    <input 
+                                        type="date" 
+                                        value={fecha} 
+                                        onChange={handleFechaChange} 
+                                        className={inputCls} 
+                                    />
+                                </div>
+                                <div className="md:col-span-1">
+                                    <label className={labelCls}>Número de Control (DTE)</label>
+                                    <input 
+                                        type="text" 
+                                        value={numControl} 
+                                        onChange={(e) => setNumControl(e.target.value.toUpperCase())} 
+                                        placeholder="DTE-03-M001P001-00001" 
+                                        className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className={labelCls}>Sello de Recepción (MH)</label>
+                                    <input 
+                                        type="text" 
+                                        value={selloRecepcion} 
+                                        onChange={(e) => setSelloRecepcion(e.target.value.toUpperCase())} 
+                                        placeholder="SELLO OFICIAL DE HACIENDA (OPCIONAL)" 
+                                        className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                    />
+                                </div>
+
                                 {tipoDocId === '06' && (
                                     <>
                                         <div className="md:col-span-1 bg-rose-50/50 p-2 rounded-xl border border-rose-100 animate-in slide-in-from-top-2">
@@ -1379,7 +1423,7 @@ const Purchases = () => {
                              <button onClick={handleExportExcel} className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all">
                                 <FileSpreadsheet size={14} /> EXCEL
                             </button>
-                            <button onClick={handleExportPDF} className="h-8 px-3 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-100 transition-all">
+                            <button onClick={handleOpenPdfModal} className="h-8 px-3 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-100 transition-all">
                                 <FilePdf size={14} /> PDF
                             </button>
                         </div>
@@ -1393,7 +1437,15 @@ const Purchases = () => {
                             renderRow={(c) => (
                                 <tr key={c.id} className="hover:bg-slate-50 border-b border-slate-50 last:border-0 grow">
                                     <td className="px-5 py-1 font-black text-slate-800 text-[10px] uppercase tracking-tighter">
-                                        {c.numero_documento}
+                                        <div>{c.numero_documento}</div>
+                                        {c.numero_control && (
+                                            <div className="text-[8px] font-mono text-indigo-600 font-bold tracking-tight">CTRL: {c.numero_control}</div>
+                                        )}
+                                        {c.sello_recepcion && (
+                                            <div className="text-[7px] font-mono text-slate-400 truncate max-w-[140px]" title={c.sello_recepcion}>
+                                                SELLO: {c.sello_recepcion.substring(0, 16)}...
+                                            </div>
+                                        )}
                                         {c.documento_afectado && <div className="text-[7px] text-rose-500 flex items-center gap-1 mt-0.5">REF: {c.documento_afectado}</div>}
                                     </td>
                                     <td className="px-5 py-1"><span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase">{c.tipo_documento_nombre}</span></td>
@@ -1495,14 +1547,24 @@ const Purchases = () => {
                                             <p className="text-[11px] font-bold text-indigo-600 uppercase leading-tight">{purchaseDetail.tipo_documento_nombre || viewingPurchase.tipo_documento_nombre || '---'}</p>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">No. Documento</label>
-                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight">{purchaseDetail.numero_documento}</p>
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Documento / Cód. Generación</label>
+                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">{purchaseDetail.numero_documento}</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Número de Control</label>
+                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">{purchaseDetail.numero_control || '---'}</p>
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Estado</label>
                                             <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${purchaseDetail.status === 'ANULADO' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
                                                 {purchaseDetail.status}
                                             </span>
+                                        </div>
+                                        <div className="space-y-1 col-span-2 md:col-span-3">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Sello de Recepción (MH)</label>
+                                            <p className="text-[11px] font-mono text-slate-700 uppercase leading-tight break-all bg-slate-50 p-2 rounded-xl border border-slate-200/60">
+                                                {purchaseDetail.sello_recepcion || 'NO REGISTRADO'}
+                                            </p>
                                         </div>
                                     </div>
 
@@ -1585,6 +1647,22 @@ const Purchases = () => {
                 modalData={modalProductsData}
                 modalPage={modalPage}
                 setModalPage={setModalPage}
+            />
+
+            {/* Modal de Visualización Interactiva de Reporte PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Reporte de Compras"
+                subtitle={historySearch ? `Búsqueda: "${historySearch}"` : (branchId && branchId !== 'all' ? `Sucursal: ${branches.find(b => String(b.id) === String(branchId))?.nombre || ''}` : 'Historial general de compras')}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando reporte de compras en formato contable oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Reporte_Compras_${new Date().toISOString().split('T')[0]}.pdf`}
+                footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
             />
         </div>
     );

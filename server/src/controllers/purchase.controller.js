@@ -43,9 +43,9 @@ const getPurchases = async (req, res) => {
 
         const searchWords = search ? getSearchWords(search) : [];
         searchWords.forEach(word => {
-            query += ` AND (ph.numero_documento LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
+            query += ` AND (ph.numero_documento LIKE ? OR ph.numero_control LIKE ? OR ph.sello_recepcion LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
             const searchTerm = `%${word}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         });
 
         // Count total for pagination
@@ -194,18 +194,23 @@ const createPurchase = async (req, res) => {
         }
 
         // 1. Insertar Cabecera
+        const numeroControl = req.body.numero_control || req.body.num_control || null;
+        const selloRecepcion = req.body.sello_recepcion || null;
+
         const [headerResult] = await connection.query(`
              INSERT INTO purchase_headers 
              (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
+              numero_control, sello_recepcion,
               tipo_documento_id, condicion_operacion_id, observaciones,
               dias_credito, fecha_vencimiento,
               total_nosujeta, total_exenta, total_gravada, 
               iva, retencion, percepcion, fovial, cotrans, monto_total,
               documento_afectado, fecha_afectada,
               period_year, period_month)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          `, [
              companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
+             numeroControl, selloRecepcion,
              tipo_documento_id, condicion_operacion_id, observaciones,
              dias_credito || 0, fecha_vencimiento || null,
              nosujetaNum, exentaNum, gravadaNum,
@@ -419,9 +424,13 @@ const updatePurchase = async (req, res) => {
         }
 
         // 2. Actualizar Cabecera
+        const numeroControl = req.body.numero_control || req.body.num_control || null;
+        const selloRecepcion = req.body.sello_recepcion || null;
+
         await connection.query(`
             UPDATE purchase_headers SET 
                 branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?,
+                numero_control = ?, sello_recepcion = ?,
                 tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
                 dias_credito = ?, fecha_vencimiento = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
@@ -431,6 +440,7 @@ const updatePurchase = async (req, res) => {
             WHERE id = ? AND company_id = ?
         `, [
             branch_id, provider_id, fecha, numero_documento,
+            numeroControl, selloRecepcion,
             tipo_documento_id, condicion_operacion_id, observaciones,
             dias_credito || 0, fecha_vencimiento || null,
             nosujetaNum, exentaNum, gravadaNum,
@@ -670,9 +680,21 @@ const exportPurchasePDF = async (req, res) => {
         doc.font('Helvetica').text(`Tipo: ${p.tipo_doc_nombre || '---'}`, startX + 300, currentY + 15);
         doc.text(`Número: ${p.numero_documento || '---'}`, startX + 300, currentY + 30);
         
+        let extraY = 45;
+        if (p.numero_control) {
+            doc.text(`N° Control: ${p.numero_control}`, startX + 300, currentY + extraY);
+            extraY += 15;
+        }
+
         let fechaDoc = '---';
         try { if (p.fecha) fechaDoc = new Date(p.fecha).toLocaleDateString(); } catch (e) {}
-        doc.text(`Fecha: ${fechaDoc}`, startX + 300, currentY + 45);
+        doc.text(`Fecha: ${fechaDoc}`, startX + 300, currentY + extraY);
+
+        if (p.sello_recepcion) {
+            extraY += 15;
+            doc.fontSize(8).text(`Sello: ${p.sello_recepcion}`, startX + 300, currentY + extraY, { width: 230 });
+            doc.fontSize(10);
+        }
 
         doc.moveDown(4);
 
@@ -740,12 +762,8 @@ const exportPurchasePDF = async (req, res) => {
  */
 const getPurchaseReportPDF = async (req, res) => {
     try {
-        const { start_date, end_date, branch_id, provider_id } = req.query;
+        const { start_date, end_date, branch_id, provider_id, search } = req.query;
         const companyId = req.company_id || req.user?.company_id;
-
-        if (!start_date || !end_date) {
-            return res.status(400).json({ message: 'Rango de fechas requerido' });
-        }
 
         // 1. Obtener datos de la empresa
         const company = await reportPdfHelper.getCompanyInfo(companyId);
@@ -762,9 +780,20 @@ const getPurchaseReportPDF = async (req, res) => {
             LEFT JOIN branches br ON ph.branch_id = br.id
             LEFT JOIN cat_002_tipo_dte cat_dte ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat_dte.code
             LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code
-            WHERE ph.company_id = ? AND ph.fecha BETWEEN ? AND ? AND ph.status != 'ANULADO'
+            WHERE ph.company_id = ? AND ph.status != 'ANULADO'
         `;
-        const params = [companyId, start_date, end_date];
+        const params = [companyId];
+
+        if (start_date && end_date) {
+            sql += " AND ph.fecha BETWEEN ? AND ?";
+            params.push(start_date, end_date);
+        } else if (start_date) {
+            sql += " AND ph.fecha >= ?";
+            params.push(start_date);
+        } else if (end_date) {
+            sql += " AND ph.fecha <= ?";
+            params.push(end_date);
+        }
 
         if (branch_id && branch_id !== 'all') {
             sql += " AND ph.branch_id = ?";
@@ -774,6 +803,15 @@ const getPurchaseReportPDF = async (req, res) => {
         if (provider_id && provider_id !== 'all') {
             sql += " AND ph.provider_id = ?";
             params.push(provider_id);
+        }
+
+        if (search) {
+            const words = search.trim().split(/\s+/).filter(Boolean);
+            words.forEach(word => {
+                sql += ` AND (ph.numero_documento LIKE ? OR ph.numero_control LIKE ? OR ph.sello_recepcion LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
+                const searchTerm = `%${word}%`;
+                params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            });
         }
 
         sql += " ORDER BY p.nombre ASC, ph.fecha ASC";
@@ -790,6 +828,7 @@ const getPurchaseReportPDF = async (req, res) => {
                         { header: 'Fecha', key: 'fecha', width: 15 },
                         { header: 'Tipo Doc', key: 'tipo_doc', width: 12 },
                         { header: 'Documento', key: 'documento', width: 15 },
+                        { header: 'N° Control', key: 'num_control', width: 20 },
                         { header: 'Condición', key: 'condicion', width: 12 },
                         { header: 'Gravada', key: 'gravada', width: 12 },
                         { header: 'Exenta', key: 'exenta', width: 12 },
@@ -806,6 +845,7 @@ const getPurchaseReportPDF = async (req, res) => {
                         fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
                         tipo_doc: r.tipo_doc_nombre,
                         documento: r.numero_documento,
+                        num_control: r.numero_control || '---',
                         condicion: r.condicion_nombre,
                         gravada: parseFloat(r.total_gravada || 0).toFixed(2),
                         exenta: parseFloat(r.total_exenta || 0).toFixed(2),
@@ -829,8 +869,17 @@ const getPurchaseReportPDF = async (req, res) => {
             if (bRows.length > 0) branchName = (bRows[0].nombre || '').toUpperCase();
         }
 
-        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
-        const subtitle = `SUCURSAL: ${branchName}`;
+        let periodText = '';
+        if (start_date && end_date) {
+            periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+        } else if (start_date) {
+            periodText = `DESDE EL ${reportPdfHelper.formatDate(start_date)}`;
+        } else if (end_date) {
+            periodText = `AL ${reportPdfHelper.formatDate(end_date)}`;
+        } else {
+            periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
+        }
+        const subtitle = `SUCURSAL: ${branchName}${search ? `   |   FILTRO: "${search}"` : ''}`;
 
         const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
         const startX = 30;

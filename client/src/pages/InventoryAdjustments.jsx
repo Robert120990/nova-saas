@@ -23,8 +23,7 @@ import {
     FileText as FilePdf
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +50,18 @@ const InventoryAdjustments = () => {
     const [historySearch, setHistorySearch] = useState('');
     const [historyPage, setHistoryPage] = useState(1);
     const limit = 10;
+
+    // PDF Report Modal State
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
 
     // Quick Add state
     const [quickProd, setQuickProd] = useState(null);
@@ -315,37 +326,41 @@ const InventoryAdjustments = () => {
         XLSX.writeFile(workbook, `Movimientos_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
     
-    const exportToPDF = () => {
-        if (!adjustmentsData?.data?.length) return;
-        
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text("Reporte de Movimientos de Inventario", 14, 22);
-        
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Fecha Reporte: ${new Date().toLocaleString()}`, 14, 30);
-        
-        const tableColumn = ["Documento", "Fecha", "Sucursal", "Motivo", "Tipo", "Cant. Items", "Estado"];
-        const tableRows = adjustmentsData.data.map(a => [
-            `AJ-${String(a.id).padStart(6, '0')}`,
-            new Date(a.fecha).toLocaleString(),
-            a.branch_name,
-            a.motivo_name,
-            a.tipo,
-            a.items_count,
-            a.status || 'COMPLETADO'
-        ]);
-        
-        autoTable(doc, {
-            head: [tableColumn],
-            body: tableRows,
-            startY: 35,
-            styles: { fontSize: 8 },
-            headStyles: { fillColor: [79, 70, 229] }
-        });
-        
-        doc.save(`Movimientos_Inventario_${new Date().toISOString().split('T')[0]}.pdf`);
+    const handleOpenPdfModal = async () => {
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
+
+        try {
+            const params = {
+                branch_id: user?.branch_id || undefined,
+                search: historySearch?.trim() ? historySearch.trim() : undefined
+            };
+
+            const response = await axios.get('/api/inventory/adjustments/reports/pdf', {
+                params,
+                responseType: 'blob'
+            });
+
+            if (response.data.type !== 'application/pdf') {
+                const text = await response.data.text();
+                let errorMsg = 'Error al generar el reporte en formato PDF';
+                try {
+                    const errObj = JSON.parse(text);
+                    errorMsg = errObj.message || errorMsg;
+                } catch {}
+                throw new Error(errorMsg);
+            }
+
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(response.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching adjustments PDF:', err);
+            setPdfError(err.message || 'Ocurrió un error al generar el PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
     };
 
     return (
@@ -694,7 +709,7 @@ const InventoryAdjustments = () => {
                                 Excel
                             </button>
                             <button 
-                                onClick={exportToPDF}
+                                onClick={handleOpenPdfModal}
                                 className="px-4 py-2 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-rose-100 transition-all"
                             >
                                 <FilePdf size={14} />
@@ -815,6 +830,22 @@ const InventoryAdjustments = () => {
                 adjustment={editingAdjustment}
                 onClose={() => setEditingAdjustment(null)}
                 queryClient={queryClient}
+            />
+
+            {/* Modal de Visualización Interactiva de Reporte PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Reporte de Movimientos de Inventario"
+                subtitle={historySearch ? `Búsqueda: "${historySearch}"` : (user?.branch_id ? `Sucursal: ${branches.find(b => String(b.id) === String(user.branch_id))?.nombre || ''}` : 'Historial general de movimientos')}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando reporte de movimientos en formato contable oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Movimientos_Inventario_${new Date().toISOString().split('T')[0]}.pdf`}
+                footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
             />
         </div>
     );

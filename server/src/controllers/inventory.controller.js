@@ -1289,6 +1289,205 @@ const getInventoryTurnoverReport = async (req, res) => {
     }
 };
 
+const getTransfersReportPDF = async (req, res) => {
+    try {
+        const { search, branch_id } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        const params = [companyId];
+        let whereClause = 'WHERE t.company_id = ?';
+        if (branch_id && branch_id !== 'all') {
+            whereClause += ' AND (t.origen_branch_id = ? OR t.destino_branch_id = ?)';
+            params.push(branch_id, branch_id);
+        }
+        if (search) {
+            whereClause += ` AND (
+                b1.nombre LIKE ? OR 
+                b2.nombre LIKE ? OR 
+                u.nombre LIKE ? OR 
+                t.observaciones LIKE ? OR
+                CONCAT('TR-', LPAD(t.id, 6, '0')) LIKE ?
+            )`;
+            const searchTerm = `%${search}%`;
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        const query = `
+            SELECT t.*, 
+                   b1.nombre AS origen_nombre, 
+                   b2.nombre AS destino_nombre,
+                   u.nombre AS usuario_nombre,
+                   (SELECT COUNT(*) FROM inventory_transfer_items WHERE transfer_id = t.id) AS items_count,
+                   (SELECT COALESCE(SUM(cantidad), 0) FROM inventory_transfer_items WHERE transfer_id = t.id) AS total_unidades
+            FROM inventory_transfers t
+            JOIN branches b1 ON t.origen_branch_id = b1.id
+            JOIN branches b2 ON t.destino_branch_id = b2.id
+            JOIN users u ON t.usuario_id = u.id
+            ${whereClause}
+            ORDER BY t.fecha DESC
+        `;
+
+        const [rows] = await pool.query(query, params);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Traslados',
+                    columns: [
+                        { header: 'Documento', key: 'documento', width: 15 },
+                        { header: 'Fecha', key: 'fecha', width: 20 },
+                        { header: 'Sucursal Origen', key: 'origen', width: 25 },
+                        { header: 'Sucursal Destino', key: 'destino', width: 25 },
+                        { header: 'Usuario', key: 'usuario', width: 20 },
+                        { header: 'Items', key: 'items', width: 10 },
+                        { header: 'Unidades', key: 'unidades', width: 12 },
+                        { header: 'Estado', key: 'estado', width: 15 },
+                        { header: 'Observaciones', key: 'observaciones', width: 30 }
+                    ],
+                    rows: rows.map(r => ({
+                        documento: `TR-${String(r.id).padStart(6, '0')}`,
+                        fecha: r.fecha ? new Date(r.fecha).toLocaleString('es-SV') : '',
+                        origen: (r.origen_nombre || '').toUpperCase(),
+                        destino: (r.destino_nombre || '').toUpperCase(),
+                        usuario: (r.usuario_nombre || '').toUpperCase(),
+                        items: parseInt(r.items_count) || 0,
+                        unidades: parseFloat(r.total_unidades || 0),
+                        estado: (r.status || 'COMPLETADO').toUpperCase(),
+                        observaciones: r.observaciones || ''
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'reporte-traslados.xlsx');
+        }
+
+        let branchName = 'TODAS LAS SUCURSALES';
+        if (branch_id && branch_id !== 'all') {
+            const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (bRows.length > 0) branchName = (bRows[0].nombre || '').toUpperCase();
+        }
+
+        const periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
+        const subtitle = `SUCURSAL: ${branchName}${search ? `   |   FILTRO: "${search}"` : ''}`;
+
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+        const startX = 30;
+        const contentWidth = 732;
+
+        reportPdfHelper.renderHeader(doc, company, 'Reporte de Traslados de Inventario', periodText, 'landscape', subtitle);
+
+        const colW = {
+            doc: 65,
+            fecha: 90,
+            origen: 105,
+            destino: 105,
+            usuario: 95,
+            items: 45,
+            unidades: 52,
+            estado: 65,
+            obs: 110
+        };
+
+        const drawTableHeader = (yPos) => {
+            doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX + 4;
+            doc.text('DOCUMENTO', x, yPos + 3); x += colW.doc;
+            doc.text('FECHA / HORA', x, yPos + 3); x += colW.fecha;
+            doc.text('SUC. ORIGEN', x, yPos + 3); x += colW.origen;
+            doc.text('SUC. DESTINO', x, yPos + 3); x += colW.destino;
+            doc.text('USUARIO', x, yPos + 3); x += colW.usuario;
+            doc.text('ITEMS', x, yPos + 3, { width: colW.items, align: 'center' }); x += colW.items;
+            doc.text('UNIDADES', x, yPos + 3, { width: colW.unidades, align: 'right' }); x += colW.unidades;
+            doc.text('ESTADO', x, yPos + 3, { width: colW.estado, align: 'center' }); x += colW.estado;
+            doc.text('OBSERVACIONES', x, yPos + 3, { width: colW.obs });
+            return yPos + 16;
+        };
+
+        let currentY = drawTableHeader(doc.y + 4);
+
+        if (rows.length === 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+            doc.text('No se encontraron traslados de inventario registrados.', startX, currentY + 10);
+            currentY += 30;
+        } else {
+            let totalItemsCount = 0;
+            let totalUnidadesSum = 0;
+
+            rows.forEach((r, idx) => {
+                if (currentY > 510) {
+                    doc.addPage();
+                    currentY = drawTableHeader(30);
+                }
+
+                if (idx % 2 === 1) {
+                    doc.rect(startX, currentY - 2, contentWidth, 13).fill('#f8fafc');
+                }
+
+                doc.fontSize(7).font('Helvetica').fillColor('#334155');
+                let x = startX + 4;
+                
+                doc.font('Helvetica-Bold').fillColor('#4338ca');
+                doc.text(`TR-${String(r.id).padStart(6, '0')}`, x, currentY); x += colW.doc;
+
+                doc.font('Helvetica').fillColor('#334155');
+                const fechaStr = r.fecha ? `${reportPdfHelper.formatDate(r.fecha)} ${new Date(r.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false })}` : '---';
+                doc.text(fechaStr, x, currentY); x += colW.fecha;
+
+                doc.text((r.origen_nombre || '').substring(0, 20).toUpperCase(), x, currentY); x += colW.origen;
+                doc.text((r.destino_nombre || '').substring(0, 20).toUpperCase(), x, currentY); x += colW.destino;
+                doc.text((r.usuario_nombre || '').substring(0, 18).toUpperCase(), x, currentY); x += colW.usuario;
+                
+                const itemsCount = parseInt(r.items_count) || 0;
+                const unidadesCount = parseFloat(r.total_unidades) || 0;
+                totalItemsCount += itemsCount;
+                totalUnidadesSum += unidadesCount;
+
+                doc.text(String(itemsCount), x, currentY, { width: colW.items, align: 'center' }); x += colW.items;
+                doc.text(unidadesCount.toFixed(2), x, currentY, { width: colW.unidades, align: 'right' }); x += colW.unidades;
+
+                const statusColor = r.status === 'ANULADO' ? '#e11d48' : '#059669';
+                doc.font('Helvetica-Bold').fillColor(statusColor);
+                doc.text(r.status || 'COMPLETADO', x, currentY, { width: colW.estado, align: 'center' }); x += colW.estado;
+
+                doc.font('Helvetica').fillColor('#64748b');
+                doc.text((r.observaciones || '---').substring(0, 30), x, currentY, { width: colW.obs });
+
+                currentY += 13;
+            });
+
+            // Summary row
+            if (currentY > 500) {
+                doc.addPage();
+                currentY = drawTableHeader(30);
+            }
+
+            doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
+            currentY += 3;
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('TOTALES:', startX + colW.doc + colW.fecha + colW.origen + colW.destino, currentY, { width: colW.usuario, align: 'right' });
+            
+            let sx = startX + colW.doc + colW.fecha + colW.origen + colW.destino + colW.usuario;
+            doc.text(String(totalItemsCount), sx, currentY, { width: colW.items, align: 'center' }); sx += colW.items;
+            doc.text(totalUnidadesSum.toFixed(2), sx, currentY, { width: colW.unidades, align: 'right' });
+            currentY += 16;
+        }
+
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY, rows.length, 'Traslados');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename="reporte-traslados.pdf"');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[getTransfersReportPDF] Error:', error);
+        res.status(500).json({ message: error.message || 'Error al generar reporte de traslados' });
+    }
+};
+
 module.exports = { 
     getInventory, 
     getKardex, 
@@ -1297,6 +1496,7 @@ module.exports = {
     getInventoryTurnoverReport,
     createTransfer, 
     getTransfers, 
+    getTransfersReportPDF,
     deleteTransfer, 
     getTransferDetail,
     getProductsForPhysicalInventory,
@@ -1308,3 +1508,4 @@ module.exports = {
     getInventoryStockReport,
     getInventoryMovementsReport
 };
+
