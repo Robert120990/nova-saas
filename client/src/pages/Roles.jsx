@@ -238,11 +238,19 @@ const Roles = () => {
                                     <p className="text-[11px] text-slate-500 mt-1">
                                         Este panel se adapta en tiempo real a las opciones agregadas al sistema. Selecciona o deshabilita en qué menús tendrá visión y acceso este rol:
                                     </p>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <span className="inline-flex items-center text-[9px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                                            Reporte
-                                        </span>
-                                        <span className="text-[11px] text-slate-400">Identifica opciones correspondientes a reportes y libros del sistema.</span>
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="inline-flex items-center text-[9px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                Reporte
+                                            </span>
+                                            <span className="text-[11px] text-slate-400">Libros e informes</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="inline-flex items-center text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                Especial
+                                            </span>
+                                            <span className="text-[11px] text-slate-400">Acciones críticas o permisos operativos</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <button 
@@ -293,6 +301,11 @@ const Roles = () => {
                                                     {perm.isReport && (
                                                         <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 uppercase tracking-wider">
                                                             Reporte
+                                                        </span>
+                                                    )}
+                                                    {perm.isSpecial && (
+                                                        <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
+                                                            Especial
                                                         </span>
                                                     )}
                                                 </label>

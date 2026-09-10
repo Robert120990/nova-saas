@@ -285,8 +285,38 @@ function getRootParent(flatItems, item) {
     return current;
 }
 
+export const SPECIAL_PERM_KEYS = new Set([
+    'regenerate_dte',
+    'manage_gas_closeout_reopen',
+    'manage_customers_batch_delete',
+    'view_amounts',
+    'manage_shifts_edit',
+    'send_sales_rrs',
+    'close_pozo_cortes',
+    'ai_assistant_access',
+]);
+
+export const SPECIAL_PERM_LABELS = {
+    regenerate_dte: 'Regenerar DTEs',
+    manage_gas_closeout_reopen: 'Reabrir Cierres de Turno',
+    manage_customers_batch_delete: 'Eliminación Masiva de Clientes',
+    view_amounts: 'Ver Montos en el Sistema',
+    manage_shifts_edit: 'Editar Turnos de Venta',
+    send_sales_rrs: 'Enviar Ventas a RRS',
+    close_pozo_cortes: 'Cerrar / Reabrir Cortes de Pozo',
+    ai_assistant_access: 'Acceso a Asistente Novas AI',
+};
+
+export function isSpecialItem(item, key) {
+    const permKey = key || item?.permission_key;
+    if (permKey && SPECIAL_PERM_KEYS.has(permKey)) return true;
+    if (item && item.hide_in_menu && !item.path && item.permission_key) return true;
+    return false;
+}
+
 export function isReportItem(item, flatItems = []) {
     if (!item) return false;
+    if (isSpecialItem(item)) return false;
     const path = (item.path || '').toLowerCase();
     const label = (item.label || '').toLowerCase();
     const key = (item.permission_key || item.id || '').toLowerCase();
@@ -369,7 +399,7 @@ export function useMenuPermissions() {
             if (item.path?.startsWith('/industrial/') && industrialRoot) {
                 root = industrialRoot;
             } else if (item.path?.startsWith('/crm/')) {
-                root = crmRoot || { id: 'crm-group', label: 'CRM', icon: 'Handshake' };
+                root = crmRoot || { id: 'crm-group', label: 'CRM', icon: 'Handshake', sort_order: 130 };
             }
 
             const groupId = root.id;
@@ -378,23 +408,37 @@ export function useMenuPermissions() {
                     id: groupId,
                     label: root.label,
                     icon: root.icon,
+                    sort_order: root.sort_order || 0,
                     permissions: [],
                 };
             }
 
-            const isReport = isReportItem(item, flatItems);
+            const isSpecial = isSpecialItem(item);
+            const isReport = !isSpecial && isReportItem(item, flatItems);
+            const label = SPECIAL_PERM_LABELS[item.permission_key] || item.label;
 
             if (!seen[item.permission_key]) {
                 seen[item.permission_key] = true;
                 groups[groupId].permissions.push({ 
                     id: item.permission_key, 
-                    label: item.label,
-                    isReport: isReport
+                    label: label,
+                    isReport: isReport,
+                    isSpecial: isSpecial,
+                    sort_order: item.sort_order ?? 0
                 });
             } else {
                 const existingPerm = groups[groupId]?.permissions.find(p => p.id === item.permission_key);
-                if (existingPerm && isReport) {
-                    existingPerm.isReport = true;
+                if (existingPerm) {
+                    // Si el ítem actual es una opción normal de menú, prevalece sobre reportes
+                    if (!isReport && !isSpecial && existingPerm.isReport) {
+                        existingPerm.isReport = false;
+                        existingPerm.label = label;
+                        existingPerm.sort_order = item.sort_order ?? existingPerm.sort_order;
+                    }
+                    if (isSpecial) {
+                        existingPerm.isSpecial = true;
+                        existingPerm.isReport = false;
+                    }
                 }
             }
 
@@ -407,8 +451,14 @@ export function useMenuPermissions() {
                     extras.forEach(perm => {
                         if (!seen[perm]) {
                             seen[perm] = true;
-                            const permLabel = perm === 'regenerate_dte' ? 'Regenerar DTEs' : `${item.label} (${perm})`;
-                            groups[groupId].permissions.push({ id: perm, label: permLabel });
+                            const permLabel = SPECIAL_PERM_LABELS[perm] || `${item.label} (${perm})`;
+                            groups[groupId].permissions.push({ 
+                                id: perm, 
+                                label: permLabel,
+                                isReport: false,
+                                isSpecial: true,
+                                sort_order: (item.sort_order ?? 0) + 100
+                            });
                         }
                     });
                 }
@@ -419,7 +469,13 @@ export function useMenuPermissions() {
         const indGroup = Object.values(groups).find(g => g.label?.includes('Industrial') || g.label?.includes('Huevo'));
         if (indGroup) {
             if (!indGroup.permissions.some(p => p.id === 'manage_production_calendar')) {
-                indGroup.permissions.push({ id: 'manage_production_calendar', label: 'Calendario de Producción' });
+                indGroup.permissions.push({ 
+                    id: 'manage_production_calendar', 
+                    label: 'Calendario de Producción',
+                    isReport: false,
+                    isSpecial: false,
+                    sort_order: 3
+                });
                 seen['manage_production_calendar'] = true;
             }
         }
@@ -431,20 +487,52 @@ export function useMenuPermissions() {
                 id: 'crm-group',
                 label: 'CRM',
                 icon: 'Handshake',
+                sort_order: 130,
                 permissions: []
             };
             groups['crm-group'] = crmGroup;
         }
 
         if (!crmGroup.permissions.some(p => p.id === 'manage_customer_agreements')) {
-            crmGroup.permissions.push({ id: 'manage_customer_agreements', label: 'Acuerdos con Clientes' });
+            crmGroup.permissions.push({ 
+                id: 'manage_customer_agreements', 
+                label: 'Acuerdos con Clientes',
+                isReport: false,
+                isSpecial: false,
+                sort_order: 10
+            });
             seen['manage_customer_agreements'] = true;
         }
 
         if (!crmGroup.permissions.some(p => p.id === 'manage_crm_settings')) {
-            crmGroup.permissions.push({ id: 'manage_crm_settings', label: 'Configuración de CRM' });
+            crmGroup.permissions.push({ 
+                id: 'manage_crm_settings', 
+                label: 'Configuración de CRM',
+                isReport: false,
+                isSpecial: false,
+                sort_order: 20
+            });
             seen['manage_crm_settings'] = true;
         }
+
+        // Jerarquía estricta dentro de cada grupo:
+        // 1. Opciones normales del menú
+        // 2. Reportes
+        // 3. Permisos especiales
+        const getPriority = (p) => {
+            if (p.isSpecial) return 3;
+            if (p.isReport) return 2;
+            return 1;
+        };
+
+        Object.values(groups).forEach(group => {
+            group.permissions.sort((a, b) => {
+                const pA = getPriority(a);
+                const pB = getPriority(b);
+                if (pA !== pB) return pA - pB;
+                return (a.sort_order ?? 0) - (b.sort_order ?? 0) || (a.label || '').localeCompare(b.label || '');
+            });
+        });
 
         return Object.values(groups);
     }, [flatItems]);
