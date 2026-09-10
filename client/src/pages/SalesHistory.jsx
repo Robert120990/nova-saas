@@ -86,10 +86,13 @@ const SalesHistory = () => {
         numDocSolicita: ''
     });
     const [isRetransmitModalOpen, setIsRetransmitModalOpen] = useState(false);
-const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
-const [regenerateSaleId, setRegenerateSaleId] = useState(null);
-const [regenerateLoading, setRegenerateLoading] = useState(false);
-const [updateDateTime, setUpdateDateTime] = useState(false);
+    const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+    const [regenerateSale, setRegenerateSale] = useState(null);
+    const [regenerateLoading, setRegenerateLoading] = useState(false);
+    const [updateDateTime, setUpdateDateTime] = useState(false);
+    const [openShifts, setOpenShifts] = useState([]);
+    const [targetShiftId, setTargetShiftId] = useState('');
+    const [loadingShifts, setLoadingShifts] = useState(false);
     const [retransmitForm, setRetransmitForm] = useState({
         nombre: '',
         nit: '',
@@ -292,19 +295,77 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
         ));
     };
 
-    const handleRegenerateDTE = (sale) => {
-        const today = new Date().toISOString().slice(0, 10);
-        const origDate = sale.fecha_emision?.slice(0, 10);
-        setUpdateDateTime(origDate !== today);
-        setRegenerateSaleId(sale.id);
-        setIsRegenerateModalOpen(true);
+    const handleRegenerateDTE = async (sale) => {
+        setRegenerateSale(sale);
+        const isAccepted = sale.dte_status === 'ACCEPTED' || Boolean(sale.sello_recepcion);
+
+        if (isAccepted) {
+            setUpdateDateTime(true);
+            setLoadingShifts(true);
+            setOpenShifts([]);
+            setTargetShiftId('');
+            setIsRegenerateModalOpen(true);
+            try {
+                const res = await axios.get('/api/shifts', {
+                    params: {
+                        status: 'open',
+                        branch_id: sale.branch_id,
+                        limit: 50
+                    }
+                });
+                const shifts = res.data?.data || [];
+                setOpenShifts(shifts);
+                if (shifts.length === 1) {
+                    setTargetShiftId(String(shifts[0].id));
+                } else if (shifts.length > 1) {
+                    const myShift = shifts.find(s => s.seller_id === currentUser?.seller_id) || shifts[0];
+                    setTargetShiftId(myShift ? String(myShift.id) : '');
+                } else {
+                    setTargetShiftId('');
+                }
+            } catch (err) {
+                console.error('Error al consultar turnos abiertos:', err);
+                setOpenShifts([]);
+                setTargetShiftId('');
+            } finally {
+                setLoadingShifts(false);
+            }
+        } else {
+            const today = new Date().toISOString().slice(0, 10);
+            const origDate = sale.fecha_emision?.slice(0, 10);
+            setUpdateDateTime(origDate !== today);
+            setOpenShifts([]);
+            setTargetShiftId('');
+            setIsRegenerateModalOpen(true);
+        }
     };
 
     const handleRegenerateConfirm = async () => {
+        if (!regenerateSale) return;
+        const isAccepted = regenerateSale.dte_status === 'ACCEPTED' || Boolean(regenerateSale.sello_recepcion);
+
+        if (isAccepted) {
+            if (openShifts.length === 0) {
+                toast.error('No hay ningún turno abierto en la sucursal. Debe abrir un turno antes de proceder.');
+                return;
+            }
+            if (!targetShiftId) {
+                toast.error('Debe seleccionar el turno de caja al cual se ingresará la nueva venta.');
+                return;
+            }
+        }
+
         setRegenerateLoading(true);
         try {
-            const res = await axios.post(`/api/sales/${regenerateSaleId}/regenerate-dte`, { updateDateTime });
-            toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
+            const res = await axios.post(`/api/sales/${regenerateSale.id}/regenerate-dte`, { 
+                updateDateTime,
+                target_shift_id: targetShiftId || null
+            });
+            if (res.data.isNewSale) {
+                toast.success(`Nueva venta #${res.data.newSaleId} creada y DTE emitido exitosamente`);
+            } else {
+                toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
+            }
             setIsRegenerateModalOpen(false);
             queryClient.invalidateQueries(['sales-history']);
         } catch (error) {
@@ -884,39 +945,140 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
             <Modal
                 isOpen={isRegenerateModalOpen}
                 onClose={() => setIsRegenerateModalOpen(false)}
-                title="Regenerar DTE"
+                title={regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) 
+                    ? "Regenerar DTE — Emisión de Nueva Venta" 
+                    : "Regenerar DTE"}
                 maxWidth="max-w-lg"
             >
-                <div className="space-y-6">
-                    <div className="flex items-center gap-3 p-4 bg-indigo-50 text-indigo-800 rounded-3xl border border-indigo-100 text-xs">
-                        <RefreshCcw size={20} className="shrink-0" />
-                        <div>
-                            <p className="font-black uppercase tracking-widest mb-1">Confirmar Regeneración</p>
-                            <p className="font-medium text-Spanish">Se creará un nuevo DTE con un nuevo número de control y código de generación ante Hacienda. El registro anterior quedará totalmente desvinculado de esta venta y archivado para auditoría.</p>
+                <div className="space-y-5">
+                    {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) ? (
+                        <div className="flex items-start gap-3 p-4 bg-indigo-50/80 text-indigo-950 rounded-3xl border border-indigo-100 text-xs">
+                            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shrink-0 mt-0.5 shadow-sm shadow-indigo-200">
+                                <RefreshCcw size={18} />
+                            </div>
+                            <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="font-black uppercase tracking-wider text-indigo-950 text-[11px]">
+                                        DTE Original Aceptado por Hacienda
+                                    </p>
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[9px] font-bold">Aceptado</span>
+                                </div>
+                                <p className="text-slate-600 text-[11px] leading-relaxed">
+                                    Esta venta ya cuenta con un DTE validado con N° Control <span className="font-mono font-bold text-indigo-700">{regenerateSale.numero_control || '---'}</span>.
+                                </p>
+                                <div className="pt-2 border-t border-indigo-100/70 text-[11px] text-slate-700 space-y-1">
+                                    <p className="font-bold text-indigo-900 uppercase text-[9.5px] tracking-wider">
+                                        Acciones que se ejecutarán en el sistema:
+                                    </p>
+                                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+                                        <li>Se creará un <b>nuevo registro de venta</b> duplicando los productos y valores de la operación.</li>
+                                        <li>Se <b>descontará nuevamente el inventario</b> y se generarán los movimientos de salida en Kardex.</li>
+                                        <li>Se emitirá un <b>nuevo DTE en tiempo real</b> ante Hacienda con fecha y hora actual.</li>
+                                        <li>La nueva venta se imputará al <b>turno de caja</b> seleccionado.</li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-
-                    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
-                        <div>
-                            <p className="text-xs font-bold text-slate-700">Actualizar fecha y hora</p>
-                            <p className="text-[10px] text-slate-400">
-                                {updateDateTime
-                                    ? 'Se usará la fecha y hora actual (hoy difiere del DTE original)'
-                                    : 'Se preservará la fecha y hora original del DTE'}
-                            </p>
+                    ) : (
+                        <div className="flex items-center gap-3 p-4 bg-amber-50 text-amber-800 rounded-3xl border border-amber-100 text-xs">
+                            <RefreshCcw size={20} className="shrink-0 text-amber-600" />
+                            <div>
+                                <p className="font-black uppercase tracking-widest mb-1 text-amber-900">Confirmar Regeneración</p>
+                                <p className="font-medium text-Spanish text-amber-800">
+                                    El DTE previo no fue aceptado por Hacienda. Se generará un nuevo número de control y código de generación sobre la misma venta, conservando el registro contable y de inventario existente.
+                                </p>
+                            </div>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={updateDateTime}
-                                onChange={(e) => setUpdateDateTime(e.target.checked)}
-                                className="sr-only peer"
-                            />
-                            <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
-                        </label>
-                    </div>
+                    )}
 
-                    <div className="flex items-center justify-end gap-3 pt-6">
+                    {/* Fecha y hora */}
+                    {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) ? (
+                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
+                            <div>
+                                <div className="flex items-center gap-1.5">
+                                    <p className="text-xs font-bold text-slate-800">Actualizar fecha y hora actual</p>
+                                    <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 rounded">Obligatorio MH</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500">
+                                    Se usará la fecha y hora actual del sistema en tiempo real para la nueva emisión legal.
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center opacity-80 cursor-not-allowed">
+                                <input
+                                    type="checkbox"
+                                    checked={true}
+                                    disabled={true}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-indigo-600 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-[18px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                            </label>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
+                            <div>
+                                <p className="text-xs font-bold text-slate-700">Actualizar fecha y hora</p>
+                                <p className="text-[10px] text-slate-400">
+                                    {updateDateTime
+                                        ? 'Se usará la fecha y hora actual (hoy difiere del DTE original)'
+                                        : 'Se preservará la fecha y hora original del DTE'}
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={updateDateTime}
+                                    onChange={(e) => setUpdateDateTime(e.target.checked)}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                            </label>
+                        </div>
+                    )}
+
+                    {/* Selector de Turno si ya está aceptado */}
+                    {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) && (
+                        <div className="space-y-2">
+                            <label className="block text-[11px] font-black uppercase tracking-widest text-slate-600">
+                                Turno de Caja para la Nueva Venta <span className="text-rose-500">*</span>
+                            </label>
+                            {loadingShifts ? (
+                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500">
+                                    <div className="w-4 h-4 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+                                    <span>Consultando turnos abiertos de la sucursal...</span>
+                                </div>
+                            ) : openShifts.length > 0 ? (
+                                <div className="space-y-1.5">
+                                    <select
+                                        value={targetShiftId}
+                                        onChange={(e) => setTargetShiftId(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all cursor-pointer"
+                                    >
+                                        <option value="">-- Seleccione el turno destino --</option>
+                                        {openShifts.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                Turno #{s.shift_number || s.id} — {s.pos_name || 'POS'} — {s.seller_name || 'Cajero'} ({s.status === 'open' ? 'Abierto' : s.status})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-slate-400 pl-1">
+                                        La nueva venta sumará a las ventas en efectivo/tarjeta del turno seleccionado.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                        <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                                        <span>No hay ningún turno abierto en esta sucursal</span>
+                                    </div>
+                                    <p className="text-[11px] text-rose-700 leading-relaxed">
+                                        Para poder registrar y emitir esta nueva venta en el sistema, <b>debe abrir un turno de caja</b> previamente en la sucursal <b>{regenerateSale.branch_name || 'actual'}</b>.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                         <button 
                             type="button"
                             onClick={() => setIsRegenerateModalOpen(false)}
@@ -928,15 +1090,25 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                         <button 
                             type="button"
                             onClick={handleRegenerateConfirm}
-                            className="px-8 py-2.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
-                            disabled={regenerateLoading}
+                            className="px-8 py-2.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                            disabled={
+                                regenerateLoading || 
+                                loadingShifts || 
+                                Boolean(
+                                    regenerateSale && 
+                                    (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) && 
+                                    (!targetShiftId || openShifts.length === 0)
+                                )
+                            }
                         >
                             {regenerateLoading ? (
                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <RefreshCcw size={16} />
                             )}
-                            Confirmar
+                            {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion)
+                                ? 'Crear Nueva Venta y Emitir DTE'
+                                : 'Confirmar Regeneración'}
                         </button>
                     </div>
                 </div>
