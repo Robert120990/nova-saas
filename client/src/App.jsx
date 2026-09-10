@@ -64,7 +64,7 @@ import SalesByCustomerReport from './pages/SalesByCustomerReport';
 import Contingency from './pages/Contingency';
 import Eret from './pages/Eret';
 import AuditLog from './pages/AuditLog';
-import LogViewer from './pages/LogViewer';
+import ServerMetrics from './pages/ServerMetrics';
 import ConnectedUsers from './pages/ConnectedUsers';
 import Changelog from './pages/Changelog';
 import KeyboardShortcuts from './pages/KeyboardShortcuts';
@@ -240,7 +240,8 @@ function App() {
                         <Route path="/user-access" element={<UserAccess />} />
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
-                        <Route path="/configuracion/logs" element={<LogViewer />} />
+                        <Route path="/configuracion/servidor" element={<ServerMetrics />} />
+                        <Route path="/configuracion/logs" element={<Navigate to="/configuracion/servidor" replace />} />
                         <Route path="/configuracion/notificaciones" element={<NotificacionesConfig />} />
                         <Route path="/configuracion/whatsapp" element={<WhatsAppConfig />} />
                         <Route path="/configuracion/modulos-empresa" element={<CompanyModules />} />

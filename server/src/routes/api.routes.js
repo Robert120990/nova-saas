@@ -19,6 +19,7 @@ const providerController = require('../controllers/provider.controller');
 const catalogController = require('../controllers/catalog.controller');
 const smtpController = require('../controllers/smtp.controller');
 const settingsController = require('../controllers/settings.controller');
+const systemMetricsController = require('../controllers/systemMetrics.controller');
 const aiRoutes = require('./ai.routes');
 const inventoryController = require('../controllers/inventory.controller');
 const inventoryAdjustmentController = require('../controllers/inventoryAdjustment.controller');
@@ -154,6 +155,9 @@ router.post('/users/sessions/:id/terminate', userController.terminateSession);
 
 // Changelog (global, no tenant scope)
 router.get('/changelog', changelogController.getChangelog);
+
+// System Metrics (Monitor del Servidor - global, no tenant scope)
+router.get('/system/metrics', verifyToken, systemMetricsController.getSystemMetrics);
 
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
