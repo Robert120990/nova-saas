@@ -18,7 +18,7 @@ async function authenticate(apiUser, apiPassword, ambiente) {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
-            timeout: 15000
+            timeout: 5000
         });
 
         if (response.data && response.data.status === 'OK') {
@@ -70,7 +70,8 @@ async function transmitDTE(token, signedDte, dteInfo) {
             headers: {
                 'Authorization': token,
                 'Content-Type': 'application/json'
-            }
+            },
+            timeout: 5000
         });
 
         return {
@@ -89,4 +90,44 @@ async function transmitDTE(token, signedDte, dteInfo) {
     }
 }
 
-module.exports = { authenticate, transmitDTE };
+async function consultDTE(token, dteInfo, ambiente) {
+    const consultUrl = getEndpoint('consult', ambiente);
+
+    try {
+        const payload = {
+            nitEmisor: dteInfo.nitEmisor,
+            tdte: dteInfo.tipoDte,
+            codigoGeneracion: dteInfo.codigoGeneracion
+        };
+
+        console.log(`[MH-Consult] Verificando estado de DTE ${dteInfo.codigoGeneracion} (${dteInfo.tipoDte}) en MH...`);
+
+        const response = await axios.post(consultUrl, payload, {
+            headers: {
+                'Authorization': token,
+                'Content-Type': 'application/json'
+            },
+            timeout: 4000
+        });
+
+        const isProcessed = response.data && (response.data.estado === 'PROCESADO' || Boolean(response.data.selloRecibido));
+
+        return {
+            success: true,
+            processed: isProcessed,
+            status: response.data?.estado,
+            selloRecepcion: response.data?.selloRecibido || null,
+            fhProcesamiento: response.data?.fhProcesamiento || null,
+            data: response.data
+        };
+    } catch (error) {
+        console.warn(`[MH-Consult] Consulta de DTE ${dteInfo.codigoGeneracion} no exitosa:`, error.response ? error.response.data : error.message);
+        return {
+            success: false,
+            processed: false,
+            error: error.response ? error.response.data : error.message
+        };
+    }
+}
+
+module.exports = { authenticate, transmitDTE, consultDTE };

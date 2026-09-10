@@ -85,6 +85,8 @@ async function processQueue() {
         } catch (error) {
             console.error(`Error processing task ${task.id}:`, error.message);
             
+            const attempts = task.attempts + 1;
+
             // Check if it's a connectivity error to Hacienda
             const isConnectivityError = error.message.includes('ECONNREFUSED') || 
                                        error.message.includes('ETIMEDOUT') || 
@@ -92,7 +94,8 @@ async function processQueue() {
                                        error.message.includes('502') ||
                                        error.message.includes('503');
 
-            if (isConnectivityError) {
+            // Solo desviar a contingencia si ya se agotaron los reintentos permitidos de la cola
+            if (isConnectivityError && attempts >= task.max_attempts) {
                 const contingencyService = require('../contingency/contingencyService');
                 await contingencyService.addToContingencyQueue({
                     codigoGeneracion: task.codigo_generacion,
@@ -101,11 +104,9 @@ async function processQueue() {
                     jsonFirmado: task.json_firmado
                 });
                 
-                await pool.query('UPDATE transmission_queue SET status = "FAILED", last_error = "CONTINGENCIA" WHERE id = ?', [task.id]);
+                await pool.query('UPDATE transmission_queue SET status = "FAILED", last_error = "CONTINGENCIA", attempts = ? WHERE id = ?', [attempts, task.id]);
                 return; // Stop processing this task here, it is now in contingency queue
             }
-
-            const attempts = task.attempts + 1;
             const backoffMinutes = [1, 5, 15, 60, 360][attempts - 1] || 1440;
             const nextAttemptAt = new Date(Date.now() + backoffMinutes * 60000);
 

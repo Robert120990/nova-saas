@@ -128,24 +128,56 @@ async function emit(req, res) {
             });
         }
 
-        // 5. FLUJO NORMAL: Intentar transmitir a Hacienda de forma síncrona
+        // 5. FLUJO NORMAL: Política de reintentos y transmisión síncrona a Hacienda (Normativa MH Secc. 3.3)
         let isConnectivityFailure = false;
         let connectivityMessage = '';
-
-        console.log(`[HaciendaAuth] Authentication request for company ${company[0].nit}...`);
-        const auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
-        if (!auth.success) {
-            if (isNetworkError(auth.message)) {
-                isConnectivityFailure = true;
-                connectivityMessage = auth.message;
-            } else {
-                throw new Error(`Error MH Auth: ${auth.message}`);
-            }
-        }
-
         let txResult = null;
-        if (!isConnectivityFailure) {
-            console.log(`[Transmission] JWS identified (starting with): ${jwsString.substring(0, 50)}...`);
+        let auth = null;
+
+        const MAX_ATTEMPTS = 3; // 1 intento inicial + hasta 2 reintentos normativos
+
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            console.log(`[Transmission] Intento ${attempt}/${MAX_ATTEMPTS} para DTE ${codigoGeneracion} (Empresa: ${req.company_id})...`);
+
+            // Autenticación con Hacienda si aún no tenemos token
+            if (!auth || !auth.success) {
+                console.log(`[HaciendaAuth] Authentication request for company ${company[0].nit}...`);
+                auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
+                if (!auth.success) {
+                    if (isNetworkError(auth.message)) {
+                        isConnectivityFailure = true;
+                        connectivityMessage = auth.message;
+                        console.warn(`[HaciendaAuth] Falla de red en autenticación (Intento ${attempt}/${MAX_ATTEMPTS}): ${connectivityMessage}`);
+                        if (attempt < MAX_ATTEMPTS) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            continue;
+                        }
+                        break;
+                    } else {
+                        throw new Error(`Error MH Auth: ${auth.message}`);
+                    }
+                }
+            }
+
+            // En los reintentos (intento > 1), consultar estado primero ante MH para evitar duplicidad de correlativos
+            if (attempt > 1 && auth.success) {
+                console.log(`[Transmission] Consultando estado previo en MH antes de reintentar DTE ${codigoGeneracion}...`);
+                const consultResult = await transmissionService.consultDTE(auth.token, {
+                    nitEmisor: company[0].nit,
+                    tipoDte: tipoDte,
+                    codigoGeneracion: codigoGeneracion
+                }, ambiente);
+
+                if (consultResult.success && consultResult.processed) {
+                    console.log(`[Transmission] ✅ DTE ${codigoGeneracion} ya había sido procesado exitosamente por MH.`);
+                    txResult = consultResult;
+                    isConnectivityFailure = false;
+                    break;
+                }
+            }
+
+            // Transmisión a Hacienda
+            console.log(`[Transmission] Enviando DTE a MH (Intento ${attempt}/${MAX_ATTEMPTS}): ${jwsString.substring(0, 50)}...`);
             txResult = await transmissionService.transmitDTE(auth.token, jwsString, {
                 ambiente: getMHAmbiente(ambiente),
                 tipoDte: tipoDte,
@@ -153,9 +185,39 @@ async function emit(req, res) {
                 version: getSchemaVersion(tipoDte)
             });
 
-            if (!txResult.success && isNetworkError(txResult.error)) {
-                isConnectivityFailure = true;
-                connectivityMessage = typeof txResult.error === 'string' ? txResult.error : JSON.stringify(txResult.error);
+            // Si la transmisión fue aceptada o rechazada por validación tributaria (no por fallo de red)
+            if (txResult.success || !isNetworkError(txResult.error)) {
+                isConnectivityFailure = false;
+                break;
+            }
+
+            // Si fue error de conectividad/timeout
+            isConnectivityFailure = true;
+            connectivityMessage = typeof txResult.error === 'string' ? txResult.error : JSON.stringify(txResult.error);
+            console.warn(`[Transmission] Fallo de conectividad con MH (Intento ${attempt}/${MAX_ATTEMPTS}): ${connectivityMessage}`);
+
+            if (attempt < MAX_ATTEMPTS) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        // Verificación defensiva final si agotó los intentos con falla de red pero MH pudo haberlo procesado
+        if (isConnectivityFailure && auth && auth.success) {
+            try {
+                console.log(`[Transmission] Verificación final de estado en MH antes de contingencia para DTE ${codigoGeneracion}...`);
+                const finalConsult = await transmissionService.consultDTE(auth.token, {
+                    nitEmisor: company[0].nit,
+                    tipoDte: tipoDte,
+                    codigoGeneracion: codigoGeneracion
+                }, ambiente);
+
+                if (finalConsult.success && finalConsult.processed) {
+                    console.log(`[Transmission] ✅ DTE ${codigoGeneracion} confirmado recibido por MH en verificación final.`);
+                    txResult = finalConsult;
+                    isConnectivityFailure = false;
+                }
+            } catch (e) {
+                console.warn(`[Transmission] Error en consulta final: ${e.message}`);
             }
         }
 
