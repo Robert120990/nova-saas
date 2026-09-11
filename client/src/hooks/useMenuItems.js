@@ -153,8 +153,8 @@ function buildTree(items) {
                 id: 'virtual-inventory-valuation',
                 label: 'Valorización y Márgenes',
                 path: '/inventario/reportes/valorizacion',
-                permission: 'view_stock_report',
-                permission_key: 'view_stock_report',
+                permission: 'view_inventory_valuation_report',
+                permission_key: 'view_inventory_valuation_report',
                 hideInMenu: false,
                 icon: iconMap.TrendingUp || iconMap.Circle,
                 children: []
@@ -165,8 +165,8 @@ function buildTree(items) {
                 id: 'virtual-inventory-turnover',
                 label: 'Rotación y Obsolescencia',
                 path: '/inventario/reportes/rotacion',
-                permission: 'view_stock_report',
-                permission_key: 'view_stock_report',
+                permission: 'view_inventory_turnover_report',
+                permission_key: 'view_inventory_turnover_report',
                 hideInMenu: false,
                 icon: iconMap.Clock || iconMap.Circle,
                 children: []
@@ -202,8 +202,8 @@ function buildTree(items) {
             id: 'virtual-purchase-checks-report',
             label: 'Reporte de Cheques de Contado',
             path: '/compras/reportes/chq-contado',
-            permission: 'manage_purchase_checks',
-            permission_key: 'manage_purchase_checks',
+            permission: 'view_purchase_checks_report',
+            permission_key: 'view_purchase_checks_report',
             hideInMenu: false,
             icon: iconMap.CreditCard || iconMap.Circle,
             children: []
@@ -242,6 +242,34 @@ function buildTree(items) {
             permission_key: 'view_gas_lubricants_report',
             hideInMenu: false,
             icon: iconMap.Droplets || iconMap.Circle,
+            children: []
+        });
+    }
+
+    // Asegurar Reporte de Complementarias Emitidas en Reportes de Gasolinera
+    if (gasReportsNode && !gasReportsNode.children.some(c => c.path === '/gas-station/reporte-complementarias')) {
+        gasReportsNode.children.push({
+            id: 'virtual-gas-complementarias-report',
+            label: 'Complementarias Emitidas',
+            path: '/gas-station/reporte-complementarias',
+            permission: 'view_gas_complementarias_report',
+            permission_key: 'view_gas_complementarias_report',
+            hideInMenu: false,
+            icon: iconMap.FileCheck || iconMap.Circle,
+            children: []
+        });
+    }
+
+    // Asegurar Reporte Analítico de Ventas y Proyección en Reportes de Gasolinera
+    if (gasReportsNode && !gasReportsNode.children.some(c => c.path === '/gas-station/reporte-analitico-ventas')) {
+        gasReportsNode.children.push({
+            id: 'virtual-gas-ventas-analytics-report',
+            label: 'Ventas Analíticas y Proyección',
+            path: '/gas-station/reporte-analitico-ventas',
+            permission: 'view_gas_ventas_analytics',
+            permission_key: 'view_gas_ventas_analytics',
+            hideInMenu: false,
+            icon: iconMap.TrendingUp || iconMap.Circle,
             children: []
         });
     }

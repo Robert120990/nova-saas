@@ -126,6 +126,8 @@ import SalesRemesaDeliveries from './pages/SalesRemesaDeliveries';
 import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
 import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
 import GasLubricantsReport from './pages/GasLubricantsReport';
+import GasComplementariasReport from './pages/GasComplementariasReport';
+import GasVentasAnalyticsReport from './pages/GasVentasAnalyticsReport';
 
 // Control de Pozo Pages
 import PozoServicios from './pages/PozoServicios';
@@ -338,6 +340,8 @@ function App() {
                         <Route path="/gas-station/reporte-acumulado-diario" element={<GasAccumulatedDailyReport />} />
                         <Route path="/gas-station/reporte-resumen-gln-vendidos" element={<FuelSalesSummaryReport />} />
                         <Route path="/gas-station/reporte-lubricantes-vendidos" element={<GasLubricantsReport />} />
+                        <Route path="/gas-station/reporte-complementarias" element={<GasComplementariasReport />} />
+                        <Route path="/gas-station/reporte-analitico-ventas" element={<GasVentasAnalyticsReport />} />
 
                         {/* Control de Pozo */}
                         <Route path="/pozo/servicios" element={<PozoServicios />} />

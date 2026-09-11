@@ -793,6 +793,10 @@ router.get('/gas-station/reports/fuel-inventory/pdf', gasReporteController.getFu
 router.get('/gas-station/reports/galonaje-vendido/pdf', gasReporteController.getGalonajeVendidoPDF);
 router.get('/gas-station/reports/fuel-sales-summary/pdf', gasReporteController.getFuelSalesSummaryPDF);
 router.get('/gas-station/reports/lubricants-sold/pdf', gasReporteController.getLubricantsSoldPDF);
+router.get('/gas-station/reports/complementarias/data', gasReporteController.getComplementariasReportData);
+router.get('/gas-station/reports/complementarias/pdf', gasReporteController.getComplementariasReportPDF);
+router.get('/gas-station/reports/ventas-analytics/data', gasReporteController.getVentasLecturasAnalyticsData);
+router.get('/gas-station/reports/ventas-analytics/pdf', gasReporteController.getVentasLecturasAnalyticsPDF);
 
 // Gas Station - Remesa Deliveries
 router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);

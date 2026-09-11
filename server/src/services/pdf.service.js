@@ -4922,6 +4922,403 @@ const generateLubricantsSoldPDF = async (data) => {
     return await getBuffer();
 };
 
+const generateComplementariasPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const isDetailed = data.include_details !== false && data.modalidad !== 'resumido';
+    const title = isDetailed 
+        ? 'REPORTE DETALLADO DE COMPLEMENTARIAS EMITIDAS'
+        : 'REPORTE RESUMIDO DE COMPLEMENTARIAS EMITIDAS';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}${data.turno && data.turno !== 'all' ? `    |    TURNO: ${data.turno}` : ''}`;
+
+    const startX = 30;
+    const pageW = 732;
+
+    const fmtQty = (v, dec = 2) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+
+    const groupedByDay = data.groupedByDay || [];
+    const grandTotals = data.grandTotals || { dtes_count: 0, galones: 0, gravado: 0, iva: 0, fovial: 0, cotrans: 0, total: 0 };
+    const summaryByProduct = data.summaryByProduct || [];
+
+    const summaryByDay = data.summaryByDay || (data.groupedByDay || []).map(day => {
+        const shifts = day.shifts || [];
+        const branchNames = [...new Set(shifts.map(s => s.branch_name).filter(Boolean))].join(', ');
+        const turnosArr = [...new Set(shifts.map(s => s.turno))].sort((a, b) => a - b);
+        const turnosStr = turnosArr.length > 0 ? (turnosArr.length === 1 ? `Turno ${turnosArr[0]}` : `Turnos ${turnosArr.join(', ')}`) : 'Turno 1';
+
+        return {
+            fecha: day.fecha,
+            sucursal: branchNames || 'Sin Sucursal',
+            turnos: turnosStr,
+            totals: day.totals,
+            products: Object.values(day.products || {})
+        };
+    });
+
+    // --- Column configurations ---
+
+    // 1. Day Consolidated Summary Table Columns (width sum = 732, startX = 30 to 762)
+    const dayColX = {
+        fecha: 30,
+        sucursal: 98,
+        turnos: 248,
+        dtes: 314,
+        galones: 370,
+        gravado: 446,
+        iva: 522,
+        fovial: 586,
+        cotrans: 644,
+        total: 700
+    };
+    const dayColW = {
+        fecha: 66,
+        sucursal: 148,
+        turnos: 64,
+        dtes: 54,
+        galones: 74,
+        gravado: 74,
+        iva: 62,
+        fovial: 56,
+        cotrans: 54,
+        total: 62
+    };
+
+    const drawDaySummaryHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', dayColX.fecha, y + 3, { width: dayColW.fecha, align: 'center', lineBreak: false });
+        doc.text('SUCURSAL', dayColX.sucursal, y + 3, { width: dayColW.sucursal, lineBreak: false });
+        doc.text('TURNOS', dayColX.turnos, y + 3, { width: dayColW.turnos, align: 'center', lineBreak: false });
+        doc.text('CANT. DTES', dayColX.dtes, y + 3, { width: dayColW.dtes - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL GALONES', dayColX.galones, y + 3, { width: dayColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text('VENTA GRAVADA', dayColX.gravado, y + 3, { width: dayColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text('IVA 13%', dayColX.iva, y + 3, { width: dayColW.iva - 4, align: 'right', lineBreak: false });
+        doc.text('FOVIAL', dayColX.fovial, y + 3, { width: dayColW.fovial - 4, align: 'right', lineBreak: false });
+        doc.text('COTRANS', dayColX.cotrans, y + 3, { width: dayColW.cotrans - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL ($)', dayColX.total, y + 3, { width: dayColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
+
+    // 2. DTE Detail Table Columns (width sum = 732: 36 + 114 + 138 + 94 + 50 + 58 + 52 + 50 + 50 + 72 = 714, comfortably within 732)
+    const detColX = {
+        hora: 30,
+        numero_control: 68,
+        codigo_generacion: 184,
+        producto: 324,
+        galones: 420,
+        gravado: 472,
+        iva: 532,
+        fovial: 586,
+        cotrans: 638,
+        total: 690
+    };
+    const detColW = {
+        hora: 36,
+        numero_control: 114,
+        codigo_generacion: 138,
+        producto: 94,
+        galones: 50,
+        gravado: 58,
+        iva: 52,
+        fovial: 50,
+        cotrans: 50,
+        total: 72
+    };
+
+    const drawDetailTableHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('HORA', detColX.hora, y + 3, { width: detColW.hora, align: 'center', lineBreak: false });
+        doc.text('N° CONTROL DTE', detColX.numero_control, y + 3, { width: detColW.numero_control, lineBreak: false });
+        doc.text('CÓDIGO GENERACIÓN', detColX.codigo_generacion, y + 3, { width: detColW.codigo_generacion, lineBreak: false });
+        doc.text('COMBUSTIBLE', detColX.producto, y + 3, { width: detColW.producto, lineBreak: false });
+        doc.text('GALONES', detColX.galones, y + 3, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+        doc.text('GRAVADO', detColX.gravado, y + 3, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+        doc.text('IVA 13%', detColX.iva, y + 3, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+        doc.text('FOVIAL', detColX.fovial, y + 3, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+        doc.text('COTRANS', detColX.cotrans, y + 3, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+        doc.text('TOTAL ($)', detColX.total, y + 3, { width: detColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    const drawDaySummaryTable = () => {
+        if (currentY > 440) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('RESUMEN CONSOLIDADO POR DÍA', startX, currentY, { width: pageW, align: 'center', lineBreak: false });
+        currentY += 14;
+        currentY = drawDaySummaryHeader(currentY);
+
+        let rowCount = 0;
+        for (let di = 0; di < summaryByDay.length; di++) {
+            const d = summaryByDay[di];
+            if (currentY > 505) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                currentY = drawDaySummaryHeader(currentY);
+            }
+
+            if (rowCount % 2 === 1) doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+            rowCount++;
+
+            doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+            doc.text(reportPdfHelper.formatDate(d.fecha), dayColX.fecha, currentY + 1, { width: dayColW.fecha, align: 'center', lineBreak: false });
+            const suc = reportPdfHelper.fitText(doc, d.sucursal || 'Sin Sucursal', dayColW.sucursal - 4);
+            doc.text(suc, dayColX.sucursal, currentY + 1, { width: dayColW.sucursal, lineBreak: false });
+            doc.text(d.turnos || '', dayColX.turnos, currentY + 1, { width: dayColW.turnos, align: 'center', lineBreak: false });
+            doc.text(String(d.totals.dtes_count || 0), dayColX.dtes, currentY + 1, { width: dayColW.dtes - 4, align: 'right', lineBreak: false });
+            doc.text(fmtQty(d.totals.galones, 2), dayColX.galones, currentY + 1, { width: dayColW.galones - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.gravado), dayColX.gravado, currentY + 1, { width: dayColW.gravado - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.iva), dayColX.iva, currentY + 1, { width: dayColW.iva - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.fovial), dayColX.fovial, currentY + 1, { width: dayColW.fovial - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.cotrans), dayColX.cotrans, currentY + 1, { width: dayColW.cotrans - 4, align: 'right', lineBreak: false });
+            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(d.totals.total), dayColX.total, currentY + 1, { width: dayColW.total - 2, align: 'right', lineBreak: false });
+            currentY += 12;
+        }
+
+        if (currentY > 500) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawDaySummaryHeader(currentY);
+        }
+
+        doc.strokeColor('#94a3b8').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 2;
+        doc.rect(startX, currentY - 1, pageW, 14).fill('#e2e8f0');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL GENERAL COMPLEMENTARIAS EMITIDAS:', dayColX.fecha + 2, currentY + 3, { width: dayColW.fecha + dayColW.sucursal + dayColW.turnos - 4, lineBreak: false });
+        doc.text(String(grandTotals.dtes_count || 0), dayColX.dtes, currentY + 3, { width: dayColW.dtes - 4, align: 'right', lineBreak: false });
+        doc.text(fmtQty(grandTotals.galones, 2), dayColX.galones, currentY + 3, { width: dayColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.gravado), dayColX.gravado, currentY + 3, { width: dayColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.iva), dayColX.iva, currentY + 3, { width: dayColW.iva - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.fovial), dayColX.fovial, currentY + 3, { width: dayColW.fovial - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.cotrans), dayColX.cotrans, currentY + 3, { width: dayColW.cotrans - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.total), dayColX.total, currentY + 3, { width: dayColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#64748b').lineWidth(0.8).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+        currentY += 22;
+    };
+
+    if (isDetailed) {
+        // === RENDER DETAILED REPORT (BY DAY -> BY SHIFT -> INDIVIDUAL DTES) ===
+        for (let di = 0; di < groupedByDay.length; di++) {
+            const dayGroup = groupedByDay[di];
+            const shifts = dayGroup.shifts || [];
+
+            for (let si = 0; si < shifts.length; si++) {
+                const s = shifts[si];
+                const dtes = s.dtes || [];
+
+                if (currentY > 470) {
+                    doc.addPage();
+                    currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                }
+
+                // Shift Banner Header
+                doc.rect(startX, currentY, pageW, 15).fill('#e0e7ff');
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#3730a3');
+                doc.text(
+                    `FECHA TURNO: ${reportPdfHelper.formatDate(dayGroup.fecha)}   •   TURNO: ${s.turno}   •   SUCURSAL: ${s.branch_name.toUpperCase()}   •   CANTIDAD DTES: ${s.totals.dtes_count}`,
+                    startX + 8,
+                    currentY + 3.5,
+                    { width: pageW - 16, lineBreak: false }
+                );
+                currentY += 16;
+                currentY = drawDetailTableHeader(currentY);
+
+                // DTE Rows
+                for (let dti = 0; dti < dtes.length; dti++) {
+                    const dte = dtes[dti];
+                    if (currentY > 505) {
+                        doc.addPage();
+                        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                        doc.rect(startX, currentY, pageW, 14).fill('#e0e7ff');
+                        doc.fontSize(7).font('Helvetica-Bold').fillColor('#3730a3');
+                        doc.text(
+                            `FECHA: ${reportPdfHelper.formatDate(dayGroup.fecha)} • TURNO ${s.turno} • ${s.branch_name.toUpperCase()} (Continuación)`,
+                            startX + 8,
+                            currentY + 3,
+                            { width: pageW - 16, lineBreak: false }
+                        );
+                        currentY += 15;
+                        currentY = drawDetailTableHeader(currentY);
+                    }
+
+                    if (dti % 2 === 1) {
+                        doc.rect(startX, currentY - 1, pageW, 13).fill('#f8fafc');
+                    }
+
+                    const fuelDesc = dte.items.map(it => it.producto).join(', ') || 'Combustible';
+                    const totalGln = dte.items.reduce((acc, it) => acc + (it.galones || 0), 0);
+
+                    doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+                    doc.text(dte.hora_emision || '', detColX.hora, currentY + 2, { width: detColW.hora, align: 'center', lineBreak: false });
+                    
+                    doc.font('Helvetica-Bold').fontSize(6).text(dte.numero_control || '', detColX.numero_control, currentY + 2, { width: detColW.numero_control - 2, lineBreak: false });
+                    
+                    doc.font('Helvetica').fontSize(5.5).text(dte.codigo_generacion || '', detColX.codigo_generacion, currentY + 2.5, { width: detColW.codigo_generacion - 2, lineBreak: false });
+                    
+                    const fittedFuel = reportPdfHelper.fitText(doc, fuelDesc, detColW.producto - 4);
+                    doc.font('Helvetica').fontSize(6.5).text(fittedFuel, detColX.producto, currentY + 2, { width: detColW.producto, lineBreak: false });
+
+                    doc.text(fmtQty(totalGln, 2), detColX.galones, currentY + 2, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.total_gravado), detColX.gravado, currentY + 2, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.total_iva), detColX.iva, currentY + 2, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.fovial), detColX.fovial, currentY + 2, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.cotrans), detColX.cotrans, currentY + 2, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+                    doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(dte.total_pagar), detColX.total, currentY + 2, { width: detColW.total - 2, align: 'right', lineBreak: false });
+
+                    currentY += 13;
+                }
+
+                // Subtotal Turno Row
+                if (currentY > 505) {
+                    doc.addPage();
+                    currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                }
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+                doc.rect(startX, currentY, pageW, 13).fill('#f1f5f9');
+                doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#334155');
+                doc.text(`TOTAL TURNO ${s.turno} (${s.totals.dtes_count} DTEs):`, detColX.hora + 2, currentY + 2.5, { width: 380, lineBreak: false });
+                doc.text(fmtQty(s.totals.galones, 2), detColX.galones, currentY + 2.5, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.gravado), detColX.gravado, currentY + 2.5, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.iva), detColX.iva, currentY + 2.5, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.fovial), detColX.fovial, currentY + 2.5, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.cotrans), detColX.cotrans, currentY + 2.5, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.total), detColX.total, currentY + 2.5, { width: detColW.total - 2, align: 'right', lineBreak: false });
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+                currentY += 17;
+            }
+
+            // Subtotal Diario Row
+            if (currentY > 505) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            }
+            doc.strokeColor('#94a3b8').lineWidth(0.6).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+            doc.rect(startX, currentY, pageW, 14).fill('#e2e8f0');
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text(`SUBTOTAL DÍA (${reportPdfHelper.formatDate(dayGroup.fecha)}) (${dayGroup.totals.dtes_count} DTEs):`, detColX.hora + 2, currentY + 3, { width: 380, lineBreak: false });
+            doc.text(fmtQty(dayGroup.totals.galones, 2), detColX.galones, currentY + 3, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.gravado), detColX.gravado, currentY + 3, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.iva), detColX.iva, currentY + 3, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.fovial), detColX.fovial, currentY + 3, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.cotrans), detColX.cotrans, currentY + 3, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.total), detColX.total, currentY + 3, { width: detColW.total - 2, align: 'right', lineBreak: false });
+            doc.strokeColor('#94a3b8').lineWidth(0.6).moveTo(startX, currentY + 14).lineTo(startX + pageW, currentY + 14).stroke();
+            currentY += 19;
+        }
+
+        // Gran Total General
+        if (currentY > 495) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+        doc.strokeColor('#0f172a').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 2;
+        doc.rect(startX, currentY - 1, pageW, 16).fill('#cbd5e1');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(`TOTAL GENERAL COMPLEMENTARIAS (${grandTotals.dtes_count} DTEs):`, detColX.hora + 2, currentY + 3.5, { width: 380, lineBreak: false });
+        doc.text(fmtQty(grandTotals.galones, 2), detColX.galones, currentY + 3.5, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.gravado), detColX.gravado, currentY + 3.5, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.iva), detColX.iva, currentY + 3.5, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.fovial), detColX.fovial, currentY + 3.5, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.cotrans), detColX.cotrans, currentY + 3.5, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.total), detColX.total, currentY + 3.5, { width: detColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#0f172a').lineWidth(0.8).moveTo(startX, currentY + 15).lineTo(startX + pageW, currentY + 15).stroke();
+        currentY += 25;
+
+        // Cuadro Resumen Consolidado por Día
+        drawDaySummaryTable();
+    } else {
+        // === RENDER SUMMARY-ONLY REPORT ===
+        drawDaySummaryTable();
+    }
+
+    // === CUADRO RESUMEN CONSOLIDADO POR COMBUSTIBLE ===
+    const summaryTableHeight = 16 + 14 + (summaryByProduct.length * 12) + 20;
+    if (currentY + Math.min(summaryTableHeight, 140) > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('CUADRO RESUMEN CONSOLIDADO POR COMBUSTIBLE', startX, currentY, { width: pageW, align: 'center', lineBreak: false });
+    currentY += 14;
+
+    const fuelColX = {
+        producto: 60,
+        galones: 280,
+        gravado: 400,
+        total: 520,
+        porcentaje: 630
+    };
+    const fuelColW = {
+        producto: 210,
+        galones: 110,
+        gravado: 110,
+        total: 100,
+        porcentaje: 70
+    };
+
+    const drawFuelHeader = (y) => {
+        doc.rect(startX + 30, y, pageW - 60, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('COMBUSTIBLE', fuelColX.producto, y + 3, { width: fuelColW.producto, lineBreak: false });
+        doc.text('TOTAL GALONES', fuelColX.galones, y + 3, { width: fuelColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text('VENTA GRAVADA', fuelColX.gravado, y + 3, { width: fuelColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL FACTURADO', fuelColX.total, y + 3, { width: fuelColW.total - 4, align: 'right', lineBreak: false });
+        doc.text('% VOLUMEN', fuelColX.porcentaje, y + 3, { width: fuelColW.porcentaje - 4, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX + 30, y + 14).lineTo(startX + pageW - 30, y + 14).stroke();
+        return y + 15;
+    };
+
+    currentY = drawFuelHeader(currentY);
+
+    summaryByProduct.forEach((s, idx) => {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawFuelHeader(currentY);
+        }
+
+        if (idx % 2 === 1) doc.rect(startX + 30, currentY - 1, pageW - 60, 12).fill('#f8fafc');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).rect(startX + 30, currentY - 1, pageW - 60, 12).stroke();
+        doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+        doc.text(s.producto || '', fuelColX.producto, currentY + 2, { width: fuelColW.producto, lineBreak: false });
+        doc.text(fmtQty(s.galones, 2), fuelColX.galones, currentY + 2, { width: fuelColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.gravado || s.total), fuelColX.gravado, currentY + 2, { width: fuelColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.total), fuelColX.total, currentY + 2, { width: fuelColW.total - 4, align: 'right', lineBreak: false });
+        doc.text(`${(s.porcentaje || 0).toFixed(2)}%`, fuelColX.porcentaje, currentY + 2, { width: fuelColW.porcentaje - 4, align: 'right', lineBreak: false });
+        currentY += 12;
+    });
+
+    if (summaryByProduct.length > 0) {
+        doc.rect(startX + 30, currentY - 1, pageW - 60, 14).fill('#f1f5f9');
+        doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX + 30, currentY - 1, pageW - 60, 14).stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL:', fuelColX.producto, currentY + 2, { width: fuelColW.producto, lineBreak: false });
+        doc.text(fmtQty(grandTotals.galones, 2), fuelColX.galones, currentY + 2, { width: fuelColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.gravado), fuelColX.gravado, currentY + 2, { width: fuelColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.total), fuelColX.total, currentY + 2, { width: fuelColW.total - 4, align: 'right', lineBreak: false });
+        doc.text('100.00%', fuelColX.porcentaje, currentY + 2, { width: fuelColW.porcentaje - 4, align: 'right', lineBreak: false });
+        currentY += 20;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, grandTotals.dtes_count, 'Complementarias');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
 const generatePlanillaPDF = (data) => {
     return new Promise((resolve, reject) => {
         try {
@@ -5828,6 +6225,334 @@ const generateStoreProfitabilityPDF = async (data) => {
     return await getBuffer();
 };
 
+const generateVentasLecturasAnalyticsPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+
+    const title = 'ANÁLISIS DE VENTAS, PROYECCIÓN Y COMPARATIVO (SEGÚN LECTURAS)';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const compText = data.compare_mode === 'prev_month' ? 'MISMO PERÍODO MES ANTERIOR' : 'PERÍODO INMEDIATO ANTERIOR';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}    |    COMPARACIÓN: ${compText}`;
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    const startX = 30;
+    const pageW = 732;
+    const fmtQty = (v, dec = 2) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    const fmtPct = (v) => `${v >= 0 ? '+' : ''}${Number(v || 0).toFixed(1)}%`;
+
+    const summary = data.summary || {};
+    const curTot = summary.current_totals || {};
+    const prevTot = summary.prev_totals || {};
+    const variations = summary.variations || {};
+    const projection = data.projection || {};
+    const fuelComparison = data.fuel_comparison || [];
+    const weeklyPatterns = data.weekly_patterns || [];
+    const dailySeries = data.daily_series || [];
+
+    const drawTableHeader = (y, cols) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+        for (const col of cols) {
+            doc.text(col.title, col.x, y + 3.5, { width: col.w, align: col.align || 'left' });
+        }
+        return y + 15;
+    };
+
+    const drawSectionTitle = (y, titleText) => {
+        if (y > 510) {
+            doc.addPage();
+            y = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+        doc.fillColor('#1e293b').font('Helvetica-Bold').fontSize(8);
+        doc.text(titleText, startX, y, { width: pageW });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 11).lineTo(startX + pageW, y + 11).stroke();
+        return y + 15;
+    };
+
+    // 1. Resumen Ejecutivo y Proyección de Fin de Mes
+    currentY += 4;
+    currentY = drawSectionTitle(currentY, '1. RESUMEN EJECUTIVO Y PROYECCIÓN DE CIERRE DE MES');
+
+    const colWBox = 358;
+    const boxH = 68;
+
+    doc.rect(startX, currentY, colWBox, boxH).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7).text('COMPARATIVO DE VENTAS DEL PERÍODO', startX + 8, currentY + 6);
+
+    const b1Y = currentY + 18;
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b');
+    doc.text('Concepto', startX + 8, b1Y, { width: 90 });
+    doc.text('Período Actual', startX + 100, b1Y, { width: 75, align: 'right' });
+    doc.text('Período Anterior', startX + 180, b1Y, { width: 75, align: 'right' });
+    doc.text('Diferencia / Variación', startX + 260, b1Y, { width: 88, align: 'right' });
+
+    const drawKpiRow = (label, curVal, prevVal, diffVal, pctVal, isMoney, yRow) => {
+        doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
+        doc.text(label, startX + 8, yRow, { width: 90 });
+        doc.text(isMoney ? reportPdfHelper.fmt(curVal) : fmtQty(curVal), startX + 100, yRow, { width: 75, align: 'right' });
+        doc.text(isMoney ? reportPdfHelper.fmt(prevVal) : fmtQty(prevVal), startX + 180, yRow, { width: 75, align: 'right' });
+        const diffStr = `${isMoney ? reportPdfHelper.fmt(diffVal) : fmtQty(diffVal)} (${fmtPct(pctVal)})`;
+        doc.font('Helvetica-Bold').fillColor(diffVal >= 0 ? '#166534' : '#991b1b');
+        doc.text(diffStr, startX + 260, yRow, { width: 88, align: 'right' });
+    };
+
+    drawKpiRow('Galones Despachados:', curTot.galones, prevTot.galones, variations.diff_galones, variations.pct_galones, false, b1Y + 11);
+    drawKpiRow('Venta Total ($):', curTot.monto, prevTot.monto, variations.diff_monto, variations.pct_monto, true, b1Y + 22);
+    drawKpiRow('Precio Prom. Ponderado:', curTot.precio_promedio, prevTot.precio_promedio, variations.diff_precio, variations.pct_precio, true, b1Y + 33);
+    drawKpiRow('Ritmo Promedio Diario:', curTot.prom_diario_galones, prevTot.prom_diario_galones, (curTot.prom_diario_galones || 0) - (prevTot.prom_diario_galones || 0), prevTot.prom_diario_galones > 0 ? (((curTot.prom_diario_galones || 0) - prevTot.prom_diario_galones) / prevTot.prom_diario_galones) * 100 : 0, false, b1Y + 44);
+
+    const box2X = startX + colWBox + 16;
+    doc.rect(box2X, currentY, colWBox, boxH).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7).text(`PROYECCIÓN AL CIERRE DE MES (${(projection.month_name || '').toUpperCase()})`, box2X + 8, currentY + 6);
+
+    const b2Y = currentY + 18;
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b');
+    doc.text('Días Transcurridos:', box2X + 8, b2Y, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#0f172a').text(`${projection.days_elapsed || 0} de ${projection.month_days || 0} días (${projection.progress_pct || 0}% avance)`, box2X + 110, b2Y, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Días Restantes en Mes:', box2X + 8, b2Y + 11, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#0f172a').text(`${projection.days_remaining || 0} días`, box2X + 110, b2Y + 11, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Ritmo Actual Diario:', box2X + 8, b2Y + 22, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#0f172a').text(`${fmtQty(projection.daily_rate_galones)} gln/día   |   ${reportPdfHelper.fmt(projection.daily_rate_monto)} /día`, box2X + 110, b2Y + 22, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Galones Proyectados:', box2X + 8, b2Y + 33, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#1d4ed8').text(`${fmtQty(projection.projected_galones)} Galones`, box2X + 110, b2Y + 33, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Venta Proyectada ($):', box2X + 8, b2Y + 44, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#166534').text(`${reportPdfHelper.fmt(projection.projected_monto)}`, box2X + 110, b2Y + 44, { width: 235, align: 'left' });
+
+    currentY += boxH + 12;
+
+    // 2. Tabla Comparativa por Combustible
+    currentY = drawSectionTitle(currentY, '2. COMPARATIVO DETALLADO POR TIPO DE COMBUSTIBLE');
+
+    const curStart = summary.period?.start_date || data.start_date || '';
+    const curEnd = summary.period?.end_date || data.end_date || '';
+    const prevStart = summary.prev_period?.start_date || '';
+    const prevEnd = summary.prev_period?.end_date || '';
+    doc.font('Helvetica-Oblique').fontSize(6).fillColor('#64748b').text(`Comparativa: Período Consultado (${curStart} al ${curEnd}) vs Período Anterior (${prevStart} al ${prevEnd}). Refleja variación comercial de ventas, no contadores físicos.`, startX + 4, currentY, { width: pageW });
+    currentY += 10;
+
+    const fuelCols = [
+        { title: 'PRODUCTO / COMBUSTIBLE', x: startX + 4, w: 136 },
+        { title: 'VOL. ACTUAL', x: startX + 142, w: 58, align: 'right' },
+        { title: 'VOL. ANT.', x: startX + 202, w: 58, align: 'right' },
+        { title: 'DIF. GLN', x: startX + 262, w: 50, align: 'right' },
+        { title: '% CREC.', x: startX + 314, w: 42, align: 'right' },
+        { title: 'VENTA ACT.', x: startX + 358, w: 64, align: 'right' },
+        { title: 'VENTA ANT.', x: startX + 424, w: 64, align: 'right' },
+        { title: 'DIF. VTA.', x: startX + 490, w: 56, align: 'right' },
+        { title: '% CREC.', x: startX + 548, w: 42, align: 'right' },
+        { title: 'PR. ACT.', x: startX + 592, w: 44, align: 'right' },
+        { title: 'PR. ANT.', x: startX + 638, w: 44, align: 'right' },
+        { title: '% CUOTA', x: startX + 684, w: 44, align: 'right' }
+    ];
+
+    currentY = drawTableHeader(currentY, fuelCols);
+
+    for (const f of fuelComparison) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, fuelCols);
+        }
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(f.producto, fuelCols[0].x, currentY + 2, { width: fuelCols[0].w });
+        doc.text(fmtQty(f.current_galones), fuelCols[1].x, currentY + 2, { width: fuelCols[1].w, align: 'right' });
+        doc.text(fmtQty(f.prev_galones), fuelCols[2].x, currentY + 2, { width: fuelCols[2].w, align: 'right' });
+        
+        doc.font('Helvetica-Bold').fillColor(f.diff_galones >= 0 ? '#166534' : '#991b1b');
+        doc.text(fmtQty(f.diff_galones), fuelCols[3].x, currentY + 2, { width: fuelCols[3].w, align: 'right' });
+        doc.text(fmtPct(f.pct_galones), fuelCols[4].x, currentY + 2, { width: fuelCols[4].w, align: 'right' });
+
+        doc.font('Helvetica').fillColor('#1e293b');
+        doc.text(reportPdfHelper.fmt(f.current_monto), fuelCols[5].x, currentY + 2, { width: fuelCols[5].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(f.prev_monto), fuelCols[6].x, currentY + 2, { width: fuelCols[6].w, align: 'right' });
+
+        doc.font('Helvetica-Bold').fillColor(f.diff_monto >= 0 ? '#166534' : '#991b1b');
+        doc.text(reportPdfHelper.fmt(f.diff_monto), fuelCols[7].x, currentY + 2, { width: fuelCols[7].w, align: 'right' });
+        doc.text(fmtPct(f.pct_monto), fuelCols[8].x, currentY + 2, { width: fuelCols[8].w, align: 'right' });
+
+        doc.font('Helvetica').fillColor('#475569');
+        doc.text(reportPdfHelper.fmt(f.current_precio_prom), fuelCols[9].x, currentY + 2, { width: fuelCols[9].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(f.prev_precio_prom), fuelCols[10].x, currentY + 2, { width: fuelCols[10].w, align: 'right' });
+        doc.text(`${Number(f.share_volume_pct || 0).toFixed(1)}%`, fuelCols[11].x, currentY + 2, { width: fuelCols[11].w, align: 'right' });
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    // Totals row for fuels
+    doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    doc.text('TOTALES CONSOLIDADOS:', fuelCols[0].x, currentY + 3, { width: fuelCols[0].w });
+    doc.text(fmtQty(curTot.galones), fuelCols[1].x, currentY + 3, { width: fuelCols[1].w, align: 'right' });
+    doc.text(fmtQty(prevTot.galones), fuelCols[2].x, currentY + 3, { width: fuelCols[2].w, align: 'right' });
+    doc.fillColor(variations.diff_galones >= 0 ? '#166534' : '#991b1b').text(fmtQty(variations.diff_galones), fuelCols[3].x, currentY + 3, { width: fuelCols[3].w, align: 'right' });
+    doc.text(fmtPct(variations.pct_galones), fuelCols[4].x, currentY + 3, { width: fuelCols[4].w, align: 'right' });
+    doc.fillColor('#0f172a').text(reportPdfHelper.fmt(curTot.monto), fuelCols[5].x, currentY + 3, { width: fuelCols[5].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(prevTot.monto), fuelCols[6].x, currentY + 3, { width: fuelCols[6].w, align: 'right' });
+    doc.fillColor(variations.diff_monto >= 0 ? '#166534' : '#991b1b').text(reportPdfHelper.fmt(variations.diff_monto), fuelCols[7].x, currentY + 3, { width: fuelCols[7].w, align: 'right' });
+    doc.text(fmtPct(variations.pct_monto), fuelCols[8].x, currentY + 3, { width: fuelCols[8].w, align: 'right' });
+    doc.fillColor('#0f172a').text(reportPdfHelper.fmt(curTot.precio_promedio), fuelCols[9].x, currentY + 3, { width: fuelCols[9].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(prevTot.precio_promedio), fuelCols[10].x, currentY + 3, { width: fuelCols[10].w, align: 'right' });
+    doc.text('100.0%', fuelCols[11].x, currentY + 3, { width: fuelCols[11].w, align: 'right' });
+
+    currentY += 20;
+
+    // 3. Proyección al Cierre de Mes por Tipo de Combustible
+    currentY = drawSectionTitle(currentY, `3. PROYECCIÓN ESTIMADA AL CIERRE DE MES POR TIPO DE COMBUSTIBLE (${(projection.month_name || '').toUpperCase()})`);
+
+    const projFuelCols = [
+        { title: 'PRODUCTO / COMBUSTIBLE', x: startX + 4, w: 156 },
+        { title: 'GALONES ACTUALES', x: startX + 162, w: 90, align: 'right' },
+        { title: 'RITMO (GLN/DÍA)', x: startX + 254, w: 85, align: 'right' },
+        { title: 'PROYECTADO (GLN)', x: startX + 341, w: 95, align: 'right' },
+        { title: 'VENTA ACTUAL ($)', x: startX + 438, w: 95, align: 'right' },
+        { title: 'RITMO ($/DÍA)', x: startX + 535, w: 95, align: 'right' },
+        { title: 'PROYECTADO ($)', x: startX + 632, w: 96, align: 'right' }
+    ];
+
+    currentY = drawTableHeader(currentY, projFuelCols);
+
+    const byProductList = projection.by_product || [];
+    for (const p of byProductList) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, projFuelCols);
+        }
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(p.producto, projFuelCols[0].x, currentY + 2, { width: projFuelCols[0].w });
+        doc.text(fmtQty(p.current_galones), projFuelCols[1].x, currentY + 2, { width: projFuelCols[1].w, align: 'right' });
+        doc.text(fmtQty(p.daily_rate_galones), projFuelCols[2].x, currentY + 2, { width: projFuelCols[2].w, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor('#1d4ed8').text(fmtQty(p.projected_galones), projFuelCols[3].x, currentY + 2, { width: projFuelCols[3].w, align: 'right' });
+
+        doc.font('Helvetica').fillColor('#1e293b').text(reportPdfHelper.fmt(p.current_monto), projFuelCols[4].x, currentY + 2, { width: projFuelCols[4].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(p.daily_rate_monto), projFuelCols[5].x, currentY + 2, { width: projFuelCols[5].w, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor('#166534').text(reportPdfHelper.fmt(p.projected_monto), projFuelCols[6].x, currentY + 2, { width: projFuelCols[6].w, align: 'right' });
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    // Totales de la proyección por combustible
+    doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    doc.text('TOTAL PROYECTADO:', projFuelCols[0].x, currentY + 3, { width: projFuelCols[0].w });
+    doc.text(fmtQty(projection.current_galones), projFuelCols[1].x, currentY + 3, { width: projFuelCols[1].w, align: 'right' });
+    doc.text(fmtQty(projection.daily_rate_galones), projFuelCols[2].x, currentY + 3, { width: projFuelCols[2].w, align: 'right' });
+    doc.fillColor('#1d4ed8').text(fmtQty(projection.projected_galones), projFuelCols[3].x, currentY + 3, { width: projFuelCols[3].w, align: 'right' });
+    doc.fillColor('#0f172a').text(reportPdfHelper.fmt(projection.current_monto), projFuelCols[4].x, currentY + 3, { width: projFuelCols[4].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(projection.daily_rate_monto), projFuelCols[5].x, currentY + 3, { width: projFuelCols[5].w, align: 'right' });
+    doc.fillColor('#166534').text(reportPdfHelper.fmt(projection.projected_monto), projFuelCols[6].x, currentY + 3, { width: projFuelCols[6].w, align: 'right' });
+
+    currentY += 20;
+
+    // 4. Patrón de Demanda Semanal
+    currentY = drawSectionTitle(currentY, '4. PATRÓN DE DEMANDA SEMANAL (LUNES A DOMINGO)');
+
+    const weeklyCols = [
+        { title: 'DÍA DE LA SEMANA', x: startX + 6, w: 120 },
+        { title: 'DÍAS REGISTRADOS', x: startX + 130, w: 80, align: 'center' },
+        { title: 'GALONES TOTALES', x: startX + 214, w: 100, align: 'right' },
+        { title: 'PROM. DIARIO GALONES', x: startX + 318, w: 110, align: 'right' },
+        { title: 'VENTAS TOTALES ($)', x: startX + 432, w: 110, align: 'right' },
+        { title: 'PROM. DIARIO VENTAS ($)', x: startX + 546, w: 110, align: 'right' },
+        { title: 'ESTADO / PICO', x: startX + 660, w: 66, align: 'center' }
+    ];
+
+    currentY = drawTableHeader(currentY, weeklyCols);
+
+    for (const w of weeklyPatterns) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, weeklyCols);
+        }
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(w.name, weeklyCols[0].x, currentY + 2, { width: weeklyCols[0].w });
+        doc.text(String(w.dias_ocurrencia || 0), weeklyCols[1].x, currentY + 2, { width: weeklyCols[1].w, align: 'center' });
+        doc.text(fmtQty(w.galones_total), weeklyCols[2].x, currentY + 2, { width: weeklyCols[2].w, align: 'right' });
+        doc.font('Helvetica-Bold').text(fmtQty(w.galones_promedio), weeklyCols[3].x, currentY + 2, { width: weeklyCols[3].w, align: 'right' });
+        doc.font('Helvetica').text(reportPdfHelper.fmt(w.monto_total), weeklyCols[4].x, currentY + 2, { width: weeklyCols[4].w, align: 'right' });
+        doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(w.monto_promedio), weeklyCols[5].x, currentY + 2, { width: weeklyCols[5].w, align: 'right' });
+
+        if (w.is_peak_galones || w.is_peak_monto) {
+            doc.font('Helvetica-Bold').fillColor('#b45309').text('★ DÍA PICO', weeklyCols[6].x, currentY + 2, { width: weeklyCols[6].w, align: 'center' });
+        } else {
+            doc.font('Helvetica').fillColor('#94a3b8').text('Normal', weeklyCols[6].x, currentY + 2, { width: weeklyCols[6].w, align: 'center' });
+        }
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    currentY += 15;
+
+    // 5. Desglose Diario de Ventas
+    currentY = drawSectionTitle(currentY, '5. DESGLOSE DIARIO DE VENTAS SEGÚN LECTURAS');
+
+    const dailyCols = [
+        { title: 'FECHA', x: startX + 6, w: 68 },
+        { title: 'DÍA', x: startX + 78, w: 70 },
+        { title: 'TOTAL GALONES', x: startX + 152, w: 90, align: 'right' },
+        { title: 'VENTA TOTAL ($)', x: startX + 246, w: 94, align: 'right' },
+        { title: 'PRECIO PROM ($/gln)', x: startX + 344, w: 84, align: 'right' },
+        { title: 'COMBUSTIBLES DESPACHADOS (GALONES)', x: startX + 434, w: 292, align: 'left' }
+    ];
+
+    currentY = drawTableHeader(currentY, dailyCols);
+
+    for (const d of dailySeries) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, dailyCols);
+        }
+
+        const fuelDetailStr = Object.entries(d.fuels || {})
+            .map(([prod, inf]) => `${prod}: ${fmtQty(inf.galones)} gln`)
+            .join(' | ');
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(reportPdfHelper.formatDate(d.fecha), dailyCols[0].x, currentY + 2, { width: dailyCols[0].w });
+        doc.text(d.dia_semana, dailyCols[1].x, currentY + 2, { width: dailyCols[1].w });
+        doc.font('Helvetica-Bold').text(fmtQty(d.total_galones), dailyCols[2].x, currentY + 2, { width: dailyCols[2].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(d.total_monto), dailyCols[3].x, currentY + 2, { width: dailyCols[3].w, align: 'right' });
+        doc.font('Helvetica').fillColor('#475569').text(reportPdfHelper.fmt(d.precio_promedio), dailyCols[4].x, currentY + 2, { width: dailyCols[4].w, align: 'right' });
+        doc.fontSize(6).fillColor('#64748b').text(reportPdfHelper.fitText(doc, fuelDetailStr, dailyCols[5].w), dailyCols[5].x, currentY + 2, { width: dailyCols[5].w });
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    // Totals row for daily
+    doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    doc.text('TOTAL PERÍODO:', dailyCols[0].x, currentY + 3, { width: 140 });
+    doc.text(fmtQty(curTot.galones), dailyCols[2].x, currentY + 3, { width: dailyCols[2].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(curTot.monto), dailyCols[3].x, currentY + 3, { width: dailyCols[3].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(curTot.precio_promedio), dailyCols[4].x, currentY + 3, { width: dailyCols[4].w, align: 'right' });
+
+    currentY += 20;
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, dailySeries.length, 'Días de Venta');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
 module.exports = {
     generateTransferPDF, 
       generateStatementPDF, 
@@ -5864,7 +6589,10 @@ module.exports = {
     generateGalonajeVendidoPDF,
     generateFuelSalesSummaryPDF,
     generateLubricantsSoldPDF,
+    generateComplementariasPDF,
+    generateVentasLecturasAnalyticsPDF,
     generatePlanillaPDF,
     generatePlanillaReciboPDF,
     generateArqueosReportPDF
 };
+

@@ -1361,4 +1361,1026 @@ exports.getLubricantsSoldPDF = async (req, res) => {
     }
 };
 
+async function fetchComplementariasData(companyId, { start_date, end_date, branch_id, turno }) {
+    const branchFilter = branch_id && branch_id !== 'all' ? 'AND sh.branch_id = ?' : '';
+    const branchParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
 
+    const turnoNum = parseInt(turno, 10);
+    const shiftFilter = (!isNaN(turnoNum) && turno !== 'all') ? 'AND ps.shift_number = ?' : '';
+    const shiftParams = (!isNaN(turnoNum) && turno !== 'all') ? [turnoNum] : [];
+
+    const [rows] = await pool.query(`
+        SELECT 
+            sh.id,
+            sh.codigo_generacion,
+            sh.numero_control,
+            DATE_FORMAT(sh.fecha_emision, '%Y-%m-%d') AS fecha_emision,
+            sh.hora_emision,
+            DATE_FORMAT(COALESCE(ps.shift_date, sh.fecha_emision), '%Y-%m-%d') AS fecha_turno,
+            COALESCE(ps.shift_number, 1) AS numero_turno,
+            sh.branch_id,
+            COALESCE(b.nombre, 'Sin Sucursal') AS branch_name,
+            sh.total_gravado,
+            sh.total_iva,
+            sh.fovial,
+            sh.cotrans,
+            sh.total_pagar,
+            sh.observaciones,
+            d.sello_recepcion,
+            d.status AS dte_status,
+            si.id AS item_id,
+            si.product_id,
+            COALESCE(si.descripcion, 'Combustible') AS producto,
+            COALESCE(si.cantidad, 0) AS galones,
+            COALESCE(si.precio_unitario, 0) AS precio_unitario,
+            COALESCE(si.venta_gravada, 0) AS venta_gravada
+        FROM sales_headers sh
+        JOIN pos_shifts ps ON sh.shift_id = ps.id
+        LEFT JOIN branches b ON sh.branch_id = b.id
+        LEFT JOIN dtes d ON (d.venta_id = sh.id OR (sh.codigo_generacion IS NOT NULL AND d.codigo_generacion = sh.codigo_generacion))
+        LEFT JOIN sales_items si ON si.sale_id = sh.id
+        WHERE sh.company_id = ?
+          AND sh.observaciones LIKE '%Complementaria%'
+          AND sh.estado != 'anulado'
+          AND d.status = 'ACCEPTED'
+          AND COALESCE(ps.shift_date, DATE(sh.fecha_emision)) BETWEEN ? AND ?
+          ${branchFilter}
+          ${shiftFilter}
+        ORDER BY fecha_turno ASC, numero_turno ASC, sh.numero_control ASC, si.id ASC
+    `, [companyId, start_date, end_date, ...branchParams, ...shiftParams]);
+
+    const daysMap = {};
+    const productSummaryMap = {};
+    let grandTotals = {
+        dtes_count: 0,
+        galones: 0,
+        gravado: 0,
+        iva: 0,
+        fovial: 0,
+        cotrans: 0,
+        total: 0
+    };
+
+    for (const r of rows) {
+        const dayKey = r.fecha_turno;
+        const shiftKey = `Turno_${r.numero_turno}_${r.branch_id}`;
+
+        if (!daysMap[dayKey]) {
+            daysMap[dayKey] = {
+                fecha: dayKey,
+                shifts: {},
+                products: {},
+                totals: { dtes_count: 0, galones: 0, gravado: 0, iva: 0, fovial: 0, cotrans: 0, total: 0 }
+            };
+        }
+
+        if (!daysMap[dayKey].shifts[shiftKey]) {
+            daysMap[dayKey].shifts[shiftKey] = {
+                turno: r.numero_turno,
+                branch_id: r.branch_id,
+                branch_name: r.branch_name,
+                dtes: {},
+                products: {},
+                totals: { dtes_count: 0, galones: 0, gravado: 0, iva: 0, fovial: 0, cotrans: 0, total: 0 }
+            };
+        }
+
+        const shiftObj = daysMap[dayKey].shifts[shiftKey];
+
+        if (!shiftObj.dtes[r.id]) {
+            shiftObj.dtes[r.id] = {
+                id: r.id,
+                fecha_emision: r.fecha_emision,
+                hora_emision: r.hora_emision,
+                fecha_turno: r.fecha_turno,
+                numero_turno: r.numero_turno,
+                branch_name: r.branch_name,
+                numero_control: r.numero_control,
+                codigo_generacion: r.codigo_generacion,
+                sello_recepcion: r.sello_recepcion,
+                total_gravado: parseFloat(r.total_gravado || 0),
+                total_iva: parseFloat(r.total_iva || 0),
+                fovial: parseFloat(r.fovial || 0),
+                cotrans: parseFloat(r.cotrans || 0),
+                total_pagar: parseFloat(r.total_pagar || 0),
+                observaciones: r.observaciones,
+                items: []
+            };
+
+            shiftObj.totals.dtes_count += 1;
+            shiftObj.totals.gravado += parseFloat(r.total_gravado || 0);
+            shiftObj.totals.iva += parseFloat(r.total_iva || 0);
+            shiftObj.totals.fovial += parseFloat(r.fovial || 0);
+            shiftObj.totals.cotrans += parseFloat(r.cotrans || 0);
+            shiftObj.totals.total += parseFloat(r.total_pagar || 0);
+
+            daysMap[dayKey].totals.dtes_count += 1;
+            daysMap[dayKey].totals.gravado += parseFloat(r.total_gravado || 0);
+            daysMap[dayKey].totals.iva += parseFloat(r.total_iva || 0);
+            daysMap[dayKey].totals.fovial += parseFloat(r.fovial || 0);
+            daysMap[dayKey].totals.cotrans += parseFloat(r.cotrans || 0);
+            daysMap[dayKey].totals.total += parseFloat(r.total_pagar || 0);
+
+            grandTotals.dtes_count += 1;
+            grandTotals.gravado += parseFloat(r.total_gravado || 0);
+            grandTotals.iva += parseFloat(r.total_iva || 0);
+            grandTotals.fovial += parseFloat(r.fovial || 0);
+            grandTotals.cotrans += parseFloat(r.cotrans || 0);
+            grandTotals.total += parseFloat(r.total_pagar || 0);
+        }
+
+        const gal = parseFloat(r.galones || 0);
+        const mto = parseFloat(r.venta_gravada || 0);
+
+        if (r.item_id) {
+            shiftObj.dtes[r.id].items.push({
+                item_id: r.item_id,
+                product_id: r.product_id,
+                producto: r.producto,
+                galones: gal,
+                precio_unitario: parseFloat(r.precio_unitario || 0),
+                venta_gravada: mto
+            });
+
+            shiftObj.totals.galones += gal;
+            daysMap[dayKey].totals.galones += gal;
+            grandTotals.galones += gal;
+
+            if (!shiftObj.products[r.producto]) {
+                shiftObj.products[r.producto] = { producto: r.producto, galones: 0, total: 0 };
+            }
+            shiftObj.products[r.producto].galones += gal;
+            shiftObj.products[r.producto].total += mto;
+
+            if (!daysMap[dayKey].products) {
+                daysMap[dayKey].products = {};
+            }
+            if (!daysMap[dayKey].products[r.producto]) {
+                daysMap[dayKey].products[r.producto] = { producto: r.producto, galones: 0, gravado: 0, total: 0 };
+            }
+            daysMap[dayKey].products[r.producto].galones += gal;
+            daysMap[dayKey].products[r.producto].gravado += mto;
+            daysMap[dayKey].products[r.producto].total += mto;
+
+            if (!productSummaryMap[r.producto]) {
+                productSummaryMap[r.producto] = { producto: r.producto, galones: 0, gravado: 0, total: 0 };
+            }
+            productSummaryMap[r.producto].galones += gal;
+            productSummaryMap[r.producto].gravado += mto;
+            productSummaryMap[r.producto].total += mto;
+        }
+    }
+
+    const summaryByDay = Object.values(daysMap).map(day => {
+        const shifts = Object.values(day.shifts);
+        const branchNames = [...new Set(shifts.map(s => s.branch_name).filter(Boolean))].join(', ');
+        const turnosArr = [...new Set(shifts.map(s => s.turno))].sort((a, b) => a - b);
+        const turnosStr = turnosArr.length > 0 ? (turnosArr.length === 1 ? `Turno ${turnosArr[0]}` : `Turnos ${turnosArr.join(', ')}`) : 'Turno 1';
+
+        return {
+            fecha: day.fecha,
+            sucursal: branchNames || 'Sin Sucursal',
+            turnos: turnosStr,
+            totals: {
+                ...day.totals,
+                galones: Number(day.totals.galones.toFixed(4)),
+                gravado: Number(day.totals.gravado.toFixed(2)),
+                iva: Number(day.totals.iva.toFixed(2)),
+                fovial: Number(day.totals.fovial.toFixed(2)),
+                cotrans: Number(day.totals.cotrans.toFixed(2)),
+                total: Number(day.totals.total.toFixed(2))
+            },
+            products: Object.values(day.products || {}).map(p => ({
+                producto: p.producto,
+                galones: Number(p.galones.toFixed(4)),
+                gravado: Number(p.gravado.toFixed(2)),
+                total: Number(p.total.toFixed(2))
+            }))
+        };
+    }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    const groupedByDay = Object.values(daysMap).map(day => ({
+        fecha: day.fecha,
+        totals: {
+            ...day.totals,
+            galones: Number(day.totals.galones.toFixed(4)),
+            gravado: Number(day.totals.gravado.toFixed(2)),
+            iva: Number(day.totals.iva.toFixed(2)),
+            fovial: Number(day.totals.fovial.toFixed(2)),
+            cotrans: Number(day.totals.cotrans.toFixed(2)),
+            total: Number(day.totals.total.toFixed(2))
+        },
+        shifts: Object.values(day.shifts).map(s => ({
+            turno: s.turno,
+            branch_id: s.branch_id,
+            branch_name: s.branch_name,
+            totals: {
+                ...s.totals,
+                galones: Number(s.totals.galones.toFixed(4)),
+                gravado: Number(s.totals.gravado.toFixed(2)),
+                iva: Number(s.totals.iva.toFixed(2)),
+                fovial: Number(s.totals.fovial.toFixed(2)),
+                cotrans: Number(s.totals.cotrans.toFixed(2)),
+                total: Number(s.totals.total.toFixed(2))
+            },
+            products: Object.values(s.products),
+            dtes: Object.values(s.dtes)
+        }))
+    }));
+
+    const summaryByProduct = Object.values(productSummaryMap).map(p => ({
+        producto: p.producto,
+        galones: Number(p.galones.toFixed(4)),
+        gravado: Number(p.gravado.toFixed(2)),
+        total: Number(p.gravado.toFixed(2)),
+        porcentaje: grandTotals.galones > 0 ? Number(((p.galones / grandTotals.galones) * 100).toFixed(2)) : 0
+    })).sort((a, b) => b.galones - a.galones);
+
+    grandTotals = {
+        dtes_count: grandTotals.dtes_count,
+        galones: Number(grandTotals.galones.toFixed(4)),
+        gravado: Number(grandTotals.gravado.toFixed(2)),
+        iva: Number(grandTotals.iva.toFixed(2)),
+        fovial: Number(grandTotals.fovial.toFixed(2)),
+        cotrans: Number(grandTotals.cotrans.toFixed(2)),
+        total: Number(grandTotals.total.toFixed(2))
+    };
+
+    return {
+        summaryByDay,
+        groupedByDay,
+        summaryByProduct,
+        grandTotals,
+        rawRows: rows
+    };
+}
+
+exports.getComplementariasReportData = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { start_date, end_date, branch_id, turno } = req.query;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias' });
+        }
+
+        const data = await fetchComplementariasData(companyId, { start_date, end_date, branch_id, turno });
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error en getComplementariasReportData:', error);
+        res.status(500).json({ message: 'Error al obtener datos de complementarias' });
+    }
+};
+
+exports.getComplementariasReportPDF = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { start_date, end_date, branch_id, turno, format, modalidad } = req.query;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias' });
+        }
+
+        const data = await fetchComplementariasData(companyId, { start_date, end_date, branch_id, turno });
+
+        let branchName = 'TODAS';
+        if (branch_id && branch_id !== 'all') {
+            const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+            if (bRows.length > 0) branchName = bRows[0].nombre;
+        }
+
+        if (format === 'excel') {
+            // Sheet 1: Resumen Consolidado por Día
+            const daySheetData = data.summaryByDay.map(d => ({
+                fecha: d.fecha,
+                sucursal: d.sucursal,
+                turnos: d.turnos,
+                dtes: d.totals.dtes_count,
+                galones: d.totals.galones.toFixed(2),
+                gravado: d.totals.gravado.toFixed(2),
+                iva: d.totals.iva.toFixed(2),
+                fovial: d.totals.fovial.toFixed(2),
+                cotrans: d.totals.cotrans.toFixed(2),
+                total: d.totals.total.toFixed(2)
+            }));
+            daySheetData.push({
+                fecha: 'TOTAL GENERAL',
+                sucursal: '',
+                turnos: '',
+                dtes: data.grandTotals.dtes_count,
+                galones: data.grandTotals.galones.toFixed(2),
+                gravado: data.grandTotals.gravado.toFixed(2),
+                iva: data.grandTotals.iva.toFixed(2),
+                fovial: data.grandTotals.fovial.toFixed(2),
+                cotrans: data.grandTotals.cotrans.toFixed(2),
+                total: data.grandTotals.total.toFixed(2)
+            });
+
+            // Sheet 2: Resumen por Turno
+            const shiftSheetData = [];
+            data.groupedByDay.forEach(day => {
+                day.shifts.forEach(s => {
+                    shiftSheetData.push({
+                        fecha: day.fecha,
+                        turno: `Turno ${s.turno}`,
+                        sucursal: s.branch_name,
+                        dtes: s.totals.dtes_count,
+                        galones: s.totals.galones.toFixed(2),
+                        gravado: s.totals.gravado.toFixed(2),
+                        iva: s.totals.iva.toFixed(2),
+                        fovial: s.totals.fovial.toFixed(2),
+                        cotrans: s.totals.cotrans.toFixed(2),
+                        total: s.totals.total.toFixed(2)
+                    });
+                });
+                shiftSheetData.push({
+                    fecha: `SUBTOTAL (${day.fecha})`,
+                    turno: '',
+                    sucursal: '',
+                    dtes: day.totals.dtes_count,
+                    galones: day.totals.galones.toFixed(2),
+                    gravado: day.totals.gravado.toFixed(2),
+                    iva: day.totals.iva.toFixed(2),
+                    fovial: day.totals.fovial.toFixed(2),
+                    cotrans: day.totals.cotrans.toFixed(2),
+                    total: day.totals.total.toFixed(2)
+                });
+            });
+
+            shiftSheetData.push({
+                fecha: 'TOTAL GENERAL',
+                turno: '',
+                sucursal: '',
+                dtes: data.grandTotals.dtes_count,
+                galones: data.grandTotals.galones.toFixed(2),
+                gravado: data.grandTotals.gravado.toFixed(2),
+                iva: data.grandTotals.iva.toFixed(2),
+                fovial: data.grandTotals.fovial.toFixed(2),
+                cotrans: data.grandTotals.cotrans.toFixed(2),
+                total: data.grandTotals.total.toFixed(2)
+            });
+
+            // Sheet 3: Detalle DTEs
+            const detailSheetData = [];
+            data.groupedByDay.forEach(day => {
+                day.shifts.forEach(s => {
+                    s.dtes.forEach(dte => {
+                        const itemsDesc = dte.items.map(it => `${it.producto}: ${it.galones.toFixed(2)} gln`).join(', ');
+                        const totalGal = dte.items.reduce((acc, it) => acc + it.galones, 0);
+                        detailSheetData.push({
+                            fecha_emision: dte.fecha_emision,
+                            hora_emision: dte.hora_emision,
+                            fecha_turno: dte.fecha_turno,
+                            turno: `Turno ${dte.numero_turno}`,
+                            sucursal: dte.branch_name,
+                            numero_control: dte.numero_control,
+                            codigo_generacion: dte.codigo_generacion,
+                            sello_recepcion: dte.sello_recepcion || '',
+                            combustibles: itemsDesc,
+                            galones: totalGal.toFixed(2),
+                            gravado: dte.total_gravado.toFixed(2),
+                            iva: dte.total_iva.toFixed(2),
+                            fovial: dte.fovial.toFixed(2),
+                            cotrans: dte.cotrans.toFixed(2),
+                            total: dte.total_pagar.toFixed(2)
+                        });
+                    });
+                });
+            });
+
+            // Sheet 4: Resumen Combustibles
+            const fuelSheetData = data.summaryByProduct.map(p => ({
+                producto: p.producto,
+                galones: p.galones.toFixed(2),
+                gravado: p.gravado.toFixed(2),
+                porcentaje: `${p.porcentaje.toFixed(2)}%`
+            }));
+            fuelSheetData.push({
+                producto: 'TOTAL',
+                galones: data.grandTotals.galones.toFixed(2),
+                gravado: data.grandTotals.gravado.toFixed(2),
+                porcentaje: '100.00%'
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [
+                    {
+                        name: 'Resumen Consolidado Día',
+                        columns: [
+                            { header: 'Fecha Turno', key: 'fecha', width: 16 },
+                            { header: 'Sucursal', key: 'sucursal', width: 24 },
+                            { header: 'Turnos', key: 'turnos', width: 16 },
+                            { header: 'Cant. DTEs', key: 'dtes', width: 14 },
+                            { header: 'Total Galones', key: 'galones', width: 16 },
+                            { header: 'Venta Gravada ($)', key: 'gravado', width: 18 },
+                            { header: 'IVA 13% ($)', key: 'iva', width: 14 },
+                            { header: 'FOVIAL ($)', key: 'fovial', width: 14 },
+                            { header: 'COTRANS ($)', key: 'cotrans', width: 14 },
+                            { header: 'Total ($)', key: 'total', width: 16 }
+                        ],
+                        data: daySheetData
+                    },
+                    {
+                        name: 'Resumen por Turno',
+                        columns: [
+                            { header: 'Fecha Turno', key: 'fecha', width: 16 },
+                            { header: 'Turno', key: 'turno', width: 12 },
+                            { header: 'Sucursal', key: 'sucursal', width: 24 },
+                            { header: 'Cant. DTEs', key: 'dtes', width: 14 },
+                            { header: 'Galones', key: 'galones', width: 15 },
+                            { header: 'Gravado ($)', key: 'gravado', width: 15 },
+                            { header: 'IVA ($)', key: 'iva', width: 14 },
+                            { header: 'FOVIAL ($)', key: 'fovial', width: 14 },
+                            { header: 'COTRANS ($)', key: 'cotrans', width: 14 },
+                            { header: 'Total ($)', key: 'total', width: 16 }
+                        ],
+                        data: shiftSheetData
+                    },
+                    {
+                        name: 'Detalle DTEs',
+                        columns: [
+                            { header: 'Fecha Emisión', key: 'fecha_emision', width: 15 },
+                            { header: 'Hora', key: 'hora_emision', width: 12 },
+                            { header: 'Fecha Turno', key: 'fecha_turno', width: 15 },
+                            { header: 'Turno', key: 'turno', width: 12 },
+                            { header: 'Sucursal', key: 'sucursal', width: 22 },
+                            { header: 'N° Control', key: 'numero_control', width: 32 },
+                            { header: 'Código Generación', key: 'codigo_generacion', width: 38 },
+                            { header: 'Sello Recepción', key: 'sello_recepcion', width: 42 },
+                            { header: 'Combustibles', key: 'combustibles', width: 35 },
+                            { header: 'Galones', key: 'galones', width: 14 },
+                            { header: 'Gravado ($)', key: 'gravado', width: 14 },
+                            { header: 'IVA ($)', key: 'iva', width: 12 },
+                            { header: 'FOVIAL ($)', key: 'fovial', width: 12 },
+                            { header: 'COTRANS ($)', key: 'cotrans', width: 12 },
+                            { header: 'Total ($)', key: 'total', width: 15 }
+                        ],
+                        data: detailSheetData
+                    },
+                    {
+                        name: 'Resumen Combustibles',
+                        columns: [
+                            { header: 'Combustible', key: 'producto', width: 25 },
+                            { header: 'Total Galones', key: 'galones', width: 18 },
+                            { header: 'Venta Gravada ($)', key: 'gravado', width: 18 },
+                            { header: '% Volumen', key: 'porcentaje', width: 14 }
+                        ],
+                        data: fuelSheetData
+                    }
+                ]
+            });
+
+            return excelService.sendExcelResponse(res, buffer, `Complementarias_Emitidas_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        const pdfBuffer = await pdfService.generateComplementariasPDF({
+            company_id: companyId,
+            start_date,
+            end_date,
+            branch_id,
+            branch_name: branchName,
+            turno,
+            modalidad,
+            include_details: modalidad !== 'resumido',
+            summaryByDay: data.summaryByDay,
+            groupedByDay: data.groupedByDay,
+            summaryByProduct: data.summaryByProduct,
+            grandTotals: data.grandTotals
+        });
+
+res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Complementarias_Emitidas_${start_date}_al_${end_date}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error en getComplementariasReportPDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de complementarias' });
+    }
+};
+
+function formatAnalyticsYMD(d) {
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function calculateComparisonDates(startDateStr, endDateStr, compareMode = 'prev_period') {
+    const [sy, sm, sd] = startDateStr.split('-').map(Number);
+    const [ey, em, ed] = endDateStr.split('-').map(Number);
+
+    const start = new Date(Date.UTC(sy, sm - 1, sd));
+    const end = new Date(Date.UTC(ey, em - 1, ed));
+
+    if (compareMode === 'prev_month') {
+        const prevStart = new Date(Date.UTC(sy, sm - 2, sd));
+        const prevEnd = new Date(Date.UTC(ey, em - 2, ed));
+        return {
+            prev_start_date: formatAnalyticsYMD(prevStart),
+            prev_end_date: formatAnalyticsYMD(prevEnd)
+        };
+    }
+
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 3600 * 24)) + 1;
+
+    const prevEnd = new Date(start.getTime() - (1000 * 3600 * 24));
+    const prevStart = new Date(prevEnd.getTime() - ((diffDays - 1) * 1000 * 3600 * 24));
+
+    return {
+        prev_start_date: formatAnalyticsYMD(prevStart),
+        prev_end_date: formatAnalyticsYMD(prevEnd)
+    };
+}
+
+async function fetchVentasLecturasAnalyticsData(companyId, { startDate, endDate, branchId, compareMode }) {
+    const { prev_start_date, prev_end_date } = calculateComparisonDates(startDate, endDate, compareMode);
+
+    let branchCondition = '';
+    const paramsCurrent = [companyId, startDate, endDate];
+    const paramsPrev = [companyId, prev_start_date, prev_end_date];
+
+    if (branchId && branchId !== 'all') {
+        branchCondition = ' AND c.branch_id = ?';
+        paramsCurrent.push(branchId);
+        paramsPrev.push(branchId);
+    }
+
+    const query = `
+        SELECT 
+            DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') AS fecha,
+            DAYOFWEEK(c.fecha_turno) AS dia_semana_num,
+            COALESCE(r.descripcion_producto, p.nombre, 'Combustible') AS producto,
+            COALESCE(p.tipo_combustible, 0) AS tipo_combustible,
+            SUM(COALESCE(r.diferencia, r.lectura_actual - r.lectura_anterior - COALESCE(r.calibracion, 0))) AS galones,
+            SUM(COALESCE(r.monto, (r.lectura_actual - r.lectura_anterior - COALESCE(r.calibracion, 0)) * r.precio)) AS monto
+        FROM gas_station_closeout_readings r
+        JOIN gas_station_closeouts c ON r.closeout_id = c.id
+        LEFT JOIN products p ON r.product_id = p.id
+        WHERE c.company_id = ?
+          AND c.fecha_turno BETWEEN ? AND ?
+          AND c.estado IN ('cerrado', 'reabierto')
+          ${branchCondition}
+        GROUP BY fecha, dia_semana_num, producto, tipo_combustible
+        ORDER BY fecha ASC, producto ASC
+    `;
+
+    const [currentRows] = await pool.query(query, paramsCurrent);
+    const [prevRows] = await pool.query(query, paramsPrev);
+
+    let curGalones = 0;
+    let curMonto = 0;
+    const curDaysSet = new Set();
+    const curProductMap = {};
+    const curDailyMap = {};
+
+    const dayOfWeekDef = {
+        1: { name: 'Domingo', order: 7, galones: 0, monto: 0, count: 0 },
+        2: { name: 'Lunes', order: 1, galones: 0, monto: 0, count: 0 },
+        3: { name: 'Martes', order: 2, galones: 0, monto: 0, count: 0 },
+        4: { name: 'Miércoles', order: 3, galones: 0, monto: 0, count: 0 },
+        5: { name: 'Jueves', order: 4, galones: 0, monto: 0, count: 0 },
+        6: { name: 'Viernes', order: 5, galones: 0, monto: 0, count: 0 },
+        7: { name: 'Sábado', order: 6, galones: 0, monto: 0, count: 0 }
+    };
+
+    for (const row of currentRows) {
+        const g = parseFloat(row.galones) || 0;
+        const m = parseFloat(row.monto) || 0;
+        curGalones += g;
+        curMonto += m;
+        curDaysSet.add(row.fecha);
+
+        if (!curProductMap[row.producto]) {
+            curProductMap[row.producto] = {
+                producto: row.producto,
+                tipo_combustible: row.tipo_combustible,
+                galones: 0,
+                monto: 0
+            };
+        }
+        curProductMap[row.producto].galones += g;
+        curProductMap[row.producto].monto += m;
+
+        if (!curDailyMap[row.fecha]) {
+            curDailyMap[row.fecha] = {
+                fecha: row.fecha,
+                dia_semana_num: row.dia_semana_num,
+                dia_semana: dayOfWeekDef[row.dia_semana_num]?.name || '',
+                total_galones: 0,
+                total_monto: 0,
+                fuels: {}
+            };
+        }
+        curDailyMap[row.fecha].total_galones += g;
+        curDailyMap[row.fecha].total_monto += m;
+        curDailyMap[row.fecha].fuels[row.producto] = {
+            galones: Number(((curDailyMap[row.fecha].fuels[row.producto]?.galones || 0) + g).toFixed(2)),
+            monto: Number(((curDailyMap[row.fecha].fuels[row.producto]?.monto || 0) + m).toFixed(2))
+        };
+    }
+
+    for (const d of Object.values(curDailyMap)) {
+        const dow = dayOfWeekDef[d.dia_semana_num];
+        if (dow) {
+            dow.galones += d.total_galones;
+            dow.monto += d.total_monto;
+            dow.count += 1;
+        }
+        d.precio_promedio = d.total_galones > 0 ? Number((d.total_monto / d.total_galones).toFixed(4)) : 0;
+        d.total_galones = Number(d.total_galones.toFixed(2));
+        d.total_monto = Number(d.total_monto.toFixed(2));
+    }
+
+    let prevGalones = 0;
+    let prevMonto = 0;
+    const prevDaysSet = new Set();
+    const prevProductMap = {};
+
+    for (const row of prevRows) {
+        const g = parseFloat(row.galones) || 0;
+        const m = parseFloat(row.monto) || 0;
+        prevGalones += g;
+        prevMonto += m;
+        prevDaysSet.add(row.fecha);
+
+        if (!prevProductMap[row.producto]) {
+            prevProductMap[row.producto] = {
+                producto: row.producto,
+                tipo_combustible: row.tipo_combustible,
+                galones: 0,
+                monto: 0
+            };
+        }
+        prevProductMap[row.producto].galones += g;
+        prevProductMap[row.producto].monto += m;
+    }
+
+    const activeDaysCur = curDaysSet.size || 1;
+    const activeDaysPrev = prevDaysSet.size || 1;
+
+    const curAvgPrice = curGalones > 0 ? curMonto / curGalones : 0;
+    const prevAvgPrice = prevGalones > 0 ? prevMonto / prevGalones : 0;
+
+    const diffGalones = curGalones - prevGalones;
+    const pctGalones = prevGalones > 0 ? (diffGalones / prevGalones) * 100 : (curGalones > 0 ? 100 : 0);
+
+    const diffMonto = curMonto - prevMonto;
+    const pctMonto = prevMonto > 0 ? (diffMonto / prevMonto) * 100 : (curMonto > 0 ? 100 : 0);
+
+    const diffPrice = curAvgPrice - prevAvgPrice;
+    const pctPrice = prevAvgPrice > 0 ? (diffPrice / prevAvgPrice) * 100 : 0;
+
+    const summary = {
+        period: {
+            start_date: startDate,
+            end_date: endDate,
+            active_days: activeDaysCur
+        },
+        prev_period: {
+            start_date: prev_start_date,
+            end_date: prev_end_date,
+            active_days: activeDaysPrev
+        },
+        current_totals: {
+            galones: Number(curGalones.toFixed(2)),
+            monto: Number(curMonto.toFixed(2)),
+            precio_promedio: Number(curAvgPrice.toFixed(4)),
+            prom_diario_galones: Number((curGalones / activeDaysCur).toFixed(2)),
+            prom_diario_monto: Number((curMonto / activeDaysCur).toFixed(2))
+        },
+        prev_totals: {
+            galones: Number(prevGalones.toFixed(2)),
+            monto: Number(prevMonto.toFixed(2)),
+            precio_promedio: Number(prevAvgPrice.toFixed(4)),
+            prom_diario_galones: Number((prevGalones / activeDaysPrev).toFixed(2)),
+            prom_diario_monto: Number((prevMonto / activeDaysPrev).toFixed(2))
+        },
+        variations: {
+            diff_galones: Number(diffGalones.toFixed(2)),
+            pct_galones: Number(pctGalones.toFixed(2)),
+            diff_monto: Number(diffMonto.toFixed(2)),
+            pct_monto: Number(pctMonto.toFixed(2)),
+            diff_precio: Number(diffPrice.toFixed(4)),
+            pct_precio: Number(pctPrice.toFixed(2))
+        }
+    };
+
+    const [ey, em, ed] = endDate.split('-').map(Number);
+    const lastDayOfMonth = new Date(Date.UTC(ey, em, 0)).getUTCDate();
+    const daysElapsed = Math.min(ed, lastDayOfMonth);
+    const daysRemaining = Math.max(0, lastDayOfMonth - daysElapsed);
+    const dailyRateGalones = curGalones / activeDaysCur;
+    const dailyRateMonto = curMonto / activeDaysCur;
+
+    const projectedGalones = curGalones + (dailyRateGalones * daysRemaining);
+    const projectedMonto = curMonto + (dailyRateMonto * daysRemaining);
+
+    const monthDate = new Date(Date.UTC(ey, em - 1, 1));
+    const monthName = monthDate.toLocaleString('es-SV', { month: 'long', timeZone: 'UTC' });
+
+    const projection = {
+        month_name: monthName,
+        month_days: lastDayOfMonth,
+        days_elapsed: daysElapsed,
+        days_remaining: daysRemaining,
+        progress_pct: Number(((daysElapsed / lastDayOfMonth) * 100).toFixed(1)),
+        current_galones: Number(curGalones.toFixed(2)),
+        current_monto: Number(curMonto.toFixed(2)),
+        daily_rate_galones: Number(dailyRateGalones.toFixed(2)),
+        daily_rate_monto: Number(dailyRateMonto.toFixed(2)),
+        projected_galones: Number(projectedGalones.toFixed(2)),
+        projected_monto: Number(projectedMonto.toFixed(2)),
+        by_product: Object.keys(curProductMap).map(prod => {
+            const p = curProductMap[prod];
+            const pDailyG = p.galones / activeDaysCur;
+            const pDailyM = p.monto / activeDaysCur;
+            return {
+                producto: prod,
+                current_galones: Number(p.galones.toFixed(2)),
+                current_monto: Number(p.monto.toFixed(2)),
+                daily_rate_galones: Number(pDailyG.toFixed(2)),
+                daily_rate_monto: Number(pDailyM.toFixed(2)),
+                projected_galones: Number((p.galones + (pDailyG * daysRemaining)).toFixed(2)),
+                projected_monto: Number((p.monto + (pDailyM * daysRemaining)).toFixed(2))
+            };
+        }).sort((a, b) => b.projected_galones - a.projected_galones)
+    };
+
+    const allProducts = Array.from(new Set([...Object.keys(curProductMap), ...Object.keys(prevProductMap)]));
+    const fuelComparison = allProducts.map(prod => {
+        const cur = curProductMap[prod] || { galones: 0, monto: 0, tipo_combustible: 0 };
+        const prev = prevProductMap[prod] || { galones: 0, monto: 0, tipo_combustible: 0 };
+
+        const curAvgP = cur.galones > 0 ? cur.monto / cur.galones : 0;
+        const prevAvgP = prev.galones > 0 ? prev.monto / prev.galones : 0;
+
+        const diffG = cur.galones - prev.galones;
+        const pctG = prev.galones > 0 ? (diffG / prev.galones) * 100 : (cur.galones > 0 ? 100 : 0);
+
+        const diffM = cur.monto - prev.monto;
+        const pctM = prev.monto > 0 ? (diffM / prev.monto) * 100 : (cur.monto > 0 ? 100 : 0);
+
+        return {
+            producto: prod,
+            tipo_combustible: cur.tipo_combustible || prev.tipo_combustible,
+            current_galones: Number(cur.galones.toFixed(2)),
+            current_monto: Number(cur.monto.toFixed(2)),
+            current_precio_prom: Number(curAvgP.toFixed(4)),
+            prev_galones: Number(prev.galones.toFixed(2)),
+            prev_monto: Number(prev.monto.toFixed(2)),
+            prev_precio_prom: Number(prevAvgP.toFixed(4)),
+            diff_galones: Number(diffG.toFixed(2)),
+            pct_galones: Number(pctG.toFixed(2)),
+            diff_monto: Number(diffM.toFixed(2)),
+            pct_monto: Number(pctM.toFixed(2)),
+            share_volume_pct: curGalones > 0 ? Number(((cur.galones / curGalones) * 100).toFixed(2)) : 0,
+            share_monto_pct: curMonto > 0 ? Number(((cur.monto / curMonto) * 100).toFixed(2)) : 0
+        };
+    }).sort((a, b) => b.current_galones - a.current_galones);
+
+    let maxAvgG = 0;
+    let maxAvgM = 0;
+    for (const dow of Object.values(dayOfWeekDef)) {
+        const avgG = dow.count > 0 ? dow.galones / dow.count : 0;
+        const avgM = dow.count > 0 ? dow.monto / dow.count : 0;
+        if (avgG > maxAvgG) maxAvgG = avgG;
+        if (avgM > maxAvgM) maxAvgM = avgM;
+    }
+
+    const weeklyPatterns = Object.values(dayOfWeekDef).map(d => {
+        const avgG = d.count > 0 ? d.galones / d.count : 0;
+        const avgM = d.count > 0 ? d.monto / d.count : 0;
+        return {
+            name: d.name,
+            order: d.order,
+            dias_ocurrencia: d.count,
+            galones_total: Number(d.galones.toFixed(2)),
+            monto_total: Number(d.monto.toFixed(2)),
+            galones_promedio: Number(avgG.toFixed(2)),
+            monto_promedio: Number(avgM.toFixed(2)),
+            is_peak_galones: avgG > 0 && Math.abs(avgG - maxAvgG) < 0.01,
+            is_peak_monto: avgM > 0 && Math.abs(avgM - maxAvgM) < 0.01
+        };
+    }).sort((a, b) => a.order - b.order);
+
+    const dailySeries = Object.values(curDailyMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    let branchName = 'Todas las Sucursales';
+    if (branchId && branchId !== 'all') {
+        const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
+        if (bRows.length > 0) branchName = bRows[0].nombre;
+    }
+
+    return {
+        summary,
+        projection,
+        fuel_comparison: fuelComparison,
+        weekly_patterns: weeklyPatterns,
+        daily_series: dailySeries,
+        branch_name: branchName
+    };
+}
+
+exports.getVentasLecturasAnalyticsData = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { start_date, end_date, branch_id, compare_mode } = req.query;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias' });
+        }
+
+        const data = await fetchVentasLecturasAnalyticsData(companyId, {
+            startDate: start_date,
+            endDate: end_date,
+            branchId: branch_id,
+            compareMode: compare_mode || 'prev_period'
+        });
+
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error en getVentasLecturasAnalyticsData:', error);
+        res.status(500).json({ message: 'Error al obtener datos analíticos de ventas según lecturas' });
+    }
+};
+
+exports.getVentasLecturasAnalyticsPDF = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const { start_date, end_date, branch_id, compare_mode, format } = req.query;
+
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias' });
+        }
+
+        const data = await fetchVentasLecturasAnalyticsData(companyId, {
+            startDate: start_date,
+            endDate: end_date,
+            branchId: branch_id,
+            compareMode: compare_mode || 'prev_period'
+        });
+
+        if (format === 'excel') {
+            const summarySheetData = [
+                { concepto: 'Galones Despachados', actual: data.summary.current_totals.galones, anterior: data.summary.prev_totals.galones, diferencia: data.summary.variations.diff_galones, variacion: `${data.summary.variations.pct_galones}%` },
+                { concepto: 'Venta Total ($)', actual: data.summary.current_totals.monto, anterior: data.summary.prev_totals.monto, diferencia: data.summary.variations.diff_monto, variacion: `${data.summary.variations.pct_monto}%` },
+                { concepto: 'Precio Promedio Ponderado ($/gln)', actual: data.summary.current_totals.precio_promedio, anterior: data.summary.prev_totals.precio_promedio, diferencia: data.summary.variations.diff_precio, variacion: `${data.summary.variations.pct_precio}%` },
+                { concepto: 'Ritmo Promedio Diario (Galones)', actual: data.summary.current_totals.prom_diario_galones, anterior: data.summary.prev_totals.prom_diario_galones, diferencia: Number((data.summary.current_totals.prom_diario_galones - data.summary.prev_totals.prom_diario_galones).toFixed(2)), variacion: '-' },
+                { concepto: 'Ritmo Promedio Diario ($)', actual: data.summary.current_totals.prom_diario_monto, anterior: data.summary.prev_totals.prom_diario_monto, diferencia: Number((data.summary.current_totals.prom_diario_monto - data.summary.prev_totals.prom_diario_monto).toFixed(2)), variacion: '-' },
+                { concepto: '', actual: '', anterior: '', diferencia: '', variacion: '' },
+                { concepto: '--- PROYECCIÓN FIN DE MES ---', actual: '', anterior: '', diferencia: '', variacion: '' },
+                { concepto: `Mes Proyectado: ${(data.projection.month_name || '').toUpperCase()}`, actual: `${data.projection.days_elapsed} de ${data.projection.month_days} días transcurridos`, anterior: `${data.projection.progress_pct}% de avance`, diferencia: '', variacion: '' },
+                { concepto: 'Días Restantes en Mes', actual: data.projection.days_remaining, anterior: '', diferencia: '', variacion: '' },
+                { concepto: 'Galones Proyectados al Cierre', actual: data.projection.projected_galones, anterior: `Actual: ${data.projection.current_galones}`, diferencia: `Restante: ${Number((data.projection.projected_galones - data.projection.current_galones).toFixed(2))}`, variacion: '' },
+                { concepto: 'Venta Proyectada al Cierre ($)', actual: data.projection.projected_monto, anterior: `Actual: ${data.projection.current_monto}`, diferencia: `Restante: ${Number((data.projection.projected_monto - data.projection.current_monto).toFixed(2))}`, variacion: '' }
+            ];
+
+            const fuelSheetData = data.fuel_comparison.map(f => ({
+                producto: f.producto,
+                current_galones: f.current_galones,
+                prev_galones: f.prev_galones,
+                diff_galones: f.diff_galones,
+                pct_galones: `${f.pct_galones}%`,
+                current_monto: f.current_monto,
+                prev_monto: f.prev_monto,
+                diff_monto: f.diff_monto,
+                pct_monto: `${f.pct_monto}%`,
+                current_precio_prom: f.current_precio_prom,
+                prev_precio_prom: f.prev_precio_prom,
+                share_volume_pct: `${f.share_volume_pct}%`
+            }));
+
+            const dailySheetData = data.daily_series.map(d => {
+                const fuelsSummary = Object.entries(d.fuels || {})
+                    .map(([p, info]) => `${p}: ${info.galones} gln`)
+                    .join(' | ');
+                return {
+                    fecha: d.fecha,
+                    dia_semana: d.dia_semana,
+                    total_galones: d.total_galones,
+                    total_monto: d.total_monto,
+                    precio_promedio: d.precio_promedio,
+                    detalle_combustibles: fuelsSummary
+                };
+            });
+
+            const weeklySheetData = data.weekly_patterns.map(w => ({
+                name: w.name,
+                dias_ocurrencia: w.dias_ocurrencia,
+                galones_total: w.galones_total,
+                galones_promedio: w.galones_promedio,
+                monto_total: w.monto_total,
+                monto_promedio: w.monto_promedio,
+                indicador: w.is_peak_galones || w.is_peak_monto ? 'DÍA PICO' : 'Normal'
+            }));
+
+            const projectionFuelSheetData = (data.projection.by_product || []).map(p => ({
+                producto: p.producto,
+                current_galones: p.current_galones,
+                daily_rate_galones: p.daily_rate_galones,
+                projected_galones: p.projected_galones,
+                current_monto: p.current_monto,
+                daily_rate_monto: p.daily_rate_monto,
+                projected_monto: p.projected_monto,
+                pct_share: data.projection.projected_galones > 0 ? `${((p.projected_galones / data.projection.projected_galones) * 100).toFixed(1)}%` : '0%'
+            }));
+
+            const buffer = await excelService.createExcelBuffer({
+                title: `ANÁLISIS DE VENTAS SEGÚN LECTURAS - ${start_date} AL ${end_date}`,
+                sheets: [
+                    {
+                        name: 'Resumen y Proyección',
+                        columns: [
+                            { header: 'Concepto / Métrica', key: 'concepto', width: 38 },
+                            { header: 'Período Actual', key: 'actual', width: 25 },
+                            { header: 'Período Anterior', key: 'anterior', width: 25 },
+                            { header: 'Diferencia', key: 'diferencia', width: 20 },
+                            { header: '% Variación', key: 'variacion', width: 16 }
+                        ],
+                        data: summarySheetData
+                    },
+                    {
+                        name: 'Comparativo Combustibles',
+                        columns: [
+                            { header: 'Combustible', key: 'producto', width: 25 },
+                            { header: 'Galones Período Actual', key: 'current_galones', width: 22 },
+                            { header: 'Galones Período Anterior', key: 'prev_galones', width: 22 },
+                            { header: 'Diferencia en Galones', key: 'diff_galones', width: 20 },
+                            { header: '% Crecimiento Galones', key: 'pct_galones', width: 20 },
+                            { header: 'Venta Período Actual ($)', key: 'current_monto', width: 22 },
+                            { header: 'Venta Período Anterior ($)', key: 'prev_monto', width: 22 },
+                            { header: 'Diferencia en Ventas ($)', key: 'diff_monto', width: 20 },
+                            { header: '% Crecimiento Ventas', key: 'pct_monto', width: 20 },
+                            { header: 'Precio Promedio Actual ($/gln)', key: 'current_precio_prom', width: 25 },
+                            { header: 'Precio Promedio Anterior ($/gln)', key: 'prev_precio_prom', width: 25 },
+                            { header: '% Participación Volumen', key: 'share_volume_pct', width: 22 }
+                        ],
+                        data: fuelSheetData
+                    },
+                    {
+                        name: 'Proyección por Combustible',
+                        columns: [
+                            { header: 'Combustible', key: 'producto', width: 25 },
+                            { header: 'Galones Actuales', key: 'current_galones', width: 20 },
+                            { header: 'Ritmo Diario (Gln/Día)', key: 'daily_rate_galones', width: 22 },
+                            { header: 'Galones Proyectados Cierre', key: 'projected_galones', width: 25 },
+                            { header: 'Venta Actual ($)', key: 'current_monto', width: 20 },
+                            { header: 'Ritmo Diario ($/Día)', key: 'daily_rate_monto', width: 22 },
+                            { header: 'Venta Proyectada Cierre ($)', key: 'projected_monto', width: 25 },
+                            { header: '% Cuota Estimada', key: 'pct_share', width: 18 }
+                        ],
+                        data: projectionFuelSheetData
+                    },
+                    {
+                        name: 'Ventas Diarias',
+                        columns: [
+                            { header: 'Fecha', key: 'fecha', width: 15 },
+                            { header: 'Día', key: 'dia_semana', width: 15 },
+                            { header: 'Galones Despachados', key: 'total_galones', width: 22 },
+                            { header: 'Venta Total ($)', key: 'total_monto', width: 20 },
+                            { header: 'Precio Promedio ($/gln)', key: 'precio_promedio', width: 22 },
+                            { header: 'Desglose por Combustible', key: 'detalle_combustibles', width: 50 }
+                        ],
+                        data: dailySheetData
+                    },
+                    {
+                        name: 'Patrón Semanal',
+                        columns: [
+                            { header: 'Día de la Semana', key: 'name', width: 20 },
+                            { header: 'Días Registrados', key: 'dias_ocurrencia', width: 16 },
+                            { header: 'Galones Totales', key: 'galones_total', width: 18 },
+                            { header: 'Prom. Diario Galones', key: 'galones_promedio', width: 22 },
+                            { header: 'Ventas Totales ($)', key: 'monto_total', width: 18 },
+                            { header: 'Prom. Diario Ventas ($)', key: 'monto_promedio', width: 22 },
+                            { header: 'Estado / Pico', key: 'indicador', width: 16 }
+                        ],
+                        data: weeklySheetData
+                    }
+                ]
+            });
+
+            return excelService.sendExcelResponse(res, buffer, `Ventas_Analiticas_Lecturas_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        const pdfBuffer = await pdfService.generateVentasLecturasAnalyticsPDF({
+            company_id: companyId,
+            start_date,
+            end_date,
+            branch_id,
+            branch_name: data.branch_name,
+            compare_mode,
+            summary: data.summary,
+            projection: data.projection,
+            fuel_comparison: data.fuel_comparison,
+            weekly_patterns: data.weekly_patterns,
+            daily_series: data.daily_series
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Ventas_Analiticas_Lecturas_${start_date}_al_${end_date}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error en getVentasLecturasAnalyticsPDF:', error);
+        res.status(500).json({ message: 'Error al generar PDF analítico de ventas según lecturas' });
+    }
+};
