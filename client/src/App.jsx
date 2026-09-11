@@ -14,6 +14,7 @@ import Companies from './pages/Companies';
 import CompanyModules from './pages/CompanyModules';
 import Branches from './pages/Branches';
 import POS from './pages/POS';
+import FilproSync from './pages/FilproSync';
 import Customers from './pages/Customers';
 import Products from './pages/Products';
 import Sellers from './pages/Sellers';
@@ -234,6 +235,8 @@ function App() {
                         <Route path="/companies" element={<Companies />} />
                         <Route path="/branches" element={<Branches />} />
                         <Route path="/pos" element={<POS />} />
+                        <Route path="/sistema/filpro" element={<FilproSync />} />
+                        <Route path="/filpro" element={<FilproSync />} />
                         <Route path="/customers" element={<Customers />} />
                         <Route path="/products" element={<Products />} />
                         <Route path="/sellers" element={<Sellers />} />

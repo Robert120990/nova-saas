@@ -350,6 +350,14 @@ REGLAS DE MULTI-TENENCIA:
 - retry_count INT, last_error TEXT
 - fecha_generacion DATETIME, fecha_envio_hacienda DATETIME, created_at
 
+### filpro_connections (Conexión a API FilPro por empresa)
+- id, company_id, branch_id, portal_url, filpro_email, filpro_password (encrypted)
+- filpro_company_id, filpro_establishment_code, auto_sync, last_sync_date, last_sync_at, created_at, updated_at
+- UNIQUE(company_id, branch_id)
+
+### filpro_sync_logs (Auditoría de sincronización FilPro)
+- id, company_id, branch_id, sync_date, total_found, total_imported, total_skipped, total_errors, details JSON, created_at
+
 ---
 
 ## CATÁLOGOS DTE / HACIENDA
