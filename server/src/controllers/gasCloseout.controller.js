@@ -3947,6 +3947,33 @@ exports.generarComplementaria = async (req, res) => {
             const gravadoNeto = Math.round((ventaGravada - ivaComplementaria) * 100) / 100;
             const montoTotal = Math.round((ventaGravada + fovial + cotrans) * 100) / 100;
 
+            const obsComplementaria = `Complementaria turno ${fecha_turno} #${turnoNum} - ${r.descripcion_producto}`;
+
+            // Guardia de idempotencia: si ya existe una complementaria ACEPTADA para este cierre/turno/producto, no duplicar
+            const [existingDte] = await pool.query(`
+                SELECT sh.id, sh.codigo_generacion, sh.numero_control
+                FROM sales_headers sh
+                JOIN dtes d ON (d.venta_id = sh.id OR (sh.codigo_generacion IS NOT NULL AND d.codigo_generacion = sh.codigo_generacion))
+                WHERE sh.company_id = ?
+                  AND sh.branch_id = ?
+                  AND sh.observaciones = ?
+                  AND d.status = 'ACCEPTED'
+                LIMIT 1
+            `, [company_id, branch_id, obsComplementaria]);
+
+            if (existingDte.length > 0) {
+                resultados.push({
+                    producto: r.descripcion_producto,
+                    success: true,
+                    already_emitted: true,
+                    codigo_generacion: existingDte[0].codigo_generacion,
+                    numero_control: existingDte[0].numero_control,
+                    total: montoTotal,
+                    sale_id: existingDte[0].id
+                });
+                continue;
+            }
+
             const item = {
                 product_id: r.product_id,
                 codigo: r.codigo_producto,
@@ -4012,7 +4039,7 @@ exports.generarComplementaria = async (req, res) => {
                 condicion_operacion: 1,
                 fecha_emision: new Date(),
                 hora_emision: new Date().toTimeString().split(' ')[0],
-                estado: 'emitido',
+                estado: 'borrador',
                 total_gravado: gravadoNeto,
                 total_exento: 0,
                 total_nosujetas: 0,
@@ -4025,7 +4052,7 @@ exports.generarComplementaria = async (req, res) => {
                 total_pagar: montoTotal,
                 payment_condition: 1,
                 cliente_nombre: 'CONSUMIDOR FINAL',
-                observaciones: `Complementaria turno ${fecha_turno} #${turnoNum} - ${r.descripcion_producto}`,
+                observaciones: obsComplementaria,
                 created_at: new Date()
             }]);
             const saleId = saleResult.insertId;
@@ -4056,7 +4083,7 @@ exports.generarComplementaria = async (req, res) => {
                 if (dteResult.success) {
                     await pool.query(
                         `UPDATE sales_headers SET
-                         numero_control = ?, codigo_generacion = ?, sello_recepcion = ?, fh_procesamiento = ?
+                         estado = 'emitido', numero_control = ?, codigo_generacion = ?, sello_recepcion = ?, fh_procesamiento = ?
                          WHERE id = ?`,
                         [dteResult.data.numero_control, dteResult.data.codigo_generacion,
                          dteResult.data.sello_recepcion, dteResult.data.fh_procesamiento, saleId]
@@ -4071,7 +4098,7 @@ exports.generarComplementaria = async (req, res) => {
                     });
                 } else if (dteResult.codigo_generacion) {
                     await pool.query(
-                        `UPDATE sales_headers SET codigo_generacion = ?, numero_control = ? WHERE id = ?`,
+                        `UPDATE sales_headers SET estado = 'emitido', codigo_generacion = ?, numero_control = ? WHERE id = ?`,
                         [dteResult.codigo_generacion, dteResult.numero_control || null, saleId]
                     );
                     resultados.push({
@@ -4083,18 +4110,32 @@ exports.generarComplementaria = async (req, res) => {
                         error: dteResult.error
                     });
                 } else {
+                    // Limpieza automática si la emisión falló por completo: no dejar venta huérfana en estado pendiente
+                    await pool.query('DELETE FROM sales_payments WHERE sale_id = ?', [saleId]);
+                    await pool.query('DELETE FROM sales_items WHERE sale_id = ?', [saleId]);
+                    await pool.query('DELETE FROM sales_headers WHERE id = ?', [saleId]);
+
                     resultados.push({
                         producto: r.descripcion_producto,
                         success: false,
-                        sale_id: saleId,
+                        sale_id: null,
                         error: dteResult.error || 'Error al emitir DTE'
                     });
                 }
             } catch (err) {
+                // Limpieza automática ante excepción no controlada
+                try {
+                    await pool.query('DELETE FROM sales_payments WHERE sale_id = ?', [saleId]);
+                    await pool.query('DELETE FROM sales_items WHERE sale_id = ?', [saleId]);
+                    await pool.query('DELETE FROM sales_headers WHERE id = ?', [saleId]);
+                } catch (cleanupErr) {
+                    console.error('Error limpiando venta borrador tras excepción:', cleanupErr);
+                }
+
                 resultados.push({
                     producto: r.descripcion_producto,
                     success: false,
-                    sale_id: saleId,
+                    sale_id: null,
                     error: err.message
                 });
             }
