@@ -454,8 +454,7 @@ const Purchases = () => {
                         applyExtractedDteData(data);
                         toast.success('¡DTE recibido y procesado desde el teléfono con éxito!');
                     } else if (status === 'error') {
-                        clearInterval(intervalId);
-                        setQrError(error || 'Error al procesar la imagen con IA');
+                        setQrError(error || 'Error al procesar la imagen con IA. Puedes reintentar desde el teléfono.');
                     } else if (status === 'expired') {
                         clearInterval(intervalId);
                         setQrError('La sesión de escaneo ha expirado');

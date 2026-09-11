@@ -17,16 +17,141 @@ import {
     Package
 } from 'lucide-react';
 
+// IndexedDB helper para persistir la imagen seleccionada de forma segura sin límites de cuota de memoria
+const DB_NAME = 'NovaDteScanDB';
+const STORE_NAME = 'scan_sessions';
+
+function openScanDB() {
+    return new Promise((resolve) => {
+        if (typeof window === 'undefined' || !window.indexedDB) {
+            resolve(null);
+            return;
+        }
+        try {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'sessionId' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => resolve(null);
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function saveImageToCache(sessionId, file) {
+    try {
+        const db = await openScanDB();
+        if (!db) return;
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.put({
+            sessionId,
+            file,
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        console.warn('No se pudo guardar en IndexedDB:', e);
+    }
+}
+
+async function getImageFromCache(sessionId) {
+    try {
+        const db = await openScanDB();
+        if (!db) return null;
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const req = store.get(sessionId);
+            req.onsuccess = () => {
+                if (req.result?.file) {
+                    resolve(req.result.file);
+                } else {
+                    resolve(null);
+                }
+            };
+            req.onerror = () => resolve(null);
+        });
+    } catch (e) {
+        console.warn('Error al leer de IndexedDB:', e);
+        return null;
+    }
+}
+
+async function clearImageFromCache(sessionId) {
+    try {
+        const db = await openScanDB();
+        if (!db) return;
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.delete(sessionId);
+    } catch (e) {
+        console.warn('Error al limpiar IndexedDB:', e);
+    }
+}
+
 /**
  * Optimiza y comprime la imagen tomada desde la cámara móvil
- * Reduce fotos pesadas de 15MB-50MP a ~350KB-1600px para prevenir
+ * Reduce fotos pesadas de 15MB-50MP a ~200KB-1280px para prevenir
  * cierres de pestaña por falta de memoria (OOM / Low Memory Killer) en teléfonos.
+ * Utiliza createImageBitmap nativo con resize cuando esté disponible para evitar
+ * asignar imágenes de 50 Megapixeles en la memoria RAM de JavaScript.
  */
-function compressAndOptimizeImage(file, maxDimension = 1600, quality = 0.85) {
+async function compressAndOptimizeImage(file, maxDimension = 1280, quality = 0.78) {
     if (!file || file.type === 'application/pdf') {
-        return Promise.resolve({ file, dataUrl: null });
+        return file;
     }
 
+    // Método 1: createImageBitmap con resize nativo (ultra bajo consumo de RAM)
+    if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
+        try {
+            const tempBitmap = await createImageBitmap(file);
+            let { width, height } = tempBitmap;
+            tempBitmap.close(); // Liberar inmediatamente el bitmap temporal
+
+            if (width > maxDimension || height > maxDimension) {
+                if (width > height) {
+                    height = Math.round((height * maxDimension) / width);
+                    width = maxDimension;
+                } else {
+                    width = Math.round((width * maxDimension) / height);
+                    height = maxDimension;
+                }
+            }
+
+            const resizedBitmap = await createImageBitmap(file, {
+                resizeWidth: width,
+                resizeHeight: height,
+                resizeQuality: 'high'
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            ctx.drawImage(resizedBitmap, 0, 0);
+            resizedBitmap.close();
+
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+            canvas.width = 0;
+            canvas.height = 0;
+
+            if (blob) {
+                return new File([blob], 'comprobante_dte.jpg', {
+                    type: 'image/jpeg',
+                    lastModified: Date.now()
+                });
+            }
+        } catch (bitmapErr) {
+            console.warn('createImageBitmap falló, usando método canvas tradicional:', bitmapErr);
+        }
+    }
+
+    // Método 2 Fallback: Canvas tradicional
     return new Promise((resolve) => {
         const objectUrl = URL.createObjectURL(file);
         const img = new Image();
@@ -49,10 +174,8 @@ function compressAndOptimizeImage(file, maxDimension = 1600, quality = 0.85) {
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { alpha: false });
                 ctx.drawImage(img, 0, 0, width, height);
-
-                const dataUrl = canvas.toDataURL('image/jpeg', quality);
 
                 canvas.toBlob((blob) => {
                     canvas.width = 0;
@@ -62,42 +185,24 @@ function compressAndOptimizeImage(file, maxDimension = 1600, quality = 0.85) {
                             type: 'image/jpeg',
                             lastModified: Date.now()
                         });
-                        resolve({ file: optimizedFile, dataUrl });
+                        resolve(optimizedFile);
                     } else {
-                        resolve({ file, dataUrl });
+                        resolve(file);
                     }
                 }, 'image/jpeg', quality);
             } catch (err) {
-                console.error('Error durante la optimización de imagen:', err);
-                resolve({ file, dataUrl: null });
+                console.error('Error durante la optimización de imagen en canvas:', err);
+                resolve(file);
             }
         };
 
         img.onerror = () => {
             URL.revokeObjectURL(objectUrl);
-            resolve({ file, dataUrl: null });
+            resolve(file);
         };
 
         img.src = objectUrl;
     });
-}
-
-function dataUrlToFile(dataUrl, filename = 'comprobante_dte.jpg') {
-    try {
-        const arr = dataUrl.split(',');
-        const mimeMatch = arr[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
-        return new File([u8arr], filename, { type: mime, lastModified: Date.now() });
-    } catch (e) {
-        console.error('Error al convertir DataURL a File:', e);
-        return null;
-    }
 }
 
 export default function MobileDteScanner() {
@@ -153,35 +258,34 @@ export default function MobileDteScanner() {
             return;
         }
 
-        // Recuperar imagen en caché si el navegador móvil recargó la pestaña
-        try {
-            const cachedDataUrl = sessionStorage.getItem(`mobile_scan_cached_${sessionId}`);
-            if (cachedDataUrl) {
-                const recoveredFile = dataUrlToFile(cachedDataUrl);
-                if (recoveredFile) {
-                    setSelectedImage(recoveredFile);
-                    setPreviewUrl(cachedDataUrl);
-                }
+        let isMounted = true;
+
+        // Recuperar imagen en caché de IndexedDB si el navegador móvil recargó la pestaña por falta de memoria
+        getImageFromCache(sessionId).then((cachedFile) => {
+            if (isMounted && cachedFile) {
+                setSelectedImage(cachedFile);
+                setPreviewUrl(URL.createObjectURL(cachedFile));
             }
-        } catch (e) {
-            console.warn('No se pudo acceder a sessionStorage:', e);
-        }
+        }).catch((e) => {
+            console.warn('No se pudo acceder a IndexedDB:', e);
+        });
 
         const checkSession = async () => {
             try {
                 const res = await axios.get(`/api/public/scan-session/${sessionId}`);
+                if (!isMounted) return;
+
                 if (res.data?.status === 'completed' && res.data?.data) {
                     setResultData(res.data.data);
                     setSessionStatus('completed');
-                    try {
-                        sessionStorage.removeItem(`mobile_scan_cached_${sessionId}`);
-                    } catch (e) {}
+                    clearImageFromCache(sessionId);
                 } else if (res.data?.status === 'expired') {
                     setSessionStatus('expired');
                 } else {
                     setSessionStatus('valid');
                 }
             } catch (err) {
+                if (!isMounted) return;
                 if (err.response?.status === 404 || err.response?.status === 410) {
                     setSessionStatus('expired');
                 } else {
@@ -191,35 +295,48 @@ export default function MobileDteScanner() {
         };
 
         checkSession();
+
+        return () => {
+            isMounted = false;
+        };
     }, [sessionId]);
 
     const handleFileSelect = async (e) => {
         const file = e.target.files?.[0];
+        // Limpiar de forma segura el valor del input nativo para permitir re-seleccionar la misma imagen
+        if (e.target) {
+            e.target.value = '';
+        }
         if (!file) return;
 
         setIsCompressing(true);
         setUploadError(null);
 
         try {
-            // Optimizar resolución y memoria inmediatamente
-            const { file: optimizedFile, dataUrl } = await compressAndOptimizeImage(file, 1600, 0.85);
+            // Optimizar resolución y memoria inmediatamente (1280px, ~180KB)
+            const optimizedFile = await compressAndOptimizeImage(file, 1280, 0.78);
             setSelectedImage(optimizedFile);
 
-            if (dataUrl) {
-                setPreviewUrl(dataUrl);
+            if (previewUrl && previewUrl.startsWith('blob:')) {
                 try {
-                    sessionStorage.setItem(`mobile_scan_cached_${sessionId}`, dataUrl);
-                } catch (e) {
-                    console.warn('sessionStorage lleno:', e);
-                }
-            } else {
-                const blobUrl = URL.createObjectURL(optimizedFile);
-                setPreviewUrl(blobUrl);
+                    URL.revokeObjectURL(previewUrl);
+                } catch (revErr) {}
+            }
+
+            const blobUrl = URL.createObjectURL(optimizedFile);
+            setPreviewUrl(blobUrl);
+
+            // Persistir archivo en IndexedDB para sobrevivir a recargas de Chrome en segundo plano
+            if (sessionId) {
+                await saveImageToCache(sessionId, optimizedFile);
             }
         } catch (err) {
             console.error('Error al procesar archivo:', err);
             setSelectedImage(file);
             try {
+                if (previewUrl && previewUrl.startsWith('blob:')) {
+                    URL.revokeObjectURL(previewUrl);
+                }
                 setPreviewUrl(URL.createObjectURL(file));
             } catch (blobErr) {
                 console.error('Error createObjectURL:', blobErr);
@@ -242,15 +359,15 @@ export default function MobileDteScanner() {
         try {
             const res = await axios.post(`/api/public/scan-session/${sessionId}/upload`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 45000 // 45 segundos para dar margen al análisis de IA
+                timeout: 120000 // 120 segundos (2 minutos) para dar margen completo al análisis de IA
             });
 
             if (res.data?.success && res.data?.data) {
                 setResultData(res.data.data);
                 setSessionStatus('completed');
-                try {
-                    sessionStorage.removeItem(`mobile_scan_cached_${sessionId}`);
-                } catch (e) {}
+                if (sessionId) {
+                    clearImageFromCache(sessionId);
+                }
             } else {
                 throw new Error(res.data?.message || 'No se pudieron extraer los datos fiscales');
             }
@@ -273,9 +390,9 @@ export default function MobileDteScanner() {
         setUploadError(null);
         setResultData(null);
         setSessionStatus('valid');
-        try {
-            sessionStorage.removeItem(`mobile_scan_cached_${sessionId}`);
-        } catch (e) {}
+        if (sessionId) {
+            clearImageFromCache(sessionId);
+        }
     };
 
     return (
@@ -347,7 +464,6 @@ export default function MobileDteScanner() {
                             type="file"
                             accept="image/*"
                             capture="environment"
-                            onClick={(e) => { e.target.value = ''; }}
                             onChange={handleFileSelect}
                             style={{
                                 position: 'absolute',
@@ -366,7 +482,6 @@ export default function MobileDteScanner() {
                             id="mobile-gallery-file-input"
                             type="file"
                             accept="image/*,.pdf"
-                            onClick={(e) => { e.target.value = ''; }}
                             onChange={handleFileSelect}
                             style={{
                                 position: 'absolute',
@@ -469,14 +584,21 @@ export default function MobileDteScanner() {
                                     )}
 
                                     {isUploading && (
-                                        <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex flex-col items-center justify-center gap-3 p-4 text-center">
+                                        <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
                                             <div className="relative">
                                                 <div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
                                                 <Sparkles className="w-5 h-5 text-indigo-400 absolute inset-0 m-auto animate-pulse" />
                                             </div>
                                             <div className="space-y-1">
                                                 <h3 className="text-sm font-bold text-white">Analizando con Inteligencia Artificial...</h3>
-                                                <p className="text-[11px] text-slate-400">Extrayendo datos fiscales del comprobante</p>
+                                                <p className="text-[11px] text-slate-300">
+                                                    {recognizeItems 
+                                                        ? 'Extrayendo datos fiscales y lista de productos...' 
+                                                        : 'Extrayendo datos fiscales del comprobante...'}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 font-medium">
+                                                    Por favor mantén esta pantalla activa mientras finaliza el envío a tu PC
+                                                </p>
                                             </div>
                                         </div>
                                     )}
