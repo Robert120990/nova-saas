@@ -25,6 +25,15 @@ export default function QuickCustomerModal({ isOpen, onClose, onCustomerCreated 
             return;
         }
 
+        const correoTrimmed = (formData.correo || '').trim();
+        if (correoTrimmed) {
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!emailRegex.test(correoTrimmed)) {
+                toast.error('El correo electrónico no tiene un formato válido (ejemplo: cliente@dominio.com)');
+                return;
+            }
+        }
+
         try {
             setIsSubmitting(true);
             const res = await axios.post('/api/customers', formData);

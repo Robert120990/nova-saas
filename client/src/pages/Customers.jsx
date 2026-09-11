@@ -336,6 +336,18 @@ const Customers = () => {
             return;
         }
 
+        const correoTrimmed = (data.correo || '').trim();
+        if (correoTrimmed) {
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!emailRegex.test(correoTrimmed)) {
+                toast.error('El correo electrónico no tiene un formato válido (ejemplo: cliente@dominio.com)');
+                return;
+            }
+            data.correo = correoTrimmed;
+        } else {
+            data.correo = null;
+        }
+
         const distritoSel = distritos.find(d => d.code === data.distrito);
         if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
             toast.error('El municipio seleccionado no corresponde al distrito');

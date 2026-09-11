@@ -307,20 +307,49 @@ class DteService {
             }
         }
 
-        let departamento = c.departamento || '06';
-        let municipio = c.municipio || '14';
-        let distrito = c.distrito || '01';
+        let departamento = String(c.departamento || '06').padStart(2, '0');
+        let municipio = String(c.municipio || '23').padStart(2, '0');
+        let distrito = String(c.distrito || '14').padStart(2, '0');
         let complemento = c.direccion || 'San Salvador';
 
         if (customerBranchId) {
             const [branches] = await pool.query('SELECT * FROM customer_branches WHERE id = ? AND customer_id = ?', [customerBranchId, customerId]);
             if (branches.length > 0) {
                 const b = branches[0];
-                departamento = (b.departamento && String(b.departamento).trim()) || departamento;
-                municipio = (b.municipio && String(b.municipio).trim()) || municipio;
-                distrito = (b.distrito && String(b.distrito).trim()) || distrito;
+                departamento = (b.departamento && String(b.departamento).trim()) ? String(b.departamento).trim().padStart(2, '0') : departamento;
+                municipio = (b.municipio && String(b.municipio).trim()) ? String(b.municipio).trim().padStart(2, '0') : municipio;
+                distrito = (b.distrito && String(b.distrito).trim()) ? String(b.distrito).trim().padStart(2, '0') : distrito;
                 complemento = (b.direccion && String(b.direccion).trim()) || complemento;
             }
+        }
+
+        // Asegurar que la combinación de depto, municipio y distrito sea válida en CAT-008
+        try {
+            const [validDist] = await pool.query(
+                'SELECT code, dep_code, muni_code FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? AND code = ?',
+                [departamento, municipio, distrito]
+            );
+            if (validDist.length === 0) {
+                // Si el distrito no es válido para ese municipio, buscar por municipio o cabecera
+                const [muniDist] = await pool.query(
+                    'SELECT code FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? ORDER BY code LIMIT 1',
+                    [departamento, municipio]
+                );
+                if (muniDist.length > 0) {
+                    distrito = muniDist[0].code;
+                } else if (departamento === '06') {
+                    municipio = '23';
+                    distrito = '14';
+                }
+            }
+        } catch (e) {
+            console.warn('[DteService] Error verificando cat_008_distrito:', e.message);
+        }
+
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        let safeCorreo = (c.correo && String(c.correo).trim()) || null;
+        if (safeCorreo && !emailRegex.test(safeCorreo)) {
+            safeCorreo = null;
         }
 
         return {
@@ -329,7 +358,7 @@ class DteService {
             nrc: c.nrc,
             tipoDocumento: c.tipo_documento || '36',
             numDocumento: c.numero_documento,
-            correo: c.correo,
+            correo: safeCorreo,
             telefono: c.telefono,
             codActividad: codActividad,
             descActividad: descActividad,

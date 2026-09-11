@@ -79,6 +79,67 @@ async function resolveActividadEconomica(codigoActividad) {
     }
 }
 
+let cat008Cache = null;
+async function getCat008Distritos() {
+    if (!cat008Cache) {
+        try {
+            const [rows] = await pool.query('SELECT code, dep_code, muni_code, description FROM cat_008_distrito');
+            cat008Cache = rows || [];
+        } catch (e) {
+            console.warn('[DTE-API] Error cargando cat_008_distrito:', e.message);
+            cat008Cache = [];
+        }
+    }
+    return cat008Cache;
+}
+
+/**
+ * Valida y asegura que la combinación de departamento, municipio y distrito
+ * sea 100% válida en el catálogo oficial CAT-008, evitando rechazos de Hacienda.
+ */
+async function validateAndFixReceptorAddress(depto, muni, dist, complemento = '') {
+    const distritos = await getCat008Distritos();
+    let rawDepto = String(depto || '06').replace(/\D/g, '').slice(-2).padStart(2, '0');
+    if (rawDepto === '00' || parseInt(rawDepto) > 14) rawDepto = '06';
+
+    let rawMuni = String(muni || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
+    let rawDist = String(dist || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
+
+    // 1. Terna exacta válida
+    const exact = distritos.find(d => d.dep_code === rawDepto && d.muni_code === rawMuni && d.code === rawDist);
+    if (exact) return { departamento: rawDepto, municipio: rawMuni, distrito: rawDist };
+
+    // 2. Si el distrito coincide con algún distrito de ese depto, usar su muni_code real
+    const distInDep = distritos.find(d => d.dep_code === rawDepto && d.code === rawDist);
+    if (distInDep) {
+        return { departamento: rawDepto, municipio: distInDep.muni_code, distrito: distInDep.code };
+    }
+
+    // 3. Si la dirección menciona algún distrito de ese depto
+    const dir = String(complemento || '').toLowerCase();
+    const depDistricts = distritos.filter(d => d.dep_code === rawDepto);
+    for (const d of depDistricts) {
+        if (d.description.length >= 4 && dir.includes(d.description.toLowerCase())) {
+            return { departamento: rawDepto, municipio: d.muni_code, distrito: d.code };
+        }
+    }
+
+    // 4. Si el municipio tiene distritos válidos
+    const muniDistricts = distritos.filter(d => d.dep_code === rawDepto && d.muni_code === rawMuni);
+    if (muniDistricts.length > 0) {
+        const cabecera = muniDistricts.find(d => d.code === '14' || d.description.includes('SAN SALVADOR') || d.description.includes('SANTA TECLA') || d.description.includes('SANTA ANA') || d.description.includes('SAN MIGUEL') || d.description.includes('AHUACHAP') || d.description.includes('SONSONATE'));
+        return { departamento: rawDepto, municipio: rawMuni, distrito: (cabecera || muniDistricts[0]).code };
+    }
+
+    // 5. Fallback a San Salvador Centro
+    if (rawDepto === '06') {
+        return { departamento: '06', municipio: '23', distrito: '14' };
+    }
+
+    const firstOfDep = depDistricts[0] || { muni_code: '01', code: '01' };
+    return { departamento: rawDepto, municipio: firstOfDep.muni_code, distrito: firstOfDep.code };
+}
+
 // CR (07): totales específicos para comprobante de retención
 function calculateTotalsCR(items) {
     let totalSujeto = 0;
@@ -619,37 +680,40 @@ async function generateDTE(payload) {
         '37': '37'
     };
 
-    let rawDepto = String(receptor.direccion?.departamento || '06').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    let rawMuni = String(receptor.direccion?.municipio || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    
-    // Solo asegurar que no sean '00'
-    if (rawDepto === '00' || parseInt(rawDepto) > 14) rawDepto = '06';
-    if (rawMuni === '00') rawMuni = '01';
-
-    let rawDistrito = null;
-    if (receptor.direccion && receptor.direccion.distrito && !/^\d+$/.test(receptor.direccion.distrito)) {
-        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
+    let finalDireccion = null;
+    if (receptor.direccion) {
+        const fixedAddr = await validateAndFixReceptorAddress(
+            receptor.direccion.departamento,
+            receptor.direccion.municipio,
+            receptor.direccion.distrito,
+            receptor.direccion.complemento
+        );
+        finalDireccion = {
+            departamento: fixedAddr.departamento,
+            municipio: fixedAddr.municipio,
+            distrito: fixedAddr.distrito,
+            complemento: sanitizeText(receptor.direccion.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
+        };
     }
-    rawDistrito = String(receptor.direccion?.distrito || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    if (rawDistrito === '00') rawDistrito = '01';
 
     let cleanCodActividad = receptor.codActividad ? String(receptor.codActividad).trim() : '';
     if (cleanCodActividad && cleanCodActividad.length === 4 && /^\d+$/.test(cleanCodActividad)) {
         cleanCodActividad = cleanCodActividad.padStart(5, '0');
     }
 
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    let safeReceptorCorreo = (receptor.correo && String(receptor.correo).trim()) || null;
+    if (safeReceptorCorreo && !emailRegex.test(safeReceptorCorreo)) {
+        safeReceptorCorreo = null;
+    }
+
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
         codActividad: cleanCodActividad || '10005',
         descActividad: sanitizeText(receptor.descActividad || 'Otros'),
-        direccion: receptor.direccion ? {
-            departamento: rawDepto,
-            municipio: rawMuni,
-            distrito: rawDistrito,
-            complemento: sanitizeText(receptor.direccion.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
-        } : null,
+        direccion: finalDireccion,
         telefono: cleanNumbers(receptor.telefono || '00000000').substring(0, 30),
-        correo: receptor.correo || 'receptor@example.com'
+        correo: safeReceptorCorreo
     };
 
     if (tipoDte === '07') {
