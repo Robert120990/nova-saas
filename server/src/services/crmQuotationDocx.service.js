@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 const {
     Document,
@@ -18,22 +18,41 @@ const {
 
 const HEADER_IMAGE_PATH = path.join(__dirname, '../assets/quotations/eggcelent_header.png');
 
-const formatDateShort = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const year = d.getUTCFullYear();
-    return `${day}/${month}/${year}`;
-};
+const MONTH_NAMES_ES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+];
 
-const formatMoney = (val) => {
+function formatDateFormal(dateStr) {
+    if (!dateStr) return '';
+    const parts = String(dateStr).split('T')[0].split('-');
+    if (parts.length === 3) {
+        const year = parts[0];
+        const monthIndex = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        return `${day} de ${MONTH_NAMES_ES[monthIndex] || ''} ${year}`;
+    }
+    const d = new Date(dateStr);
+    return `${d.getDate()} de ${MONTH_NAMES_ES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    const parts = String(dateStr).split('T')[0].split('-');
+    if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    const d = new Date(dateStr);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function formatMoney(val) {
     const num = parseFloat(val) || 0;
     return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+}
 
 /**
- * Genera un archivo Word (.docx) editable con el diseño oficial de Eggcelent
+ * Genera un archivo Word (.docx) editable con el diseño oficial y corporativo de Eggcelent / ANDELSA
  * @param {Object} quotation Datos de la cotización y sus ítems
  * @returns {Promise<Buffer>} Buffer del documento Word generado
  */
@@ -44,7 +63,7 @@ async function generateQuotationDocx(quotation) {
         try {
             headerImageBuffer = fs.readFileSync(HEADER_IMAGE_PATH);
         } catch (e) {
-            console.warn('No se pudo cargar la imagen de encabezado:', e.message);
+            console.warn('No se pudo cargar la imagen de encabezado para Word:', e.message);
         }
     }
 
@@ -58,132 +77,211 @@ async function generateQuotationDocx(quotation) {
         }
     }
 
-    // Tabla de Items
+    const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' };
+    const borderNone = { style: BorderStyle.NONE };
+    const tableBorders = {
+        top: cellBorder,
+        bottom: cellBorder,
+        left: cellBorder,
+        right: cellBorder,
+        insideHorizontal: cellBorder,
+        insideVertical: cellBorder
+    };
+
+    // 1. Tabla de Productos
     const tableRows = [
-        // Fila de encabezado
         new TableRow({
             tableHeader: true,
             children: [
                 new TableCell({
-                    width: { size: 6, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: '#', bold: true, color: 'FFFFFF', size: 18 })], alignment: AlignmentType.CENTER })]
+                    width: { size: 30, type: WidthType.PERCENTAGE },
+                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    children: [new Paragraph({ children: [new TextRun({ text: 'PRODUCTO', bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.LEFT })]
                 }),
                 new TableCell({
-                    width: { size: 14, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'CÓDIGO', bold: true, color: 'FFFFFF', size: 18 })], alignment: AlignmentType.CENTER })]
-                }),
-                new TableCell({
-                    width: { size: 36, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'DESCRIPCIÓN DEL PRODUCTO', bold: true, color: 'FFFFFF', size: 18 })] })]
-                }),
-                new TableCell({
-                    width: { size: 16, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'PRESENTACIÓN', bold: true, color: 'FFFFFF', size: 18 })], alignment: AlignmentType.CENTER })]
+                    width: { size: 18, type: WidthType.PERCENTAGE },
+                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    children: [new Paragraph({ children: [new TextRun({ text: 'PRESENTACIÓN', bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.LEFT })]
                 }),
                 new TableCell({
                     width: { size: 8, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'CANT.', bold: true, color: 'FFFFFF', size: 18 })], alignment: AlignmentType.RIGHT })]
+                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    children: [new Paragraph({ children: [new TextRun({ text: 'CANT.', bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.CENTER })]
                 }),
                 new TableCell({
-                    width: { size: 10, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'PRECIO U.', bold: true, color: 'FFFFFF', size: 18 })], alignment: AlignmentType.RIGHT })]
+                    width: { size: 18, type: WidthType.PERCENTAGE },
+                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    children: [new Paragraph({ children: [new TextRun({ text: 'PRECIO UNIT. (+IVA)', bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
                 }),
                 new TableCell({
-                    width: { size: 10, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'EA991C' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'SUBTOTAL', bold: true, color: 'FFFFFF', size: 18 })], alignment: AlignmentType.RIGHT })]
+                    width: { size: 13, type: WidthType.PERCENTAGE },
+                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    children: [new Paragraph({ children: [new TextRun({ text: 'SUBTOTAL', bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
+                }),
+                new TableCell({
+                    width: { size: 13, type: WidthType.PERCENTAGE },
+                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                    children: [new Paragraph({ children: [new TextRun({ text: 'NOTAS / DETALLE', bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.LEFT })]
                 })
             ]
         })
     ];
 
-    // Filas de productos
     items.forEach((item, idx) => {
-        const isOdd = idx % 2 === 1;
-        const fill = isOdd ? 'F8FAFC' : 'FFFFFF';
+        const fill = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+        const qtyVal = parseFloat(item.quantity) || 1;
+        const priceVal = parseFloat(item.unit_price) || 0;
+        const itemSubtotal = parseFloat(item.subtotal || item.total) || (qtyVal * priceVal);
 
         tableRows.push(
             new TableRow({
                 children: [
                     new TableCell({
-                        width: { size: 6, type: WidthType.PERCENTAGE },
+                        width: { size: 30, type: WidthType.PERCENTAGE },
                         shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: String(idx + 1), size: 17 })], alignment: AlignmentType.CENTER })]
-                    }),
-                    new TableCell({
-                        width: { size: 14, type: WidthType.PERCENTAGE },
-                        shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: item.product_code || '—', size: 17, color: '475569' })], alignment: AlignmentType.CENTER })]
-                    }),
-                    new TableCell({
-                        width: { size: 36, type: WidthType.PERCENTAGE },
-                        shading: { type: ShadingType.CLEAR, fill },
+                        margins: { top: 80, bottom: 80, left: 100, right: 100 },
                         children: [
-                            new Paragraph({ children: [new TextRun({ text: item.product_name || '', bold: true, size: 18, color: '0F172A' })] }),
-                            ...(item.notes ? [new Paragraph({ children: [new TextRun({ text: item.notes, italics: true, size: 15, color: '64748B' })] })] : [])
+                            new Paragraph({
+                                children: [new TextRun({ text: item.product_name || 'PRODUCTO', bold: true, size: 17, color: '0F172A' })]
+                            })
                         ]
                     }),
                     new TableCell({
-                        width: { size: 16, type: WidthType.PERCENTAGE },
+                        width: { size: 18, type: WidthType.PERCENTAGE },
                         shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: item.presentation || 'Cubeta 30 LBS', size: 17, color: '334155' })], alignment: AlignmentType.CENTER })]
+                        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+                        children: [
+                            new Paragraph({
+                                children: [new TextRun({ text: item.presentation || 'Estándar', size: 16, color: '334155' })]
+                            })
+                        ]
                     }),
                     new TableCell({
                         width: { size: 8, type: WidthType.PERCENTAGE },
                         shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: parseFloat(item.quantity || 1).toFixed(0), size: 17, bold: true })], alignment: AlignmentType.RIGHT })]
+                        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+                        children: [
+                            new Paragraph({
+                                children: [new TextRun({ text: qtyVal.toString(), bold: true, size: 17, color: '0F172A' })],
+                                alignment: AlignmentType.CENTER
+                            })
+                        ]
                     }),
                     new TableCell({
-                        width: { size: 10, type: WidthType.PERCENTAGE },
+                        width: { size: 18, type: WidthType.PERCENTAGE },
                         shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: formatMoney(item.unit_price), size: 17 })], alignment: AlignmentType.RIGHT })]
+                        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+                        children: [
+                            new Paragraph({
+                                children: [new TextRun({ text: formatMoney(priceVal), size: 17, color: '0F172A' })],
+                                alignment: AlignmentType.RIGHT
+                            })
+                        ]
                     }),
                     new TableCell({
-                        width: { size: 10, type: WidthType.PERCENTAGE },
+                        width: { size: 13, type: WidthType.PERCENTAGE },
                         shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: formatMoney(item.total), size: 17, bold: true, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
+                        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+                        children: [
+                            new Paragraph({
+                                children: [new TextRun({ text: formatMoney(itemSubtotal), bold: true, size: 17, color: '0F172A' })],
+                                alignment: AlignmentType.RIGHT
+                            })
+                        ]
+                    }),
+                    new TableCell({
+                        width: { size: 13, type: WidthType.PERCENTAGE },
+                        shading: { type: ShadingType.CLEAR, fill },
+                        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+                        children: [
+                            new Paragraph({
+                                children: [new TextRun({ text: item.notes || '', italics: true, size: 15, color: '64748B' })]
+                            })
+                        ]
                     })
                 ]
             })
         );
     });
 
-    // Fila de Total
-    tableRows.push(
-        new TableRow({
-            children: [
-                new TableCell({
-                    columnSpan: 5,
-                    width: { size: 80, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
-                    children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL OFERTA COMERCIAL (USD):', bold: true, size: 18, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
-                }),
-                new TableCell({
-                    columnSpan: 2,
-                    width: { size: 20, type: WidthType.PERCENTAGE },
-                    shading: { type: ShadingType.CLEAR, fill: 'FEF3C7' },
-                    children: [new Paragraph({ children: [new TextRun({ text: formatMoney(quotation.total), bold: true, size: 20, color: 'B45309' })], alignment: AlignmentType.RIGHT })]
-                })
-            ]
-        })
-    );
+    // 2. Tabla de Totales (Alineada a la derecha)
+    const totalsTable = new Table({
+        width: { size: 45, type: WidthType.PERCENTAGE },
+        alignment: AlignmentType.RIGHT,
+        borders: tableBorders,
+        rows: [
+            new TableRow({
+                children: [
+                    new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        margins: { top: 60, bottom: 60, left: 80, right: 80 },
+                        children: [new Paragraph({ children: [new TextRun({ text: 'Subtotal:', size: 17, color: '475569' })] })]
+                    }),
+                    new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        margins: { top: 60, bottom: 60, left: 80, right: 80 },
+                        children: [new Paragraph({ children: [new TextRun({ text: formatMoney(quotation.subtotal), bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
+                    })
+                ]
+            }),
+            new TableRow({
+                children: [
+                    new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        margins: { top: 60, bottom: 60, left: 80, right: 80 },
+                        children: [new Paragraph({ children: [new TextRun({ text: 'IVA (13%):', size: 17, color: '475569' })] })]
+                    }),
+                    new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        margins: { top: 60, bottom: 60, left: 80, right: 80 },
+                        children: [new Paragraph({ children: [new TextRun({ text: formatMoney(quotation.tax_amount), bold: true, size: 17, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
+                    })
+                ]
+            }),
+            new TableRow({
+                children: [
+                    new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+                        children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL COTIZADO:', bold: true, size: 18, color: '0F172A' })] })]
+                    }),
+                    new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        shading: { type: ShadingType.CLEAR, fill: 'F1F5F9' },
+                        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+                        children: [new Paragraph({ children: [new TextRun({ text: formatMoney(quotation.total), bold: true, size: 19, color: '0F172A' })], alignment: AlignmentType.RIGHT })]
+                    })
+                ]
+            })
+        ]
+    });
 
     const authorName = quotation.signature_author_name || quotation.created_by_name || 'Raul Rafael Sosa M.';
     const authorTitle = quotation.signature_author_title || 'Ejecutivo Comercial';
     const authorPhone = quotation.signature_author_phone || '(503) 7060-5040';
 
     const doc = new Document({
+        styles: {
+            default: {
+                document: {
+                    run: {
+                        font: 'Arial'
+                    }
+                }
+            }
+        },
         sections: [
             {
                 properties: {
                     page: {
-                        margin: { top: 720, bottom: 720, left: 720, right: 720 } // 0.5 inch margins
+                        margin: { top: 576, bottom: 576, left: 720, right: 720 } // Margen elegante
                     }
                 },
                 footers: {
@@ -191,8 +289,20 @@ async function generateQuotationDocx(quotation) {
                         children: [
                             new Paragraph({
                                 children: [
-                                    new TextRun({ text: 'ALIMENTOS NUTRICIONALES DE EL SALVADOR S.A DE C.V', bold: true, size: 15, color: '0F172A' }),
-                                    new TextRun({ text: '  •  Antigua Carr. a Zacatecoluca km 38.5, El Rosario, La Paz  •  ', size: 14, color: '64748B' }),
+                                    new TextRun({ text: 'ALIMENTOS NUTRICIONALES DE EL SALVADOR S.A DE C.V', bold: true, size: 15, color: '0F172A' })
+                                ],
+                                alignment: AlignmentType.CENTER,
+                                spacing: { after: 20 }
+                            }),
+                            new Paragraph({
+                                children: [
+                                    new TextRun({ text: 'Antigua Carretera a Zacatecoluca km. 38.5 Cantón Asunción Amate, El Rosario, Dpto. de La Paz, El Salvador. C.A.', size: 13, color: '475569' })
+                                ],
+                                alignment: AlignmentType.CENTER,
+                                spacing: { after: 20 }
+                            }),
+                            new Paragraph({
+                                children: [
                                     new TextRun({ text: '+503 2330-5800  •  @eggcelentsv', bold: true, size: 15, color: 'EA991C' })
                                 ],
                                 alignment: AlignmentType.CENTER
@@ -201,32 +311,39 @@ async function generateQuotationDocx(quotation) {
                     })
                 },
                 children: [
-                    // 1. Imagen de encabezado corporativo
+                    // 1. Header Banner Oficial
                     ...(headerImageBuffer
                         ? [
                               new Paragraph({
                                   children: [
                                       new ImageRun({
                                           data: headerImageBuffer,
-                                          transformation: { width: 540, height: 54 }
+                                          transformation: { width: 560, height: 62 }
                                       })
                                   ],
                                   alignment: AlignmentType.CENTER,
-                                  spacing: { after: 200 }
+                                  spacing: { after: 140 }
                               })
                           ]
-                        : []),
+                        : [
+                              new Paragraph({
+                                  children: [
+                                      new TextRun({ text: 'ANDELSA / Eggcelent', bold: true, size: 26, color: 'EA991C' })
+                                  ],
+                                  spacing: { after: 120 }
+                              })
+                          ]),
 
-                    // 2. Título de la Cotización y Correlativo
+                    // 2. Fecha y Correlativo en Encabezado
                     new Table({
                         width: { size: 100, type: WidthType.PERCENTAGE },
                         borders: {
-                            top: { style: BorderStyle.NONE },
-                            bottom: { style: BorderStyle.NONE },
-                            left: { style: BorderStyle.NONE },
-                            right: { style: BorderStyle.NONE },
-                            insideHorizontal: { style: BorderStyle.NONE },
-                            insideVertical: { style: BorderStyle.NONE }
+                            top: borderNone,
+                            bottom: borderNone,
+                            left: borderNone,
+                            right: borderNone,
+                            insideHorizontal: borderNone,
+                            insideVertical: borderNone
                         },
                         rows: [
                             new TableRow({
@@ -236,12 +353,7 @@ async function generateQuotationDocx(quotation) {
                                         children: [
                                             new Paragraph({
                                                 children: [
-                                                    new TextRun({ text: 'COTIZACIÓN COMERCIAL', bold: true, size: 26, color: '0F172A' })
-                                                ]
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: 'Suministro de Ovoproductos Pasteurizados Eggcelent', italics: true, size: 18, color: '64748B' })
+                                                    new TextRun({ text: `Rosario de La Paz, ${formatDateFormal(quotation.date)}`, bold: true, size: 20, color: '1E293B' })
                                                 ]
                                             })
                                         ]
@@ -251,14 +363,7 @@ async function generateQuotationDocx(quotation) {
                                         children: [
                                             new Paragraph({
                                                 children: [
-                                                    new TextRun({ text: quotation.quote_number || 'COT-2026-0001', bold: true, size: 26, color: 'EA991C' })
-                                                ],
-                                                alignment: AlignmentType.RIGHT
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: `Fecha: ${formatDateShort(quotation.date)}`, size: 17, color: '475569' }),
-                                                    new TextRun({ text: `  |  Vence: ${formatDateShort(quotation.expiration_date)}`, bold: true, size: 17, color: 'B91C1C' })
+                                                    new TextRun({ text: `Cotización N°: ${quotation.quote_number || 'COT-BORRADOR'}`, bold: true, size: 20, color: '64748B' })
                                                 ],
                                                 alignment: AlignmentType.RIGHT
                                             })
@@ -271,145 +376,145 @@ async function generateQuotationDocx(quotation) {
 
                     new Paragraph({ spacing: { after: 120 } }),
 
-                    // 3. Ficha de Datos del Cliente
-                    new Table({
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        rows: [
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        shading: { type: ShadingType.CLEAR, fill: 'F8FAFC' },
-                                        children: [
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: 'DATOS DEL CLIENTE', bold: true, size: 17, color: '475569' })
-                                                ],
-                                                spacing: { after: 60 }
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: 'Razón Social / Cliente: ', bold: true, size: 18, color: '0F172A' }),
-                                                    new TextRun({ text: quotation.customer_name || '', size: 18, color: '0F172A' })
-                                                ]
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: 'Atención / Contacto: ', bold: true, size: 16, color: '475569' }),
-                                                    new TextRun({ text: quotation.customer_contact || 'Gerencia de Compras / Operaciones', size: 16 }),
-                                                    new TextRun({ text: '    Teléfono: ', bold: true, size: 16, color: '475569' }),
-                                                    new TextRun({ text: quotation.customer_phone || '—', size: 16 }),
-                                                    new TextRun({ text: '    Correo: ', bold: true, size: 16, color: '475569' }),
-                                                    new TextRun({ text: quotation.customer_email || '—', size: 16 })
-                                                ]
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: 'Dirección: ', bold: true, size: 16, color: '475569' }),
-                                                    new TextRun({ text: quotation.customer_address || 'El Salvador', size: 16 }),
-                                                    ...(quotation.customer_nrc ? [
-                                                        new TextRun({ text: '    NRC: ', bold: true, size: 16, color: '475569' }),
-                                                        new TextRun({ text: quotation.customer_nrc, size: 16 })
-                                                    ] : []),
-                                                    ...(quotation.customer_nit ? [
-                                                        new TextRun({ text: '    NIT: ', bold: true, size: 16, color: '475569' }),
-                                                        new TextRun({ text: quotation.customer_nit, size: 16 })
-                                                    ] : [])
-                                                ]
-                                            })
-                                        ]
-                                    })
-                                ]
-                            })
-                        ]
-                    }),
-
-                    new Paragraph({ spacing: { after: 120 } }),
-
-                    // 4. Saludo Formal
+                    // 3. Destinatario
                     new Paragraph({
                         children: [
-                            new TextRun({ text: 'Estimados Señores:', bold: true, size: 18, color: '0F172A' })
+                            new TextRun({ text: 'Estimados', bold: true, size: 20, color: '0F172A' })
+                        ],
+                        spacing: { after: 30 }
+                    }),
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: quotation.customer_name || 'Cliente Estimado', bold: true, size: 22, color: '0F172A' })
+                        ],
+                        spacing: { after: 30 }
+                    }),
+                    ...(quotation.customer_contact ? [
+                        new Paragraph({
+                            children: [
+                                new TextRun({ text: `Atención: ${quotation.customer_contact}`, size: 18, color: '475569' })
+                            ],
+                            spacing: { after: 30 }
+                        })
+                    ] : []),
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: 'Presente', bold: true, size: 20, color: '0F172A' })
+                        ],
+                        spacing: { after: 140 }
+                    }),
+
+                    // 4. Saludo Institucional y Párrafos Introductorios Oficiales
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: 'Reciban un cordial saludo de Alimentos Nutricionales de El Salvador S.A. de C.V.', bold: true, size: 18, color: '0F172A' })
                         ],
                         spacing: { after: 60 }
                     }),
                     new Paragraph({
                         children: [
                             new TextRun({
-                                text: 'Por medio de la presente, nos complace presentar a ustedes nuestra oferta comercial formal para el suministro de ovoproductos pasteurizados bajo estrictas normas internacionales de inocuidad y calidad (HACCP):',
+                                text: 'Agradecemos la oportunidad de ofrecerles nuestros productos. Alimentos Nutricionales de El Salvador es una empresa industrial especializada en la fabricación y formulación de huevo líquido pasteurizado para la industria de restaurantes, hoteles y panaderías con más de 25 años de experiencia, pioneros en Centroamérica.',
                                 size: 17,
                                 color: '334155'
                             })
                         ],
-                        spacing: { after: 140 }
+                        alignment: AlignmentType.JUSTIFIED,
+                        spacing: { after: 60, line: 260 }
+                    }),
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: 'ANDELSA cuenta con certificación HACCP, lo que garantiza procesos controlados y apegados a los más altos estándares de inocuidad y calidad para brindarles un servicio superior. Contamos con las instalaciones, tecnología y personal idóneo para el manejo óptimo de los productos.',
+                                size: 17,
+                                color: '334155'
+                            })
+                        ],
+                        alignment: AlignmentType.JUSTIFIED,
+                        spacing: { after: 60, line: 260 }
+                    }),
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: 'Para lo cual estamos presentando nuestra propuesta del producto de su interés:', bold: true, size: 18, color: '0F172A' })
+                        ],
+                        spacing: { before: 40, after: 100 }
                     }),
 
                     // 5. Tabla de Productos
                     new Table({
                         width: { size: 100, type: WidthType.PERCENTAGE },
+                        borders: tableBorders,
                         rows: tableRows
                     }),
 
-                    new Paragraph({ spacing: { after: 160 } }),
+                    new Paragraph({ spacing: { after: 80 } }),
 
-                    // 6. Sección de Compromisos Corporativos (Envases Retornables y Calidad)
+                    // Totales
+                    totalsTable,
+
+                    new Paragraph({ spacing: { after: 120 } }),
+
+                    // 6. Recuadro Oficial de Compromisos y Condiciones
                     new Table({
                         width: { size: 100, type: WidthType.PERCENTAGE },
+                        borders: tableBorders,
                         rows: [
                             new TableRow({
                                 children: [
                                     new TableCell({
-                                        shading: { type: ShadingType.CLEAR, fill: 'FEF3C7' }, // fondo sutil ámbar
+                                        shading: { type: ShadingType.CLEAR, fill: 'F8FAFC' },
+                                        margins: { top: 120, bottom: 120, left: 160, right: 160 },
                                         children: [
                                             new Paragraph({
                                                 children: [
-                                                    new TextRun({ text: 'NUESTROS COMPROMISOS Y CONDICIONES COMERCIALES', bold: true, size: 18, color: '92400E' })
+                                                    new TextRun({ text: 'NUESTROS COMPROMISOS Y CONDICIONES COMERCIALES:', bold: true, size: 17, color: '0F172A' })
                                                 ],
                                                 spacing: { after: 60 }
                                             }),
                                             new Paragraph({
                                                 children: [
-                                                    new TextRun({ text: '• POLÍTICA DE ENVASES RETORNABLES: ', bold: true, size: 16, color: 'B91C1C' }),
+                                                    new TextRun({ text: '• Política de Envases: ', bold: true, size: 16, color: '0F172A' }),
                                                     new TextRun({
                                                         text: 'Las cubetas plásticas (30 LBS / 32 LBS) son propiedad de ANDELSA y son ',
                                                         size: 16,
-                                                        color: '1E293B'
+                                                        color: '334155'
                                                     }),
-                                                    new TextRun({ text: 'ESTRICTAMENTE RETORNABLES', bold: true, size: 16, color: 'B91C1C' }),
+                                                    new TextRun({ text: 'RETORNABLES', bold: true, size: 16, color: 'B91C1C' }),
                                                     new TextRun({
-                                                        text: ' (deben devolverse limpias y en perfecto estado en cada entrega subsiguiente). Los demás envases (galones, medios galones, litros y bolsas liner) son descartables de un solo uso y no aplican para retorno.',
-                                                        size: 16,
-                                                        color: '1E293B'
-                                                    })
-                                                ],
-                                                spacing: { after: 50 }
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: '• CALIDAD CERTIFICADA: ', bold: true, size: 16, color: '0F172A' }),
-                                                    new TextRun({
-                                                        text: 'Garantía de inocuidad física, química y microbiológica certificada con análisis de lote en cada despacho (certificación HACCP).',
+                                                        text: ' (deben devolverse limpias y en buen estado en cada despacho). Los demás envases (galones, medios galones, litros, bolsas) son descartables de un solo uso y no aplican para retorno.',
                                                         size: 16,
                                                         color: '334155'
                                                     })
                                                 ],
-                                                spacing: { after: 50 }
+                                                spacing: { after: 40 }
                                             }),
                                             new Paragraph({
                                                 children: [
-                                                    new TextRun({ text: '• VIGENCIA DE LA OFERTA: ', bold: true, size: 16, color: '0F172A' }),
+                                                    new TextRun({ text: '• Calidad Certificada: ', bold: true, size: 16, color: '0F172A' }),
                                                     new TextRun({
-                                                        text: `Precios y condiciones garantizadas por ${quotation.validity_days || 30} días a partir de su emisión (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`,
+                                                        text: 'Se emite Certificado de Calidad e inocuidad física, química y microbiológica en cada entrega bajo certificación HACCP.',
                                                         size: 16,
                                                         color: '334155'
                                                     })
                                                 ],
-                                                spacing: { after: 50 }
+                                                spacing: { after: 40 }
                                             }),
                                             new Paragraph({
                                                 children: [
-                                                    new TextRun({ text: '• CONDICIONES DE PAGO Y ENTREGA: ', bold: true, size: 16, color: '0F172A' }),
+                                                    new TextRun({ text: '• Vigencia de la Oferta: ', bold: true, size: 16, color: '0F172A' }),
                                                     new TextRun({
-                                                        text: `${quotation.payment_terms || 'Contado'}. Modalidad de entrega: ${quotation.delivery_time || 'Según programación acordada'}.`,
+                                                        text: `Oferta válida por ${quotation.validity_days || 30} días a partir de su emisión (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`,
+                                                        size: 16,
+                                                        color: '334155'
+                                                    })
+                                                ],
+                                                spacing: { after: 40 }
+                                            }),
+                                            new Paragraph({
+                                                children: [
+                                                    new TextRun({ text: '• Condiciones de Pago y Entrega: ', bold: true, size: 16, color: '0F172A' }),
+                                                    new TextRun({
+                                                        text: `${quotation.payment_terms || 'Contado'}. Entrega: ${quotation.delivery_time || 'Según programación'}.`,
                                                         size: 16,
                                                         color: '334155'
                                                     })
@@ -422,55 +527,53 @@ async function generateQuotationDocx(quotation) {
                         ]
                     }),
 
-                    new Paragraph({ spacing: { after: 160 } }),
+                    new Paragraph({ spacing: { after: 120 } }),
 
                     // 7. Despedida y Firma
                     new Paragraph({
                         children: [
-                            new TextRun({ text: 'A la espera de poder servirles y formalizar una exitosa relación comercial.', bold: true, size: 17, color: '0F172A' })
+                            new TextRun({ text: 'A la espera de poder servirles.', bold: true, size: 17, color: '0F172A' })
                         ],
-                        spacing: { after: 140 }
+                        spacing: { after: 80 }
                     }),
 
-                    // Bloque de Firma
                     ...(signatureImageBuffer
                         ? [
                               new Paragraph({
                                   children: [
                                       new ImageRun({
                                           data: signatureImageBuffer,
-                                          transformation: { width: 140, height: 42 }
+                                          transformation: { width: 140, height: 40 }
                                       })
                                   ],
-                                  spacing: { after: 40 }
+                                  spacing: { after: 30 }
                               })
                           ]
-                        : [
-                              new Paragraph({
-                                  spacing: { after: 300 }
-                              })
-                          ]),
+                        : []),
 
                     new Paragraph({
                         children: [
                             new TextRun({ text: '________________________________________', color: '94A3B8' })
                         ],
-                        spacing: { after: 40 }
+                        spacing: { after: 30 }
                     }),
                     new Paragraph({
                         children: [
                             new TextRun({ text: `Att. ${authorName}`, bold: true, size: 18, color: '0F172A' })
-                        ]
+                        ],
+                        spacing: { after: 20 }
                     }),
                     new Paragraph({
                         children: [
                             new TextRun({ text: authorTitle, size: 16, color: '475569' })
-                        ]
+                        ],
+                        spacing: { after: 20 }
                     }),
                     new Paragraph({
                         children: [
                             new TextRun({ text: authorPhone, bold: true, size: 16, color: '0F172A' })
-                        ]
+                        ],
+                        spacing: { after: 20 }
                     }),
                     ...(quotation.signature_date ? [
                         new Paragraph({

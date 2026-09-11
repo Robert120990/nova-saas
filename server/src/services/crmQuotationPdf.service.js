@@ -1,9 +1,8 @@
-const PDFDocument = require('pdfkit');
+﻿const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 
 const HEADER_IMAGE_PATH = path.join(__dirname, '../assets/quotations/eggcelent_header.png');
-const FOOTER_IMAGE_PATH = path.join(__dirname, '../assets/quotations/eggcelent_footer.png');
 
 const MONTH_NAMES_ES = [
     'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -12,8 +11,6 @@ const MONTH_NAMES_ES = [
 
 function formatDateFormal(dateStr) {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
-    // Usar componente UTC o local evitando desfase
     const parts = String(dateStr).split('T')[0].split('-');
     if (parts.length === 3) {
         const year = parts[0];
@@ -21,6 +18,7 @@ function formatDateFormal(dateStr) {
         const day = parseInt(parts[2], 10);
         return `${day} de ${MONTH_NAMES_ES[monthIndex] || ''} ${year}`;
     }
+    const d = new Date(dateStr);
     return `${d.getDate()} de ${MONTH_NAMES_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
@@ -36,7 +34,7 @@ function formatDateShort(dateStr) {
 
 function formatMoney(val) {
     const n = parseFloat(val) || 0;
-    return `$${n.toFixed(2)}`;
+    return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /**
@@ -62,6 +60,7 @@ function generateQuotationPdf(quotation, items = []) {
             const pageHeight = 792;
             const contentLeft = 40;
             const contentWidth = 532;
+            const contentRight = contentLeft + contentWidth;
 
             // 1. HEADER BANNER (Full-bleed ancho superior)
             if (fs.existsSync(HEADER_IMAGE_PATH)) {
@@ -69,20 +68,20 @@ function generateQuotationPdf(quotation, items = []) {
             }
 
             // 2. FECHA Y CIUDAD
-            let curY = 82;
+            let curY = 80;
             const dateText = `Rosario de La Paz, ${formatDateFormal(quotation.date)}`;
             doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b');
             doc.text(dateText, contentLeft, curY, { align: 'left' });
 
             // Número de cotización alineado a la derecha
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b');
+            doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#64748b');
             doc.text(`Cotización N°: ${quotation.quote_number || 'COT-BORRADOR'}`, contentLeft, curY, {
                 width: contentWidth,
                 align: 'right'
             });
 
             // 3. DESTINATARIO
-            curY += 22;
+            curY += 20;
             doc.fontSize(10).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('Estimados', contentLeft, curY);
             curY += 13;
@@ -99,33 +98,33 @@ function generateQuotationPdf(quotation, items = []) {
 
             doc.fontSize(10).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('Presente', contentLeft, curY);
-            curY += 16;
+            curY += 15;
 
             // 4. TEXTO INTRODUCTORIO INSTITUCIONAL ANDELSA
             doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('Reciban un cordial saludo de Alimentos Nutricionales de El Salvador S.A. de C.V.', contentLeft, curY);
-            curY += 13;
+            curY += 12;
 
             doc.fontSize(8.5).font('Helvetica').fillColor('#334155');
             const introP1 = 'Agradecemos la oportunidad de ofrecerles nuestros productos. Alimentos Nutricionales de El Salvador es una empresa industrial especializada en la fabricación y formulación de huevo líquido pasteurizado para la industria de restaurantes, hoteles y panaderías con más de 25 años de experiencia, pioneros en Centroamérica.';
             doc.text(introP1, contentLeft, curY, { width: contentWidth, align: 'justify', lineGap: 1.5 });
-            curY = doc.y + 5;
+            curY = doc.y + 4;
 
             const introP2 = 'ANDELSA cuenta con certificación HACCP, lo que garantiza procesos controlados y apegados a los más altos estándares de inocuidad y calidad para brindarles un servicio superior. Contamos con las instalaciones, tecnología y personal idóneo para el manejo óptimo de los productos.';
             doc.text(introP2, contentLeft, curY, { width: contentWidth, align: 'justify', lineGap: 1.5 });
-            curY = doc.y + 6;
+            curY = doc.y + 5;
 
             doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('Para lo cual estamos presentando nuestra propuesta del producto de su interés:', contentLeft, curY);
-            curY += 15;
+            curY += 14;
 
             // 5. TABLA DE PRODUCTOS
-            const colProductW = 160;
-            const colPresW = 110;
-            const colQtyW = 45;
-            const colPriceW = 85;
-            const colTotalW = 65;
-            const colNotesW = 67;
+            const colProductW = 155;
+            const colPresW = 105;
+            const colQtyW = 42;
+            const colPriceW = 80;
+            const colTotalW = 75;
+            const colNotesW = 75;
 
             // Header de la tabla
             const tableHeaderHeight = 18;
@@ -156,7 +155,7 @@ function generateQuotationPdf(quotation, items = []) {
 
             // Filas de productos
             items.forEach((item, index) => {
-                const rowHeight = 22;
+                const rowHeight = 20;
                 const isEven = index % 2 === 0;
 
                 if (isEven) {
@@ -168,36 +167,36 @@ function generateQuotationPdf(quotation, items = []) {
 
                 let rx = contentLeft;
                 doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text(item.product_name || 'PRODUCTO', rx + 4, curY + 6, { width: colProductW - 6, ellipsis: true });
+                doc.text(item.product_name || 'PRODUCTO', rx + 4, curY + 5, { width: colProductW - 6, ellipsis: true });
                 rx += colProductW;
 
                 doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
-                doc.text(item.presentation || 'Estándar', rx + 4, curY + 6, { width: colPresW - 6, ellipsis: true });
+                doc.text(item.presentation || 'Estándar', rx + 4, curY + 5, { width: colPresW - 6, ellipsis: true });
                 rx += colPresW;
 
                 doc.fontSize(8).font('Helvetica').fillColor('#0f172a');
                 const qtyVal = parseFloat(item.quantity) || 1;
-                doc.text(qtyVal.toString(), rx + 2, curY + 6, { width: colQtyW - 4, align: 'center' });
+                doc.text(qtyVal.toString(), rx + 2, curY + 5, { width: colQtyW - 4, align: 'center' });
                 rx += colQtyW;
 
                 const priceVal = parseFloat(item.unit_price) || 0;
                 doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text(`${formatMoney(priceVal)}`, rx + 2, curY + 6, { width: colPriceW - 4, align: 'right' });
+                doc.text(formatMoney(priceVal), rx + 2, curY + 5, { width: colPriceW - 4, align: 'right' });
                 rx += colPriceW;
 
                 const itemSubtotal = parseFloat(item.subtotal || item.total) || (qtyVal * priceVal);
                 doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text(`${formatMoney(itemSubtotal)}`, rx + 2, curY + 6, { width: colTotalW - 4, align: 'right' });
+                doc.text(formatMoney(itemSubtotal), rx + 2, curY + 5, { width: colTotalW - 4, align: 'right' });
                 rx += colTotalW;
 
                 doc.fontSize(7).font('Helvetica-Oblique').fillColor('#64748b');
-                doc.text(item.notes || '', rx + 4, curY + 6, { width: colNotesW - 6, ellipsis: true });
+                doc.text(item.notes || '', rx + 4, curY + 5, { width: colNotesW - 6, ellipsis: true });
 
                 curY += rowHeight;
             });
 
             // Resumen de Totales
-            curY += 6;
+            curY += 5;
             const totalsBoxWidth = 180;
             const totalsX = contentLeft + contentWidth - totalsBoxWidth;
 
@@ -215,22 +214,23 @@ function generateQuotationPdf(quotation, items = []) {
 
             doc.rect(totalsX, curY, totalsBoxWidth, 16).fill('#f1f5f9');
             doc.rect(totalsX, curY, totalsBoxWidth, 16).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-            doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a');
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a');
             doc.text('TOTAL COTIZADO:', totalsX + 5, curY + 4, { width: 95, align: 'left' });
             doc.text(formatMoney(quotation.total), totalsX + 90, curY + 4, { width: 85, align: 'right' });
-            curY += 24;
+            curY += 22;
 
             // 6. COMPROMISOS Y CONDICIONES (Recuadro Oficial)
-            const boxPadding = 8;
+            const boxPadding = 7;
             const commitmentsY = curY;
+            const boxHeight = 84;
 
-            doc.rect(contentLeft, commitmentsY, contentWidth, 90).fill('#f8fafc');
-            doc.rect(contentLeft, commitmentsY, contentWidth, 90).strokeColor('#cbd5e1').lineWidth(0.75).stroke();
+            doc.rect(contentLeft, commitmentsY, contentWidth, boxHeight).fill('#f8fafc');
+            doc.rect(contentLeft, commitmentsY, contentWidth, boxHeight).strokeColor('#cbd5e1').lineWidth(0.75).stroke();
 
             doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('NUESTROS COMPROMISOS Y CONDICIONES COMERCIALES:', contentLeft + boxPadding, commitmentsY + boxPadding);
 
-            let commY = commitmentsY + boxPadding + 14;
+            let commY = commitmentsY + boxPadding + 13;
             doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
 
             // Regla de retorno de envases (Requerimiento explícito)
@@ -242,31 +242,31 @@ function generateQuotationPdf(quotation, items = []) {
             doc.text('RETORNABLES', { continued: true });
             doc.font('Helvetica').fillColor('#334155');
             doc.text(' (deben devolverse limpias y en buen estado en cada despacho). Los demás envases (galones, medios galones, litros, bolsas) son descartables de un solo uso y no aplican para retorno.');
-            commY = doc.y + 3;
+            commY = doc.y + 2.5;
 
             doc.font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('• Calidad Certificada: ', contentLeft + boxPadding, commY, { continued: true });
             doc.font('Helvetica').fillColor('#334155');
-            doc.text('Se emite Certificado de Calidad e inocuidad física, química y microbiológica en cada entrega.');
-            commY = doc.y + 3;
+            doc.text('Se emite Certificado de Calidad e inocuidad física, química y microbiológica en cada entrega bajo certificación HACCP.');
+            commY = doc.y + 2.5;
 
             doc.font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('• Vigencia de la Oferta: ', contentLeft + boxPadding, commY, { continued: true });
             doc.font('Helvetica').fillColor('#334155');
             doc.text(`Oferta válida por ${quotation.validity_days || 30} días a partir de su emisión (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`);
-            commY = doc.y + 3;
+            commY = doc.y + 2.5;
 
             doc.font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('• Condiciones de Pago y Entrega: ', contentLeft + boxPadding, commY, { continued: true });
             doc.font('Helvetica').fillColor('#334155');
             doc.text(`${quotation.payment_terms || 'Contado'}. Entrega: ${quotation.delivery_time || 'Según programación'}.`);
 
-            curY = commitmentsY + 98;
+            curY = commitmentsY + boxHeight + 8;
 
             // 7. DESPEDIDA Y SECCIÓN DE FIRMA ELECTRÓNICA
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('A la espera de poder servirles.', contentLeft, curY);
-            curY += 14;
+            curY += 12;
 
             // Bloque de Firma
             const sigWidth = 170;
@@ -277,38 +277,38 @@ function generateQuotationPdf(quotation, items = []) {
                 try {
                     const base64Data = quotation.signature_data.replace(/^data:image\/\w+;base64,/, '');
                     const sigBuffer = Buffer.from(base64Data, 'base64');
-                    doc.image(sigBuffer, sigX + 15, curY, { fit: [140, 42], align: 'center' });
-                    curY += 44;
+                    doc.image(sigBuffer, sigX + 10, curY, { fit: [140, 38], align: 'center' });
+                    curY += 40;
                 } catch (sigErr) {
                     console.warn('Error al dibujar firma base64:', sigErr.message);
-                    curY += 28;
+                    curY += 24;
                 }
             } else {
-                curY += 28;
+                curY += 24;
             }
 
             // Línea de firma
             doc.moveTo(sigX, curY).lineTo(sigX + sigWidth, curY).strokeColor('#94a3b8').lineWidth(1).stroke();
-            curY += 5;
+            curY += 4;
 
             const authorName = quotation.signature_author_name || quotation.created_by_name || 'Raul Rafael Sosa M.';
             const authorTitle = quotation.signature_author_title || 'Ejecutivo Comercial';
             const authorPhone = quotation.signature_author_phone || '(503) 7060-5040';
 
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text(`Att. ${authorName}`, sigX, curY);
-            curY += 11;
+            curY += 10;
 
-            doc.fontSize(8).font('Helvetica').fillColor('#475569');
+            doc.fontSize(7.5).font('Helvetica').fillColor('#475569');
             doc.text(authorTitle, sigX, curY);
-            curY += 10;
+            curY += 9;
 
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text(authorPhone, sigX, curY);
-            curY += 10;
+            curY += 9;
 
             if (quotation.signature_date) {
-                doc.fontSize(7).font('Helvetica-Oblique').fillColor('#94a3b8');
+                doc.fontSize(6.5).font('Helvetica-Oblique').fillColor('#94a3b8');
                 doc.text(`Firma digital registrada: ${formatDateShort(quotation.signature_date)}`, sigX, curY);
             }
 
