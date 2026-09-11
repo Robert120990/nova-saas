@@ -79,6 +79,11 @@ Para garantizar la integridad de los datos en cualquier método de ingreso (F3, 
 - **Autorización por Sucursal:** Se debe validar que el ID de la sucursal seleccionada esté presente en el array de sucursales (`branches`) del producto.
 - **Error Feedback:** Cualquier rechazo por validación debe notificarse mediante un mensaje de error claro (Toast) en Español.
 
+## 8. Clave de Permiso en Menú (`permission_key`) — OBLIGATORIO
+- Toda nueva opción de menú o pantalla operativa registrada en `menu_items` DEBE tener un `permission_key` único (formato `manage_<modulo>_<pantalla>`).
+- Nunca reutilizar una clave existente de otro módulo o submódulo. En Roles, las claves duplicadas provocan que las opciones adicionales queden enmascaradas e invisibles.
+
 ---
 > [!IMPORTANT]
 > Estas reglas son de cumplimiento obligatorio para cualquier nuevo desarrollo o refactorización de módulos operativos en el sistema.
+

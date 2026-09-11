@@ -7,7 +7,10 @@ const Money = ({ value, className = '', digits = 2 }) => {
   const canView = isSuperAdmin || permisos.includes('view_amounts');
 
   const num = parseFloat(value) || 0;
-  const fmt = `$${num.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  const isNeg = num < 0;
+  const absNum = Math.abs(num);
+  const formattedAbs = absNum.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const fmt = isNeg ? `-$${formattedAbs}` : `$${formattedAbs}`;
 
   return (
     <span className={canView ? className : `${className} select-none text-slate-300`}>

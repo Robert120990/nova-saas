@@ -235,3 +235,9 @@ const generateCustomReportPDF = async (data) => {
 };
 ```
 
+## 5. Clave de Permiso en Menú (`permission_key`) — OBLIGATORIO
+- Todo nuevo reporte registrado en `menu_items` DEBE contar con su propio `permission_key` único y descriptivo (formato: `view_<modulo>_<nombre_reporte>_report`).
+- Queda prohibido reutilizar claves de pantallas operativas (`manage_...`). La reutilización provoca que el reporte quede enmascarado e invisible en la matriz de Roles.
+- La ruta debe incluir `/reportes/` o la clave terminar en `_report` para que el panel de Roles le asigne automáticamente el badge azul `[REPORTE]`.
+
+
