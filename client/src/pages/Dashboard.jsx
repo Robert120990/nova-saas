@@ -9,7 +9,8 @@ import {
     ShieldAlert, 
     Building2, 
     User, 
-    GitBranch 
+    GitBranch,
+    FileCheck
 } from 'lucide-react';
 
 import DashboardGeneral from '../components/dashboard/DashboardGeneral';
@@ -17,6 +18,7 @@ import DashboardPista from '../components/dashboard/DashboardPista';
 import DashboardTienda from '../components/dashboard/DashboardTienda';
 import DashboardAndelsa from '../components/dashboard/DashboardAndelsa';
 import DashboardServer from '../components/dashboard/DashboardServer';
+import DashboardDte from '../components/dashboard/DashboardDte';
 
 const parsePermissions = (raw) => {
     if (!raw) return [];
@@ -71,6 +73,13 @@ export default function Dashboard() {
             icon: Server,
             allowed: isSuperAdmin || permissions.includes('view_dashboard_server') || permissions.includes('view_server_metrics'),
             component: DashboardServer
+        },
+        {
+            id: 'dte',
+            label: 'Estadísticas DTE',
+            icon: FileCheck,
+            allowed: true,
+            component: DashboardDte
         }
     ];
 
