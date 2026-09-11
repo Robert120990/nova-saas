@@ -78,7 +78,7 @@ async function generateQuotationDocx(quotation) {
     }
 
     const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' };
-    const borderNone = { style: BorderStyle.NONE };
+    const borderNone = { style: BorderStyle.NONE, size: 0, color: 'auto' };
     const tableBorders = {
         top: cellBorder,
         bottom: cellBorder,
@@ -281,7 +281,7 @@ async function generateQuotationDocx(quotation) {
             {
                 properties: {
                     page: {
-                        margin: { top: 576, bottom: 576, left: 720, right: 720 } // Margen elegante
+                        margin: { top: 576, bottom: 576, left: 720, right: 720 }
                     }
                 },
                 footers: {
@@ -318,7 +318,8 @@ async function generateQuotationDocx(quotation) {
                                   children: [
                                       new ImageRun({
                                           data: headerImageBuffer,
-                                          transformation: { width: 560, height: 62 }
+                                          transformation: { width: 560, height: 62 },
+                                          type: 'png'
                                       })
                                   ],
                                   alignment: AlignmentType.CENTER,
@@ -543,7 +544,8 @@ async function generateQuotationDocx(quotation) {
                                   children: [
                                       new ImageRun({
                                           data: signatureImageBuffer,
-                                          transformation: { width: 140, height: 40 }
+                                          transformation: { width: 140, height: 40 },
+                                          type: 'png'
                                       })
                                   ],
                                   spacing: { after: 30 }
