@@ -1731,12 +1731,14 @@ const Expenses = () => {
                                         </div>
 
                                         <div>
-                                            <label className={labelCls}>Número de Control (DTE)</label>
+                                            <label className={labelCls}>
+                                                Número de Control (DTE) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                            </label>
                                             <input 
                                                 type="text" 
                                                 value={numControl} 
                                                 onChange={(e) => setNumControl(e.target.value.toUpperCase())} 
-                                                placeholder="DTE-03-M001P001-00001" 
+                                                placeholder="DTE-03-M001P001-00001 (OPCIONAL)" 
                                                 className={`${inputCls} uppercase font-mono text-[11px]`} 
                                             />
                                         </div>
@@ -1745,7 +1747,9 @@ const Expenses = () => {
                                     {/* Fila 4: Sello de Recepción y Condición de Operación */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
-                                            <label className={labelCls}>Sello de Recepción (MH)</label>
+                                            <label className={labelCls}>
+                                                Sello de Recepción (MH) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                            </label>
                                             <input 
                                                 type="text" 
                                                 value={selloRecepcion} 

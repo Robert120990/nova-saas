@@ -106,6 +106,10 @@ router.post('/internal/dte/notify-accepted', salesController.notifyDTEAccepted);
 router.get('/inventory/scan/:token', inventoryScanController.getScanSession);
 router.post('/inventory/scan/:token/submit', inventoryScanController.submitScan);
 
+// Public mobile DTE scan routes (accessed via QR scan from phone)
+router.get('/public/scan-session/:sessionId', purchaseController.getScanSessionStatus);
+router.post('/public/scan-session/:sessionId/upload', memoryUpload.single('file'), purchaseController.uploadMobileScan);
+
 // Routes
 router.use(verifyToken);
 
@@ -160,6 +164,7 @@ router.get('/changelog', changelogController.getChangelog);
 
 // System Metrics (Monitor del Servidor - global, no tenant scope)
 router.get('/system/metrics', verifyToken, systemMetricsController.getSystemMetrics);
+router.post('/system/trigger-deploy', verifyToken, systemMetricsController.triggerDeploy);
 
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
@@ -294,6 +299,8 @@ router.post('/inventory/adjustments/:id/void', inventoryAdjustmentController.voi
 router.get('/purchases', purchaseController.getPurchases);
 router.post('/purchases', purchaseController.createPurchase);
 router.post('/purchases/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
+router.post('/purchases/scan-session', purchaseController.createScanSession);
+router.get('/purchases/scan-session/:sessionId', purchaseController.getScanSessionStatus);
 router.get('/purchases/reports/pdf', purchaseController.getPurchaseReportPDF);
 router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
 

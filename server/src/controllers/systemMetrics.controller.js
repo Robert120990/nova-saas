@@ -171,6 +171,29 @@ const getSystemMetrics = async (req, res) => {
             dteStatus = { online: false, latency_ms: null, error: dteErr.message, port: 5000 };
         }
 
+        // 6. Webhook Auto-Deploy Ping
+        const webhookPort = parseInt(process.env.WEBHOOK_PORT || '7777', 10);
+        let webhookStatus = { online: false, latency_ms: null, port: webhookPort };
+        try {
+            const whT0 = Date.now();
+            const whCtrl = new AbortController();
+            const whTimeoutId = setTimeout(() => whCtrl.abort(), 1200);
+            const whRes = await fetch(`http://127.0.0.1:${webhookPort}/health`, { signal: whCtrl.signal });
+            clearTimeout(whTimeoutId);
+            if (whRes.ok) {
+                const whData = await whRes.json().catch(() => ({}));
+                webhookStatus = {
+                    online: true,
+                    latency_ms: Date.now() - whT0,
+                    port: webhookPort,
+                    branch: whData.branch || 'main',
+                    uptime_seconds: whData.uptime_seconds || null,
+                };
+            }
+        } catch (whErr) {
+            webhookStatus = { online: false, latency_ms: null, port: webhookPort, error: whErr.message };
+        }
+
         const metricsPayload = {
             os: {
                 platform: os.platform(),
@@ -218,6 +241,10 @@ const getSystemMetrics = async (req, res) => {
                     online: dbMetrics.online,
                     latency_ms: dbMetrics.latency_ms,
                 },
+                webhook: {
+                    name: 'Servicio de Auto-Despliegue (Webhook)',
+                    ...webhookStatus,
+                },
             },
             timestamp: new Date().toISOString(),
         };
@@ -229,6 +256,29 @@ const getSystemMetrics = async (req, res) => {
     }
 };
 
+const triggerDeploy = async (req, res) => {
+    try {
+        const webhookPort = parseInt(process.env.WEBHOOK_PORT || '7777', 10);
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 3000);
+        const resp = await fetch(`http://127.0.0.1:${webhookPort}/deploy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true, triggered_by: req.user?.username || 'admin' }),
+            signal: ctrl.signal,
+        });
+        clearTimeout(timeoutId);
+        const data = await resp.json().catch(() => ({}));
+        res.json({ success: true, message: 'Despliegue iniciado correctamente', ...data });
+    } catch (err) {
+        res.status(502).json({
+            success: false,
+            message: 'No se pudo contactar al servicio de auto-despliegue en puerto 7777: ' + err.message
+        });
+    }
+};
+
 module.exports = {
     getSystemMetrics,
+    triggerDeploy,
 };

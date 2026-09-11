@@ -23,8 +23,14 @@ import {
     Zap,
     Calendar,
     Sparkles,
-    Loader2
+    Loader2,
+    QrCode,
+    Smartphone,
+    CheckCircle2,
+    Copy,
+    RefreshCw
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import * as XLSX from 'xlsx';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -112,6 +118,7 @@ const Purchases = () => {
     
     // Quick Add State
     const [quickBarcode, setQuickBarcode] = useState('');
+    const [quickDesc, setQuickDesc] = useState('');
     const [quickCant, setQuickCant] = useState('1');
     const [quickCosto, setQuickCosto] = useState('0');
     const [quickProd, setQuickProd] = useState(null);
@@ -121,88 +128,19 @@ const Purchases = () => {
     const [modalPage, setModalPage] = useState(1);
 
     const barcodeInputRef = useRef(null);
-    const fileInputRef = useRef(null);
+    const descInputRef = useRef(null);
+    const jsonFileInputRef = useRef(null);
+    const aiFileInputRef = useRef(null);
     const [isScanningDte, setIsScanningDte] = useState(false);
+    const [recognizeProducts, setRecognizeProducts] = useState(false);
 
-    const handleScanDteFile = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        e.target.value = '';
-        setIsScanningDte(true);
-        const loadingToast = toast.loading('Analizando factura / DTE con Inteligencia Artificial...');
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const res = await axios.post('/api/purchases/scan-dte', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            const data = res.data?.data;
-            if (!data) throw new Error('No se pudieron extraer datos del documento');
-
-            let filledFields = [];
-
-            // 1. Código de Generación / Documento
-            if (data.codigo_generacion) {
-                setNumeroDoc(data.codigo_generacion.toUpperCase().trim());
-                filledFields.push('Cód. Generación');
-            }
-
-            // 2. Número de Control
-            if (data.numero_control) {
-                setNumControl(data.numero_control.toUpperCase().trim());
-                filledFields.push('Núm. Control');
-            }
-
-            // 3. Sello de Recepción
-            if (data.sello_recepcion) {
-                setSelloRecepcion(data.sello_recepcion.toUpperCase().trim());
-                filledFields.push('Sello');
-            }
-
-            // 4. Tipo de Documento
-            if (data.tipo_documento_id) {
-                const foundType = tipoDocs.find(t => t.code === data.tipo_documento_id);
-                if (foundType) {
-                    setTipoDocId(data.tipo_documento_id);
-                    filledFields.push('Tipo Doc');
-                }
-            }
-
-            // 5. Fecha de Emisión
-            if (data.fecha_emision) {
-                setFecha(data.fecha_emision);
-                handleFechaChange({ target: { value: data.fecha_emision } });
-                filledFields.push('Fecha');
-            }
-
-            // 6. Proveedor
-            if (data.matchedProvider) {
-                setProviderId(String(data.matchedProvider.id));
-                setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
-                filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
-            } else if (data.emisor?.nombre) {
-                toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
-            }
-
-            toast.dismiss(loadingToast);
-            if (filledFields.length > 0) {
-                toast.success(`Datos detectados: ${filledFields.join(', ')}`, { duration: 6000 });
-            } else {
-                toast.info('No se detectaron campos de DTE legibles en la imagen.');
-            }
-
-        } catch (err) {
-            console.error('Error al escanear DTE:', err);
-            toast.dismiss(loadingToast);
-            toast.error(err.response?.data?.message || 'Error al procesar la imagen con IA');
-        } finally {
-            setIsScanningDte(false);
-        }
-    };
+    // QR Mobile Scan State
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [qrSessionId, setQrSessionId] = useState(null);
+    const [qrLanIp, setQrLanIp] = useState(null);
+    const [qrLoading, setQrLoading] = useState(false);
+    const [qrError, setQrError] = useState(null);
+    const [qrStatus, setQrStatus] = useState('pending'); // 'pending' | 'processing' | 'completed' | 'expired' | 'error'
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -347,6 +285,195 @@ const Purchases = () => {
         queryKey: ['catalog', '016'],
         queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
     });
+
+    const applyExtractedDteData = (data) => {
+        if (!data) return;
+
+        let filledFields = [];
+
+        // 1. Código de Generación / Documento
+        if (data.codigo_generacion) {
+            setNumeroDoc(data.codigo_generacion.toUpperCase().trim());
+            filledFields.push('Cód. Generación');
+        }
+
+        // 2. Número de Control
+        if (data.numero_control) {
+            setNumControl(data.numero_control.toUpperCase().trim());
+            filledFields.push('Núm. Control');
+        }
+
+        // 3. Sello de Recepción
+        if (data.sello_recepcion) {
+            setSelloRecepcion(data.sello_recepcion.toUpperCase().trim());
+            filledFields.push('Sello');
+        }
+
+        // 4. Tipo de Documento
+        if (data.tipo_documento_id && tipoDocs?.length) {
+            const foundType = tipoDocs.find(t => t.code === data.tipo_documento_id);
+            if (foundType) {
+                setTipoDocId(data.tipo_documento_id);
+                filledFields.push('Tipo Doc');
+            }
+        }
+
+        // 5. Fecha de Emisión
+        if (data.fecha_emision) {
+            setFecha(data.fecha_emision);
+            handleFechaChange({ target: { value: data.fecha_emision } });
+            filledFields.push('Fecha');
+        }
+
+        // 6. Proveedor
+        if (data.matchedProvider) {
+            setProviderId(String(data.matchedProvider.id));
+            setProvidersCache(prev => ({ ...prev, [data.matchedProvider.id]: data.matchedProvider }));
+            filledFields.push(`Proveedor (${data.matchedProvider.nombre})`);
+        } else if (data.emisor?.nombre) {
+            toast.info(`Emisor detectado: ${data.emisor.nombre}${data.emisor.nit ? ` (NIT: ${data.emisor.nit})` : ''}. Verifica si existe en el selector de proveedores.`);
+        }
+
+        // 7. Productos / Líneas de detalle de la compra
+        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+            const newItems = data.items.map(it => {
+                const prod = it.matchedProduct;
+                const cant = parseFloat(it.cantidad || 1);
+                const precio = parseFloat(it.precio_unitario || (it.total ? it.total / cant : 0));
+                const tot = parseFloat(it.total || (cant * precio));
+                if (prod) {
+                    return {
+                        uid: `prod_${prod.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        product_id: prod.id,
+                        nombre: prod.nombre,
+                        codigo: prod.codigo,
+                        tipo_combustible: prod.tipo_combustible || 0,
+                        cantidad: cant,
+                        precio_unitario: precio,
+                        total: tot
+                    };
+                } else {
+                    return {
+                        uid: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        product_id: null,
+                        nombre: (it.descripcion || 'ÍTEM').toUpperCase(),
+                        codigo: it.codigo || '—',
+                        tipo_combustible: 0,
+                        cantidad: cant,
+                        precio_unitario: precio,
+                        total: tot
+                    };
+                }
+            });
+            setSelectedItems(newItems);
+            filledFields.push(`${newItems.length} Producto(s)`);
+        }
+
+        if (filledFields.length > 0) {
+            toast.success(`Datos detectados: ${filledFields.join(', ')}`, { duration: 6000 });
+        } else {
+            toast.info('No se detectaron campos de DTE legibles en la imagen.');
+        }
+    };
+
+    const handleScanDteFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        e.target.value = '';
+        setIsScanningDte(true);
+        const loadingToast = toast.loading('Analizando factura / DTE con Inteligencia Artificial...');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('recognizeItems', recognizeProducts ? 'true' : 'false');
+
+            const res = await axios.post('/api/purchases/scan-dte', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const data = res.data?.data;
+            if (!data) throw new Error('No se pudieron extraer datos del documento');
+
+            applyExtractedDteData(data);
+            toast.dismiss(loadingToast);
+
+        } catch (err) {
+            console.error('Error al escanear DTE:', err);
+            toast.dismiss(loadingToast);
+            toast.error(err.response?.data?.message || 'Error al procesar la imagen con IA');
+        } finally {
+            setIsScanningDte(false);
+        }
+    };
+
+    const handleOpenQrModal = async () => {
+        setIsQrModalOpen(true);
+        setQrLoading(true);
+        setQrError(null);
+        setQrStatus('pending');
+        setQrSessionId(null);
+
+        try {
+            const res = await axios.post('/api/purchases/scan-session', { branch_id: branchId });
+            if (res.data.success && res.data.sessionId) {
+                setQrSessionId(res.data.sessionId);
+                setQrLanIp(res.data.lanIp || null);
+            } else {
+                throw new Error(res.data.message || 'Error al generar sesión');
+            }
+        } catch (err) {
+            console.error('Error al crear sesión QR:', err);
+            setQrError(err.response?.data?.message || err.message || 'Error al generar código QR');
+        } finally {
+            setQrLoading(false);
+        }
+    };
+
+    const handleCloseQrModal = () => {
+        setIsQrModalOpen(false);
+        setQrSessionId(null);
+        setQrStatus('pending');
+        setQrError(null);
+    };
+
+    useEffect(() => {
+        let intervalId;
+        if (isQrModalOpen && qrSessionId) {
+            intervalId = setInterval(async () => {
+                try {
+                    const res = await axios.get(`/api/purchases/scan-session/${qrSessionId}`);
+                    const { status, data, error } = res.data;
+                    setQrStatus(status);
+
+                    if (status === 'completed' && data) {
+                        clearInterval(intervalId);
+                        setIsQrModalOpen(false);
+                        setQrSessionId(null);
+                        applyExtractedDteData(data);
+                        toast.success('¡DTE recibido y procesado desde el teléfono con éxito!');
+                    } else if (status === 'error') {
+                        clearInterval(intervalId);
+                        setQrError(error || 'Error al procesar la imagen con IA');
+                    } else if (status === 'expired') {
+                        clearInterval(intervalId);
+                        setQrError('La sesión de escaneo ha expirado');
+                    }
+                } catch (err) {
+                    if (err.response?.status === 404 || err.response?.status === 410) {
+                        clearInterval(intervalId);
+                        setQrStatus('expired');
+                        setQrError('La sesión de escaneo ha expirado o no es válida.');
+                    }
+                }
+            }, 2000);
+        }
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [isQrModalOpen, qrSessionId, tipoDocs]);
 
     const { data: purchasesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
         queryKey: ['purchases', historySearch, historyPage, branchId],
@@ -505,10 +632,21 @@ const Purchases = () => {
 
     const handleSelectProduct = (product) => {
         setQuickProd(product);
+        setQuickBarcode(product.codigo || '');
+        setQuickDesc(product.nombre || '');
         setQuickCosto(product.costo || '0');
         setIsProductModalOpen(false);
         setProductSearch('');
         setTimeout(() => qtyInputRef.current?.focus(), 100);
+    };
+
+    const handleClearQuickProduct = () => {
+        setQuickProd(null);
+        setQuickBarcode('');
+        setQuickDesc('');
+        setQuickCosto('0');
+        setQuickCant('1');
+        setTimeout(() => descInputRef.current?.focus(), 100);
     };
 
     const filteredProducts = useMemo(() => {
@@ -534,6 +672,7 @@ const Purchases = () => {
                 return toast.error('El producto seleccionado se encuentra inactivo');
             }
             setQuickProd(data);
+            setQuickDesc(data.nombre || '');
             setQuickCosto(data.costo || '0');
             qtyInputRef.current?.focus();
         } catch {
@@ -549,50 +688,74 @@ const Purchases = () => {
     };
 
     const handleAddQuick = () => {
-        if (!quickProd) return;
         const qty = parseFloat(quickCant);
         const cost = parseFloat(quickCosto);
-        if (qty <= 0) return toast.error('Cantidad inválida');
+        const desc = (quickProd ? quickProd.nombre : quickDesc).trim();
 
-        const existing = selectedItems.find(i => i.product_id === quickProd.id);
-        if (existing) {
-            setSelectedItems(selectedItems.map(i => i.product_id === quickProd.id ? { 
-                ...i, 
-                cantidad: i.cantidad + qty,
-                precio_unitario: cost,
-                total: (i.cantidad + qty) * cost
-            } : i));
+        if (!desc && !quickProd) return toast.error('Ingrese una descripción o seleccione un producto');
+        if (isNaN(qty) || qty <= 0) return toast.error('Cantidad inválida');
+        if (isNaN(cost) || cost < 0) return toast.error('Costo inválido');
+
+        if (quickProd) {
+            const existing = selectedItems.find(i => i.product_id === quickProd.id);
+            if (existing) {
+                setSelectedItems(selectedItems.map(i => i.uid === existing.uid ? { 
+                    ...i, 
+                    cantidad: i.cantidad + qty,
+                    precio_unitario: cost,
+                    total: Math.round((i.cantidad + qty) * cost * 100) / 100
+                } : i));
+            } else {
+                setSelectedItems([...selectedItems, {
+                    uid: `prod_${quickProd.id}_${Date.now()}`,
+                    product_id: quickProd.id,
+                    nombre: quickProd.nombre,
+                    codigo: quickProd.codigo,
+                    tipo_combustible: quickProd.tipo_combustible || 0,
+                    cantidad: qty,
+                    precio_unitario: cost,
+                    total: Math.round(qty * cost * 100) / 100
+                }]);
+            }
         } else {
+            // Ítem sin código (solo descripción, cantidad y costo)
             setSelectedItems([...selectedItems, {
-                product_id: quickProd.id,
-                nombre: quickProd.nombre,
-                codigo: quickProd.codigo,
-                tipo_combustible: quickProd.tipo_combustible || 0,
+                uid: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                product_id: null,
+                nombre: desc.toUpperCase(),
+                codigo: '—',
+                tipo_combustible: 0,
                 cantidad: qty,
                 precio_unitario: cost,
-                total: qty * cost
+                total: Math.round(qty * cost * 100) / 100
             }]);
         }
 
-        setQuickBarcode(''); setQuickProd(null); setQuickCant('1'); setQuickCosto('0');
+        setQuickBarcode(''); 
+        setQuickProd(null); 
+        setQuickDesc(''); 
+        setQuickCant('1'); 
+        setQuickCosto('0');
         barcodeInputRef.current?.focus();
     };
 
-    const updateItem = (id, field, value) => {
+    const updateItem = (uid, field, value) => {
         setSelectedItems(selectedItems.map(item => {
-            if (item.product_id === id) {
+            if (item.uid === uid) {
                 const updated = { ...item, [field]: value };
-                const c = parseFloat(updated.cantidad) || 0;
-                const p = parseFloat(updated.precio_unitario) || 0;
-                updated.total = Math.round(c * p * 100) / 100;
+                if (field === 'cantidad' || field === 'precio_unitario') {
+                    const c = parseFloat(updated.cantidad) || 0;
+                    const p = parseFloat(updated.precio_unitario) || 0;
+                    updated.total = Math.round(c * p * 100) / 100;
+                }
                 return updated;
             }
             return item;
         }));
     };
 
-    const removeItem = (id) => {
-        setSelectedItems(selectedItems.filter(item => item.product_id !== id));
+    const removeItem = (uid) => {
+        setSelectedItems(selectedItems.filter(item => item.uid !== uid));
     };
 
     const resetForm = () => {
@@ -602,6 +765,7 @@ const Purchases = () => {
         setManualRetencion(''); setManualPercepcion(''); setManualNosujeta(''); setManualExenta('');
         setManualFovial(''); setManualCotrans('');
         setIsRetDirty(false); setIsPercDirty(false); setIsFovialDirty(false); setIsCotransDirty(false);
+        setQuickBarcode(''); setQuickProd(null); setQuickDesc(''); setQuickCant('1'); setQuickCosto('0');
         const today = getTodayString();
         setFecha(today);
         const [y, m] = today.split('-').map(Number);
@@ -693,6 +857,7 @@ const Purchases = () => {
                         
                         if (prod) {
                             newItems.push({
+                                uid: `prod_${prod.id}_${Date.now()}_${Math.random()}`,
                                 product_id: prod.id,
                                 nombre: prod.nombre,
                                 codigo: prod.codigo,
@@ -703,6 +868,16 @@ const Purchases = () => {
                             });
                             matchedCount++;
                         } else {
+                            newItems.push({
+                                uid: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                                product_id: null,
+                                nombre: (item.descripcion || 'ÍTEM SIN CÓDIGO').toUpperCase(),
+                                codigo: code || '—',
+                                tipo_combustible: 0,
+                                cantidad: parseFloat(item.cantidad || 0),
+                                precio_unitario: parseFloat(item.precioUni || 0),
+                                total: (parseFloat(item.cantidad || 0) * parseFloat(item.precioUni || 0))
+                            });
                             missingProducts.push(code || item.descripcion);
                         }
                     }
@@ -710,7 +885,11 @@ const Purchases = () => {
                     if (newItems.length > 0) {
                         setSelectedItems(newItems);
                         setActiveTab('nuevo');
-                        toast.success(`Se cargaron ${matchedCount} productos.`);
+                        if (missingProducts.length > 0) {
+                            toast.success(`Se cargaron ${matchedCount} productos del catálogo y ${missingProducts.length} ítems sin código.`, { duration: 6000 });
+                        } else {
+                            toast.success(`Se cargaron ${matchedCount} productos.`);
+                        }
                     }
 
                     if (missingProducts.length > 0) {
@@ -754,7 +933,9 @@ const Purchases = () => {
     };
 
     const handleSubmit = () => {
-        if (!branchId || !providerId || !numeroDoc) return toast.error('Cabecera incompleta');
+        if (!branchId) return toast.error('Seleccione una sucursal');
+        if (!providerId) return toast.error('Seleccione un proveedor');
+        if (!numeroDoc) return toast.error('Ingrese el número de documento o factura');
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
 
@@ -780,7 +961,14 @@ const Purchases = () => {
             fovial: totals.fovial, cotrans: totals.cotrans, monto_total: totals.total,
             documento_afectado: docAfectado, fecha_afectada: fechaAfectada,
             period_year: finalPeriodYear, period_month: finalPeriodMonth,
-            items: selectedItems
+            items: selectedItems.map(it => ({
+                product_id: it.product_id || null,
+                nombre: it.nombre,
+                descripcion: it.nombre,
+                cantidad: it.cantidad,
+                precio_unitario: it.precio_unitario,
+                total: it.total
+            }))
         };
 
         if (isEditing && editingId) {
@@ -853,10 +1041,11 @@ const Purchases = () => {
             setIsFovialDirty(true);
             setIsCotransDirty(true);
 
-            setSelectedItems(detail.items.map(it => ({
-                product_id: it.product_id,
-                nombre: it.nombre,
-                codigo: it.codigo,
+            setSelectedItems(detail.items.map((it, idx) => ({
+                uid: `item_${it.id || idx}_${Date.now()}`,
+                product_id: it.product_id || null,
+                nombre: it.nombre || it.descripcion || 'Sin descripción',
+                codigo: it.codigo || '—',
                 tipo_combustible: it.tipo_combustible || 0,
                 cantidad: parseFloat(it.cantidad),
                 precio_unitario: parseFloat(it.precio_unitario),
@@ -960,7 +1149,7 @@ const Purchases = () => {
                 <div className="flex items-center gap-2">
                     <input 
                         type="file" 
-                        ref={fileInputRef} 
+                        ref={jsonFileInputRef} 
                         onChange={handleFileChange} 
                         accept=".json" 
                         className="hidden" 
@@ -969,8 +1158,8 @@ const Purchases = () => {
                     {activeTab === 'historial' ? (
                         <>
                             <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                onClick={() => jsonFileInputRef.current?.click()}
+                                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                                 title="Importar desde archivo JSON oficial (Hacienda SV)"
                             >
                                 <Zap size={13} className="fill-amber-500 text-amber-500" /> Importar DTE
@@ -989,8 +1178,8 @@ const Purchases = () => {
                         <>
                             {!isEditing && (
                                 <button 
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                    onClick={() => jsonFileInputRef.current?.click()}
+                                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                                     title="Importar desde archivo JSON oficial (Hacienda SV)"
                                 >
                                     <Zap size={13} className="fill-amber-500 text-amber-500" /> Importar DTE
@@ -1030,14 +1219,14 @@ const Purchases = () => {
                                     {/* Botón de Escaneo con IA */}
                                     <input 
                                         type="file" 
-                                        ref={fileInputRef} 
+                                        ref={aiFileInputRef} 
                                         onChange={handleScanDteFile} 
                                         accept="image/*,.pdf" 
                                         className="hidden" 
                                     />
                                     <button
                                         type="button"
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() => aiFileInputRef.current?.click()}
                                         disabled={isScanningDte}
                                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100/80 border border-violet-200/80 transition-all shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
                                         title="Subir foto o PDF del DTE para auto-completar los datos con Inteligencia Artificial"
@@ -1054,6 +1243,36 @@ const Purchases = () => {
                                             </>
                                         )}
                                     </button>
+
+                                    {/* Botón de Escaneo con Teléfono Móvil mediante QR */}
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenQrModal}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/80 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                                        title="Escanear factura física con la cámara de tu smartphone mediante código QR"
+                                    >
+                                        <QrCode size={13} className="text-indigo-600" />
+                                        <span>Escanear con Teléfono (QR)</span>
+                                    </button>
+
+                                    {/* Toggle Reconocer productos con IA */}
+                                    <label 
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all shadow-2xs cursor-pointer select-none ${
+                                            recognizeProducts 
+                                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                                : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                        title="Al activar, el escáner con IA extraerá la lista de productos, cantidades y precios para llenar la tabla de la compra"
+                                    >
+                                        <input 
+                                            type="checkbox" 
+                                            checked={recognizeProducts} 
+                                            onChange={(e) => setRecognizeProducts(e.target.checked)} 
+                                            className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <Package size={13} className={recognizeProducts ? 'text-indigo-600' : 'text-slate-400'} />
+                                        <span>Productos IA</span>
+                                    </label>
 
                                     <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
                                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
@@ -1189,17 +1408,21 @@ const Purchases = () => {
                                     />
                                 </div>
                                 <div className="md:col-span-1">
-                                    <label className={labelCls}>Número de Control (DTE)</label>
+                                    <label className={labelCls}>
+                                        Número de Control (DTE) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                    </label>
                                     <input 
                                         type="text" 
                                         value={numControl} 
                                         onChange={(e) => setNumControl(e.target.value.toUpperCase())} 
-                                        placeholder="DTE-03-M001P001-00001" 
+                                        placeholder="DTE-03-M001P001-00001 (OPCIONAL)" 
                                         className={`${inputCls} uppercase font-mono text-[11px]`} 
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className={labelCls}>Sello de Recepción (MH)</label>
+                                    <label className={labelCls}>
+                                        Sello de Recepción (MH) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                    </label>
                                     <input 
                                         type="text" 
                                         value={selloRecepcion} 
@@ -1241,32 +1464,90 @@ const Purchases = () => {
                                 </div>
                             )}
                             {/* Quick Add Bar */}
-                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-[110px_1fr_70px_90px_90px_40px] gap-2 items-end">
+                            <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-[120px_1fr_80px_100px_100px_44px] gap-2 items-end">
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cód. Producto</label>
                                     <div className="relative">
                                         <Barcode className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
-                                        <input ref={barcodeInputRef} type="text" value={quickBarcode} onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} onKeyDown={handleBarcodeSubmit} placeholder="SCAN..." className="w-full pl-7 pr-8 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-[10px] font-bold" />
-                                        <button onClick={performBarcodeLookup} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors">
+                                        <input 
+                                            ref={barcodeInputRef} 
+                                            type="text" 
+                                            value={quickBarcode} 
+                                            onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())} 
+                                            onKeyDown={handleBarcodeSubmit} 
+                                            placeholder="SCAN / F3..." 
+                                            className="w-full pl-7 pr-8 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-[10px] font-bold" 
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={performBarcodeLookup} 
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                            title="Buscar producto"
+                                        >
                                             <Search size={14} />
                                         </button>
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Descripción</label>
-                                    <div className="w-full px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black text-slate-500 truncate h-[26px] flex items-center">
-                                        {quickProd?.nombre?.toUpperCase() || '---'}
+                                    <div className="flex justify-between items-center mb-1 ml-1">
+                                        <label className="text-[8px] font-black text-slate-400 uppercase">
+                                            {quickProd ? 'Producto (Catálogo)' : 'Descripción (Libre o Catálogo)'}
+                                        </label>
+                                        {quickProd && (
+                                            <button
+                                                type="button"
+                                                onClick={handleClearQuickProduct}
+                                                className="text-[7px] text-rose-500 hover:text-rose-700 font-black uppercase flex items-center gap-0.5"
+                                                title="Quitar producto y escribir descripción libre"
+                                            >
+                                                <X size={10} /> Quitar Cód.
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="relative">
+                                        <input
+                                            ref={descInputRef}
+                                            type="text"
+                                            value={quickProd ? quickProd.nombre : quickDesc}
+                                            disabled={Boolean(quickProd)}
+                                            onChange={(e) => setQuickDesc(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && qtyInputRef.current?.focus()}
+                                            placeholder={quickProd ? quickProd.nombre : "ESCRIBA DESCRIPCIÓN DEL ÍTEM..."}
+                                            className={`w-full px-2 py-1 border rounded-lg text-[10px] font-black outline-none h-[26px] ${
+                                                quickProd 
+                                                    ? 'bg-slate-100 text-slate-700 border-slate-200 cursor-not-allowed uppercase' 
+                                                    : 'bg-white text-slate-800 border-slate-200 focus:ring-1 focus:ring-indigo-500 uppercase placeholder:text-slate-300'
+                                            }`}
+                                        />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1 text-center">Cant.</label>
-                                    <input ref={qtyInputRef} type="number" value={quickCant} onChange={(e) => setQuickCant(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && costInputRef.current?.focus()} onFocus={(e) => e.target.select()} className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-center h-[26px]" />
+                                    <input 
+                                        ref={qtyInputRef} 
+                                        type="number" 
+                                        step="0.01"
+                                        value={quickCant} 
+                                        onChange={(e) => setQuickCant(e.target.value)} 
+                                        onKeyDown={(e) => e.key === 'Enter' && costInputRef.current?.focus()} 
+                                        onFocus={(e) => e.target.select()} 
+                                        className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-center h-[26px]" 
+                                    />
                                 </div>
                                 <div>
                                     <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1 text-right">Costo Neto</label>
                                     <div className="relative">
                                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-[9px]">$</span>
-                                        <input ref={costInputRef} type="number" value={quickCosto} onChange={(e) => setQuickCosto(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddQuick()} onFocus={(e) => e.target.select()} className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-right h-[26px]" />
+                                        <input 
+                                            ref={costInputRef} 
+                                            type="number" 
+                                            step="0.0001"
+                                            value={quickCosto} 
+                                            onChange={(e) => setQuickCosto(e.target.value)} 
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddQuick()} 
+                                            onFocus={(e) => e.target.select()} 
+                                            className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-[10px] font-black text-right h-[26px]" 
+                                        />
                                     </div>
                                 </div>
                                 <div>
@@ -1275,7 +1556,13 @@ const Purchases = () => {
                                         ${(parseFloat(quickCant || 0) * parseFloat(quickCosto || 0)).toFixed(2)}
                                     </div>
                                 </div>
-                                <button onClick={handleAddQuick} disabled={!quickProd} className="h-[26px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-slate-800 disabled:opacity-20 active:scale-95 transition-all">
+                                <button 
+                                    type="button"
+                                    onClick={handleAddQuick} 
+                                    disabled={!quickProd && (!quickDesc || !quickDesc.trim())} 
+                                    title="Agregar ítem a la compra"
+                                    className="h-[26px] w-full bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-slate-800 disabled:opacity-20 active:scale-95 transition-all"
+                                >
                                     <Plus size={14} />
                                 </button>
                             </div>
@@ -1286,7 +1573,7 @@ const Purchases = () => {
                                     <thead className="bg-slate-50/50 border-b border-slate-100 font-bold text-[9px] text-slate-400 uppercase tracking-[0.2em]">
                                         <tr>
                                             <th className="px-5 py-2">Código</th>
-                                            <th className="px-5 py-2">Producto</th>
+                                            <th className="px-5 py-2">Producto / Descripción</th>
                                             <th className="px-5 py-2 text-center w-20">Cant.</th>
                                             <th className="px-5 py-2 text-right w-24">Costo U.</th>
                                             <th className="px-5 py-2 text-right w-24">Subtotal</th>
@@ -1295,20 +1582,51 @@ const Purchases = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {selectedItems.length === 0 ? (
-                                            <tr><td colSpan="6" className="px-5 py-16 text-center text-[9px] font-black text-slate-200 uppercase tracking-widest">Esperando Productos...</td></tr>
+                                            <tr><td colSpan="6" className="px-5 py-16 text-center text-[9px] font-black text-slate-200 uppercase tracking-widest">Esperando Productos o Ítems...</td></tr>
                                         ) : selectedItems.map(item => (
-                                            <tr key={item.product_id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600" data-label="Código">{item.codigo}</td>
-                                                <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase" data-label="Producto">{item.nombre}</td>
+                                            <tr key={item.uid} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-5 py-1.5 font-mono text-[9px] font-bold text-indigo-600" data-label="Código">
+                                                    {item.codigo || '—'}
+                                                </td>
+                                                <td className="px-5 py-1.5 text-[10px] font-bold text-slate-600 uppercase" data-label="Producto">
+                                                    {item.product_id ? (
+                                                        <span>{item.nombre}</span>
+                                                    ) : (
+                                                        <input
+                                                            type="text"
+                                                            value={item.nombre}
+                                                            onChange={(e) => updateItem(item.uid, 'nombre', e.target.value.toUpperCase())}
+                                                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-400 rounded px-2 py-0.5 text-[10px] font-bold outline-none uppercase"
+                                                            placeholder="DESCRIPCIÓN..."
+                                                        />
+                                                    )}
+                                                </td>
                                                 <td className="px-5 py-1.5" data-label="Cant.">
-                                                    <input type="number" step="0.01" value={item.cantidad} onChange={(e) => updateItem(item.product_id, 'cantidad', e.target.value)} onFocus={(e) => e.target.select()} className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" />
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01" 
+                                                        value={item.cantidad} 
+                                                        onChange={(e) => updateItem(item.uid, 'cantidad', e.target.value)} 
+                                                        onFocus={(e) => e.target.select()} 
+                                                        className="w-full bg-slate-50 text-center font-black py-0.5 rounded text-[10px]" 
+                                                    />
                                                 </td>
                                                 <td className="px-5 py-1.5" data-label="Costo U.">
-                                                    <MoneyInput step="0.0001" value={item.precio_unitario} onChange={(e) => updateItem(item.product_id, 'precio_unitario', e.target.value)} onFocus={(e) => e.target.select()} className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" />
+                                                    <MoneyInput 
+                                                        step="0.0001" 
+                                                        value={item.precio_unitario} 
+                                                        onChange={(e) => updateItem(item.uid, 'precio_unitario', e.target.value)} 
+                                                        onFocus={(e) => e.target.select()} 
+                                                        className="w-full bg-slate-50 text-right pr-1 font-bold py-0.5 rounded text-[10px]" 
+                                                    />
                                                 </td>
-                                                <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]" data-label="Subtotal"><Money value={item.total} /></td>
+                                                <td className="px-5 py-1.5 text-right font-black text-slate-900 text-[10px]" data-label="Subtotal">
+                                                    <Money value={item.total} />
+                                                </td>
                                                 <td className="px-5 py-1.5 text-right" data-label="">
-                                                    <button onClick={() => removeItem(item.product_id)} className="p-1 text-slate-300 hover:text-rose-500"><Trash2 size={12} /></button>
+                                                    <button onClick={() => removeItem(item.uid)} className="p-1 text-slate-300 hover:text-rose-500">
+                                                        <Trash2 size={12} />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -1777,6 +2095,20 @@ const Purchases = () => {
                 fileName={`Reporte_Compras_${new Date().toISOString().split('T')[0]}.pdf`}
                 footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
             />
+
+            {/* Modal de Escaneo con Cámara Móvil vía Código QR */}
+            <QrScanModal
+                isOpen={isQrModalOpen}
+                onClose={handleCloseQrModal}
+                sessionId={qrSessionId}
+                lanIp={qrLanIp}
+                isLoading={qrLoading}
+                error={qrError}
+                status={qrStatus}
+                onRetry={handleOpenQrModal}
+                recognizeProducts={recognizeProducts}
+                onToggleRecognizeProducts={setRecognizeProducts}
+            />
         </div>
     );
 };
@@ -1850,6 +2182,208 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                         />
                     </div>
                 )}
+            </div>
+        </div>
+    );
+};
+
+const QrScanModal = ({ 
+    isOpen, 
+    onClose, 
+    sessionId, 
+    lanIp, 
+    isLoading, 
+    error, 
+    status, 
+    onRetry,
+    recognizeProducts,
+    onToggleRecognizeProducts
+}) => {
+    const [copied, setCopied] = useState(false);
+    if (!isOpen) return null;
+
+    const queryParam = recognizeProducts ? '?recognize_items=1' : '';
+    let qrUrl = '';
+    if (sessionId) {
+        if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && lanIp) {
+            qrUrl = `${window.location.protocol}//${lanIp}:${window.location.port}/scan-dte/${sessionId}${queryParam}`;
+        } else {
+            qrUrl = `${window.location.origin}/scan-dte/${sessionId}${queryParam}`;
+        }
+    }
+
+    const handleCopy = () => {
+        if (!qrUrl) return;
+        navigator.clipboard.writeText(qrUrl);
+        setCopied(true);
+        toast.success('Enlace copiado al portapapeles');
+        setTimeout(() => setCopied(false), 2500);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-slate-100">
+                {/* Header */}
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-linear-to-r from-indigo-50/50 via-white to-violet-50/50">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                            <Smartphone size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">
+                                Escanear con Teléfono
+                            </h3>
+                            <p className="text-[11px] text-slate-500 font-medium mt-1">
+                                Usa la cámara de tu smartphone para capturar el DTE
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 flex flex-col items-center text-center space-y-4">
+                    {isLoading ? (
+                        <div className="py-12 flex flex-col items-center gap-3">
+                            <Loader2 size={36} className="animate-spin text-indigo-600" />
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                                Generando sesión segura de escaneo...
+                            </p>
+                        </div>
+                    ) : error ? (
+                        <div className="py-8 flex flex-col items-center gap-3">
+                            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+                                <AlertCircle size={32} />
+                            </div>
+                            <p className="text-sm font-bold text-rose-700">{error}</p>
+                            <button
+                                onClick={onRetry}
+                                className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all cursor-pointer shadow-sm"
+                            >
+                                <RefreshCw size={14} /> Reintentar
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Toggle Reconocimiento de Productos */}
+                            <div className="w-full p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-left">
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <Package size={14} className="text-indigo-600" />
+                                        <span>Reconocer productos con IA</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 leading-tight">
+                                        Extrae automáticamente las líneas de productos, cantidades y precios
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={recognizeProducts} 
+                                        onChange={(e) => onToggleRecognizeProducts?.(e.target.checked)} 
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                </label>
+                            </div>
+
+                            {/* QR Code Container */}
+                            <div className="relative p-4 bg-white rounded-2xl border-2 border-indigo-100 shadow-inner flex items-center justify-center">
+                                {sessionId && (
+                                    <QRCodeSVG
+                                        value={qrUrl}
+                                        size={210}
+                                        level="M"
+                                        includeMargin={false}
+                                        className="rounded-lg"
+                                    />
+                                )}
+
+                                {status === 'processing' && (
+                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-4 gap-2 animate-in fade-in">
+                                        <Loader2 size={36} className="animate-spin text-violet-600" />
+                                        <span className="text-xs font-black uppercase tracking-wider text-violet-700">
+                                            Analizando DTE con IA...
+                                        </span>
+                                        <span className="text-[11px] text-slate-500 font-medium text-center">
+                                            La foto fue recibida del teléfono. Extrayendo datos...
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Status Indicator */}
+                            {status === 'pending' && (
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/70 rounded-full text-xs font-bold">
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </span>
+                                    <span>Esperando captura desde el teléfono...</span>
+                                </div>
+                            )}
+
+                            {status === 'processing' && (
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-violet-50 text-violet-700 border border-violet-200/70 rounded-full text-xs font-bold">
+                                    <Loader2 size={13} className="animate-spin text-violet-600" />
+                                    <span>Procesando imagen con IA...</span>
+                                </div>
+                            )}
+
+                            {/* Steps / Instructions */}
+                            <div className="w-full bg-slate-50 rounded-2xl p-3.5 text-left border border-slate-100 space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    Instrucciones rápidas:
+                                </p>
+                                <ol className="text-[12px] text-slate-600 space-y-1.5 font-medium">
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">1</span>
+                                        <span>Abre la app de cámara de tu teléfono y enfoca el código QR.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">2</span>
+                                        <span>Toca el enlace para abrir la pantalla de escaneo móvil.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">3</span>
+                                        <span>Toma la foto del DTE/factura física y presiona procesar.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">✓</span>
+                                        <span>Los datos se completarán aquí automáticamente en tiempo real.</span>
+                                    </li>
+                                </ol>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    {sessionId && !error && (
+                        <button
+                            type="button"
+                            onClick={handleCopy}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                            title="Copiar enlace directo"
+                        >
+                            {copied ? <CheckCircle2 size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                            <span>{copied ? 'Copiado' : 'Copiar enlace'}</span>
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="ml-auto px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                        Cerrar
+                    </button>
+                </div>
             </div>
         </div>
     );
