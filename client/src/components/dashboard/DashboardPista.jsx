@@ -158,62 +158,6 @@ export default function DashboardPista() {
                 </div>
             </div>
 
-            {/* WIDGET DE ALERTA: DTEs Rechazados en el Turno con Causa */}
-            {rejectedDtes.length > 0 && (
-                <div className="bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border-2 border-rose-500/40 rounded-3xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/30 shrink-0 animate-bounce">
-                                <ShieldAlert size={22} />
-                            </div>
-                            <div>
-                                <h3 className="text-base font-black text-rose-950 tracking-tight flex items-center gap-2">
-                                    DTEs Rechazados por Hacienda en Turno Abierto
-                                    <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase">
-                                        {rejectedDtes.length} {rejectedDtes.length === 1 ? 'Error' : 'Errores'}
-                                    </span>
-                                </h3>
-                                <p className="text-rose-800 text-xs font-medium mt-0.5">
-                                    Documentos emitidos en pista rechazados por el validador oficial. Requieren corrección para evitar contingencia.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {rejectedDtes.map((dte) => (
-                            <div key={dte.id} className="bg-white rounded-2xl border border-rose-200 p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                        <div className="min-w-0">
-                                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-rose-100 text-rose-700">
-                                                {dte.tipo_dte === '01' ? 'Factura' : dte.tipo_dte === '03' ? 'CCF' : 'DTE'} #{dte.numero_control || dte.id}
-                                            </span>
-                                            <p className="text-xs font-bold text-slate-800 truncate mt-1">{dte.cliente}</p>
-                                        </div>
-                                        <Money value={dte.monto} className="text-sm font-black text-rose-600 shrink-0" />
-                                    </div>
-
-                                    <div className="bg-rose-50/80 rounded-xl p-2.5 border border-rose-100 mt-2">
-                                        <p className="text-[10px] font-black text-rose-600 uppercase tracking-wide flex items-center gap-1">
-                                            <span>Código:</span> {dte.codigo_error}
-                                        </p>
-                                        <p className="text-[11px] text-slate-700 font-medium mt-0.5 line-clamp-2" title={dte.mensaje_error}>
-                                            {dte.mensaje_error}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between pt-2.5 mt-3 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
-                                    <span>{dte.pos_name} · #{dte.shift_number}</span>
-                                    <span>{new Date(dte.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {/* SECCIÓN 1: INVENTARIO GRÁFICO ANIMADO POR TANQUE */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -322,6 +266,86 @@ export default function DashboardPista() {
                     })}
                 </div>
             </div>
+
+            {/* WIDGET DE MONITOREO DTE COMPACTO: DTEs Rechazados en el Día y Turnos Activos con Causa */}
+            {rejectedDtes.length > 0 ? (
+                <div className="bg-rose-50/40 border border-rose-200/90 rounded-2xl p-4 shadow-xs space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-100 pb-2">
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-rose-500 text-white flex items-center justify-center shrink-0">
+                                <ShieldAlert size={16} />
+                            </div>
+                            <div>
+                                <h3 className="text-xs sm:text-sm font-black text-rose-950 uppercase tracking-wide flex items-center gap-2">
+                                    DTEs Rechazados en el Día
+                                    <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black uppercase">
+                                        {rejectedDtes.length}
+                                    </span>
+                                </h3>
+                            </div>
+                        </div>
+                        <span className="text-[11px] text-rose-700 font-medium">
+                            Causa oficial devuelta por validación de Hacienda
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                        {rejectedDtes.map((dte) => (
+                            <div key={dte.id} className="bg-white rounded-xl border border-rose-200/90 p-3 shadow-xs hover:border-rose-400 transition-all flex flex-col justify-between text-[11px]">
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between gap-1.5">
+                                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
+                                            {dte.tipo_dte === '01' ? 'Factura' : dte.tipo_dte === '03' ? 'CCF' : `DTE ${dte.tipo_dte || ''}`}
+                                        </span>
+                                        <span className="text-[10px] font-mono font-semibold text-slate-500 truncate" title={dte.numero_control}>
+                                            {dte.numero_control ? dte.numero_control.slice(-10) : `#${dte.id}`}
+                                        </span>
+                                        <Money value={dte.monto} className="text-xs font-black text-rose-600 shrink-0 ml-auto" />
+                                    </div>
+
+                                    <p className="font-bold text-slate-800 truncate text-[11px]" title={dte.cliente}>
+                                        {dte.cliente}
+                                    </p>
+
+                                    <div className="bg-rose-50/70 rounded-lg p-2 border border-rose-100/90">
+                                        <div className="flex items-center justify-between text-[9px] font-black text-rose-700 uppercase mb-0.5">
+                                            <span>Causa</span>
+                                            <span className="font-mono">Cód: {dte.codigo_error}</span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-700 font-medium line-clamp-2 leading-tight" title={dte.mensaje_error}>
+                                            {dte.mensaje_error}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-100 text-[9px] text-slate-400 font-medium">
+                                    <span className="truncate max-w-[140px]" title={`${dte.pos_name} · T#${dte.shift_number}`}>
+                                        {dte.pos_name} · T#{dte.shift_number}
+                                    </span>
+                                    <span>
+                                        {new Date(dte.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <div className="bg-emerald-50/50 border border-emerald-200/60 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2">
+                        <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                        <span className="text-[11px] font-bold text-emerald-900">
+                            DTEs Pista: Sin rechazos en el día
+                        </span>
+                        <span className="text-[10px] text-emerald-700 hidden sm:inline">
+                            — Todos los comprobantes tributarios emitidos hoy fueron autorizados por Hacienda
+                        </span>
+                    </div>
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded">
+                        0 Errores
+                    </span>
+                </div>
+            )}
 
             {/* SECCIÓN 2: TURNOS ACTIVOS DE PISTA (SIN MOSTRAR EFECTIVO ESPERADO) */}
             <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">

@@ -290,11 +290,15 @@ export function useMenuItems() {
     const tree = useMemo(() => buildTree(flatItems), [flatItems]);
 
     const topLevelItems = useMemo(() => {
-        return tree.filter(item => !item.parent_id && (!item.hide_in_menu) && item.path);
+        return tree.filter(item => !item.parent_id && (!item.hide_in_menu && !item.hideInMenu) && item.path);
     }, [tree]);
 
     const menuConfig = useMemo(() => {
-        return tree.filter(item => !item.parent_id && (!item.hide_in_menu) && (!item.path || item.children.length > 0));
+        return tree.filter(item => {
+            if (item.parent_id || item.hide_in_menu || item.hideInMenu) return false;
+            const hasVisibleChildren = item.children?.some(c => !c.hide_in_menu && !c.hideInMenu);
+            return !item.path || hasVisibleChildren;
+        });
     }, [tree]);
 
     return { topLevelItems, menuConfig, flatItems, isLoading };

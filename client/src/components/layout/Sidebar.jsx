@@ -420,7 +420,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
                 {menuConfig.map((group) => {
                     if (group.hideInMenu || !isGroupEnabled(group)) return null;
-                    const children = group.children.filter(hasPermission);
+                    const children = group.children.filter(c => !c.hideInMenu && hasPermission(c) && isItemEnabled(c));
                     if (children.length === 0) return null;
                     const isExpanded = expandedGroups[group.id];
 
@@ -446,7 +446,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                             )}
 
                             <div className={`mt-1 space-y-2 transition-all duration-300 ${!effectiveCollapsed && !isExpanded ? 'hidden' : 'block'}`}>
-                                {group.children.map((item) => renderMenuItem(item))}
+                                {children.map((item) => renderMenuItem(item))}
                             </div>
                         </div>
                     );

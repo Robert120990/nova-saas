@@ -427,7 +427,7 @@ const getPistaStats = async (req, res) => {
             }));
         } catch (e) { console.error('PISTA SHIFTS ERR:', e); }
 
-        // 3. DTEs rechazados en el turno con causa exacta
+        // 3. DTEs rechazados en el día y turnos activos con causa exacta
         let rejectedDtes = [];
         try {
             const [dRows] = await pool.query(`
@@ -437,19 +437,23 @@ const getPistaStats = async (req, res) => {
                     d.codigo_generacion,
                     d.tipo_dte,
                     d.created_at,
+                    d.respuesta_hacienda,
                     sh.id as sale_id,
                     sh.total_pagar,
                     COALESCE(c.nombre, sh.cliente_nombre, 'Consumidor Final') as cliente,
                     p.nombre as pos_name,
                     sel.nombre as seller_name,
                     s.shift_number,
-                    COALESCE(de.codigo_error, 'MH-ERR') as codigo_error,
-                    COALESCE(de.mensaje_error, 'Documento tributario rechazado por validación de Hacienda') as mensaje_error
+                    s.status as shift_status,
+                    b.nombre as branch_name,
+                    de.codigo_error as de_codigo,
+                    de.mensaje_error as de_mensaje
                 FROM dtes d
-                JOIN sales_headers sh ON d.venta_id = sh.id
-                JOIN pos_shifts s ON sh.shift_id = s.id
-                JOIN points_of_sale p ON s.pos_id = p.id
-                JOIN sellers sel ON s.seller_id = sel.id
+                LEFT JOIN sales_headers sh ON d.venta_id = sh.id
+                LEFT JOIN pos_shifts s ON sh.shift_id = s.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                LEFT JOIN branches b ON d.branch_id = b.id
                 LEFT JOIN customers c ON sh.customer_id = c.id
                 LEFT JOIN (
                     SELECT dte_id, codigo_error, mensaje_error
@@ -457,27 +461,61 @@ const getPistaStats = async (req, res) => {
                     WHERE id IN (SELECT MAX(id) FROM dte_errors GROUP BY dte_id)
                 ) de ON de.dte_id = d.id
                 WHERE d.company_id = ? 
-                  AND s.status = 'open'
-                  AND (d.status = 'RECHAZADO' OR d.status = 'RECHAZADA')
+                  AND (DATE(d.created_at) = CURDATE() OR s.status = 'open')
+                  AND (d.status = 'REJECTED' OR d.status LIKE '%RECHAZ%' OR d.status LIKE '%ERROR%')
                   ${branchId ? 'AND d.branch_id = ?' : ''}
                 ORDER BY d.created_at DESC
-                LIMIT 20
+                LIMIT 50
             `, branchId ? [companyId, branchId] : [companyId]);
 
-            rejectedDtes = (dRows || []).map(d => ({
-                id: d.dte_id,
-                numero_control: d.numero_control,
-                codigo_generacion: d.codigo_generacion,
-                tipo_dte: d.tipo_dte,
-                fecha: d.created_at,
-                monto: parseFloat(d.total_pagar || 0),
-                cliente: d.cliente,
-                pos_name: d.pos_name,
-                seller_name: d.seller_name,
-                shift_number: d.shift_number,
-                codigo_error: d.codigo_error,
-                mensaje_error: d.mensaje_error
-            }));
+            rejectedDtes = (dRows || []).map(d => {
+                let codigoError = d.de_codigo || 'MH-ERR';
+                let mensajeError = d.de_mensaje;
+
+                if (d.respuesta_hacienda) {
+                    try {
+                        const parsed = typeof d.respuesta_hacienda === 'string'
+                            ? JSON.parse(d.respuesta_hacienda)
+                            : d.respuesta_hacienda;
+                        if (parsed?.codigoMsg) codigoError = parsed.codigoMsg;
+                        if (parsed?.descripcionMsg) {
+                            mensajeError = parsed.descripcionMsg;
+                            if (parsed.observaciones && parsed.observaciones.length > 0) {
+                                mensajeError += ` (${Array.isArray(parsed.observaciones) ? parsed.observaciones.join('; ') : parsed.observaciones})`;
+                            }
+                        } else if (parsed?.observaciones && parsed.observaciones.length > 0) {
+                            mensajeError = Array.isArray(parsed.observaciones)
+                                ? parsed.observaciones.join('; ')
+                                : String(parsed.observaciones);
+                        } else if (parsed?.mensaje) {
+                            mensajeError = parsed.mensaje;
+                        }
+                    } catch (e) {
+                        if (!mensajeError) mensajeError = typeof d.respuesta_hacienda === 'string' ? d.respuesta_hacienda : 'Error devuelto por Hacienda';
+                    }
+                }
+
+                if (!mensajeError) {
+                    mensajeError = 'Documento tributario rechazado por validación de Hacienda';
+                }
+
+                return {
+                    id: d.dte_id,
+                    numero_control: d.numero_control,
+                    codigo_generacion: d.codigo_generacion,
+                    tipo_dte: d.tipo_dte,
+                    fecha: d.created_at,
+                    monto: parseFloat(d.total_pagar || 0),
+                    cliente: d.cliente,
+                    pos_name: d.pos_name || 'Pista',
+                    seller_name: d.seller_name || 'Vendedor',
+                    shift_number: d.shift_number || 1,
+                    shift_status: d.shift_status || 'closed',
+                    branch_name: d.branch_name,
+                    codigo_error: codigoError,
+                    mensaje_error: mensajeError
+                };
+            });
         } catch (e) { console.error('REJECTED DTES ERR:', e); }
 
         // 4. Clientes pendientes de pago / crédito en Pista
