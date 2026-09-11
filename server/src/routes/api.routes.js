@@ -89,6 +89,7 @@ const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.co
 const gasCouponLiquidationController = require('../controllers/gasCouponLiquidation.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
 const pozoController = require('../controllers/pozo.controller');
+const filproController = require('../controllers/filpro.controller');
 
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
@@ -424,6 +425,10 @@ router.delete('/shifts/:id', checkPermission('manage_shifts_edit'), shiftControl
 // Dashboard
 router.get('/dashboard/general-stats', dashboardController.getStats);
 router.get('/dashboard/category-sales', dashboardController.getCategorySales);
+router.get('/dashboard/pista-stats', dashboardController.getPistaStats);
+router.get('/dashboard/tienda-stats', dashboardController.getTiendaStats);
+router.get('/dashboard/andelsa-stats', dashboardController.getAndelsaStats);
+router.get('/dashboard/server-stats', dashboardController.getServerStats);
 
 // Product Combos
 router.get('/combos', comboController.getCombos);
@@ -1037,6 +1042,21 @@ router.get('/rh/reportes/control-vacaciones', rhReportesController.getControlVac
 router.get('/rh/reportes/rotacion-personal', rhReportesController.getRotacionPersonalReport);
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
+
+// FilPro DTE Integration
+router.get('/filpro/config', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getConnection);
+router.post('/filpro/config', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.saveConnection);
+router.post('/filpro/test', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.testConnection);
+router.post('/filpro/preview-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.previewDay);
+router.post('/filpro/sync-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.syncDay);
+router.post('/filpro/sync-day-stream', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.syncDayStream);
+router.get('/filpro/logs', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getLogs);
+router.get('/filpro/dte-detail/:uuid', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getDteDetail);
+router.get('/filpro/mappings', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getMappings);
+router.post('/filpro/mappings', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.saveMapping);
+router.delete('/filpro/mappings/:id', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.deleteMapping);
+router.post('/filpro/revert-dte', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDte);
+router.post('/filpro/revert-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDay);
 
 // Notifications
 router.use('/notifications', notificationRoutes);

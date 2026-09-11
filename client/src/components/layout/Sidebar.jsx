@@ -66,6 +66,16 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         if (item.permission === 'manage_company_modules') {
             return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
         }
+        if (item.permission === 'view_dashboard') {
+            return (
+                permissions.includes('view_dashboard') ||
+                permissions.includes('view_dashboard_general') ||
+                permissions.includes('view_dashboard_pista') ||
+                permissions.includes('view_dashboard_tienda') ||
+                permissions.includes('view_dashboard_andelsa') ||
+                permissions.includes('view_dashboard_server')
+            );
+        }
         // Flexibilidad para CRM y Calendario para roles administrativos
         const userRole = (user?.role || '').toLowerCase();
         const isAdminRole = userRole.includes('admin') || userRole.includes('geren') || userRole.includes('supervis');

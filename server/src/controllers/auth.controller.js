@@ -102,12 +102,12 @@ const login = async (req, res) => {
         let companies;
         if (isSuperAdmin) {
             [companies] = await pool.query(
-                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, 1 as role_id, 'SuperAdmin' as role_name, '[]' as permissions 
+                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, 1 as role_id, 'SuperAdmin' as role_name, '[]' as permissions, 'general' as default_dashboard 
                  FROM companies c`
             );
         } else {
             [companies] = await pool.query(
-                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, ue.role_id, r.name as role_name, r.permissions 
+                `SELECT c.id, c.razon_social, c.nombre_comercial, c.enabled_modules, ue.role_id, r.name as role_name, r.permissions, r.default_dashboard 
                  FROM usuario_empresa ue 
                  JOIN companies c ON ue.empresa_id = c.id 
                  JOIN roles r ON ue.role_id = r.id 
@@ -166,6 +166,7 @@ const login = async (req, res) => {
                 email: user.email,
                 role: company.role_name,
                 permissions: parsePermissions(company.permissions),
+                default_dashboard: company.default_dashboard || 'general',
                 enabled_modules: parseModules(company.enabled_modules, company.razon_social, company.id),
                 company_id: company.id,
                 branch_id: branch.id,
@@ -241,7 +242,7 @@ const selectContext = async (req, res) => {
 
             // Get detailed company and branch info for non-SuperAdmin
             const [emp] = await pool.query(
-                `SELECT ue.role_id, r.name as role_name, r.permissions, c.razon_social, c.enabled_modules 
+                `SELECT ue.role_id, r.name as role_name, r.permissions, r.default_dashboard, c.razon_social, c.enabled_modules 
                  FROM usuario_empresa ue 
                  JOIN roles r ON ue.role_id = r.id 
                  JOIN companies c ON ue.empresa_id = c.id
@@ -276,6 +277,7 @@ const selectContext = async (req, res) => {
             empData = { 
                 role_name: 'SuperAdmin', 
                 permissions: '[]', 
+                default_dashboard: 'general',
                 razon_social: companyInfo[0].razon_social,
                 enabled_modules: companyInfo[0].enabled_modules
             };
@@ -307,6 +309,7 @@ const selectContext = async (req, res) => {
             email: user.email,
             role: empData.role_name,
             permissions: parsePermissions(empData.permissions),
+            default_dashboard: empData.default_dashboard || 'general',
             enabled_modules: parseModules(empData.enabled_modules, empData.razon_social, company_id),
             company_id,
             branch_id,

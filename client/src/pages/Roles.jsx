@@ -16,7 +16,7 @@ import { useMenuPermissions } from "../hooks/useMenuItems";
 const Roles = () => {
     const queryClient = useQueryClient();
     const [selectedRole, setSelectedRole] = useState(null);
-    const [formData, setFormData] = useState({ name: "", description: "", permissions: [] });
+    const [formData, setFormData] = useState({ name: "", description: "", permissions: [], default_dashboard: "general" });
     const [isDeleting, setIsDeleting] = useState(null);
 
     const permissionGroups = useMenuPermissions();
@@ -50,9 +50,10 @@ const Roles = () => {
                 name: selectedRole.name,
                 description: selectedRole.description || "",
                 permissions: parsePermissions(selectedRole.permissions),
+                default_dashboard: selectedRole.default_dashboard || "general",
             });
         } else {
-            setFormData({ name: "", description: "", permissions: [] });
+            setFormData({ name: "", description: "", permissions: [], default_dashboard: "general" });
         }
     }, [selectedRole]);
 
@@ -164,9 +165,16 @@ const Roles = () => {
                             >
                                 <div className="flex justify-between items-start">
                                     <div className="flex-1 min-w-0">
-                                        <p className={`font-bold transition-colors ${isActive ? "text-indigo-400" : "text-white group-hover:text-indigo-300"}`}>
-                                            {role.name}
-                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <p className={`font-bold transition-colors ${isActive ? "text-indigo-400" : "text-white group-hover:text-indigo-300"}`}>
+                                                {role.name}
+                                            </p>
+                                            {role.default_dashboard && role.default_dashboard !== 'general' && (
+                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">
+                                                    {role.default_dashboard}
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-[11px] text-slate-500 mt-1 font-medium">
                                             {rolePerms.length} módulos accesibles
                                         </p>
@@ -210,13 +218,13 @@ const Roles = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-400 px-1">Nombre del Rol</label>
                                 <input 
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm font-medium"
                                     placeholder="Ej: Administrador..."
                                 />
                             </div>
@@ -225,9 +233,23 @@ const Roles = () => {
                                 <input 
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm font-medium"
                                     placeholder="Detalles sobre el alcance..."
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-400 px-1">Dashboard por Defecto</label>
+                                <select
+                                    value={formData.default_dashboard || 'general'}
+                                    onChange={(e) => setFormData({ ...formData, default_dashboard: e.target.value })}
+                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm font-medium"
+                                >
+                                    <option value="general" className="bg-[#0f172a] text-white">📊 General / Comercial</option>
+                                    <option value="pista" className="bg-[#0f172a] text-white">⛽ Gasolinera / Pista</option>
+                                    <option value="tienda" className="bg-[#0f172a] text-white">🏪 Tienda de Conveniencia</option>
+                                    <option value="andelsa" className="bg-[#0f172a] text-white">🥚 Planta Andelsa</option>
+                                    <option value="server" className="bg-[#0f172a] text-white">🖥️ Monitor del Servidor</option>
+                                </select>
                             </div>
                         </div>
 
