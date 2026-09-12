@@ -221,22 +221,22 @@ const SalesHistory = () => {
     };
 
     const documentTypes = useMemo(() => {
+        const allowedSalesCodes = ['01', '03', '04', '05', '07', '11'];
         if (tipoDocs && tipoDocs.length > 0) {
-            return tipoDocs.map(t => ({
-                code: t.code,
-                name: t.description ? t.description.toUpperCase() : t.code
-            }));
+            return tipoDocs
+                .filter(t => allowedSalesCodes.includes(t.code))
+                .map(t => ({
+                    code: t.code,
+                    name: t.description ? t.description.toUpperCase() : t.code
+                }));
         }
         return [
             { code: '01', name: 'FACTURA' },
             { code: '03', name: 'COMPROBANTE DE CRÉDITO FISCAL' },
             { code: '04', name: 'NOTA DE REMISIÓN' },
             { code: '05', name: 'NOTA DE CRÉDITO' },
-            { code: '06', name: 'NOTA DE DÉBITO' },
             { code: '07', name: 'COMPROBANTE DE RETENCIÓN' },
-            { code: '08', name: 'COMPROBANTE DE LIQUIDACIÓN' },
-            { code: '11', name: 'FACTURA DE EXPORTACIÓN' },
-            { code: '14', name: 'FACTURA DE SUJETO EXCLUIDO' }
+            { code: '11', name: 'FACTURA DE EXPORTACIÓN' }
         ];
     }, [tipoDocs]);
 
