@@ -17,7 +17,8 @@ import {
     Users,
     Pencil,
     RefreshCw,
-    CloudUpload
+    CloudUpload,
+    AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -70,7 +71,6 @@ const CashClosing = () => {
     const [isTiendaVentasModalOpen, setIsTiendaVentasModalOpen] = useState(false);
     const [tiendaStartDate, setTiendaStartDate] = useState('');
     const [tiendaEndDate, setTiendaEndDate] = useState('');
-    const [sentTiendaDates, setSentTiendaDates] = useState(new Set());
     const [sendingTiendaFecha, setSendingTiendaFecha] = useState(null);
 
     useDirtyTracker('arqueo', actualCash || expenses.some(e => e.amount));
@@ -108,11 +108,15 @@ const CashClosing = () => {
     });
 
     const sendTiendaVentasMutation = useMutation({
-        mutationFn: async ({ fecha, monto }) => (await axios.post('/api/sales/tienda/ventas/rrs', { fecha: String(fecha).substring(0, 10), monto })).data,
+        mutationFn: async ({ fecha, monto }) => (await axios.post('/api/sales/tienda/ventas/rrs', { 
+            fecha: String(fecha).substring(0, 10), 
+            monto,
+            branch_id: user?.branch_id 
+        })).data,
         onMutate: (variables) => setSendingTiendaFecha(variables.fecha),
         onSuccess: (_, variables) => {
-            toast.success(`Ventas del ${formatFechaEs(variables.fecha)} enviadas a RRS`);
-            setSentTiendaDates(prev => new Set(prev).add(variables.fecha));
+            toast.success(`Ventas del ${formatFechaEs(variables.fecha)} sincronizadas con RRS`);
+            queryClient.invalidateQueries({ queryKey: ['sales', 'tienda-ventas'] });
         },
         onError: (error) => {
             toast.error(error.response?.data?.message || 'Error al enviar ventas a RRS');
@@ -130,9 +134,13 @@ const CashClosing = () => {
 
     // Ventas Tienda por fecha (Envío a RRS)
     const { data: tiendaVentasData, isLoading: isLoadingTiendaVentas, isFetching: isFetchingTiendaVentas } = useQuery({
-        queryKey: ['sales', 'tienda-ventas', tiendaStartDate, tiendaEndDate],
+        queryKey: ['sales', 'tienda-ventas', tiendaStartDate, tiendaEndDate, user?.branch_id],
         queryFn: async () => (await axios.get('/api/sales/tienda/ventas', {
-                params: { start_date: tiendaStartDate, end_date: tiendaEndDate }
+                params: { 
+                    start_date: tiendaStartDate, 
+                    end_date: tiendaEndDate,
+                    branch_id: user?.branch_id 
+                }
             })).data,
         enabled: !!tiendaStartDate && !!tiendaEndDate,
     });
@@ -1441,18 +1449,18 @@ const CashClosing = () => {
             <Modal
                 isOpen={isTiendaVentasModalOpen}
                 onClose={() => setIsTiendaVentasModalOpen(false)}
-                title="Ventas Tienda por Fecha"
-                maxWidth="max-w-3xl"
+                title="Ventas Tienda por Fecha (Envío a RRS)"
+                maxWidth="max-w-4xl"
             >
                 <div className="space-y-5 pt-4">
-                    <div className="flex flex-col md:flex-row gap-3">
-                        <div className="flex-1">
+                    <div className="flex flex-col md:flex-row gap-3 items-end">
+                        <div className="flex-1 w-full">
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fecha Inicio</label>
                             <input type="date" value={tiendaStartDate}
                                 onChange={(e) => setTiendaStartDate(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 w-full">
                             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-1">Fecha Fin</label>
                             <input type="date" value={tiendaEndDate}
                                 onChange={(e) => setTiendaEndDate(e.target.value)}
@@ -1460,48 +1468,107 @@ const CashClosing = () => {
                         </div>
                     </div>
 
-                    <div className="bg-slate-50 rounded-2xl p-5">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Resultado por fecha</span>
-                            {isFetchingTiendaVentas && <RefreshCw size={14} className="animate-spin text-slate-400" />}
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/60">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                            <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Resultado por fecha</span>
+                                {tiendaVentasData?.rrs_empresa && (
+                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-100">
+                                        Empresa RRS: #{tiendaVentasData.rrs_empresa}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {isFetchingTiendaVentas && <RefreshCw size={14} className="animate-spin text-slate-400" />}
+                            </div>
                         </div>
                         {!tiendaStartDate || !tiendaEndDate ? (
-                            <p className="text-sm text-slate-400 font-medium text-center py-6">Seleccione un rango de fechas para consultar las ventas.</p>
+                            <p className="text-sm text-slate-400 font-medium text-center py-8">Seleccione un rango de fechas para consultar las ventas.</p>
                         ) : isLoadingTiendaVentas ? (
-                            <p className="text-sm text-slate-500 font-bold text-center py-6">Consultando ventas...</p>
+                            <p className="text-sm text-slate-500 font-bold text-center py-8">Consultando ventas y estado en RRS...</p>
                         ) : tiendaVentasData?.data?.length === 0 ? (
-                            <p className="text-sm text-slate-400 font-medium text-center py-6">No hay ventas emitidas en el rango seleccionado.</p>
+                            <p className="text-sm text-slate-400 font-medium text-center py-8">No hay registros de ventas en el rango seleccionado.</p>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[420px]">
+                                <table className="w-full min-w-[620px]">
                                     <thead>
                                         <tr className="border-b border-slate-200">
-                                            <th className="text-left text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2">Fecha</th>
-                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2">Monto Total</th>
-                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2">Enviar a RRS</th>
+                                            <th className="text-left text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2.5">Fecha</th>
+                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2.5">Venta Sistema</th>
+                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2.5">Monto en RRS</th>
+                                            <th className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2.5">Estado RRS</th>
+                                            <th className="text-right text-[10px] font-black uppercase text-slate-400 tracking-widest pb-2.5">Acción</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
+                                    <tbody className="divide-y divide-slate-100">
                                         {(tiendaVentasData?.data || []).map((row) => {
-                                            const sent = sentTiendaDates.has(row.fecha);
                                             const sending = sendingTiendaFecha === row.fecha;
                                             return (
-                                                <tr key={row.fecha} className="border-b border-slate-100 last:border-0">
-                                                    <td className="py-3 text-sm font-bold text-slate-700">{formatFechaEs(row.fecha)}</td>
-                                                    <td className="py-3 text-right text-sm font-black text-slate-900"><Money value={row.monto} /></td>
-                                                    <td className="py-3 text-right">
-                                                        {sent ? (
-                                                            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl">
-                                                                <CheckCircle2 size={14} /> Enviado
+                                                <tr key={row.fecha} className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-3 text-sm font-bold text-slate-700">
+                                                        {formatFechaEs(row.fecha)}
+                                                    </td>
+                                                    <td className="py-3 text-right text-sm font-black text-slate-900">
+                                                        <Money value={row.monto} />
+                                                    </td>
+                                                    <td className="py-3 text-right text-sm font-bold text-slate-600">
+                                                        {row.enviado_rrs ? (
+                                                            <Money value={row.monto_rrs} />
+                                                        ) : (
+                                                            <span className="text-slate-300 font-normal">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 text-center">
+                                                        {row.enviado_rrs ? (
+                                                            row.tiene_diferencia ? (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60"
+                                                                      title={`Diferencia de $${Math.abs(row.diferencia).toFixed(2)} entre sistema y RRS`}>
+                                                                    <AlertTriangle size={12} className="text-amber-500" />
+                                                                    Dif: {row.diferencia > 0 ? '+' : ''}{row.diferencia.toFixed(2)}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60">
+                                                                    <CheckCircle2 size={12} className="text-emerald-500" /> Enviado
+                                                                </span>
+                                                            )
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-slate-500 bg-slate-200/60 px-2.5 py-1 rounded-lg">
+                                                                <Clock size={12} className="text-slate-400" /> Pendiente
                                                             </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 text-right">
+                                                        {sending ? (
+                                                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 animate-pulse px-3 py-1.5">
+                                                                <RefreshCw size={12} className="animate-spin" /> Enviando...
+                                                            </span>
+                                                        ) : row.enviado_rrs ? (
+                                                            row.tiene_diferencia ? (
+                                                                <button
+                                                                    onClick={() => sendTiendaVentasMutation.mutate({ fecha: row.fecha, monto: row.monto })}
+                                                                    disabled={sendingTiendaFecha !== null}
+                                                                    className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-40"
+                                                                    title="Actualizar registro en RRS con el monto actual de ventas"
+                                                                >
+                                                                    <RefreshCw size={12} /> Sincronizar
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => sendTiendaVentasMutation.mutate({ fecha: row.fecha, monto: row.monto })}
+                                                                    disabled={sendingTiendaFecha !== null}
+                                                                    className="inline-flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500 hover:text-indigo-600 hover:bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 transition-all active:scale-95 disabled:opacity-40"
+                                                                    title="Reenviar venta a RRS"
+                                                                >
+                                                                    <RefreshCw size={12} /> Reenviar
+                                                                </button>
+                                                            )
                                                         ) : (
                                                             <button
                                                                 onClick={() => sendTiendaVentasMutation.mutate({ fecha: row.fecha, monto: row.monto })}
-                                                                disabled={sending}
-                                                                className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-40"
+                                                                disabled={sendingTiendaFecha !== null}
+                                                                className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-40"
                                                             >
-                                                                {sending ? 'Enviando...' : 'Enviar a RRS'}
-                                                                <CloudUpload size={14} />
+                                                                <CloudUpload size={13} /> Enviar a RRS
                                                             </button>
                                                         )}
                                                     </td>
