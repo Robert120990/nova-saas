@@ -458,6 +458,7 @@ const Planillas = () => {
         mutationFn: (data) => axios.post('/api/rh/planillas/sincronizar', data),
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            cacheRef.current = {};
             toast.success(res.data.message);
             if (empleadoId) {
                 loadEmpleado(empleadoId);
@@ -471,7 +472,7 @@ const Planillas = () => {
     const handleSincronizar = async () => {
         const ok = await confirm({
             title: '¿Sincronizar planilla?',
-            message: `Se buscarán empleados nuevos o faltantes y se actualizarán novedades de vacaciones/incapacidades. Todas las horas extras, turnos y valores que ya ingresaste se mantendrán 100% intactos. ¿Continuar?`,
+            message: `Se actualizarán sueldos base, bonificaciones fijas, nuevos descuentos programados y novedades de ausencias desde los expedientes. Las horas extras, comisiones y valores manuales digitados se mantendrán 100% intactos. ¿Continuar?`,
             confirmLabel: 'Sí, sincronizar',
             variant: 'primary'
         });

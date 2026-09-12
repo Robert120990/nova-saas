@@ -901,33 +901,129 @@ const sincronizarPlanilla = async (req, res) => {
             agregadosCount++;
         }
 
-        // B. Para empleados existentes: actualizar si están marcados en vacaciones o incapacitados y aún tenían días > 0
+        // B. Para empleados existentes: sincronizar sueldos, bonificaciones fijas, descuentos programados y ausencias
         for (const emp of empleados) {
             const planillaExistente = existentesMap.get(emp.id);
             if (!planillaExistente) continue;
 
-            const esAusente = emp.en_vacaciones === 1 || emp.incapacitado === 1;
-            if (esAusente && planillaExistente.dias_trabajados > 0) {
-                // Actualizar la cuenta 01 a 0 días y $0.00
+            const [detallesRows] = await pool.query(
+                `SELECT * FROM rh_planilla_detalles WHERE planilla_id = ? ORDER BY orden ASC, codigo ASC`,
+                [planillaExistente.id]
+            );
+
+            // Cuentas existentes mapeadas por cuenta_id
+            const existingCuentaIds = new Set(detallesRows.map(d => d.cuenta_id).filter(Boolean));
+
+            // Si hay cuentas activas que el empleado no tiene en sus detalles, insertarlas
+            const missingCuentas = cuentas.filter(c => !existingCuentaIds.has(c.id));
+            if (missingCuentas.length > 0) {
+                const newRows = missingCuentas.map(c => [
+                    planillaExistente.id, c.id, c.codigo, c.descripcion, c.operacion, c.tipo_valor, null, 0, c.orden || 0
+                ]);
                 await pool.query(
-                    `UPDATE rh_planilla_detalles SET valor_base = 0, valor_ingresado = 0
-                     WHERE planilla_id = ? AND codigo = '01'`,
-                    [planillaExistente.id]
+                    `INSERT INTO rh_planilla_detalles (planilla_id, cuenta_id, codigo, descripcion, operacion, tipo_valor, valor_base, valor_ingresado, orden) VALUES ?`,
+                    [newRows]
                 );
+            }
 
-                // Recalcular percepciones y deducciones de la planilla existente respetando sus otras cuentas
-                const [detallesRows] = await pool.query(
-                    `SELECT * FROM rh_planilla_detalles WHERE planilla_id = ?`,
-                    [planillaExistente.id]
-                );
+            // Volver a consultar detalles actualizados si hubo cuentas insertadas
+            const currentDetalles = missingCuentas.length > 0 
+                ? (await pool.query(`SELECT * FROM rh_planilla_detalles WHERE planilla_id = ? ORDER BY orden ASC, codigo ASC`, [planillaExistente.id]))[0]
+                : detallesRows;
 
+            const esAusente = emp.en_vacaciones === 1 || emp.incapacitado === 1;
+            const empSueldoBase = parseFloat(emp.sueldo_base || 0);
+            const empBonifFija = parseFloat(emp.bonificacion_fija || 0);
+            const sueldoDiario = empSueldoBase / 30;
+
+            const myDiscounts = empDescuentos.filter(d => d.empleado_id === emp.id);
+
+            let hasChanges = false;
+            let currentDias = parseInt(planillaExistente.dias_trabajados ?? 15);
+
+            if (esAusente && currentDias > 0) {
+                currentDias = 0;
+                hasChanges = true;
+            }
+
+            // Revisar y actualizar detalle por detalle manteniendo horas extras y valores manuales intactos
+            for (const d of currentDetalles) {
+                // 1. Sueldo quincenal (cuenta '01')
+                if (d.codigo === '01') {
+                    const expectedValor = esAusente ? 0 : Math.round(sueldoDiario * currentDias * 100) / 100;
+                    const expectedCant = currentDias;
+                    if (parseFloat(d.valor_ingresado || 0) !== expectedValor || parseFloat(d.valor_base || 0) !== expectedCant) {
+                        await pool.query(
+                            `UPDATE rh_planilla_detalles SET valor_base = ?, valor_ingresado = ? WHERE id = ?`,
+                            [expectedCant, expectedValor, d.id]
+                        );
+                        d.valor_base = expectedCant;
+                        d.valor_ingresado = expectedValor;
+                        hasChanges = true;
+                    }
+                }
+                // 2. Bonificación fija (cuenta con isBonificacionCuenta)
+                else if (d.operacion === 'sumar' && isBonificacionCuenta(d)) {
+                    const expectedBonif = Math.round(empBonifFija * 100) / 100;
+                    if (parseFloat(d.valor_ingresado || 0) !== expectedBonif || parseFloat(d.valor_base || 0) !== expectedBonif) {
+                        await pool.query(
+                            `UPDATE rh_planilla_detalles SET valor_base = ?, valor_ingresado = ? WHERE id = ?`,
+                            [expectedBonif, expectedBonif, d.id]
+                        );
+                        d.valor_base = expectedBonif;
+                        d.valor_ingresado = expectedBonif;
+                        hasChanges = true;
+                    }
+                }
+                // 3. Descuentos programados (deducciones con matching discounts)
+                else if (d.operacion === 'restar') {
+                    const matchingDiscounts = myDiscounts.filter(disc => {
+                        if (disc.cuenta_id && disc.cuenta_id === d.cuenta_id) return true;
+                        const descD = (disc.desc_nombre || '').toLowerCase();
+                        const descC = (d.descripcion || '').toLowerCase();
+                        if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
+                        if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
+                        if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
+                        if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
+                        return false;
+                    });
+
+                    if (matchingDiscounts.length > 0) {
+                        const sumMonto = matchingDiscounts.reduce((sum, disc) => sum + parseFloat(disc.valor || 0), 0);
+                        const expectedVal = Math.round(sumMonto * 100) / 100;
+                        if (parseFloat(d.valor_ingresado || 0) !== expectedVal) {
+                            await pool.query(
+                                `UPDATE rh_planilla_detalles SET valor_base = ?, valor_ingresado = ? WHERE id = ?`,
+                                [expectedVal, expectedVal, d.id]
+                            );
+                            d.valor_base = expectedVal;
+                            d.valor_ingresado = expectedVal;
+                            hasChanges = true;
+                        }
+                    }
+                }
+                // Las demás cuentas (horas extras, comisiones, turnos, etc.) NO se tocan en lo absoluto.
+            }
+
+            // También verificar si cambió el sueldo_base o bonificacion_fija en la cabecera
+            if (parseFloat(planillaExistente.sueldo_base || 0) !== empSueldoBase ||
+                parseFloat(planillaExistente.bonificacion_fija || 0) !== empBonifFija ||
+                parseInt(planillaExistente.dias_trabajados) !== currentDias) {
+                hasChanges = true;
+            }
+
+            if (hasChanges) {
+                // Recalcular percepciones y deducciones respetando valores manuales de las otras cuentas
                 let totalPercepciones = 0;
                 let totalDeduccionesCuentas = 0;
-                for (const d of detallesRows) {
+                for (const d of currentDetalles) {
                     const val = parseFloat(d.valor_ingresado || 0);
                     if (d.operacion === 'sumar') totalPercepciones += val;
                     else totalDeduccionesCuentas += val;
                 }
+
+                totalPercepciones = Math.round(totalPercepciones * 100) / 100;
+                totalDeduccionesCuentas = Math.round(totalDeduccionesCuentas * 100) / 100;
 
                 const esJubilado = !!emp.es_jubilado;
                 let descuentoISSS = 0;
@@ -971,8 +1067,18 @@ const sincronizarPlanilla = async (req, res) => {
                 const montoRecibir = Math.round((totalPercepciones - totalDeducciones) * 100) / 100;
 
                 await pool.query(
-                    `UPDATE ${TABLE} SET dias_trabajados = 0, total_percepciones = ?, total_deducciones = ?, descuento_isss = ?, descuento_afp = ?, descuento_renta = ?, monto_recibir = ? WHERE id = ?`,
-                    [totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaExistente.id]
+                    `UPDATE ${TABLE} 
+                     SET dias_trabajados = ?,
+                         sueldo_base = ?,
+                         bonificacion_fija = ?,
+                         total_percepciones = ?, 
+                         total_deducciones = ?, 
+                         descuento_isss = ?, 
+                         descuento_afp = ?, 
+                         descuento_renta = ?, 
+                         monto_recibir = ? 
+                     WHERE id = ?`,
+                    [currentDias, empSueldoBase, empBonifFija, totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaExistente.id]
                 );
 
                 actualizadosCount++;
@@ -980,7 +1086,7 @@ const sincronizarPlanilla = async (req, res) => {
         }
 
         res.json({
-            message: `Sincronización completada: ${agregadosCount} empleado(s) nuevo(s) agregado(s), ${actualizadosCount} actualizado(s).`,
+            message: `Sincronización completada: ${agregadosCount} empleado(s) nuevo(s) agregado(s), ${actualizadosCount} actualizado(s) con novedades.`,
             agregados: agregadosCount,
             actualizados: actualizadosCount,
             total: existentes.length + agregadosCount
