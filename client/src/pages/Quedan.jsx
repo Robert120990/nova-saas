@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    Plus, Trash2, Search, Edit, Handshake, Send, Undo2, Save, Loader2, PlusCircle
+    Plus, Trash2, Search, Edit, Handshake, Send, Undo2, Save, Loader2, PlusCircle, Eye
 } from 'lucide-react';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
@@ -38,6 +38,8 @@ const Quedan = () => {
 
     const [showFormModal, setShowFormModal] = useState(false);
     const [editId, setEditId] = useState(null);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [viewId, setViewId] = useState(null);
     const [formBranchId, setFormBranchId] = useState(user?.branch_id || '');
     const [formNumQuedan, setFormNumQuedan] = useState('');
     const [formProviderId, setFormProviderId] = useState('');
@@ -96,6 +98,12 @@ const Quedan = () => {
         queryKey: ['purchase-quedan-edit', editId],
         queryFn: async () => (await axios.get(`/api/purchases/quedans/${editId}`)).data,
         enabled: !!editId && showFormModal,
+    });
+
+    const { data: detailData, isLoading: detailLoading } = useQuery({
+        queryKey: ['purchase-quedan-detail', viewId],
+        queryFn: async () => (await axios.get(`/api/purchases/quedans/${viewId}`)).data,
+        enabled: !!viewId && showDetailModal,
     });
 
     useMemo(() => {
@@ -337,6 +345,16 @@ const Quedan = () => {
         setShowFormModal(true);
     };
 
+    const openDetailModal = (id) => {
+        setViewId(id);
+        setShowDetailModal(true);
+    };
+
+    const closeDetailModal = () => {
+        setShowDetailModal(false);
+        setViewId(null);
+    };
+
     const openDeliverModal = (id) => {
         setDeliverId(id);
         setDeliverFecha(today());
@@ -446,13 +464,20 @@ const Quedan = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Total', 'Estado', 'Acciones']}
+                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Total', 'Estado', 'Fecha Entrega', 'Acciones']}
                     data={quedans}
                     isLoading={listLoading}
                     renderRow={(c) => (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
                             <td className="px-5 py-1 text-[10px] font-black text-slate-700 font-mono">
-                                {c.num_quedan || '—'}
+                                <button
+                                    type="button"
+                                    onClick={() => openDetailModal(c.id)}
+                                    className="hover:text-indigo-600 hover:underline transition-colors text-left font-mono font-black"
+                                    title="Ver detalle del quedan"
+                                >
+                                    {c.num_quedan || '—'}
+                                </button>
                             </td>
                             <td className="px-5 py-1 text-[9px] font-bold text-slate-400">
                                 {formatDate(c.fecha)}
@@ -463,7 +488,7 @@ const Quedan = () => {
                             <td className="px-5 py-1 text-[9px] font-bold text-slate-500">
                                 {c.dias_credito || 0}
                             </td>
-                            <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase max-w-[160px] truncate">
+                            <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase max-w-[160px] truncate" title={c.provider_nombre}>
                                 {c.provider_nombre}
                             </td>
                             <td className="px-5 py-1 font-black text-slate-900 text-[10px]">
@@ -474,11 +499,25 @@ const Quedan = () => {
                                     {c.status}
                                 </span>
                             </td>
+                            <td className="px-5 py-1 text-[9px] font-bold">
+                                <span className={c.fecha_entrega ? 'text-slate-600' : 'text-slate-300'}>
+                                    {formatDate(c.fecha_entrega)}
+                                </span>
+                            </td>
                             <td className="px-5 py-1">
                                 <div className="flex justify-end gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => openDetailModal(c.id)}
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                        title="Ver detalle"
+                                    >
+                                        <Eye size={14} />
+                                    </button>
                                     {c.status === 'PENDIENTE' && (
                                         <>
                                             <button
+                                                type="button"
                                                 onClick={() => openEditForm(c.id)}
                                                 className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                 title="Editar"
@@ -486,6 +525,7 @@ const Quedan = () => {
                                                 <Edit size={14} />
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => handleRequest(c.id)}
                                                 disabled={requestMutation.isPending}
                                                 className="p-1.5 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all disabled:opacity-40"
@@ -494,6 +534,7 @@ const Quedan = () => {
                                                 <Send size={14} />
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => handleDelete(c.id)}
                                                 className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                 title="Eliminar"
@@ -505,6 +546,7 @@ const Quedan = () => {
                                     {c.status === 'SOLICITADO' && (
                                         <>
                                             <button
+                                                type="button"
                                                 onClick={() => openDeliverModal(c.id)}
                                                 className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                                                 title="Entregar"
@@ -512,6 +554,7 @@ const Quedan = () => {
                                                 <Handshake size={14} />
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => handleRevert(c.id)}
                                                 disabled={revertMutation.isPending}
                                                 className="p-1.5 text-slate-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
@@ -839,6 +882,204 @@ const Quedan = () => {
                         </button>
                     </div>
                 </div>
+            </Modal>
+            <Modal
+                isOpen={showDetailModal}
+                onClose={closeDetailModal}
+                title={`Detalle de Quedan ${detailData?.num_quedan ? '#' + detailData.num_quedan : ''}`}
+                maxWidth="max-w-4xl"
+            >
+                {detailLoading ? (
+                    <div className="flex flex-col items-center justify-center py-16">
+                        <Loader2 className="animate-spin text-indigo-600 mb-3" size={32} />
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cargando detalle del quedan...</span>
+                    </div>
+                ) : detailData ? (
+                    <div className="space-y-6">
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 sm:p-5">
+                            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200/60">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-400 uppercase">Quedan No.</span>
+                                        <span className="text-lg font-black font-mono text-slate-800 tracking-tight">
+                                            {detailData.num_quedan || '—'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] font-bold text-slate-500 uppercase mt-0.5">
+                                        {detailData.branch_nombre || 'Sucursal no asignada'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                        detailData.status === 'ENTREGADO'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : detailData.status === 'SOLICITADO'
+                                            ? 'bg-violet-50 text-violet-700 border-violet-200'
+                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}>
+                                        {detailData.status}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-4">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Proveedor</span>
+                                    <p className="text-[12px] font-black text-slate-800 uppercase mt-0.5 truncate" title={detailData.provider_nombre}>
+                                        {detailData.provider_nombre || '—'}
+                                    </p>
+                                    {(detailData.provider_nrc || detailData.provider_nit) && (
+                                        <p className="text-[10px] font-bold text-slate-500 font-mono mt-0.5">
+                                            {detailData.provider_nrc ? `NRC: ${detailData.provider_nrc}` : ''}
+                                            {detailData.provider_nrc && detailData.provider_nit ? ' | ' : ''}
+                                            {detailData.provider_nit ? `NIT: ${detailData.provider_nit}` : ''}
+                                        </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Fecha Emisión</span>
+                                    <p className="text-[12px] font-bold text-slate-700 mt-0.5">
+                                        {formatDate(detailData.fecha)}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Fecha Vencimiento</span>
+                                    <p className="text-[12px] font-bold text-slate-700 mt-0.5">
+                                        {formatDate(detailData.fecha_vencimiento)}
+                                    </p>
+                                    <span className="text-[10px] font-semibold text-slate-400">
+                                        {detailData.dias_credito || 0} días de crédito
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Fecha de Entrega</span>
+                                    <p className="text-[12px] font-bold text-slate-700 mt-0.5">
+                                        {detailData.fecha_entrega ? formatDate(detailData.fecha_entrega) : 'No entregado'}
+                                    </p>
+                                    {detailData.usuario_nombre && (
+                                        <span className="text-[10px] font-semibold text-slate-400 block truncate" title={`Registrado por: ${detailData.usuario_nombre}`}>
+                                            Por: {detailData.usuario_nombre}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                    Documentos Asociados ({detailData.items?.length || 0})
+                                </h4>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-left">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200">
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3">Fecha</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3">Documento</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3">Tipo</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3 text-right">Gravadas</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3 text-right">IVA</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3 text-right">Retención</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3 text-right">Percepción</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3 text-right">Exentas</th>
+                                            <th className="text-[9px] font-bold text-slate-500 uppercase py-2.5 px-3 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                        {(!detailData.items || detailData.items.length === 0) ? (
+                                            <tr>
+                                                <td colSpan="9" className="text-center py-8 text-xs text-slate-400 font-medium">
+                                                    Sin documentos registrados en este quedan.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            detailData.items.map((item) => (
+                                                <tr key={item.id || item._key} className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="py-2.5 px-3 text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                                                        {formatDate(item.fecha)}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] font-mono font-bold text-slate-700 whitespace-nowrap">
+                                                        {item.documento || '—'}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 whitespace-nowrap">
+                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                                                            item.tipo === 'CCF'
+                                                                ? 'bg-blue-50 text-blue-600 border border-blue-100'
+                                                                : 'bg-rose-50 text-rose-600 border border-rose-100'
+                                                        }`}>
+                                                            {item.tipo}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] text-right whitespace-nowrap">
+                                                        <Money value={getItemSign(item.tipo) * (parseFloat(item.gravadas) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] text-right whitespace-nowrap">
+                                                        <Money value={getItemSign(item.tipo) * (parseFloat(item.iva) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] text-right whitespace-nowrap">
+                                                        <Money value={getItemSign(item.tipo) * (parseFloat(item.retencion) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] text-right whitespace-nowrap">
+                                                        <Money value={getItemSign(item.tipo) * (parseFloat(item.percepcion) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] text-right whitespace-nowrap">
+                                                        <Money value={getItemSign(item.tipo) * (parseFloat(item.exentas) || 0)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-600'} />
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-[11px] font-black text-right whitespace-nowrap">
+                                                        <Money value={recalcItemTotal(item)} className={getItemSign(item.tipo) === -1 ? 'text-rose-500' : 'text-slate-800'} />
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                    {detailData.items && detailData.items.length > 0 && (
+                                        <tfoot>
+                                            <tr className="border-t-2 border-slate-200 bg-slate-50">
+                                                <td colSpan="3" className="py-2.5 px-3 text-[10px] font-black text-slate-600 uppercase">
+                                                    Totales
+                                                </td>
+                                                <td className="py-2.5 px-3 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">
+                                                    <Money value={detailData.total_gravadas || 0} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">
+                                                    <Money value={detailData.total_iva || 0} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">
+                                                    <Money value={detailData.total_retencion || 0} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">
+                                                    <Money value={detailData.total_percepcion || 0} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">
+                                                    <Money value={detailData.total_exentas || 0} />
+                                                </td>
+                                                <td className="py-2.5 px-3 text-[13px] font-black text-indigo-600 text-right whitespace-nowrap">
+                                                    <Money value={detailData.total || 0} />
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={closeDetailModal}
+                                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs uppercase tracking-wider"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="text-center py-10 text-slate-400 text-sm">
+                        No se encontró información del quedan.
+                    </div>
+                )}
             </Modal>
             <ProviderModal 
                 isOpen={isProviderModalOpen}

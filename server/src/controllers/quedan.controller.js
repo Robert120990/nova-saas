@@ -70,10 +70,13 @@ const getQuedanById = async (req, res) => {
             SELECT pq.*,
                    p.nombre AS provider_nombre,
                    p.nrc AS provider_nrc,
-                   b.nombre AS branch_nombre
+                   p.nit AS provider_nit,
+                   b.nombre AS branch_nombre,
+                   u.nombre AS usuario_nombre
             FROM purchase_quedans pq
             LEFT JOIN providers p ON pq.provider_id = p.id
             LEFT JOIN branches b ON pq.branch_id = b.id
+            LEFT JOIN users u ON pq.usuario_id = u.id
             WHERE pq.id = ? AND pq.company_id = ?
         `, [id, companyId]);
 
@@ -543,7 +546,8 @@ const getQuedanReportPDF = async (req, res) => {
                         { header: 'Sucursal', key: 'sucursal', width: 20 },
                         { header: 'Días Crédito', key: 'dias_credito', width: 12 },
                         { header: 'Total', key: 'total', width: 15 },
-                        { header: 'Estado', key: 'estado', width: 15 }
+                        { header: 'Estado', key: 'estado', width: 15 },
+                        { header: 'F. Entrega', key: 'fecha_entrega', width: 15 }
                     ],
                     data: rows.map(r => ({
                         num_quedan: r.num_quedan || '---',
@@ -553,7 +557,8 @@ const getQuedanReportPDF = async (req, res) => {
                         sucursal: r.branch_nombre || '---',
                         dias_credito: r.dias_credito || 0,
                         total: `$${parseFloat(r.total || 0).toFixed(2)}`,
-                        estado: r.status || '---'
+                        estado: r.status || '---',
+                        fecha_entrega: r.fecha_entrega ? new Date(r.fecha_entrega).toLocaleDateString('es-SV') : '---'
                     }))
                 }]
             });
