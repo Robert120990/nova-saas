@@ -1986,13 +1986,19 @@ exports.saveRemesas = async (req, res) => {
         if (isReabierto) beforeRows = await getSectionRows(id, 'remesas');
 
         // REPLACE-ALL STRATEGY
-        // Preserve codigos of remesas that are being re-saved (they exist in DB)
+        // Preserve codigos and delivery status of remesas that are being re-saved (they exist in DB)
         const [existingRemesas] = await pool.query(
-            `SELECT id, codigo FROM gas_station_closeout_remesas WHERE closeout_id = ?`,
+            `SELECT id, codigo, entregada, entrega_id FROM gas_station_closeout_remesas WHERE closeout_id = ?`,
             [id]
         );
-        const existingCodigos = {};
-        existingRemesas.forEach(r => { existingCodigos[r.id] = r.codigo; });
+        const existingData = {};
+        existingRemesas.forEach(r => { 
+            existingData[r.id] = { 
+                codigo: r.codigo, 
+                entregada: r.entregada, 
+                entrega_id: r.entrega_id 
+            }; 
+        });
 
         await pool.query(`DELETE FROM gas_station_closeout_remesas WHERE closeout_id = ?`, [id]);
 
@@ -2002,10 +2008,14 @@ exports.saveRemesas = async (req, res) => {
                 return res.status(400).json({ message: 'Todas las remesas deben tener un despachador asignado' });
             }
             const values = remesas.map((r, index) => {
-                let codigo = r.codigo || existingCodigos[r.id] || null;
+                const prev = existingData[r.id] || {};
+                let codigo = r.codigo || prev.codigo || null;
                 if (!codigo) {
                     codigo = `REM-${id}-${index + 1}`;
                 }
+                const entregada = (r.entregada !== undefined) ? r.entregada : (prev.entregada || 0);
+                const entregaId = (r.entrega_id !== undefined) ? r.entrega_id : (prev.entrega_id || null);
+
                 return [
                     parseInt(id),
                     codigo,
@@ -2013,11 +2023,13 @@ exports.saveRemesas = async (req, res) => {
                     r.descripcion || '',
                     r.despachador_id ? parseInt(r.despachador_id) : null,
                     r.tipo_operacion || 'venta_combustible',
-                    parseFloat(r.monto) || 0
+                    parseFloat(r.monto) || 0,
+                    entregada,
+                    entregaId
                 ];
             });
             await pool.query(
-                `INSERT INTO gas_station_closeout_remesas (closeout_id, codigo, documento, descripcion, despachador_id, tipo_operacion, monto) VALUES ?`,
+                `INSERT INTO gas_station_closeout_remesas (closeout_id, codigo, documento, descripcion, despachador_id, tipo_operacion, monto, entregada, entrega_id) VALUES ?`,
                 [values]
             );
         }
