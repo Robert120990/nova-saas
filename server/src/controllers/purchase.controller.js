@@ -316,13 +316,22 @@ const createPurchase = async (req, res) => {
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPRA')
             `, [companyId, branch_id, effectiveProductId, movTipo, qty, price, purchaseId]);
 
-            // ACTUALIZACIÓN DE COSTO: Si es un ingreso, actualizar el costo en la tabla de productos
-            const esIngreso = ['01', '03', '04', '14'].includes(tipo_documento_id);
-            if (esIngreso) {
-                await connection.query(
-                    'UPDATE products SET costo = ? WHERE id = ?',
-                    [price, finalProductId]
-                );
+            // ACTUALIZACIÓN DE COSTO Y PROVEEDOR: Si es un ingreso (no es nota de crédito), actualizar costo y proveedor en el producto.
+            // Si solo se está usando descripción (sin product_id), no aplica.
+            const esIngreso = !esNotaCredito;
+            if (esIngreso && finalProductId) {
+                const finalProviderId = provider_id ? parseInt(provider_id, 10) : null;
+                if (finalProviderId) {
+                    await connection.query(
+                        'UPDATE products SET costo = ?, provider_id = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProviderId, finalProductId, companyId]
+                    );
+                } else {
+                    await connection.query(
+                        'UPDATE products SET costo = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProductId, companyId]
+                    );
+                }
             }
         }
 
@@ -541,6 +550,23 @@ const updatePurchase = async (req, res) => {
                 );
             }
 
+            // ACTUALIZACIÓN DE COSTO Y PROVEEDOR: Si es un ingreso (no es nota de crédito), actualizar costo y proveedor en el producto.
+            // Si solo se está usando descripción (sin product_id), no aplica.
+            const esIngreso = !newEsNC;
+            if (esIngreso && finalProductId) {
+                const finalProviderId = provider_id ? parseInt(provider_id, 10) : null;
+                if (finalProviderId) {
+                    await connection.query(
+                        'UPDATE products SET costo = ?, provider_id = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProviderId, finalProductId, companyId]
+                    );
+                } else {
+                    await connection.query(
+                        'UPDATE products SET costo = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProductId, companyId]
+                    );
+                }
+            }
         }
 
         // Registrar movimientos por DELTA (efecto_nuevo - efecto_viejo); el movimiento COMPRA original queda intacto

@@ -512,6 +512,8 @@ const Purchases = () => {
             setActiveTab('historial');
             queryClient.invalidateQueries(['purchases']);
             queryClient.invalidateQueries(['inventory']);
+            queryClient.invalidateQueries(['products']);
+            queryClient.invalidateQueries(['purchase-products']);
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al procesar')
     });
@@ -524,6 +526,8 @@ const Purchases = () => {
             setActiveTab('historial');
             queryClient.invalidateQueries(['purchases']);
             queryClient.invalidateQueries(['inventory']);
+            queryClient.invalidateQueries(['products']);
+            queryClient.invalidateQueries(['purchase-products']);
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar')
     });
@@ -2229,7 +2233,17 @@ const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearc
                                 <div>
                                     <div className="text-sm font-bold text-slate-900 line-clamp-1">{p.nombre}</div>
                                     <div className="text-xs font-mono font-bold text-indigo-500 mt-1">{p.codigo}</div>
-                                    <div className="mt-2 text-[10px] font-black uppercase text-slate-400">Stock Actual: <span className="text-slate-900">{p.stock || 0}</span></div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-black uppercase text-slate-400">
+                                        <span>Stock: <span className="text-slate-900">{p.stock || 0}</span></span>
+                                        {p.costo !== undefined && (
+                                            <span>Últ. Costo: <span className="text-slate-900 font-bold"><Money value={p.costo || 0} /></span></span>
+                                        )}
+                                    </div>
+                                    {p.provider_name && (
+                                        <div className="text-[10px] text-slate-400 font-medium mt-1 truncate">
+                                            Prov: <span className="text-slate-600 font-bold">{p.provider_name}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </button>
                         ))}
