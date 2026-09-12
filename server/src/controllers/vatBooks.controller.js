@@ -64,8 +64,9 @@ const DTE_VALIDO_SQL = `(
 const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
     try {
         const hasNc = (totals.nc_total && totals.nc_total > 0) || (totals.nc_grav && totals.nc_grav > 0);
+        const hasAnticipo = totals.anticipo_cuenta && totals.anticipo_cuenta > 0;
         const boxWidth = 260;
-        const boxHeight = hasNc ? 165 : 140;
+        const boxHeight = (hasNc ? 165 : 140) + (hasAnticipo ? 13 : 0);
 
         if (y + boxHeight > 510) {
             doc.addPage();
@@ -109,6 +110,9 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
         if (totals.fovial > 0 || totals.cotrans > 0) {
             drawRow('FOVIAL:', totals.fovial);
             drawRow('COTRANS:', totals.cotrans);
+        }
+        if (hasAnticipo) {
+            drawRow('Anticipo a Cuenta:', totals.anticipo_cuenta);
         }
         if (totals.ret !== undefined && (totals.ret > 0 || hasNc)) {
             drawRow('Retenciones/Percepciones:', totals.ret);
@@ -171,6 +175,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 ph.percepcion,
                 ph.fovial,
                 ph.cotrans,
+                0.00 AS anticipo_cuenta,
                 ph.monto_total,
                 ph.provider_id,
                 p.nombre AS provider_nombre,
@@ -203,6 +208,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 eh.percepcion,
                 eh.fovial,
                 eh.cotrans,
+                COALESCE(eh.anticipo_cuenta, 0) AS anticipo_cuenta,
                 eh.monto_total,
                 eh.provider_id,
                 p.nombre AS provider_nombre,
@@ -270,6 +276,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 const i = Math.abs(n(r.iva));
                 const f = Math.abs(n(r.fovial));
                 const c = Math.abs(n(r.cotrans));
+                const ac = Math.abs(n(r.anticipo_cuenta));
                 const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
                 const to = Math.abs(n(r.monto_total)) || ((g + e + i + f + c + re) || 0);
 
@@ -287,6 +294,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     FOVIAL: Number((sign * f).toFixed(2)),
                     COTRANS: Number((sign * c).toFixed(2)),
                     'Ret/Per': Number((re).toFixed(2)),
+                    'Anticipo Cta.': Number((ac).toFixed(2)),
                     Total: Number((sign * to).toFixed(2)),
                     Origen: r.source_type === 'gasto' ? 'Gasto' : 'Compra'
                 };
@@ -306,6 +314,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     { header: 'FOVIAL', key: 'FOVIAL', width: 12 },
                     { header: 'COTRANS', key: 'COTRANS', width: 12 },
                     { header: 'Ret/Per', key: 'Ret/Per', width: 14 },
+                    { header: 'Anticipo Cta.', key: 'Anticipo Cta.', width: 14 },
                     { header: 'Total', key: 'Total', width: 14 },
                     { header: 'Origen', key: 'Origen', width: 12 }
                 ], data: excelData }]
@@ -327,8 +336,8 @@ const getVatBookPurchasesPDF = async (req, res) => {
         const cols = {
             fecha: 40,
             tipo: 48,
-            documento: 142,
-            proveedor: 147,
+            documento: 124,
+            proveedor: 129,
             nit_nrc: 67,
             gravada: 46,
             exenta: 38,
@@ -336,6 +345,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             fov: 26,
             cot: 26,
             ret_per: 40,
+            ant_cta: 36,
             total: 70
         };
 
@@ -359,6 +369,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.text('FOV', x, y + 4, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
             doc.text('COT', x, y + 4, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
             doc.text('RET/PER', x, y + 4, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text('ANT. CTA', x, y + 4, { width: cols.ant_cta - 2, align: 'right' }); x += cols.ant_cta;
             doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
             doc.moveTo(startX, y + 15).lineTo(startX + totalWidth, y + 15).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
             doc.y = y + 19;
@@ -367,7 +378,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
         drawPageHeader();
         drawTableHeader();
 
-        let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+        let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, anticipo_cuenta: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
 
         rows.forEach((r, idx) => {
             if (doc.y > 510) {
@@ -383,6 +394,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             const i = Math.abs(n(r.iva));
             const f = Math.abs(n(r.fovial));
             const c = Math.abs(n(r.cotrans));
+            const ac = Math.abs(n(r.anticipo_cuenta));
             const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
             let to = Math.abs(n(r.monto_total));
             if (to === 0 && (g > 0 || e > 0 || i > 0 || re > 0)) {
@@ -432,15 +444,17 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.text(reportPdfHelper.fmt(sign * f), x, rowY, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
             doc.text(reportPdfHelper.fmt(sign * c), x, rowY, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
             doc.text(reportPdfHelper.fmt(re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
+            doc.text(reportPdfHelper.fmt(ac), x, rowY, { width: cols.ant_cta - 2, align: 'right' }); x += cols.ant_cta;
             doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
 
             if (esNC) {
                 t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
                 t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
             } else {
-                t.grav += g; t.exe += e; t.iva += i; t.fovial -= f; t.cotrans += c; t.ret += re; t.total += to;
+                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
                 t.bruto_total += to;
             }
+            t.anticipo_cuenta += ac;
             doc.y = rowY + 13;
         });
 
@@ -461,6 +475,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
         doc.text(reportPdfHelper.fmt(t.fovial), tx, totalRowY + 4, { width: cols.fov - 2, align: 'right' }); tx += cols.fov;
         doc.text(reportPdfHelper.fmt(t.cotrans), tx, totalRowY + 4, { width: cols.cot - 2, align: 'right' }); tx += cols.cot;
         doc.text(reportPdfHelper.fmt(t.ret), tx, totalRowY + 4, { width: cols.ret_per - 2, align: 'right' }); tx += cols.ret_per;
+        doc.text(reportPdfHelper.fmt(t.anticipo_cuenta), tx, totalRowY + 4, { width: cols.ant_cta - 2, align: 'right' }); tx += cols.ant_cta;
         doc.text(reportPdfHelper.fmt(t.total), tx, totalRowY + 4, { width: cols.total - 2, align: 'right' });
 
         doc.y = totalRowY + 20;
@@ -1719,15 +1734,44 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
     const pagoCuentaOtros = Math.round(ingresoBrutoOtros * (generalRate / 100) * 100) / 100;
     const subtotalPagoCuenta = Math.round((pagoCuentaCombustible + pagoCuentaOtros) * 100) / 100;
 
+    // Deducción automática de Anticipo a Cuenta en Comprobantes de Liquidación (DTE 07/08 y Gastos)
+    let expenseLiqWhere = [
+        'eh.company_id = ?',
+        'eh.period_year = ?',
+        'eh.period_month = ?',
+        "(eh.status IS NULL OR eh.status != 'ANULADO')"
+    ];
+    let expenseLiqParams = [companyId, year, month];
+    if (branch_id && branch_id !== 'all') {
+        expenseLiqWhere.push('eh.branch_id = ?');
+        expenseLiqParams.push(branch_id);
+    }
+
+    const [liquidacionesRows] = await pool.query(`
+        SELECT 
+            COALESCE(SUM(eh.anticipo_cuenta), 0) AS total_anticipo_cuenta_liquidaciones,
+            COALESCE(SUM(eh.monto_sujeto), 0) AS total_monto_sujeto_liquidaciones,
+            COUNT(CASE WHEN eh.anticipo_cuenta > 0 OR eh.monto_sujeto > 0 OR eh.tipo_documento_id = '07' THEN 1 END) AS liquidaciones_count
+        FROM expense_headers eh
+        WHERE ${expenseLiqWhere.join(' AND ')}
+    `, expenseLiqParams);
+
+    const liqRow = liquidacionesRows[0] || { total_anticipo_cuenta_liquidaciones: 0, total_monto_sujeto_liquidaciones: 0, liquidaciones_count: 0 };
+    const anticipoCuentaLiquidaciones = Math.round(n(liqRow.total_anticipo_cuenta_liquidaciones) * 100) / 100;
+    const montoSujetoLiquidaciones = Math.round(n(liqRow.total_monto_sujeto_liquidaciones) * 100) / 100;
+    const liquidacionesCount = parseInt(liqRow.liquidaciones_count, 10) || 0;
+
+    const totalAcreditacionesRenta = Math.round((retencionesRentaSufridas + anticipoCuentaLiquidaciones) * 100) / 100;
+
     let pagoCuentaPagar = 0;
     let remanentePagoCuenta = 0;
 
-    if (subtotalPagoCuenta >= retencionesRentaSufridas) {
-        pagoCuentaPagar = Math.round((subtotalPagoCuenta - retencionesRentaSufridas) * 100) / 100;
+    if (subtotalPagoCuenta >= totalAcreditacionesRenta) {
+        pagoCuentaPagar = Math.round((subtotalPagoCuenta - totalAcreditacionesRenta) * 100) / 100;
         remanentePagoCuenta = 0;
     } else {
         pagoCuentaPagar = 0;
-        remanentePagoCuenta = Math.round((retencionesRentaSufridas - subtotalPagoCuenta) * 100) / 100;
+        remanentePagoCuenta = Math.round((totalAcreditacionesRenta - subtotalPagoCuenta) * 100) / 100;
     }
 
     // 5. Consolidado F-07
@@ -1815,6 +1859,10 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
                 total_ingresos_brutos: totalIngresosBrutos,
                 subtotal_pago_cuenta: subtotalPagoCuenta,
                 retenciones_renta_sufridas: retencionesRentaSufridas,
+                anticipo_cuenta_liquidaciones: anticipoCuentaLiquidaciones,
+                monto_sujeto_liquidaciones: montoSujetoLiquidaciones,
+                liquidaciones_count: liquidacionesCount,
+                total_acreditaciones_renta: totalAcreditacionesRenta,
                 pago_cuenta_a_pagar: pagoCuentaPagar,
                 remanente_pago_cuenta: remanentePagoCuenta
             }
@@ -2016,14 +2064,25 @@ const getVatLiquidationPDF = async (req, res) => {
 
         drawRow(col2X, pY, colWidth, 'Subtotal Pago a Cuenta Determinado:', data.pago_cuenta.totales.subtotal_pago_cuenta, true);
         pY += 12;
-        drawRow(col2X, pY, colWidth, '(-) Retenciones Renta Sufridas en el Mes:', data.pago_cuenta.totales.retenciones_renta_sufridas, false, true);
-        pY += 12;
+        if (data.pago_cuenta.totales.retenciones_renta_sufridas > 0) {
+            drawRow(col2X, pY, colWidth, '(-) Retenciones Renta Sufridas (Manual):', data.pago_cuenta.totales.retenciones_renta_sufridas, false, true);
+            pY += 12;
+        }
+        if (data.pago_cuenta.totales.anticipo_cuenta_liquidaciones > 0) {
+            drawRow(col2X, pY, colWidth, '(-) Anticipo a Cta. Liquidaciones (Auto):', data.pago_cuenta.totales.anticipo_cuenta_liquidaciones, false, true);
+            pY += 12;
+        }
         doc.moveTo(col2X + 8, pY + 1).lineTo(col2X + colWidth - 8, pY + 1).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
         pY += 4;
         drawRow(col2X, pY, colWidth, 'TOTAL PAGO A CUENTA A PAGAR:', data.pago_cuenta.totales.pago_cuenta_a_pagar, true);
         pY += 12;
         if (data.pago_cuenta.totales.remanente_pago_cuenta > 0) {
             drawRow(col2X, pY, colWidth, 'Remanente Pago a Cuenta a Favor:', data.pago_cuenta.totales.remanente_pago_cuenta, true);
+            pY += 12;
+        }
+        if (data.pago_cuenta.totales.monto_sujeto_liquidaciones > 0) {
+            doc.fontSize(6).font('Helvetica-Oblique').fillColor('#64748b')
+                .text(`Monto Sujeto Liquidado: ${reportPdfHelper.fmt(data.pago_cuenta.totales.monto_sujeto_liquidaciones)} (${data.pago_cuenta.totales.liquidaciones_count} comp.)`, col2X + 16, pY);
         }
 
         curY += row2Height + 10;
@@ -2115,7 +2174,8 @@ const getVatLiquidationExcel = async (req, res) => {
             { Concepto: `Combustibles (${data.pago_cuenta.combustibles.tasa.toFixed(2)}%) - ${data.pago_cuenta.combustibles.nota}`, Base: data.pago_cuenta.combustibles.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.combustibles.cuota_calculada.toFixed(2) },
             { Concepto: `Otros Rubros / General (${data.pago_cuenta.otros.tasa.toFixed(2)}%)`, Base: data.pago_cuenta.otros.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.otros.cuota_calculada.toFixed(2) },
             { Concepto: 'Subtotal Pago a Cuenta Determinado', Base: data.pago_cuenta.totales.total_ingresos_brutos.toFixed(2), IVA: '', Total: data.pago_cuenta.totales.subtotal_pago_cuenta.toFixed(2) },
-            { Concepto: '(-) Retenciones Renta Sufridas', Base: '', IVA: '', Total: (-data.pago_cuenta.totales.retenciones_renta_sufridas).toFixed(2) },
+            { Concepto: '(-) Retenciones Renta Sufridas (Manual)', Base: '', IVA: '', Total: (-data.pago_cuenta.totales.retenciones_renta_sufridas).toFixed(2) },
+            { Concepto: `(-) Anticipo a Cuenta en Liquidaciones (${data.pago_cuenta.totales.liquidaciones_count || 0} comp.)`, Base: data.pago_cuenta.totales.monto_sujeto_liquidaciones.toFixed(2), IVA: '', Total: (-data.pago_cuenta.totales.anticipo_cuenta_liquidaciones).toFixed(2) },
             { Concepto: 'TOTAL PAGO A CUENTA A PAGAR', Base: '', IVA: '', Total: data.pago_cuenta.totales.pago_cuenta_a_pagar.toFixed(2) },
             { Concepto: '', Base: '', IVA: '', Total: '' },
             { Concepto: '--- TOTAL CONSOLIDADO MANDAMIENTO F-07 ---', Base: '', IVA: '', Total: data.resumen_f07.total_f07.toFixed(2) }

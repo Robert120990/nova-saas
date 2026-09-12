@@ -404,6 +404,19 @@ const VatBookLiquidation = () => {
                                 />
                                 <span className="text-[10px] text-slate-400 mt-1 block">Legal: 1.75% (Art. 151 CT)</span>
                             </div>
+
+                            {data?.pago_cuenta?.totales?.anticipo_cuenta_liquidaciones > 0 && (
+                                <div className="col-span-1 sm:col-span-2 lg:col-span-4 p-2.5 bg-purple-50 rounded-xl border border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-purple-900">Anticipo en Liquidaciones (Automático):</span>
+                                        <span className="text-purple-700">Deducible directamente del Pago a Cuenta del F-07.</span>
+                                    </div>
+                                    <div className="font-bold text-purple-950 flex items-center gap-2">
+                                        <span className="text-[11px] text-purple-600">({data.pago_cuenta.totales.liquidaciones_count} comp.)</span>
+                                        <Money value={data.pago_cuenta.totales.anticipo_cuenta_liquidaciones} />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -690,6 +703,27 @@ const VatBookLiquidation = () => {
                                                     <span>(-) Retenciones de Renta Sufridas:</span>
                                                     <span className="font-semibold text-rose-600">- <Money value={data.pago_cuenta.totales.retenciones_renta_sufridas} /></span>
                                                 </div>
+
+                                                {(data.pago_cuenta.totales.anticipo_cuenta_liquidaciones > 0 || data.pago_cuenta.totales.liquidaciones_count > 0) && (
+                                                    <div className="flex justify-between items-center py-1 text-slate-500 pl-2">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <span>(-) Anticipo a Cta. Liquidaciones (Auto):</span>
+                                                            {data.pago_cuenta.totales.liquidaciones_count > 0 && (
+                                                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-purple-100 text-purple-700">
+                                                                    {data.pago_cuenta.totales.liquidaciones_count} comp.
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                        <span className="font-semibold text-rose-600">- <Money value={data.pago_cuenta.totales.anticipo_cuenta_liquidaciones} /></span>
+                                                    </div>
+                                                )}
+
+                                                {data.pago_cuenta.totales.monto_sujeto_liquidaciones > 0 && (
+                                                    <div className="text-[10px] text-slate-400 pl-2 italic flex justify-between">
+                                                        <span>Monto Sujeto Liquidado (Informativo):</span>
+                                                        <span><Money value={data.pago_cuenta.totales.monto_sujeto_liquidaciones} /></span>
+                                                    </div>
+                                                )}
 
                                                 <div className="flex justify-between items-center p-3 bg-purple-50 rounded-xl border border-purple-100 text-purple-900 font-bold mt-2">
                                                     <span>TOTAL PAGO A CUENTA A PAGAR:</span>
@@ -999,22 +1033,59 @@ const VatBookLiquidation = () => {
                                     </div>
 
                                     {/* Liquidación Final de Pago a Cuenta */}
-                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
+                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
                                         <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
                                             Liquidación Final del Anticipo a Enterar
                                         </h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                            <div className="bg-white p-3 rounded-xl border border-slate-200">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                                            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Total Anticipo Determinado</span>
                                                 <span className="font-black text-slate-900 text-base"><Money value={data.pago_cuenta.totales.subtotal_pago_cuenta} /></span>
                                             </div>
-                                            <div className="bg-white p-3 rounded-xl border border-slate-200">
+                                            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">(-) Retenciones Renta Sufridas</span>
                                                 <span className="font-black text-rose-600 text-base">- <Money value={data.pago_cuenta.totales.retenciones_renta_sufridas} /></span>
                                             </div>
-                                            <div className="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                                            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">(-) Anticipos Liquidaciones</span>
+                                                    {data.pago_cuenta.totales.liquidaciones_count > 0 && (
+                                                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-purple-100 text-purple-700">
+                                                            {data.pago_cuenta.totales.liquidaciones_count} comp.
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="font-black text-rose-600 text-base">- <Money value={data.pago_cuenta.totales.anticipo_cuenta_liquidaciones} /></span>
+                                            </div>
+                                            <div className="bg-purple-50 p-3.5 rounded-xl border border-purple-200 shadow-sm">
                                                 <span className="text-[10px] font-bold text-purple-700 uppercase block mb-1">Pago a Cuenta a Pagar (F-07)</span>
                                                 <span className="font-black text-purple-900 text-base"><Money value={data.pago_cuenta.totales.pago_cuenta_a_pagar} /></span>
+                                            </div>
+                                        </div>
+
+                                        {/* Detalle informativo Comprobantes de Liquidación */}
+                                        <div className="p-3.5 bg-slate-100/80 rounded-xl border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                                            <div className="space-y-0.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-700">Comprobantes de Liquidación (DTE 07 / Gastos)</span>
+                                                    <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-slate-200 text-slate-700">
+                                                        Art. 151 CT
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-slate-500">
+                                                    El monto sujeto constituye base liquidada y no incrementa los ingresos brutos computables para evitar doble imposición. El anticipo a cuenta retenido en liquidaciones se acredita directamente contra el pago a cuenta determinado.
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-6 shrink-0 bg-white px-4 py-2 rounded-lg border border-slate-200">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Monto Sujeto Acumulado</span>
+                                                    <span className="font-bold text-slate-800 text-sm"><Money value={data.pago_cuenta.totales.monto_sujeto_liquidaciones} /></span>
+                                                </div>
+                                                <div className="h-7 w-px bg-slate-200" />
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Anticipo Acreditado</span>
+                                                    <span className="font-bold text-emerald-600 text-sm"><Money value={data.pago_cuenta.totales.anticipo_cuenta_liquidaciones} /></span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
