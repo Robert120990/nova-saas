@@ -6,7 +6,8 @@ import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Search, Users, User, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Users, User, Loader2, Wallet, CheckCircle2, Calendar, TrendingUp, TrendingDown, AlertCircle, ShieldCheck } from 'lucide-react';
+import Money, { MoneyInput } from '../../components/ui/Money';
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 
@@ -166,6 +167,23 @@ const Liquidaciones = () => {
     }, [empleadoId, montoDeducciones, selected]);
 
     // Load employee
+    // Date -> days helpers
+    const calcDays = (desde, hasta) => {
+        if (!desde || !hasta) return 0;
+        return Math.max(0, Math.ceil((new Date(hasta) - new Date(desde)) / (1000 * 60 * 60 * 24)) + 1);
+    };
+
+    const formatDate = (d) => {
+        if (!d) return '';
+        if (typeof d === 'string') return d.substring(0, 10);
+        try {
+            const dt = new Date(d);
+            return isNaN(dt.getTime()) ? '' : dt.toISOString().substring(0, 10);
+        } catch {
+            return '';
+        }
+    };
+
     const loadEmpleado = async (id) => {
         try {
             const res = await axios.get(`/api/rh/planilla-liquidaciones/empleado/${id}`);
@@ -175,24 +193,44 @@ const Liquidaciones = () => {
             setCodigoInput(emp.codigo);
             setCalculo(null);
 
-            // Only pre-fill periodo_indemnizacion.desde from last liquidacion
+            // Pre-fill periodo_indemnizacion.desde:
+            // 1. Primero buscar última liquidación con indemnización registrada
+            // 2. Si no existe, tomar fecha_ingreso del colaborador
+            let fechaInicio = '';
+            let ultimaInfo = null;
+
             try {
                 const ultRes = await axios.get(`/api/rh/planilla-liquidaciones/ultima/${id}`);
                 const ultima = ultRes.data;
-                if (ultima) {
-                    setPeriodoIndemnizacion({
-                        desde: ultima.periodo_indemnizacion_hasta ? ultima.periodo_indemnizacion_hasta.substring(0, 10) : '',
-                        hasta: ''
-                    });
-                    setUltimaIndemnizacion({
-                        desde: ultima.periodo_indemnizacion_desde ? ultima.periodo_indemnizacion_desde.substring(0, 10) : '',
-                        hasta: ultima.periodo_indemnizacion_hasta ? ultima.periodo_indemnizacion_hasta.substring(0, 10) : ''
-                    });
-                } else if (emp.fecha_ingreso) {
-                    setPeriodoIndemnizacion({ desde: emp.fecha_ingreso.substring(0, 10), hasta: '' });
-                    setUltimaIndemnizacion(null);
+                if (ultima && (ultima.periodo_indemnizacion_hasta || ultima.periodo_indemnizacion_desde)) {
+                    if (ultima.periodo_indemnizacion_hasta) {
+                        fechaInicio = formatDate(ultima.periodo_indemnizacion_hasta);
+                    }
+                    ultimaInfo = {
+                        desde: formatDate(ultima.periodo_indemnizacion_desde),
+                        hasta: formatDate(ultima.periodo_indemnizacion_hasta)
+                    };
                 }
-            } catch { /* no last liquidacion, leave empty */ }
+            } catch (err) {
+                console.warn('No se pudo obtener la última liquidación:', err);
+            }
+
+            // Si no existe última liquidación con indemnización, tomar fecha de ingreso
+            if (!fechaInicio && emp.fecha_ingreso) {
+                fechaInicio = formatDate(emp.fecha_ingreso);
+            }
+
+            setPeriodoIndemnizacion(prev => {
+                const hasta = prev.hasta || '';
+                if (fechaInicio && hasta) {
+                    setDiasIndemnizacion(calcDays(fechaInicio, hasta));
+                }
+                return {
+                    desde: fechaInicio,
+                    hasta
+                };
+            });
+            setUltimaIndemnizacion(ultimaInfo);
         } catch { toast.error('Error al cargar empleado'); }
     };
 
@@ -210,14 +248,6 @@ const Liquidaciones = () => {
         loadEmpleado(emp.id);
         setIsEmpModalOpen(false);
     };
-
-    // Date -> days helpers
-    const calcDays = (desde, hasta) => {
-        if (!desde || !hasta) return 0;
-        return Math.max(0, Math.ceil((new Date(hasta) - new Date(desde)) / (1000 * 60 * 60 * 24)) + 1);
-    };
-
-    const formatDate = (d) => d ? d.substring(0, 10) : '';
 
     // Mutations
     const mutation = useMutation({
@@ -427,12 +457,12 @@ const Liquidaciones = () => {
                                 <div className="text-xs font-bold text-slate-900">{item.empleado_nombres} {item.empleado_apellidos}</div>
                                 <div className="text-[10px] font-mono text-indigo-500">{item.empleado_codigo}</div>
                             </td>
-                            <td className="px-3 py-1 text-xs font-bold text-slate-700">${parseFloat(item.total_indemnizacion).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-slate-700">${parseFloat(item.total_vacaciones).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-slate-700">${parseFloat(item.total_aguinaldo).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-slate-700">${parseFloat(item.total_devengado).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs text-red-600 font-bold">${parseFloat(item.total_deducciones).toFixed(2)}</td>
-                            <td className="px-3 py-1 text-xs font-bold text-emerald-600">${parseFloat(item.monto_recibir).toFixed(2)}</td>
+                            <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_indemnizacion} /></td>
+                            <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_vacaciones} /></td>
+                            <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_aguinaldo} /></td>
+                            <td className="px-3 py-1 text-xs font-bold text-slate-700"><Money value={item.total_devengado} /></td>
+                            <td className="px-3 py-1 text-xs text-rose-600 font-bold"><Money value={item.total_deducciones} /></td>
+                            <td className="px-3 py-1 text-xs font-bold text-emerald-600"><Money value={item.monto_recibir} /></td>
                             <td className="px-3 py-1 flex gap-1">
                                 <button onClick={() => handleEdit(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
                                 <button onClick={() => handleDownloadPDF(item.id)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Descargar PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></button>
@@ -451,204 +481,529 @@ const Liquidaciones = () => {
 
             {/* --- Modal --- */}
             <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }}
-                title={selected ? 'Editar Liquidacion' : 'Nueva Liquidacion'} maxWidth="max-w-5xl">
-                <form onSubmit={handleSubmit} className="space-y-6 pb-4">
-                    {/* Metadata + Employee */}
-                    <div className="grid grid-cols-12 gap-3">
-                        <div className="col-span-2">
-                            <label className={labelCls}>Año</label>
-                            <select value={periodoAño} onChange={e => setPeriodoAño(parseInt(e.target.value))} className={fieldCls}>
-                                {years.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                        </div>
-                        <div className="col-span-2">
-                            <label className={labelCls}>Mes</label>
-                            <select value={periodoMes} onChange={e => setPeriodoMes(parseInt(e.target.value))} className={fieldCls}>
-                                {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
-                        </div>
-                        <div className="col-span-8">
-                            <label className={labelCls}>Codigo Empleado <span className="text-[9px] text-indigo-400">(F3 para buscar)</span></label>
-                            <div className="flex gap-2">
-                                <input type="text" value={codigoInput}
-                                    onChange={e => setCodigoInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCodigoSearch(); } }}
-                                    placeholder="Codigo" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-mono" />
-                                <button type="button" onClick={handleCodigoSearch}
-                                    className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"><Search size={16} /></button>
-                                <button type="button" onClick={() => setIsEmpModalOpen(true)}
-                                    className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"><Users size={16} /></button>
+                title={selected ? 'Editar Liquidacion' : 'Nueva Liquidacion'} maxWidth="max-w-6xl"
+                maxHeight="sm:max-h-[92vh]" height="sm:h-[88vh]" bodyClassName="px-4 sm:px-6 py-4">
+                <form onSubmit={handleSubmit} className="pb-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                        {/* Columna Izquierda: Formulario y Deducciones Fijas */}
+                        <div className="lg:col-span-7 min-w-0 space-y-3">
+                            {/* Metadata + Employee */}
+                            <div className="grid grid-cols-12 gap-3">
+                                <div className="col-span-3 sm:col-span-2">
+                                    <label className={labelCls}>Año</label>
+                                    <select value={periodoAño} onChange={e => setPeriodoAño(parseInt(e.target.value))} className={fieldCls}>
+                                        {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-span-4 sm:col-span-3">
+                                    <label className={labelCls}>Mes</label>
+                                    <select value={periodoMes} onChange={e => setPeriodoMes(parseInt(e.target.value))} className={fieldCls}>
+                                        {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-span-12 sm:col-span-7">
+                                    <label className={labelCls}>Codigo Empleado <span className="text-[9px] text-indigo-500 font-normal lowercase">(F3 para buscar)</span></label>
+                                    <div className="flex gap-2">
+                                        <input type="text" value={codigoInput}
+                                            onChange={e => setCodigoInput(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCodigoSearch(); } }}
+                                            placeholder="Ej: EMP-001" className="flex-1 min-w-0 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-mono" />
+                                        <button type="button" onClick={handleCodigoSearch} title="Buscar por código"
+                                            className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors shrink-0"><Search size={16} /></button>
+                                        <button type="button" onClick={() => setIsEmpModalOpen(true)} title="Catálogo de empleados (F3)"
+                                            className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors shrink-0"><Users size={16} /></button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {empleadoData && (
-                        <div className="flex items-center gap-4 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 text-xs">
-                            <User size={14} className="text-indigo-400 shrink-0" />
-                            <span className="font-bold text-slate-700">{empleadoData.nombres} {empleadoData.apellidos}</span>
-                            <span className="text-slate-400">|</span>
-                            <span className="text-slate-500">{empleadoData.cargo_nombre || <span className="italic">Sin cargo</span>}</span>
-                            <span className="text-slate-400">|</span>
-                            <span className="text-slate-500">{empleadoData.departamento_nombre || <span className="italic">Sin depto.</span>}</span>
-                            <span className="ml-auto font-bold text-indigo-600">Sueldo: ${sueldo.toFixed(2)}</span>
-                        </div>
-                    )}
-
-                    {/* Periods + Ultimos Dias */}
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-200">
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">PERIODOS</span>
-                        </div>
-                        <div className="p-3 space-y-2">
-                            {/* Indemnizacion */}
-                            {ultimaIndemnizacion?.desde && (
-                                <div className="text-[9px] text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md inline-block">
-                                    Ultima indemnizacion: {new Date(ultimaIndemnizacion.desde + 'T00:00:00').toLocaleDateString('es-SV')} - {new Date(ultimaIndemnizacion.hasta + 'T00:00:00').toLocaleDateString('es-SV')}
+                            {empleadoData ? (
+                                <div className="flex items-center gap-3 bg-slate-50 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs">
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                                        <User size={16} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="font-bold text-slate-800 text-[13px] truncate">{empleadoData.nombres} {empleadoData.apellidos}</div>
+                                        <div className="text-[11px] text-slate-500 flex items-center gap-2 truncate">
+                                            <span>{empleadoData.cargo_nombre || 'Sin cargo'}</span>
+                                            <span>•</span>
+                                            <span>{empleadoData.departamento_nombre || 'Sin departamento'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right shrink-0 border-l border-slate-200 pl-3">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Sueldo Base</span>
+                                        <Money value={sueldo} className="font-bold text-indigo-600 text-sm" />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-center gap-2.5 text-xs text-amber-800">
+                                    <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                                    <span>Presione <strong>F3</strong> o ingrese el código para seleccionar al colaborador a liquidar.</span>
                                 </div>
                             )}
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase w-28 shrink-0">Indemnización</span>
-                                <input type="date" value={periodoIndemnizacion.desde} onChange={e => { setPeriodoIndemnizacion({ ...periodoIndemnizacion, desde: e.target.value }); setDiasIndemnizacion(calcDays(e.target.value, periodoIndemnizacion.hasta)); }}
-                                    className="w-[130px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" />
-                                <input type="date" value={periodoIndemnizacion.hasta} onChange={e => { setPeriodoIndemnizacion({ ...periodoIndemnizacion, hasta: e.target.value }); setDiasIndemnizacion(calcDays(periodoIndemnizacion.desde, e.target.value)); }}
-                                    className="w-[130px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" />
-                                <input type="number" value={diasIndemnizacion || ''} onChange={e => setDiasIndemnizacion(parseInt(e.target.value) || 0)}
-                                    className="w-[70px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg text-center focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
-                                    placeholder="Dias" min="0" />
+
+                            {/* Periods + Ultimos Dias - Ultra Compacto */}
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                                <div className="bg-slate-50/90 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between flex-wrap gap-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <Calendar size={13} className="text-indigo-600 shrink-0" />
+                                        <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                                            Periodos de Liquidación
+                                        </span>
+                                    </div>
+                                    {ultimaIndemnizacion?.desde && (
+                                        <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-medium">
+                                            Última indemn.: {new Date(ultimaIndemnizacion.desde + 'T00:00:00').toLocaleDateString('es-SV')} al {new Date(ultimaIndemnizacion.hasta + 'T00:00:00').toLocaleDateString('es-SV')}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-[11px]">
+                                        <thead>
+                                            <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-400 uppercase text-[9px] font-bold tracking-wider">
+                                                <th className="text-left py-1 px-3 font-bold">Concepto</th>
+                                                <th className="text-left py-1 px-1.5 font-bold">Desde</th>
+                                                <th className="text-left py-1 px-1.5 font-bold">Hasta</th>
+                                                <th className="text-center py-1 px-1.5 font-bold">Días</th>
+                                                <th className="text-right py-1 px-3 font-bold">Devengado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {/* Indemnizacion */}
+                                            <tr className="hover:bg-slate-50/60 transition-colors">
+                                                <td className="py-1 px-3 text-slate-700 font-semibold whitespace-nowrap">
+                                                    Indemnización
+                                                </td>
+                                                <td className="py-1 px-1.5">
+                                                    <input
+                                                        type="date"
+                                                        value={periodoIndemnizacion.desde}
+                                                        onChange={e => {
+                                                            setPeriodoIndemnizacion({ ...periodoIndemnizacion, desde: e.target.value });
+                                                            setDiasIndemnizacion(calcDays(e.target.value, periodoIndemnizacion.hasta));
+                                                        }}
+                                                        className="h-7 w-[118px] px-1.5 text-[11px] bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-700 transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-1.5">
+                                                    <input
+                                                        type="date"
+                                                        value={periodoIndemnizacion.hasta}
+                                                        onChange={e => {
+                                                            setPeriodoIndemnizacion({ ...periodoIndemnizacion, hasta: e.target.value });
+                                                            setDiasIndemnizacion(calcDays(periodoIndemnizacion.desde, e.target.value));
+                                                        }}
+                                                        className="h-7 w-[118px] px-1.5 text-[11px] bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-700 transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-1.5 text-center">
+                                                    <input
+                                                        type="number"
+                                                        value={diasIndemnizacion || ''}
+                                                        onChange={e => setDiasIndemnizacion(parseInt(e.target.value) || 0)}
+                                                        className="h-7 w-12 px-1 text-[11px] text-center font-bold text-indigo-700 bg-indigo-50/50 hover:bg-white focus:bg-white border border-indigo-100 focus:border-indigo-400 rounded outline-none transition-colors"
+                                                        placeholder="0"
+                                                        min="0"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-3 text-right tabular-nums">
+                                                    <Money value={totalIndemnizacion} className="font-bold text-slate-800 text-[11px]" />
+                                                </td>
+                                            </tr>
+
+                                            {/* Vacaciones */}
+                                            <tr className="hover:bg-slate-50/60 transition-colors">
+                                                <td className="py-1 px-3 text-slate-700 font-semibold whitespace-nowrap">
+                                                    Vacaciones
+                                                </td>
+                                                <td className="py-1 px-1.5">
+                                                    <input
+                                                        type="date"
+                                                        value={periodoVacaciones.desde}
+                                                        onChange={e => {
+                                                            setPeriodoVacaciones({ ...periodoVacaciones, desde: e.target.value });
+                                                            setDiasVacaciones(calcDays(e.target.value, periodoVacaciones.hasta));
+                                                        }}
+                                                        className="h-7 w-[118px] px-1.5 text-[11px] bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-700 transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-1.5">
+                                                    <input
+                                                        type="date"
+                                                        value={periodoVacaciones.hasta}
+                                                        onChange={e => {
+                                                            setPeriodoVacaciones({ ...periodoVacaciones, hasta: e.target.value });
+                                                            setDiasVacaciones(calcDays(periodoVacaciones.desde, e.target.value));
+                                                        }}
+                                                        className="h-7 w-[118px] px-1.5 text-[11px] bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-700 transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-1.5 text-center">
+                                                    <input
+                                                        type="number"
+                                                        value={diasVacaciones || ''}
+                                                        onChange={e => setDiasVacaciones(parseInt(e.target.value) || 0)}
+                                                        className="h-7 w-12 px-1 text-[11px] text-center font-bold text-indigo-700 bg-indigo-50/50 hover:bg-white focus:bg-white border border-indigo-100 focus:border-indigo-400 rounded outline-none transition-colors"
+                                                        placeholder="0"
+                                                        min="0"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-3 text-right tabular-nums">
+                                                    <Money value={totalVacaciones} className="font-bold text-slate-800 text-[11px]" />
+                                                </td>
+                                            </tr>
+
+                                            {/* Aguinaldo */}
+                                            <tr className="hover:bg-slate-50/60 transition-colors">
+                                                <td className="py-1 px-3 text-slate-700 font-semibold whitespace-nowrap">
+                                                    Aguinaldo
+                                                </td>
+                                                <td className="py-1 px-1.5">
+                                                    <input
+                                                        type="date"
+                                                        value={periodoAguinaldo.desde}
+                                                        onChange={e => {
+                                                            setPeriodoAguinaldo({ ...periodoAguinaldo, desde: e.target.value });
+                                                            setDiasAguinaldo(calcDays(e.target.value, periodoAguinaldo.hasta));
+                                                        }}
+                                                        className="h-7 w-[118px] px-1.5 text-[11px] bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-700 transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-1.5">
+                                                    <input
+                                                        type="date"
+                                                        value={periodoAguinaldo.hasta}
+                                                        onChange={e => {
+                                                            setPeriodoAguinaldo({ ...periodoAguinaldo, hasta: e.target.value });
+                                                            setDiasAguinaldo(calcDays(periodoAguinaldo.desde, e.target.value));
+                                                        }}
+                                                        className="h-7 w-[118px] px-1.5 text-[11px] bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-700 transition-colors"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-1.5 text-center">
+                                                    <input
+                                                        type="number"
+                                                        value={diasAguinaldo || ''}
+                                                        onChange={e => setDiasAguinaldo(parseInt(e.target.value) || 0)}
+                                                        className="h-7 w-12 px-1 text-[11px] text-center font-bold text-indigo-700 bg-indigo-50/50 hover:bg-white focus:bg-white border border-indigo-100 focus:border-indigo-400 rounded outline-none transition-colors"
+                                                        placeholder="0"
+                                                        min="0"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-3 text-right tabular-nums">
+                                                    <Money value={totalAguinaldo} className="font-bold text-slate-800 text-[11px]" />
+                                                </td>
+                                            </tr>
+
+                                            {/* Días Pendientes */}
+                                            <tr className="hover:bg-slate-50/60 transition-colors bg-slate-50/30">
+                                                <td className="py-1 px-3 text-slate-700 font-semibold whitespace-nowrap">
+                                                    Días Pendientes
+                                                </td>
+                                                <td className="py-1 px-1.5 text-slate-400 text-[10px] italic" colSpan={2}>
+                                                    Salarios laborados pendientes de liquidar
+                                                </td>
+                                                <td className="py-1 px-1.5 text-center">
+                                                    <input
+                                                        type="number"
+                                                        value={diasUltimos || ''}
+                                                        onChange={e => setDiasUltimos(parseInt(e.target.value) || 0)}
+                                                        className="h-7 w-12 px-1 text-[11px] text-center font-bold text-indigo-700 bg-indigo-50/50 hover:bg-white focus:bg-white border border-indigo-100 focus:border-indigo-400 rounded outline-none transition-colors"
+                                                        placeholder="0"
+                                                        min="0"
+                                                    />
+                                                </td>
+                                                <td className="py-1 px-3 text-right tabular-nums">
+                                                    <Money value={pagoUltimosDias} className="font-bold text-slate-800 text-[11px]" />
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                            {/* Vacaciones */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase w-28 shrink-0">Vacaciones</span>
-                                <input type="date" value={periodoVacaciones.desde} onChange={e => { setPeriodoVacaciones({ ...periodoVacaciones, desde: e.target.value }); setDiasVacaciones(calcDays(e.target.value, periodoVacaciones.hasta)); }}
-                                    className="w-[130px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" />
-                                <input type="date" value={periodoVacaciones.hasta} onChange={e => { setPeriodoVacaciones({ ...periodoVacaciones, hasta: e.target.value }); setDiasVacaciones(calcDays(periodoVacaciones.desde, e.target.value)); }}
-                                    className="w-[130px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" />
-                                <input type="number" value={diasVacaciones || ''} onChange={e => setDiasVacaciones(parseInt(e.target.value) || 0)}
-                                    className="w-[70px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg text-center focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
-                                    placeholder="Dias" min="0" />
+
+                            {/* RECUADRO DE DEDUCCIONES FIJO */}
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                                <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <ShieldCheck size={14} className="text-indigo-600" />
+                                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                            DEDUCCIONES DE LEY Y RETENCIONES
+                                        </span>
+                                    </div>
+                                    <div>
+                                        {calculando ? (
+                                            <span className="inline-flex items-center gap-1.5 text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md font-bold animate-pulse">
+                                                <Loader2 size={11} className="animate-spin" /> Calculando retenciones...
+                                            </span>
+                                        ) : montoDeducciones > 0 && calculo ? (
+                                            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-bold">
+                                                Retenciones calculadas
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md font-medium">
+                                                Sin retenciones gravadas
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="p-3.5 space-y-3">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-[11px]">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-slate-400 uppercase text-[9px] font-bold tracking-wider">
+                                                    <th className="text-left py-1.5 font-bold">Concepto</th>
+                                                    <th className="text-right py-1.5 font-bold">Base Gravada</th>
+                                                    <th className="text-right py-1.5 font-bold">Tasa</th>
+                                                    <th className="text-right py-1.5 font-bold">Tope / Tramo</th>
+                                                    <th className="text-right py-1.5 font-bold">Descuento</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {/* ISSS */}
+                                                <tr className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="py-2 text-slate-700 font-semibold flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                                        <span>ISSS (Salud)</span>
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-600">
+                                                        <Money value={montoDeducciones > 0 && calculo ? montoDeducciones : 0} />
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-500">
+                                                        {calculo?.isss_info?.porcentaje ? `${calculo.isss_info.porcentaje}%` : (montoDeducciones > 0 ? '3.00%' : '-')}
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-500">
+                                                        {calculo?.isss_info?.tope ? `$${calculo.isss_info.tope.toFixed(2)}` : (montoDeducciones > 0 ? '$1,000.00' : '-')}
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums font-bold text-rose-600">
+                                                        <Money value={calculo?.descuento_isss || 0} />
+                                                    </td>
+                                                </tr>
+
+                                                {/* AFP */}
+                                                <tr className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="py-2 text-slate-700 font-semibold flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                                        <span>AFP {calculo?.afp_info?.nombre ? `(${calculo.afp_info.nombre})` : ''}</span>
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-600">
+                                                        <Money value={montoDeducciones > 0 && calculo ? montoDeducciones : 0} />
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-500">
+                                                        {calculo?.afp_info?.porcentaje ? `${calculo.afp_info.porcentaje}%` : (montoDeducciones > 0 ? '7.25%' : '-')}
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-500">
+                                                        {calculo?.afp_info?.tope ? `$${calculo.afp_info.tope.toFixed(2)}` : (montoDeducciones > 0 ? '$7,045.06' : '-')}
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums font-bold text-rose-600">
+                                                        <Money value={calculo?.descuento_afp || 0} />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Renta */}
+                                                <tr className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="py-2 text-slate-700 font-semibold flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                                        <span>Impuesto sobre la Renta</span>
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-600">
+                                                        <Money value={calculo?.renta_info?.ingreso_gravado || 0} />
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-500">
+                                                        {calculo?.renta_info ? `${calculo.renta_info.porcentaje}%` : '-'}
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums text-slate-500">
+                                                        {calculo?.renta_info ? `+$${calculo.renta_info.valor_descuento.toFixed(2)}` : '-'}
+                                                    </td>
+                                                    <td className="py-2 text-right tabular-nums font-bold text-rose-600">
+                                                        <Money value={calculo?.descuento_renta || 0} />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Otros Descuentos */}
+                                                <tr className="hover:bg-slate-50/70 transition-colors bg-slate-50/50">
+                                                    <td className="py-2 text-slate-700 font-semibold" colSpan={3}>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                                                            <span>Otros Descuentos / Anticipos:</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-2 text-right" colSpan={2}>
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <span className="text-[11px] text-slate-400 font-medium">$</span>
+                                                            <MoneyInput
+                                                                value={otrosDescuentos || ''}
+                                                                onChange={e => setOtrosDescuentos(parseFloat(e.target.value) || 0)}
+                                                                className="w-24 px-2 py-1 text-[12px] bg-white border border-slate-200 rounded-lg text-right font-bold text-rose-600 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
+                                                                placeholder="0.00"
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Totales y notas dentro del recuadro */}
+                                    <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between text-xs bg-slate-50/80 -mx-3.5 -mb-3.5 px-3.5 py-2.5">
+                                        <span className="text-[10px] text-slate-400 leading-tight max-w-[280px]">
+                                            * Por ley, la indemnización por retiro o despido está exenta de ISSS, AFP y Renta.
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] font-bold text-slate-500 uppercase">Total Descuentos:</span>
+                                            <Money value={totalDeducciones} className="font-black text-rose-600 text-sm" />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            {/* Aguinaldo */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase w-28 shrink-0">Aguinaldo</span>
-                                <input type="date" value={periodoAguinaldo.desde} onChange={e => { setPeriodoAguinaldo({ ...periodoAguinaldo, desde: e.target.value }); setDiasAguinaldo(calcDays(e.target.value, periodoAguinaldo.hasta)); }}
-                                    className="w-[130px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" />
-                                <input type="date" value={periodoAguinaldo.hasta} onChange={e => { setPeriodoAguinaldo({ ...periodoAguinaldo, hasta: e.target.value }); setDiasAguinaldo(calcDays(periodoAguinaldo.desde, e.target.value)); }}
-                                    className="w-[130px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" />
-                                <input type="number" value={diasAguinaldo || ''} onChange={e => setDiasAguinaldo(parseInt(e.target.value) || 0)}
-                                    className="w-[70px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg text-center focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
-                                    placeholder="Dias" min="0" />
-                            </div>
-                            {/* Ultimos Dias Laborados */}
-                            <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase w-28 shrink-0">Ult. Dias Lab.</span>
-                                <input type="number" value={diasUltimos || ''} onChange={e => setDiasUltimos(parseInt(e.target.value) || 0)}
-                                    className="w-[70px] px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg text-center focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
-                                    placeholder="Dias" min="0" />
-                                {diasUltimos > 0 && (
-                                    <span className="text-[11px] text-indigo-600 font-bold">= ${pagoUltimosDias.toFixed(2)}</span>
+
+                            {/* Modalidad de Cuotas */}
+                            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-3">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" checked={pagoCuotas} onChange={e => setPagoCuotas(e.target.checked)}
+                                        className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer" />
+                                    <span className="text-[11px] font-bold text-slate-600 uppercase">Habilitar Pago en Cuotas</span>
+                                </label>
+                                {pagoCuotas && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                                        <div>
+                                            <label className={labelCls}>Número de Cuotas</label>
+                                            <input type="number" value={cuotas || ''} onChange={e => setCuotas(parseInt(e.target.value) || 1)}
+                                                className={fieldCls} min="1" />
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Monto por Cuota Estimado</label>
+                                            <div className={`${roCls} font-bold text-indigo-600`}>
+                                                <Money value={pagoPorCuota} />
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </div>
-                    </div>
 
-                    {/* Totals Devengados */}
-                    {empleadoData && (
-                        <div className="flex items-center gap-3 bg-indigo-50/40 px-3 py-2 rounded-xl border border-indigo-100 text-xs flex-wrap">
-                            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider shrink-0">Devengado:</span>
-                            <span className="font-bold text-slate-700">Indem. ${totalIndemnizacion.toFixed(2)}</span>
-                            <span className="text-slate-300">|</span>
-                            <span className="font-bold text-slate-700">Vac. ${totalVacaciones.toFixed(2)}</span>
-                            <span className="text-slate-300">|</span>
-                            <span className="font-bold text-slate-700">Aguin. ${totalAguinaldo.toFixed(2)}</span>
-                            <span className="text-slate-300">|</span>
-                            <span className="font-bold text-slate-700">Ult.Dias ${pagoUltimosDias.toFixed(2)}</span>
-                            <span className="ml-auto font-black text-base text-indigo-600">TOTAL ${totalDevengado.toFixed(2)}</span>
-                        </div>
-                    )}
+                        {/* Columna Derecha: Tarjeta Ejecutiva del Monto a Pagar */}
+                        <div className="lg:col-span-5 lg:sticky lg:top-2 space-y-4">
+                            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 shadow-2xl border border-slate-800 space-y-4 relative overflow-hidden">
+                                {/* Ambient decorative glows */}
+                                <div className="absolute -right-10 -top-10 w-36 h-36 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+                                <div className="absolute -left-10 -bottom-10 w-36 h-36 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none" />
 
-                    {/* Deductions */}
-                    {calculando && (
-                        <div className="flex items-center justify-center py-6 text-slate-400">
-                            <Loader2 size={20} className="animate-spin mr-2" /> Calculando deducciones...
-                        </div>
-                    )}
-                    {calculo && !calculando && (
-                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">DEDUCCIONES</div>
-                            <table className="w-full text-[11px]">
-                                <thead>
-                                    <tr className="border-b border-slate-200">
-                                        <th className="text-left py-1 text-slate-500 font-semibold">Concepto</th>
-                                        <th className="text-right py-1 text-slate-500 font-semibold">Base</th>
-                                        <th className="text-right py-1 text-slate-500 font-semibold">Tasa</th>
-                                        <th className="text-right py-1 text-slate-500 font-semibold">Tope</th>
-                                        <th className="text-right py-1 text-slate-500 font-semibold">Desc.</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr className="border-b border-slate-100">
-                                        <td className="py-1 text-red-600 font-medium">ISSS</td>
-                                        <td className="py-1 text-right tabular-nums">${montoDeducciones.toFixed(2)}</td>
-                                        <td className="py-1 text-right tabular-nums">{calculo.isss_info?.porcentaje ?? '-'}%</td>
-                                        <td className="py-1 text-right tabular-nums">{calculo.isss_info?.tope ? `$${calculo.isss_info.tope.toFixed(2)}` : '-'}</td>
-                                        <td className="py-1 text-right tabular-nums font-bold text-red-600">${calculo.descuento_isss.toFixed(2)}</td>
-                                    </tr>
-                                    <tr className="border-b border-slate-100">
-                                        <td className="py-1 text-red-600 font-medium">AFP{calculo.afp_info?.nombre ? ` (${calculo.afp_info.nombre})` : ''}</td>
-                                        <td className="py-1 text-right tabular-nums">${montoDeducciones.toFixed(2)}</td>
-                                        <td className="py-1 text-right tabular-nums">{calculo.afp_info?.porcentaje ?? '-'}%</td>
-                                        <td className="py-1 text-right tabular-nums">{calculo.afp_info?.tope ? `$${calculo.afp_info.tope.toFixed(2)}` : '-'}</td>
-                                        <td className="py-1 text-right tabular-nums font-bold text-red-600">${calculo.descuento_afp.toFixed(2)}</td>
-                                    </tr>
-                                    <tr className="border-b border-slate-100">
-                                        <td className="py-1 text-red-600 font-medium">Renta</td>
-                                        <td className="py-1 text-right tabular-nums">${calculo.renta_info?.ingreso_gravado?.toFixed(2) ?? '-'}</td>
-                                        <td className="py-1 text-right tabular-nums">{calculo.renta_info ? `${calculo.renta_info.porcentaje}% / s/e $${calculo.renta_info.excedente.toFixed(2)}` : '-'}</td>
-                                        <td className="py-1 text-right tabular-nums">{calculo.renta_info ? `Fija $${calculo.renta_info.valor_descuento.toFixed(2)}` : '-'}</td>
-                                        <td className="py-1 text-right tabular-nums font-bold text-red-600">${calculo.descuento_renta.toFixed(2)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <div className="flex items-center gap-3 border-t border-slate-200 pt-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Otros Desc.</label>
-                                <input type="number" value={otrosDescuentos || ''} onChange={e => setOtrosDescuentos(parseFloat(e.target.value) || 0)}
-                                    className="w-28 px-2 py-1 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none" step="0.01" min="0" />
-                                <span className="ml-auto font-bold text-red-600 text-[13px] whitespace-nowrap shrink-0">Deducciones ${totalDeducciones.toFixed(2)}</span>
-                                <span className="text-slate-300 shrink-0">|</span>
-                                <span className="font-black text-emerald-600 text-[13px] whitespace-nowrap shrink-0">Recibir ${montoRecibir.toFixed(2)}</span>
+                                {/* Header de la Tarjeta */}
+                                <div className="flex items-center justify-between relative z-10 border-b border-white/10 pb-3">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                            <Wallet size={16} />
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Liquidación Laboral</span>
+                                            <h4 className="text-xs font-semibold text-slate-200">Resumen a Liquidar</h4>
+                                        </div>
+                                    </div>
+                                    {empleadoData?.codigo && (
+                                        <span className="text-[10px] bg-white/10 border border-white/15 px-2 py-0.5 rounded-md font-mono text-slate-300">
+                                            {empleadoData.codigo}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Hero Amount to Pay */}
+                                <div className="relative z-10 py-1">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                        Total Líquido a Pagar
+                                    </span>
+                                    <div className="flex items-baseline gap-2">
+                                        <Money value={montoRecibir} className="text-3xl sm:text-4xl font-black tracking-tight text-emerald-400" />
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium mt-1">
+                                        {montoRecibir > 0 ? 'Monto neto final a transferir o pagar al colaborador.' : 'Complete los períodos para visualizar el cálculo.'}
+                                    </p>
+                                </div>
+
+                                {/* Balance Devengado vs Deducciones */}
+                                <div className="grid grid-cols-2 gap-2 relative z-10">
+                                    <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                                        <div className="flex items-center gap-1.5 text-emerald-400 mb-1">
+                                            <TrendingUp size={13} />
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Devengado (+)</span>
+                                        </div>
+                                        <Money value={totalDevengado} className="text-base font-black text-white block" />
+                                    </div>
+                                    <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                                        <div className="flex items-center gap-1.5 text-rose-400 mb-1">
+                                            <TrendingDown size={13} />
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Deducciones (-)</span>
+                                        </div>
+                                        <Money value={totalDeducciones} className="text-base font-black text-rose-300 block" />
+                                    </div>
+                                </div>
+
+                                {/* Desglose de Percepciones */}
+                                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-1.5 relative z-10 text-xs">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/10 pb-1 flex justify-between">
+                                        <span>Concepto Devengado</span>
+                                        <span>Subtotal</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                                        <span>Indemnización ({diasIndemnizacion || 0}d)</span>
+                                        <Money value={totalIndemnizacion} className="font-semibold text-white" />
+                                    </div>
+                                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                                        <span>Vacaciones ({diasVacaciones || 0}d)</span>
+                                        <Money value={totalVacaciones} className="font-semibold text-white" />
+                                    </div>
+                                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                                        <span>Aguinaldo ({diasAguinaldo || 0}d)</span>
+                                        <Money value={totalAguinaldo} className="font-semibold text-white" />
+                                    </div>
+                                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                                        <span>Salarios Pendientes ({diasUltimos || 0}d)</span>
+                                        <Money value={pagoUltimosDias} className="font-semibold text-white" />
+                                    </div>
+                                </div>
+
+                                {/* Modalidad de Cuotas (si está marcada) */}
+                                {pagoCuotas && cuotas > 1 && (
+                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 relative z-10 text-xs">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[10px] uppercase">
+                                                <Calendar size={13} /> Pago Fraccionado
+                                            </div>
+                                            <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded font-bold font-mono">
+                                                {cuotas} Cuotas
+                                            </span>
+                                        </div>
+                                        <div className="flex items-baseline justify-between pt-1">
+                                            <span className="text-[11px] text-slate-300">Valor por cuota:</span>
+                                            <Money value={pagoPorCuota} className="text-base font-black text-amber-300" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Botones de Acción dentro de la tarjeta lateral */}
+                                <div className="pt-2 border-t border-white/10 flex flex-col gap-2 relative z-10">
+                                    <button
+                                        type="submit"
+                                        disabled={mutation.isPending || !empleadoId}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-emerald-900/40 active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        {mutation.isPending ? (
+                                            <><Loader2 size={16} className="animate-spin" /> Guardando Liquidación...</>
+                                        ) : (
+                                            <><CheckCircle2 size={16} /> {selected ? 'Guardar Cambios' : 'Registrar Liquidación'}</>
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setIsModalOpen(false); resetForm(); }}
+                                        className="w-full py-1.5 text-slate-400 hover:text-white transition-colors text-xs font-semibold text-center cursor-pointer"
+                                    >
+                                        Cancelar operación
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    )}
-
-                    {/* Cuotas */}
-                    <div className={sectionCls}>
-                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" checked={pagoCuotas} onChange={e => setPagoCuotas(e.target.checked)}
-                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
-                            <span className="text-[11px] font-bold text-slate-500 uppercase">Pago en Cuotas</span>
-                        </label>
-                        {pagoCuotas && (
-                            <div className="grid grid-cols-5 gap-3 mt-3">
-                                <div>
-                                    <label className={labelCls}>Numero de Cuotas</label>
-                                    <input type="number" value={cuotas || ''} onChange={e => setCuotas(parseInt(e.target.value) || 1)}
-                                        className={fieldCls} min="1" />
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Pago por Cuota ($)</label>
-                                    <div className={`${roCls} font-bold text-indigo-600`}>${pagoPorCuota.toFixed(2)}</div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-                        <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }}
-                            className="px-5 py-2.5 text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Cancelar</button>
-                        <button type="submit" disabled={mutation.isPending || !empleadoId}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50">
-                            {mutation.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Guardando...</> : (selected ? 'Guardar Cambios' : 'Registrar Liquidacion')}
-                        </button>
                     </div>
                 </form>
             </Modal>
