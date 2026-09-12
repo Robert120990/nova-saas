@@ -168,7 +168,7 @@ const deletePlanilla = async (req, res) => {
 
 const calcular = async (req, res) => {
     try {
-        const { empleado_id, monto } = req.query;
+        const { empleado_id, monto, quincena } = req.query;
         if (!empleado_id || !monto) {
             return res.status(400).json({ message: 'empleado_id y monto son requeridos' });
         }
@@ -192,14 +192,16 @@ const calcular = async (req, res) => {
         let isssInfo = null;
         if (!esJubilado) {
             const [isssRows] = await pool.query(
-                `SELECT porcentaje_empleado, tope_mensual FROM rh_isss_tasas 
+                `SELECT porcentaje_empleado, tope_mensual, tope_quincenal FROM rh_isss_tasas 
                  WHERE company_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
                  ORDER BY fecha_desde DESC LIMIT 1`,
                 [req.company_id, today, today]
             );
             if (isssRows.length > 0) {
                 const tasa = isssRows[0];
-                const tope = tasa.tope_mensual ? parseFloat(tasa.tope_mensual) : Infinity;
+                const tope = (quincena && tasa.tope_quincenal) 
+                    ? parseFloat(tasa.tope_quincenal) 
+                    : (tasa.tope_mensual ? parseFloat(tasa.tope_mensual) : Infinity);
                 isssInfo = { porcentaje: tasa.porcentaje_empleado, tope: tope };
                 const base = Math.min(vacacionesMonto, tope);
                 descuentoISSS = Math.round(base * tasa.porcentaje_empleado / 100 * 100) / 100;
@@ -211,7 +213,7 @@ const calcular = async (req, res) => {
         let afpInfo = null;
         if (!esJubilado && empleado.afp_id) {
             const [afpRows] = await pool.query(
-                `SELECT t.porcentaje_empleado, t.tope_mensual, a.descripcion as afp_nombre
+                `SELECT t.porcentaje_empleado, t.tope_mensual, t.tope_quincenal, a.descripcion as afp_nombre
                  FROM rh_afp_tasas t
                  JOIN rh_afp a ON t.afp_id = a.id
                  WHERE t.company_id = ? AND t.afp_id = ? AND t.fecha_desde <= ? AND (t.fecha_hasta IS NULL OR t.fecha_hasta >= ?)
@@ -220,7 +222,9 @@ const calcular = async (req, res) => {
             );
             if (afpRows.length > 0) {
                 const tasa = afpRows[0];
-                const tope = tasa.tope_mensual ? parseFloat(tasa.tope_mensual) : Infinity;
+                const tope = (quincena && tasa.tope_quincenal) 
+                    ? parseFloat(tasa.tope_quincenal) 
+                    : (tasa.tope_mensual ? parseFloat(tasa.tope_mensual) : Infinity);
                 afpInfo = { nombre: tasa.afp_nombre, porcentaje: tasa.porcentaje_empleado, tope: tope };
                 const base = Math.min(vacacionesMonto, tope);
                 descuentoAFP = Math.round(base * tasa.porcentaje_empleado / 100 * 100) / 100;
@@ -237,26 +241,28 @@ const calcular = async (req, res) => {
             descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
             rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
         } else {
-            // Normal: progressive table
+            // Normal: progressive table (prefer Q if quincena is indicated, else M)
+            const tipoOrder = quincena ? "FIELD(tipo, 'Q', 'M')" : "FIELD(tipo, 'M', 'Q')";
             const [rentaConfigRows] = await pool.query(
-                `SELECT id FROM rh_renta_config 
-                 WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
-                 ORDER BY fecha_desde DESC LIMIT 1`,
+                `SELECT id, tipo FROM rh_renta_config 
+                 WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
+                 ORDER BY ${tipoOrder}, fecha_desde DESC LIMIT 1`,
                 [req.company_id, today, today]
             );
 
             if (rentaConfigRows.length > 0 && ingresoGravado > 0) {
                 const [bracketRows] = await pool.query(
                     `SELECT sueldo_inicial, sueldo_final, porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle 
-                     WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ?
+                     WHERE renta_config_id = ? AND sueldo_inicial <= ? AND (sueldo_final >= ? OR sueldo_final IS NULL OR sueldo_final = 0)
                      ORDER BY sueldo_inicial ASC LIMIT 1`,
                     [rentaConfigRows[0].id, ingresoGravado, ingresoGravado]
                 );
                 if (bracketRows.length > 0) {
                     const bracket = bracketRows[0];
-                    const excedente = ingresoGravado - bracket.exceso;
-                    descuentoRenta = Math.max(0, (excedente * bracket.porcentaje / 100) + parseFloat(bracket.valor_descuento));
+                    const excedente = Math.max(0, ingresoGravado - parseFloat(bracket.exceso || 0));
+                    descuentoRenta = Math.max(0, (excedente * parseFloat(bracket.porcentaje) / 100) + parseFloat(bracket.valor_descuento || 0));
                     rentaInfo = {
+                        tipo: rentaConfigRows[0].tipo,
                         sueldo_inicial: bracket.sueldo_inicial,
                         sueldo_final: bracket.sueldo_final,
                         porcentaje: bracket.porcentaje,
@@ -297,7 +303,7 @@ const getEmpleadoData = async (req, res) => {
         const { id } = req.params;
         const [rows] = await pool.query(
             `SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, e.bonificacion_fija,
-                    e.afp_id, e.cargo_id, e.departamento_personal_id,
+                    e.afp_id, e.cargo_id, e.departamento_personal_id, e.fecha_ingreso,
                     c.descripcion as cargo_nombre,
                     d.descripcion as departamento_nombre
              FROM rh_empleados e
@@ -308,6 +314,24 @@ const getEmpleadoData = async (req, res) => {
         );
         if (rows.length === 0) return res.status(404).json({ message: 'Empleado no encontrado' });
         res.json(rows[0]);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// --- Última planilla de vacaciones del empleado (para determinar período inicio) ---
+
+const getUltimaVacacion = async (req, res) => {
+    try {
+        const { empleado_id } = req.params;
+        // Most recent vacation record ordered by the final date of the service period
+        const [rows] = await pool.query(
+            `SELECT * FROM ${TABLE}
+             WHERE empleado_id = ? AND company_id = ? AND fecha_final IS NOT NULL
+             ORDER BY fecha_final DESC, id DESC LIMIT 1`,
+            [empleado_id, req.company_id]
+        );
+        res.json(rows.length > 0 ? rows[0] : null);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -415,7 +439,193 @@ const exportPDF = async (req, res) => {
     }
 };
 
+// --- Empleados elegibles para vacación en un mes determinado ---
+
+const getElegibles = async (req, res) => {
+    try {
+        const companyId = req.company_id;
+        const now = new Date();
+        const año = parseInt(req.query.año) || now.getFullYear();
+        const mes = parseInt(req.query.mes) || (now.getMonth() + 1); // 1-12
+        const incluirPendientes = req.query.incluir_pendientes === 'true' || req.query.incluir_pendientes === '1';
+
+        // 1. Obtener empleados activos
+        const [empleados] = await pool.query(`
+            SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, 
+                   DATE_FORMAT(e.fecha_ingreso, '%Y-%m-%d') as fecha_ingreso,
+                   c.descripcion as cargo_nombre,
+                   d.descripcion as departamento_nombre
+            FROM rh_empleados e
+            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
+            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            WHERE e.company_id = ? AND e.es_activo = 1
+            ORDER BY e.apellidos ASC, e.nombres ASC
+        `, [companyId]);
+
+        // 2. Obtener todas las planillas de vacaciones de la empresa
+        const [vacaciones] = await pool.query(`
+            SELECT id, empleado_id, 
+                   DATE_FORMAT(fecha_inicial, '%Y-%m-%d') as fecha_inicial,
+                   DATE_FORMAT(fecha_final, '%Y-%m-%d') as fecha_final,
+                   periodo_año, periodo_mes, vacaciones_monto
+            FROM rh_planilla_vacaciones
+            WHERE company_id = ? AND fecha_final IS NOT NULL
+            ORDER BY fecha_final DESC, id DESC
+        `, [companyId]);
+
+        const vacacionesPorEmpleado = {};
+        for (const v of vacaciones) {
+            if (!vacacionesPorEmpleado[v.empleado_id]) {
+                vacacionesPorEmpleado[v.empleado_id] = [];
+            }
+            vacacionesPorEmpleado[v.empleado_id].push(v);
+        }
+
+        const ultimoDiaMes = new Date(año, mes, 0).getDate();
+        const fechaFinMesStr = `${año}-${String(mes).padStart(2, '0')}-${String(ultimoDiaMes).padStart(2, '0')}`;
+        const fechaFinMes = new Date(`${fechaFinMesStr}T23:59:59`);
+
+        const elegibles = [];
+
+        for (const emp of empleados) {
+            if (!emp.fecha_ingreso) continue;
+
+            const fechaIngresoStr = emp.fecha_ingreso;
+            const [ingAño, ingMes, ingDia] = fechaIngresoStr.split('-').map(Number);
+            const fechaIngresoDate = new Date(`${fechaIngresoStr}T00:00:00`);
+
+            // Total de días desde el ingreso hasta el fin del mes evaluado
+            const diffMsIngreso = fechaFinMes.getTime() - fechaIngresoDate.getTime();
+            const diasTotalesIngreso = Math.floor(diffMsIngreso / (1000 * 60 * 60 * 24));
+
+            // Debe tener al menos 365 días continuos de servicio (Art. 177 C.Tr.)
+            if (diasTotalesIngreso < 365) {
+                continue;
+            }
+
+            const empVacaciones = vacacionesPorEmpleado[emp.id] || [];
+            const ultimaVacacion = empVacaciones.length > 0 ? empVacaciones[0] : null;
+
+            let fechaInicioPeriodo = '';
+            let fechaFinPeriodo = '';
+            let diasServicioPeriodo = 0;
+            let esMesAniversario = false;
+            let origen = '';
+            let ultimaFechaFinalStr = null;
+
+            if (ultimaVacacion && ultimaVacacion.fecha_final) {
+                // --- CASO 1: El empleado TIENE vacación previa registrada ---
+                origen = 'ultima_vacacion';
+                ultimaFechaFinalStr = ultimaVacacion.fecha_final;
+
+                const ultFinalDate = new Date(`${ultimaFechaFinalStr}T00:00:00`);
+                const sigInicioDate = new Date(ultFinalDate);
+                sigInicioDate.setDate(sigInicioDate.getDate() + 1);
+                fechaInicioPeriodo = sigInicioDate.toISOString().substring(0, 10);
+
+                const sigFinDate = new Date(sigInicioDate);
+                sigFinDate.setDate(sigFinDate.getDate() + 364); // Ciclo anual de 365 días
+                fechaFinPeriodo = sigFinDate.toISOString().substring(0, 10);
+
+                const mesCumplimiento = sigFinDate.getMonth() + 1;
+                const añoCumplimiento = sigFinDate.getFullYear();
+
+                const diffMs = fechaFinMes.getTime() - sigInicioDate.getTime();
+                diasServicioPeriodo = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1);
+
+                // Cumple aniversario en el mes y año consultado
+                esMesAniversario = (mesCumplimiento === mes && añoCumplimiento === año);
+
+                // Verificar si ya tiene registrada una planilla para este ciclo
+                const yaRegistrada = empVacaciones.some(v => {
+                    const vIni = v.fecha_inicial || '';
+                    return (vIni && vIni >= fechaInicioPeriodo) || (v.periodo_año === año && v.periodo_mes === mes);
+                });
+                if (yaRegistrada) continue;
+
+                // Debe tener al menos 365 días en este período a la fecha evaluada
+                if (diasServicioPeriodo < 365) continue;
+
+                // Para no salir todos los meses, solo se muestra en su mes aniversario a menos que se incluya acumuladas
+                if (!esMesAniversario && !incluirPendientes) {
+                    continue;
+                }
+
+            } else {
+                // --- CASO 2: El empleado NO TIENE vacaciones previas ---
+                origen = 'fecha_ingreso';
+
+                // Su mes aniversario de ley es el mes de contratación
+                const mesAniversario = ingMes;
+                esMesAniversario = (mesAniversario === mes);
+
+                // Regla solicitada: si tiene p. ej. 1588 días para no salir todos los meses,
+                // se computa desde su fecha de ingreso pero del año anterior
+                const añoAnterior = año - 1;
+                const maxDiasMesAnt = new Date(añoAnterior, ingMes, 0).getDate();
+                const diaInicioAjustado = Math.min(ingDia, maxDiasMesAnt);
+                const fechaInicioDate = new Date(`${añoAnterior}-${String(ingMes).padStart(2, '0')}-${String(diaInicioAjustado).padStart(2, '0')}T00:00:00`);
+                fechaInicioPeriodo = fechaInicioDate.toISOString().substring(0, 10);
+
+                const maxDiasMesAct = new Date(año, ingMes, 0).getDate();
+                const diaFinAjustado = Math.min(ingDia, maxDiasMesAct);
+                const fechaFinDate = new Date(`${año}-${String(ingMes).padStart(2, '0')}-${String(diaFinAjustado).padStart(2, '0')}T00:00:00`);
+                fechaFinPeriodo = fechaFinDate.toISOString().substring(0, 10);
+
+                const diffMsPeriodo = fechaFinDate.getTime() - fechaInicioDate.getTime();
+                diasServicioPeriodo = Math.floor(diffMsPeriodo / (1000 * 60 * 60 * 24)) + 1;
+
+                // Para evitar que salga todos los meses del año (p.ej. 1588 días)
+                if (!esMesAniversario && !incluirPendientes) {
+                    continue;
+                }
+
+                // Verificar si ya existe vacación registrada para este año y mes
+                const yaRegistrada = empVacaciones.some(v => v.periodo_año === año && v.periodo_mes === mes);
+                if (yaRegistrada) continue;
+            }
+
+            // Estimación económica de ley: 15 días continuos + 30% recargo
+            const sueldoBase = parseFloat(emp.sueldo_base || 0);
+            const sueldoDiario = sueldoBase / 30;
+            const montoBase = sueldoDiario * 15;
+            const vacacionesMonto = Math.round(montoBase * 1.30 * 100) / 100;
+
+            elegibles.push({
+                empleado_id: emp.id,
+                empleado_codigo: emp.codigo,
+                empleado_nombres: emp.nombres,
+                empleado_apellidos: emp.apellidos,
+                nombre_completo: `${emp.nombres} ${emp.apellidos}`,
+                cargo_nombre: emp.cargo_nombre || 'Sin cargo',
+                departamento_nombre: emp.departamento_nombre || 'General',
+                sueldo_base: sueldoBase,
+                fecha_ingreso: fechaIngresoStr,
+                dias_totales_empresa: diasTotalesIngreso,
+                ultima_vacacion_fecha_final: ultimaFechaFinalStr,
+                origen,
+                fecha_inicio_periodo: fechaInicioPeriodo,
+                fecha_fin_periodo: fechaFinPeriodo,
+                dias_servicio: diasServicioPeriodo,
+                vacaciones_monto_estimado: vacacionesMonto,
+                es_mes_aniversario: esMesAniversario,
+                estado: esMesAniversario ? 'cumple_este_mes' : 'pendiente_acumulada'
+            });
+        }
+
+        res.json({
+            año,
+            mes,
+            total: elegibles.length,
+            data: elegibles
+        });
+    } catch (error) {
+        console.error('[Vacaciones Elegibles] Error:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getPlanillas, getPlanilla, createPlanilla, updatePlanilla, deletePlanilla,
-    calcular, getEmpleadoData, exportPDF
+    calcular, getEmpleadoData, getUltimaVacacion, getElegibles, exportPDF
 };

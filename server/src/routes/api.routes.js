@@ -966,6 +966,8 @@ router.get('/rh/acciones-personal/:id/pdf', rhAccionPersonalController.exportPDF
 // RRHH - Planilla de Vacaciones
 router.get('/rh/planilla-vacaciones/calcular', rhPlanillaVacacionesController.calcular);
 router.get('/rh/planilla-vacaciones/empleado/:id', rhPlanillaVacacionesController.getEmpleadoData);
+router.get('/rh/planilla-vacaciones/ultima/:empleado_id', rhPlanillaVacacionesController.getUltimaVacacion);
+router.get('/rh/planilla-vacaciones/elegibles', rhPlanillaVacacionesController.getElegibles);
 router.get('/rh/planilla-vacaciones', rhPlanillaVacacionesController.getPlanillas);
 router.post('/rh/planilla-vacaciones', rhPlanillaVacacionesController.createPlanilla);
 router.get('/rh/planilla-vacaciones/:id/pdf', rhPlanillaVacacionesController.exportPDF);
