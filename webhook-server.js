@@ -61,16 +61,9 @@ function run(cmd, cwd = PROJECT_DIR) {
   }
 }
 
-function npmInstall(dir) {
-  run('npm install --prefer-offline', dir);
-}
-
-function npmRunBuild(dir, envVars = {}) {
-  const env = getEnv();
-  Object.assign(env, envVars);
-  console.log(`[webhook] Building client with VITE_API_URL=${env.VITE_API_URL}...`);
-  const out = execSync('npm run build', { cwd: dir, timeout: 180000, encoding: 'utf8', env });
-  console.log(out);
+function pnpmInstall(dir, prodOnly = false) {
+  const cmd = prodOnly ? 'pnpm install --prod --prefer-offline' : 'pnpm install --prefer-offline';
+  run(cmd, dir);
 }
 
 function deploy(force = false) {
@@ -85,16 +78,16 @@ function deploy(force = false) {
     run(`git reset --hard origin/${BRANCH}`);
 
     console.log('[webhook] Installing server dependencies...');
-    npmInstall(path.join(PROJECT_DIR, 'server'));
+    pnpmInstall(path.join(PROJECT_DIR, 'server'), true);
 
     console.log('[webhook] Installing dte-api dependencies...');
-    npmInstall(path.join(PROJECT_DIR, 'dte-api'));
+    pnpmInstall(path.join(PROJECT_DIR, 'dte-api'), true);
 
     console.log('[webhook] Installing & building client...');
     // Unset NODE_ENV so devDependencies (vite, etc.) are installed
     const envWithoutProd = { ...getEnv() };
     delete envWithoutProd.NODE_ENV;
-    execSync('npm install --include=dev --prefer-offline', {
+    execSync('pnpm install --prefer-offline', {
       cwd: path.join(PROJECT_DIR, 'client'),
       timeout: 180000,
       encoding: 'utf8',
@@ -105,7 +98,7 @@ function deploy(force = false) {
     const VITE_API_URL = process.env.VITE_API_URL || '';
     const buildEnv = { ...envWithoutProd, VITE_API_URL };
     console.log(`[webhook] Building client with VITE_API_URL=${VITE_API_URL || '(same origin)'}...`);
-    execSync('npm run build', {
+    execSync('pnpm run build', {
       cwd: path.join(PROJECT_DIR, 'client'),
       timeout: 180000,
       encoding: 'utf8',

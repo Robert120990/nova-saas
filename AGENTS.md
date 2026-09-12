@@ -19,27 +19,27 @@ This is a multi-tenant SaaS system for Salvadoran businesses with DTE (Documento
 ### Server (Main Backend)
 ```bash
 cd server
-npm install        # Install dependencies
-npm run dev        # Start with nodemon (development)
-npm start          # Start with node (production)
+pnpm install        # Install dependencies
+pnpm run dev        # Start with nodemon (development)
+pnpm start          # Start with node (production)
 ```
 
 ### Client (Frontend)
 ```bash
 cd client
-npm install        # Install dependencies
-npm run dev        # Start Vite dev server
-npm run build      # Production build
-npm run lint       # Run ESLint
-npm run preview    # Preview production build
+pnpm install        # Install dependencies
+pnpm run dev        # Start Vite dev server
+pnpm run build      # Production build
+pnpm run lint       # Run ESLint
+pnpm run preview    # Preview production build
 ```
 
 ### DTE API
 ```bash
 cd dte-api
-npm install        # Install dependencies
-npm run dev        # Start with nodemon
-npm start          # Start with node
+pnpm install        # Install dependencies
+pnpm run dev        # Start with nodemon
+pnpm start          # Start with node
 ```
 
 ### Database Migrations
