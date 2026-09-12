@@ -88,6 +88,7 @@ const Purchases = () => {
     const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
     const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
     const [observaciones, setObservaciones] = useState('');
+    const [numQuedan, setNumQuedan] = useState('');
 
     const handleFechaChange = (e) => {
         const val = e.target.value;
@@ -202,7 +203,7 @@ const Purchases = () => {
         };
     }, [pdfUrl]);
 
-    useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc || numControl || selloRecepcion);
+    useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc || numControl || selloRecepcion || numQuedan);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -758,7 +759,7 @@ const Purchases = () => {
     };
 
     const resetForm = () => {
-        setSelectedItems([]); setNumeroDoc(''); setNumControl(''); setSelloRecepcion(''); setObservaciones('');
+        setSelectedItems([]); setNumeroDoc(''); setNumControl(''); setSelloRecepcion(''); setNumQuedan(''); setObservaciones('');
         setDocAfectado(''); setFechaAfectada('');
         setDiasCredito(0); setFechaVencimiento('');
         setManualRetencion(''); setManualPercepcion(''); setManualNosujeta(''); setManualExenta('');
@@ -953,6 +954,7 @@ const Purchases = () => {
             branch_id: branchId, provider_id: providerId, fecha, numero_documento: numeroDoc,
             numero_control: (numControl || '').trim().toUpperCase() || null,
             sello_recepcion: (selloRecepcion || '').trim().toUpperCase() || null,
+            num_quedan: (numQuedan || '').trim().toUpperCase() || null,
             tipo_documento_id: tipoDocId, condicion_operacion_id: condicionId, observaciones,
             dias_credito: diasCredito, fecha_vencimiento: fechaVencimiento || null,
             total_nosujeta: totals.nosujeta, total_exenta: totals.exenta, total_gravada: totals.gravada,
@@ -1025,6 +1027,7 @@ const Purchases = () => {
             setDiasCredito(parseInt(detail.dias_credito) || 0);
             setFechaVencimiento(detail.fecha_vencimiento ? new Date(detail.fecha_vencimiento).toISOString().split('T')[0] : '');
             setObservaciones(detail.observaciones || '');
+            setNumQuedan(detail.num_quedan || '');
             setDocAfectado(detail.documento_afectado || '');
             setFechaAfectada(detail.fecha_afectada ? new Date(detail.fecha_afectada).toISOString().split('T')[0] : '');
             
@@ -1071,6 +1074,7 @@ const Purchases = () => {
             'TIPO DOC.': p.tipo_doc_nombre || '---',
             'NÚMERO': p.numero_documento || '---',
             'N° CONTROL': p.numero_control || '---',
+            'N° QUEDAN': p.num_quedan || '---',
             'SELLO RECEPCIÓN': p.sello_recepcion || '---',
             'SUCURSAL': p.branch_nombre || '---',
             'GRAVADA': parseFloat(p.total_gravada || 0),
@@ -1388,12 +1392,19 @@ const Purchases = () => {
                                 </div>
 
                                 {condicionId === '2' && (
-                                    <div className="md:col-span-1 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100">
-                                        <label className="block text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Vencimiento</label>
-                                        <input type="date" value={fechaVencimiento} readOnly className={`${inputCls} border-indigo-100 cursor-not-allowed`} />
-                                        {diasCredito > 0 && (
-                                            <span className="text-[7px] font-black text-indigo-400 mt-0.5 block">+{diasCredito} días crédito</span>
-                                        )}
+                                    <div className="md:col-span-1">
+                                        <div className="flex items-center justify-between mb-1 ml-1">
+                                            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.1em]">Vencimiento</label>
+                                            {diasCredito > 0 && (
+                                                <span className="text-[8px] font-black text-indigo-500 uppercase tracking-tight">+{diasCredito} DÍAS CRÉDITO</span>
+                                            )}
+                                        </div>
+                                        <input 
+                                            type="date" 
+                                            value={fechaVencimiento} 
+                                            readOnly 
+                                            className={`${inputCls} bg-slate-50 cursor-not-allowed`} 
+                                        />
                                     </div>
                                 )}
 
@@ -1444,9 +1455,26 @@ const Purchases = () => {
                                     </>
                                 )}
 
-                                <div className={tipoDocId === '06' ? 'md:col-span-2' : 'md:col-span-4'}>
+                                <div className={tipoDocId === '06' ? 'md:col-span-2' : 'md:col-span-3'}>
                                     <label className={labelCls}>Observaciones / Notas</label>
                                     <input type="text" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="OPCIONAL..." className={inputCls} />
+                                </div>
+
+                                <div className={tipoDocId === '06' ? 'md:col-span-2' : 'md:col-span-1'}>
+                                    <label className={labelCls}>
+                                        N° Quedan <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={numQuedan} 
+                                        onChange={(e) => setNumQuedan(e.target.value.toUpperCase())} 
+                                        placeholder="QD-0001 (OPCIONAL)" 
+                                        className={`${inputCls} uppercase font-mono ${
+                                            condicionId === '2' 
+                                                ? '!border-amber-400 focus:!border-amber-500 focus:!ring-amber-400/20' 
+                                                : ''
+                                        }`} 
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -1871,6 +1899,9 @@ const Purchases = () => {
                                         {c.numero_control && (
                                             <div className="text-[8px] font-mono text-indigo-600 font-bold tracking-tight">CTRL: {c.numero_control}</div>
                                         )}
+                                        {c.num_quedan && (
+                                            <div className="text-[8px] font-mono text-amber-600 font-bold tracking-tight">QD: {c.num_quedan}</div>
+                                        )}
                                         {c.sello_recepcion && (
                                             <div className="text-[7px] font-mono text-slate-400 truncate max-w-[140px]" title={c.sello_recepcion}>
                                                 SELLO: {c.sello_recepcion.substring(0, 16)}...
@@ -1878,7 +1909,18 @@ const Purchases = () => {
                                         )}
                                         {c.documento_afectado && <div className="text-[7px] text-rose-500 flex items-center gap-1 mt-0.5">REF: {c.documento_afectado}</div>}
                                     </td>
-                                    <td className="px-5 py-1"><span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase">{c.tipo_documento_nombre}</span></td>
+                                    <td className="px-5 py-1">
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase w-fit">
+                                                {c.tipo_documento_nombre}
+                                            </span>
+                                            {c.condicion_operacion_nombre && (
+                                                <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">
+                                                    {c.condicion_operacion_nombre}{String(c.condicion_operacion_id) === '2' && c.dias_credito ? ` (${c.dias_credito}d)` : ''}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-5 py-1 text-[9px] font-bold text-slate-400">{formatDate(c.fecha)}</td>
                                     <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase">{c.provider_nombre}</td>
                                     <td className="px-5 py-1 font-black text-slate-900 text-[10px]"><Money value={c.monto_total} /></td>
@@ -1970,7 +2012,7 @@ const Purchases = () => {
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Fecha</label>
-                                            <p className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{new Date(purchaseDetail.fecha).toLocaleDateString()}</p>
+                                            <p className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{formatDate(purchaseDetail.fecha) || new Date(purchaseDetail.fecha).toLocaleDateString()}</p>
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Tipo Documento</label>
@@ -1985,11 +2027,41 @@ const Purchases = () => {
                                             <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">{purchaseDetail.numero_control || '---'}</p>
                                         </div>
                                         <div className="space-y-1">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Condición</label>
+                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight">
+                                                {purchaseDetail.condicion_operacion_nombre || (String(purchaseDetail.condicion_operacion_id) === '2' ? 'Crédito' : String(purchaseDetail.condicion_operacion_id) === '1' ? 'Contado' : '---')}
+                                                {String(purchaseDetail.condicion_operacion_id) === '2' && Number(purchaseDetail.dias_credito) > 0 && (
+                                                    <span className="text-slate-500 font-semibold ml-1">({purchaseDetail.dias_credito} días)</span>
+                                                )}
+                                            </p>
+                                            {String(purchaseDetail.condicion_operacion_id) === '2' && purchaseDetail.fecha_vencimiento && (
+                                                <p className="text-[8px] font-bold text-amber-600 uppercase mt-0.5">
+                                                    Vence: {formatDate(purchaseDetail.fecha_vencimiento)}
+                                                </p>
+                                            )}
+                                        </div>
+                                        {purchaseDetail.num_quedan && (
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">N° Quedan</label>
+                                                <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">
+                                                    {purchaseDetail.num_quedan}
+                                                </p>
+                                            </div>
+                                        )}
+                                        <div className="space-y-1">
                                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Estado</label>
                                             <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${purchaseDetail.status === 'ANULADO' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
                                                 {purchaseDetail.status}
                                             </span>
                                         </div>
+                                        {purchaseDetail.observaciones && (
+                                            <div className="space-y-1 col-span-2 md:col-span-3">
+                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Observaciones</label>
+                                                <p className="text-[11px] font-medium text-slate-600 leading-tight bg-slate-50 p-2 rounded-xl border border-slate-200/60">
+                                                    {purchaseDetail.observaciones}
+                                                </p>
+                                            </div>
+                                        )}
                                         <div className="space-y-1 col-span-2 md:col-span-3">
                                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Sello de Recepción (MH)</label>
                                             <p className="text-[11px] font-mono text-slate-700 uppercase leading-tight break-all bg-slate-50 p-2 rounded-xl border border-slate-200/60">

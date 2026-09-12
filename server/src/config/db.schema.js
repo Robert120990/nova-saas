@@ -269,7 +269,7 @@ REGLAS DE MULTI-TENENCIA:
 - monto_total DECIMAL
 - status ENUM('COMPLETADO','ANULADO')
 - period_year INT, period_month INT
-- observaciones, created_at, updated_at
+- observaciones, num_quedan, created_at, updated_at
 
 ### purchase_items (Ítems de Compras)
 - id, purchase_id, product_id (NULL para ítems sin código)

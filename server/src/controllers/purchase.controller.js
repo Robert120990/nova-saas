@@ -75,9 +75,9 @@ const getPurchases = async (req, res) => {
 
         const searchWords = search ? getSearchWords(search) : [];
         searchWords.forEach(word => {
-            query += ` AND (ph.numero_documento LIKE ? OR ph.numero_control LIKE ? OR ph.sello_recepcion LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
+            query += ` AND (ph.numero_documento LIKE ? OR ph.numero_control LIKE ? OR ph.sello_recepcion LIKE ? OR ph.num_quedan LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
             const searchTerm = `%${word}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         });
 
         // Count total for pagination
@@ -113,11 +113,13 @@ const getPurchaseById = async (req, res) => {
 
         const [header] = await pool.query(`
             SELECT ph.*, p.nombre AS provider_nombre, br.nombre AS branch_nombre,
-                   cat.description AS tipo_documento_nombre
+                   cat.description AS tipo_documento_nombre,
+                   cat_cond.description AS condicion_operacion_nombre
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
             LEFT JOIN branches br ON ph.branch_id = br.id
             LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+            LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code COLLATE utf8mb4_unicode_ci
             WHERE ph.id = ? AND ph.company_id = ?
         `, [id, companyId]);
 
@@ -231,22 +233,24 @@ const createPurchase = async (req, res) => {
         // 1. Insertar Cabecera
         const numeroControl = req.body.numero_control || req.body.num_control || null;
         const selloRecepcion = req.body.sello_recepcion || null;
+        const numQuedan = (req.body.num_quedan || req.body.numero_quedan || '').trim() || null;
 
         const [headerResult] = await connection.query(`
              INSERT INTO purchase_headers 
              (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
               numero_control, sello_recepcion,
-              tipo_documento_id, condicion_operacion_id, observaciones,
+              tipo_documento_id, condicion_operacion_id, observaciones, num_quedan,
               dias_credito, fecha_vencimiento,
               total_nosujeta, total_exenta, total_gravada, 
               iva, retencion, percepcion, fovial, cotrans, monto_total,
               documento_afectado, fecha_afectada,
               period_year, period_month)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          `, [
              companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
              numeroControl, selloRecepcion,
              tipo_documento_id, condicion_operacion_id, observaciones,
+             numQuedan ? numQuedan.toUpperCase() : null,
              dias_credito || 0, fecha_vencimiento || null,
              nosujetaNum, exentaNum, gravadaNum,
              finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
@@ -467,12 +471,13 @@ const updatePurchase = async (req, res) => {
         // 2. Actualizar Cabecera
         const numeroControl = req.body.numero_control || req.body.num_control || null;
         const selloRecepcion = req.body.sello_recepcion || null;
+        const numQuedan = (req.body.num_quedan || req.body.numero_quedan || '').trim() || null;
 
         await connection.query(`
             UPDATE purchase_headers SET 
                 branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?,
                 numero_control = ?, sello_recepcion = ?,
-                tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
+                tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?, num_quedan = ?,
                 dias_credito = ?, fecha_vencimiento = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
                 iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, monto_total = ?,
@@ -483,6 +488,7 @@ const updatePurchase = async (req, res) => {
             branch_id, provider_id, fecha, numero_documento,
             numeroControl, selloRecepcion,
             tipo_documento_id, condicion_operacion_id, observaciones,
+            numQuedan ? numQuedan.toUpperCase() : null,
             dias_credito || 0, fecha_vencimiento || null,
             nosujetaNum, exentaNum, gravadaNum,
             finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
@@ -676,12 +682,14 @@ const exportPurchasePDF = async (req, res) => {
             SELECT ph.*, p.nombre AS provider_nombre, p.nrc AS provider_nrc, p.nit AS provider_nit,
                    b.nombre AS branch_nombre, b.direccion AS branch_direccion,
                    cat.description AS tipo_doc_nombre,
+                   cat_cond.description AS condicion_nombre,
                    c.razon_social AS company_nombre, c.nit AS company_nit
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
             LEFT JOIN branches b ON ph.branch_id = b.id
             LEFT JOIN companies c ON ph.company_id = c.id
             LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+            LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code COLLATE utf8mb4_unicode_ci
             WHERE ph.id = ? AND ph.company_id = ?
         `, [id, companyId]);
 
@@ -740,6 +748,15 @@ const exportPurchasePDF = async (req, res) => {
         let fechaDoc = '---';
         try { if (p.fecha) fechaDoc = new Date(p.fecha).toLocaleDateString(); } catch (e) {}
         doc.text(`Fecha: ${fechaDoc}`, startX + 300, currentY + extraY);
+        extraY += 15;
+
+        const condLabel = p.condicion_nombre || (String(p.condicion_operacion_id) === '2' ? 'Crédito' : 'Contado');
+        doc.text(`Condición: ${condLabel}${String(p.condicion_operacion_id) === '2' && p.dias_credito ? ` (${p.dias_credito} días)` : ''}`, startX + 300, currentY + extraY);
+
+        if (p.num_quedan) {
+            extraY += 15;
+            doc.text(`N° Quedan: ${p.num_quedan}`, startX + 300, currentY + extraY);
+        }
 
         if (p.sello_recepcion) {
             extraY += 15;
