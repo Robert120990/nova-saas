@@ -11,10 +11,12 @@ const getProducts = async (req, res) => {
                    p.tipo_combustible, p.tipo_operacion, p.stock_minimo, p.afecta_inventario,
                    p.permitir_existencia_negativa, p.discount_from_id, p.status, p.created_at,
                    COALESCE(pbp.precio_unitario, 0) as precio_unitario,
-                   c.name as category_name, p2.nombre as discount_from_name
+                   c.name as category_name, p2.nombre as discount_from_name,
+                   pr.nombre as provider_name
             FROM products p
             LEFT JOIN product_categories c ON p.category_id = c.id
             LEFT JOIN products p2 ON p.discount_from_id = p2.id
+            LEFT JOIN providers pr ON p.provider_id = pr.id
         `;
         let params = [];
 
@@ -214,10 +216,12 @@ const lookupProduct = async (req, res) => {
                    p.costo, p.unidad_medida, p.tipo_item, p.category_id, p.provider_id,
                    p.tipo_combustible, p.tipo_operacion, p.stock_minimo, p.afecta_inventario,
                    p.permitir_existencia_negativa, p.discount_from_id, p.status, p.created_at,
-                   COALESCE(pbp.precio_unitario, 0) as precio_unitario
+                   COALESCE(pbp.precio_unitario, 0) as precio_unitario,
+                   pr.nombre as provider_name
             FROM products p
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = pb.branch_id
+            LEFT JOIN providers pr ON p.provider_id = pr.id
             WHERE p.company_id = ? AND (p.codigo = ? OR p.codigo_barra = ?)
         `;
         let params = [branch_id, req.company_id, code, code];

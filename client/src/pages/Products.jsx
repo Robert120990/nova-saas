@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
 import ProductLabelModal from '../components/products/ProductLabelModal';
+import SearchableSelect from '../components/ui/SearchableSelect';
 
 const Products = () => {
     const queryClient = useQueryClient();
@@ -22,6 +23,8 @@ const Products = () => {
     const [selectedPos, setSelectedPos] = useState([]);
     const [activeTab, setActiveTab] = useState('general');
     const [mappingSearch, setMappingSearch] = useState('');
+    const [selectedProviderId, setSelectedProviderId] = useState('');
+    const [selectedProviderName, setSelectedProviderName] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -75,16 +78,33 @@ const Products = () => {
         queryFn: async () => (await axios.get('/api/categories', { params: { limit: 5000 } })).data?.data || []
     });
 
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        const items = data?.data || [];
+        if (page === 1 && !search) {
+            return {
+                ...data,
+                data: [{ id: '', nombre: 'Sin Proveedor Habitual', nrc: '-' }, ...items]
+            };
+        }
+        return data;
+    };
 
     useEffect(() => {
         if (selectedProduct) {
             setSelectedBranches(selectedProduct.branches || []);
             setBranchPrices(selectedProduct.branchPrices || {});
             setSelectedPos(selectedProduct.pos || []);
+            setSelectedProviderId(selectedProduct.provider_id || '');
+            setSelectedProviderName(selectedProduct.provider_name || '');
         } else {
             setSelectedBranches([]);
             setBranchPrices({});
             setSelectedPos([]);
+            setSelectedProviderId('');
+            setSelectedProviderName('');
         }
     }, [selectedProduct]);
 
@@ -164,6 +184,8 @@ const Products = () => {
 
         // Convert empty strings to null for foreign key fields
         if (data.category_id === '' || data.category_id === 'null') data.category_id = null;
+        if (data.provider_id === '' || data.provider_id === 'null' || !data.provider_id) data.provider_id = null;
+        else data.provider_id = parseInt(data.provider_id, 10);
         if (data.unidad_medida === '') data.unidad_medida = null;
         if (data.tipo_item === '') data.tipo_item = null;
         if (data.codigo_barra === '') data.codigo_barra = null;
@@ -175,6 +197,8 @@ const Products = () => {
 
     const handleEdit = (product) => {
         setSelectedProduct(product);
+        setSelectedProviderId(product.provider_id || '');
+        setSelectedProviderName(product.provider_name || '');
         setActiveTab('general');
         setIsModalOpen(true);
     };
@@ -220,7 +244,7 @@ const Products = () => {
                         <span>Imprimir Etiquetas</span>
                     </button>
                     <button 
-                        onClick={() => { setSelectedProduct(null); setActiveTab('general'); setIsModalOpen(true); }}
+                        onClick={() => { setSelectedProduct(null); setSelectedProviderId(''); setSelectedProviderName(''); setActiveTab('general'); setIsModalOpen(true); }}
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                     >
                         <Plus size={20}/>
@@ -265,6 +289,9 @@ const Products = () => {
                             </td>
                             <td className="px-3 py-1">
                                 <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
+                                {p.provider_name && (
+                                    <div className="text-[10px] text-slate-400 font-medium">Prov: {p.provider_name}</div>
+                                )}
                             </td>
                             <td className="px-3 py-1">
                                 {p.category_name ? (
@@ -308,6 +335,11 @@ const Products = () => {
                                 <div className="min-w-0">
                                     <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mr-1.5">{p.codigo}</span>
                                     <h4 className="text-sm font-bold text-slate-900 inline">{p.nombre}</h4>
+                                    {p.provider_name && (
+                                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                                            Prov: {p.provider_name}
+                                        </p>
+                                    )}
                                     {p.codigo_barra && (
                                         <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
                                             <Barcode size={10}/> {p.codigo_barra}
@@ -438,7 +470,7 @@ const Products = () => {
                                 <label className={labelCls}>Nombre del Producto</label>
                                 <input name="nombre" defaultValue={selectedProduct?.nombre} required placeholder="Nombre descriptivo" className={fieldCls} />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelCls}>Categoría</label>
                                     <select name="category_id" defaultValue={selectedProduct?.category_id || ''} className={fieldCls}>
@@ -447,6 +479,27 @@ const Products = () => {
                                             <option key={cat.id} value={cat.id}>{cat.name}</option>
                                         ))}
                                     </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Proveedor Habitual</label>
+                                    <SearchableSelect 
+                                        name="provider_id"
+                                        loadOptions={loadProvidersOptions}
+                                        value={selectedProviderId}
+                                        onChange={(e, opt) => {
+                                            setSelectedProviderId(e.target.value);
+                                            setSelectedProviderName(opt?.nombre || '');
+                                        }}
+                                        valueKey="id"
+                                        labelKey="nombre"
+                                        displayKey="nombre"
+                                        placeholder="Sin Proveedor Habitual"
+                                        codeKey="nrc"
+                                        codeLabel="NRC"
+                                        selectedLabel={selectedProviderName}
+                                        isClearable={true}
+                                        className="!py-2 !rounded-lg"
+                                    />
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

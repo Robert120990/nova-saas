@@ -29,7 +29,9 @@ const SearchableSelect = ({
     loadOptions = null,
     selectedLabel = null,
     dropdownWidth = null,
-    debounceMs = 500
+    debounceMs = 500,
+    isClearable = false,
+    className = ''
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -234,7 +236,7 @@ const SearchableSelect = ({
                     disabled
                     ? 'border-slate-100 text-slate-300 cursor-not-allowed'
                     : 'cursor-pointer focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 hover:border-slate-300'
-                } ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200'}`}
+                } ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200'} ${className}`}
             >
                 <div className="truncate pr-2">
                     {displayText ? (
@@ -243,7 +245,22 @@ const SearchableSelect = ({
                         <span className="text-slate-400">{placeholder}</span>
                     )}
                 </div>
-                <ChevronDown size={14} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <div className="flex items-center gap-1 shrink-0">
+                    {isClearable && value !== undefined && value !== null && value !== '' && !disabled && (
+                        <span
+                            role="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onChange({ target: { name, value: '' } }, null);
+                            }}
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                            title="Limpiar selección"
+                        >
+                            <X size={13} />
+                        </span>
+                    )}
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                </div>
             </div>
 
             {isOpen && (
