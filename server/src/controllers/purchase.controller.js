@@ -187,7 +187,7 @@ const createPurchase = async (req, res) => {
         let finalIva = 0;
         if (tipo_documento_id === '01' || isProviderExempt) {
             finalIva = 0;
-        } else if (['03', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
+        } else if (['03', '05', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
             finalIva = Math.round(gravadaNum * 0.13 * 100) / 100;
         } else {
             finalIva = parseFloat(iva) || 0;
@@ -277,8 +277,8 @@ const createPurchase = async (req, res) => {
             // Si no tiene product_id (ítem sin código), no afecta inventario ni kardex
             if (!finalProductId) continue;
 
-            // Determinar impacto (Entrada por defecto, Salida si es Nota de Crédito 06)
-            const esNotaCredito = tipo_documento_id === '06';
+            // Determinar impacto (Entrada por defecto, Salida si es Nota de Crédito 05/06)
+            const esNotaCredito = tipo_documento_id === '05' || tipo_documento_id === '06';
             const sqlImpacto = esNotaCredito 
                 ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?'
                 : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
@@ -317,7 +317,7 @@ const createPurchase = async (req, res) => {
             `, [companyId, branch_id, effectiveProductId, movTipo, qty, price, purchaseId]);
 
             // ACTUALIZACIÓN DE COSTO: Si es un ingreso, actualizar el costo en la tabla de productos
-            const esIngreso = ['01', '03', '05', '14'].includes(tipo_documento_id);
+            const esIngreso = ['01', '03', '04', '14'].includes(tipo_documento_id);
             if (esIngreso) {
                 await connection.query(
                     'UPDATE products SET costo = ? WHERE id = ?',
@@ -384,7 +384,7 @@ const updatePurchase = async (req, res) => {
         // REVERSAR IMPACTO ANTIGUO
         for (const oldItem of oldItems) {
             if (!oldItem.product_id) continue;
-            const esNC = oldTipoDoc === '06';
+            const esNC = oldTipoDoc === '05' || oldTipoDoc === '06';
             const reverseSql = esNC 
                 ? 'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?'
                 : 'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?';
@@ -421,7 +421,7 @@ const updatePurchase = async (req, res) => {
         let finalIva = 0;
         if (tipo_documento_id === '01' || isProviderExempt) {
             finalIva = 0;
-        } else if (['03', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
+        } else if (['03', '05', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
             finalIva = Math.round(gravadaNum * 0.13 * 100) / 100;
         } else {
             finalIva = parseFloat(iva) || 0;
@@ -516,7 +516,7 @@ const updatePurchase = async (req, res) => {
             // Resolver ID efectivo para inventario
             const effectiveProductId = await getEffectiveProductId(connection, finalProductId);
 
-            const newEsNC = tipo_documento_id === '06';
+            const newEsNC = tipo_documento_id === '05' || tipo_documento_id === '06';
             const applySql = newEsNC
                 ? 'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?'
                 : 'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?';
@@ -547,7 +547,7 @@ const updatePurchase = async (req, res) => {
         const oldEffects = {};
         for (const oldItem of oldItems) {
             if (!oldItem.product_id) continue;
-            const efectoViejo = (oldTipoDoc === '06' ? -1 : 1) * parseFloat(oldItem.cantidad);
+            const efectoViejo = ((oldTipoDoc === '05' || oldTipoDoc === '06') ? -1 : 1) * parseFloat(oldItem.cantidad);
             oldEffects[oldItem.product_id] = (oldEffects[oldItem.product_id] || 0) + efectoViejo;
         }
 
@@ -556,7 +556,7 @@ const updatePurchase = async (req, res) => {
         for (const item of items) {
             const finalPId = item.product_id ? parseInt(item.product_id, 10) : null;
             if (!finalPId) continue;
-            const efectoNuevo = (tipo_documento_id === '06' ? -1 : 1) * parseFloat(item.cantidad);
+            const efectoNuevo = ((tipo_documento_id === '05' || tipo_documento_id === '06') ? -1 : 1) * parseFloat(item.cantidad);
             newEffects[finalPId] = (newEffects[finalPId] || 0) + efectoNuevo;
             newPrices[finalPId] = parseFloat(item.precio_unitario);
         }
@@ -610,7 +610,7 @@ const voidPurchase = async (req, res) => {
         if (purchase[0].status === 'ANULADO') throw new Error('La compra ya está anulada');
 
         const { branch_id, tipo_documento_id } = purchase[0];
-        const esNotaCredito = tipo_documento_id === '06';
+        const esNotaCredito = tipo_documento_id === '05' || tipo_documento_id === '06';
 
         // 2. Obtener items para reversar inventario
         const [items] = await connection.query(

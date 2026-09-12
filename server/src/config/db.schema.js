@@ -366,7 +366,7 @@ REGLAS DE MULTI-TENENCIA:
 - code, description — ('00'=Pruebas, '01'=Producción)
 
 ### cat_002_tipo_dte (Tipos de Documento)
-- code, description — '01'=Factura Consumidor Final, '03'=Crédito Fiscal, '04'=Nota Remisión, '05'=Nota Crédito, '06'=Nota Débito, '07'=Comprobante Retención, '08'=Comprobante Liquidación, '11'=Factura Exportación, '14'=Factura Sujeto Excluido
+- code, description — '01'=Factura Consumidor Final, '03'=Crédito Fiscal, '04'=Nota Remisión, '05'=Nota Crédito, '06'=Nota Débito, '07'=Comprobante Retención, '08'=Comprobante Liquidación, '09'=Documento Contable de Liquidación, '11'=Factura Exportación, '14'=Factura Sujeto Excluido, '15'=Comprobante de Donación
 
 ### cat_008_distrito (Distritos / Códigos postales)
 - code, dep_code, description — Código de distrito municipal

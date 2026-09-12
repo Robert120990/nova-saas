@@ -4,10 +4,12 @@ const mysql = require('mysql2/promise');
 const fullCatalogs = {
     cat_001_ambiente: [['1', 'Pruebas'], ['2', 'Producci\u00F3n']],
     cat_002_tipo_dte: [
-        ['01', 'Factura Electr\u00F3nica'], ['03', 'Cr\u00E9dito Fiscal Electr\u00F3nico'], ['05', 'Nota de Remisi\u00F3n Electr\u00F3nica'],
-        ['06', 'Nota de Cr\u00E9dito Electr\u00F3nica'], ['07', 'Nota de D\u00E9bito Electr\u00F3nica'], ['08', 'Comprobante de Retenci\u00F3n Electr\u00F3nico'],
-        ['09', 'Comprobante de Liquidaci\u00F3n Electr\u00F3nico'], ['11', 'Factura de Sujeci\u00F3n Excluida Electr\u00F3nica'],
-        ['14', 'Factura de Exportaci\u00F3n Electr\u00F3nica'], ['15', 'Documento Contable de Liquidaci\u00F3n Electr\u00F3nico']
+        ['01', 'Factura Electrónica'], ['03', 'Comprobante de Crédito Fiscal Electrónico'],
+        ['04', 'Nota de Remisión Electrónica'], ['05', 'Nota de Crédito Electrónica'],
+        ['06', 'Nota de Débito Electrónica'], ['07', 'Comprobante de Retención Electrónico'],
+        ['08', 'Comprobante de Liquidación Electrónico'], ['09', 'Documento Contable de Liquidación Electrónico'],
+        ['11', 'Factura de Exportación Electrónica'], ['14', 'Factura de Sujeto Excluido Electrónica'],
+        ['15', 'Comprobante de Donación Electrónico']
     ],
     cat_003_modelo_facturacion: [['1', 'Modelo de facturaci\u00F3n Previa'], ['2', 'Modelo de facturaci\u00F3n Diferida']],
     cat_004_tipo_transmision: [['1', 'Normal'], ['2', 'Contingencia']],

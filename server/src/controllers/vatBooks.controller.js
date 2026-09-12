@@ -254,11 +254,12 @@ const getVatBookPurchasesPDF = async (req, res) => {
             } else {
                 const tId = String(r.tipo_documento_id || '').trim();
                 const desc = String(r.tipo_doc_nombre || '').toLowerCase();
-                esNC = tId === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
+                esNC = tId === '05' || tId === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
                 if (esNC) tipoNombre = 'Nota Crédito';
                 else if (tId === '01') tipoNombre = 'Factura';
-                else if (tId === '08' || desc.includes('retención')) tipoNombre = 'Retención';
-                else if (tId === '07' || desc.includes('débito')) tipoNombre = 'Nota Débito';
+                else if (tId === '04' || desc.includes('remisión') || desc.includes('remision')) tipoNombre = 'Nota Remisión';
+                else if (tId === '06' || desc.includes('débito') || desc.includes('debito')) tipoNombre = 'Nota Débito';
+                else if (tId === '07' || tId === '08' || desc.includes('retención') || desc.includes('retencion')) tipoNombre = 'Retención';
                 else if (tId === '11' || tId === '14') tipoNombre = 'Suj. Excl.';
                 else tipoNombre = 'Créd. Fiscal';
             }
@@ -1575,7 +1576,7 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
     purchasesByTypeRows.forEach(row => {
         const t = String(row.tipo_documento_id || '').trim();
         const desc = String(row.tipo_doc_nombre || '').toLowerCase();
-        const isNC = t === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
+        const isNC = t === '05' || t === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
         const item = {
             count: parseInt(row.count, 10) || 0,
             gravado: n(row.total_gravada),
