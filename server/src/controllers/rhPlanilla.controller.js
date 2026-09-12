@@ -1752,7 +1752,7 @@ function fitText(doc, text, maxWidth) {
     return truncated ? truncated + '…' : '';
 }
 
-function renderHeader(doc, company, title, periodText, orientation = 'landscape') {
+function renderHeader(doc, company, title, periodText, orientation = 'landscape', subtitle = null) {
     const pageWidth = orientation === 'landscape' ? 792 : 612;
     const contentWidth = pageWidth - 60;
 
@@ -1771,7 +1771,10 @@ function renderHeader(doc, company, title, periodText, orientation = 'landscape'
     doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#0f172a').text(title.toUpperCase(), 30, 35, { align: 'center', width: contentWidth });
 
     // 3. Tax Identifiers
-    const taxText = `NUMERO DE REGISTRO DE I.V.A.: ${company.nrc || 'N/A'}    |    NIT: ${company.nit || 'N/A'}`;
+    let taxText = `NUMERO DE REGISTRO DE I.V.A.: ${company.nrc || 'N/A'}    |    NIT: ${company.nit || 'N/A'}`;
+    if (subtitle) {
+        taxText += `    |    ${subtitle.toUpperCase()}`;
+    }
     doc.fontSize(8).font('Helvetica').fillColor('#475569').text(taxText, 30, 49, { align: 'center', width: contentWidth });
 
     // 4. Period
@@ -1855,6 +1858,7 @@ const exportPlanillaReportePDF = async (req, res) => {
                    e.nombres as empleado_nombres,
                    e.apellidos as empleado_apellidos,
                    e.branch_id,
+                   e.departamento_personal_id,
                    COALESCE(b.nombre, 'SIN SUCURSAL') as branch_nombre,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
@@ -1890,7 +1894,7 @@ const exportPlanillaReportePDF = async (req, res) => {
             sqlParams.push(deptoList);
         }
 
-        sql += ` ORDER BY COALESCE(b.nombre, 'ZZZ') ASC, e.codigo ASC`;
+        sql += ` ORDER BY COALESCE(d.descripcion, 'ZZZ') ASC, COALESCE(b.nombre, 'ZZZ') ASC, e.codigo ASC`;
 
         const [planillas] = await pool.query(sql, sqlParams);
 
@@ -1917,10 +1921,18 @@ const exportPlanillaReportePDF = async (req, res) => {
         const startX = 30;
         const contentWidth = 732;
 
-        renderHeader(doc, company, title, periodText, 'landscape');
-
         const distinctBranches = [...new Set(planillas.map(p => p.branch_id || 0))];
-        const shouldGroupByBranch = branchList.length > 1 || (!branch_ids && distinctBranches.length > 1);
+        const getDeptoKey = (p) => (p.departamento_personal_id ? String(p.departamento_personal_id) : (p.departamento_nombre ? p.departamento_nombre.trim() : 'SIN_DEPTO'));
+        const distinctDeptos = [...new Set(planillas.map(getDeptoKey))];
+
+        const shouldGroupByDepto = deptoList.length > 1 || ((deptoList.length === 0 || !departamento_ids) && distinctDeptos.length > 1);
+        const shouldGroupByBranch = !shouldGroupByDepto && (branchList.length > 1 || (!branch_ids && distinctBranches.length > 1));
+
+        const subtitle = (!shouldGroupByDepto && deptoList.length === 1 && planillas[0]?.departamento_nombre)
+            ? `DEPARTAMENTO: ${planillas[0].departamento_nombre}`
+            : null;
+
+        renderHeader(doc, company, title, periodText, 'landscape', subtitle);
 
         // Fetch details if detailed format requested
         let dynamicIngresoCols = [];
@@ -2012,7 +2024,10 @@ const exportPlanillaReportePDF = async (req, res) => {
                 doc.text('Nº', x, yPos + 3.5, { width: colWResumen.num, align: 'center', lineBreak: false }); x += colWResumen.num;
                 doc.text('CÓDIGO', x, yPos + 3.5, { width: colWResumen.code, lineBreak: false }); x += colWResumen.code;
                 doc.text('EMPLEADO', x, yPos + 3.5, { width: colWResumen.name, lineBreak: false }); x += colWResumen.name;
-                doc.text('CARGO / DEPTO', x, yPos + 3.5, { width: colWResumen.cargo, lineBreak: false }); x += colWResumen.cargo;
+                const cargoHeader = shouldGroupByDepto 
+                    ? (distinctBranches.length > 1 ? 'CARGO / SUCURSAL' : 'CARGO / PUESTO')
+                    : 'CARGO / DEPTO';
+                doc.text(cargoHeader, x, yPos + 3.5, { width: colWResumen.cargo, lineBreak: false }); x += colWResumen.cargo;
                 doc.text('DÍAS', x, yPos + 3.5, { width: colWResumen.dias, align: 'center', lineBreak: false }); x += colWResumen.dias;
                 doc.text('S. QUINC.', x, yPos + 3.5, { width: colWResumen.sueldoQuincenal - 3, align: 'right', lineBreak: false }); x += colWResumen.sueldoQuincenal;
                 doc.text('ING. ADIC.', x, yPos + 3.5, { width: colWResumen.ingresosAdic - 3, align: 'right', lineBreak: false }); x += colWResumen.ingresosAdic;
@@ -2049,6 +2064,14 @@ const exportPlanillaReportePDF = async (req, res) => {
             return yPos + 18;
         };
 
+        const renderDeptoBanner = (yPos, deptoName, count) => {
+            doc.rect(startX, yPos, contentWidth, 15).fill('#eff6ff');
+            doc.rect(startX, yPos, 3.5, 15).fill('#2563eb');
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e3a8a');
+            doc.text(`DEPARTAMENTO: ${deptoName.toUpperCase()}  (${count} ${count === 1 ? 'empleado' : 'empleados'})`, startX + 8, yPos + 4, { lineBreak: false });
+            return yPos + 17;
+        };
+
         const renderBranchBanner = (yPos, branchName, count) => {
             doc.rect(startX, yPos, contentWidth, 15).fill('#eef2ff');
             doc.rect(startX, yPos, 3.5, 15).fill('#4f46e5');
@@ -2065,22 +2088,48 @@ const exportPlanillaReportePDF = async (req, res) => {
             doc.text('No se encontraron registros de planilla para los filtros seleccionados.', startX, y + 10, { lineBreak: false });
             y += 30;
         } else {
-            // Partition by branch if multi-branch grouping applies
-            const branchGroups = [];
-            if (shouldGroupByBranch) {
+            // Determine grouping mode and partition groups
+            let groupingMode = 'none';
+            const groups = [];
+
+            if (shouldGroupByDepto) {
+                groupingMode = 'depto';
+                const dMap = new Map();
+                for (const p of planillas) {
+                    const dId = p.departamento_personal_id || (p.departamento_nombre ? p.departamento_nombre.trim() : 'SIN_DEPTO');
+                    const dName = (p.departamento_nombre || 'SIN DEPARTAMENTO').trim();
+                    if (!dMap.has(dId)) {
+                        const g = { id: dId, name: dName, items: [] };
+                        dMap.set(dId, g);
+                        groups.push(g);
+                    }
+                    dMap.get(dId).items.push(p);
+                }
+                groups.sort((a, b) => {
+                    if (a.id === 0 || a.id === 'SIN_DEPTO') return 1;
+                    if (b.id === 0 || b.id === 'SIN_DEPTO') return -1;
+                    return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+                });
+            } else if (shouldGroupByBranch) {
+                groupingMode = 'branch';
                 const bMap = new Map();
                 for (const p of planillas) {
                     const bId = p.branch_id || 0;
-                    const bName = p.branch_nombre || 'SIN SUCURSAL';
+                    const bName = (p.branch_nombre || 'SIN SUCURSAL').trim();
                     if (!bMap.has(bId)) {
-                        const g = { branch_id: bId, branch_nombre: bName, items: [] };
+                        const g = { id: bId, name: bName, items: [] };
                         bMap.set(bId, g);
-                        branchGroups.push(g);
+                        groups.push(g);
                     }
                     bMap.get(bId).items.push(p);
                 }
             } else {
-                branchGroups.push({ branch_id: planillas[0]?.branch_id || 0, branch_nombre: planillas[0]?.branch_nombre || '', items: planillas });
+                groupingMode = 'none';
+                groups.push({
+                    id: 0,
+                    name: deptoList.length === 1 && planillas[0]?.departamento_nombre ? planillas[0].departamento_nombre : '',
+                    items: planillas
+                });
             }
 
             // Grand Totals accumulators
@@ -2102,16 +2151,24 @@ const exportPlanillaReportePDF = async (req, res) => {
 
             let globalEmpIndex = 0;
 
-            for (let gIdx = 0; gIdx < branchGroups.length; gIdx++) {
-                const group = branchGroups[gIdx];
+            for (let gIdx = 0; gIdx < groups.length; gIdx++) {
+                const group = groups[gIdx];
 
-                if (shouldGroupByBranch) {
-                    if (y > 470) {
+                if (groupingMode === 'depto') {
+                    // Cada departamento inicia en una página diferente
+                    if (gIdx > 0) {
                         doc.addPage();
-                        renderHeader(doc, company, title, periodText, 'landscape');
+                        renderHeader(doc, company, title, periodText, 'landscape', subtitle);
                         y = doc.y + 4;
                     }
-                    y = renderBranchBanner(y, group.branch_nombre, group.items.length);
+                    y = renderDeptoBanner(y, group.name, group.items.length);
+                } else if (groupingMode === 'branch') {
+                    if (y > 470) {
+                        doc.addPage();
+                        renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                        y = doc.y + 4;
+                    }
+                    y = renderBranchBanner(y, group.name, group.items.length);
                 }
 
                 y = drawTableHeader(y);
@@ -2138,10 +2195,12 @@ const exportPlanillaReportePDF = async (req, res) => {
 
                     if (y > 530) {
                         doc.addPage();
-                        renderHeader(doc, company, title, periodText, 'landscape');
+                        renderHeader(doc, company, title, periodText, 'landscape', subtitle);
                         y = doc.y + 4;
-                        if (shouldGroupByBranch) {
-                            y = renderBranchBanner(y, group.branch_nombre + ' (Continuación)', group.items.length);
+                        if (groupingMode === 'depto') {
+                            y = renderDeptoBanner(y, group.name + ' (Continuación)', group.items.length);
+                        } else if (groupingMode === 'branch') {
+                            y = renderBranchBanner(y, group.name + ' (Continuación)', group.items.length);
                         }
                         y = drawTableHeader(y);
                     }
@@ -2192,8 +2251,17 @@ const exportPlanillaReportePDF = async (req, res) => {
                         doc.text(p.empleado_codigo || '', rx, y, { width: colWResumen.code, lineBreak: false }); rx += colWResumen.code;
                         const empNombre = `${p.empleado_nombres || ''} ${p.empleado_apellidos || ''}`.trim();
                         doc.text(fitText(doc, empNombre, colWResumen.name - 4), rx, y, { width: colWResumen.name - 3, lineBreak: false }); rx += colWResumen.name;
-                        const cargoDepto = p.cargo_nombre || p.departamento_nombre || 'GENERAL';
+                        
+                        let cargoDepto = p.cargo_nombre || p.departamento_nombre || 'GENERAL';
+                        if (shouldGroupByDepto) {
+                            if (distinctBranches.length > 1 && p.branch_nombre) {
+                                cargoDepto = `${p.cargo_nombre || 'GENERAL'} • ${p.branch_nombre}`;
+                            } else {
+                                cargoDepto = p.cargo_nombre || 'GENERAL';
+                            }
+                        }
                         doc.text(fitText(doc, cargoDepto, colWResumen.cargo - 4), rx, y, { width: colWResumen.cargo - 3, lineBreak: false }); rx += colWResumen.cargo;
+                        
                         doc.text(String(diasTrab), rx, y, { width: colWResumen.dias, align: 'center', lineBreak: false }); rx += colWResumen.dias;
                         doc.text(formatCurrency(sueldoQuincenal), rx, y, { width: colWResumen.sueldoQuincenal - 3, align: 'right', lineBreak: false }); rx += colWResumen.sueldoQuincenal;
                         doc.text(formatCurrency(ingresosAdic), rx, y, { width: colWResumen.ingresosAdic - 3, align: 'right', lineBreak: false }); rx += colWResumen.ingresosAdic;
@@ -2241,11 +2309,11 @@ const exportPlanillaReportePDF = async (req, res) => {
                     y += 12;
                 }
 
-                // Subtotal for Branch (if grouped)
-                if (shouldGroupByBranch) {
+                // Subtotal for Group (if grouped by depto or branch)
+                if (groupingMode !== 'none') {
                     if (y > 515) {
                         doc.addPage();
-                        renderHeader(doc, company, title, periodText, 'landscape');
+                        renderHeader(doc, company, title, periodText, 'landscape', subtitle);
                         y = doc.y + 10;
                     }
 
@@ -2253,8 +2321,10 @@ const exportPlanillaReportePDF = async (req, res) => {
                     y += 3;
                     doc.fontSize(isDetallado ? 6.5 : 7).font('Helvetica-Bold').fillColor('#1e293b');
 
+                    const subtotalLabel = `SUBTOTAL ${group.name.toUpperCase()}:`;
+
                     if (!isDetallado) {
-                        doc.text(`SUBTOTAL ${group.branch_nombre.toUpperCase()}:`, startX + 2, y, {
+                        doc.text(subtotalLabel, startX + 2, y, {
                             width: colWResumen.num + colWResumen.code + colWResumen.name + colWResumen.cargo + colWResumen.dias,
                             lineBreak: false
                         });
@@ -2269,7 +2339,7 @@ const exportPlanillaReportePDF = async (req, res) => {
                         doc.text(formatCurrency(subTotals.totalDed), tx, y, { width: colWResumen.totalDed - 3, align: 'right', lineBreak: false }); tx += colWResumen.totalDed;
                         doc.text(formatCurrency(subTotals.neto), tx, y, { width: colWResumen.neto - 3, align: 'right', lineBreak: false });
                     } else {
-                        doc.text(`SUBTOTAL ${group.branch_nombre.toUpperCase()}:`, startX + 2, y, {
+                        doc.text(subtotalLabel, startX + 2, y, {
                             width: colWDetallado.num + colWDetallado.code + colWDetallado.name,
                             lineBreak: false
                         });
@@ -2298,16 +2368,24 @@ const exportPlanillaReportePDF = async (req, res) => {
             }
 
             // Totals / Grand Totals
-            if (y > 515) {
-                doc.addPage();
-                renderHeader(doc, company, title, periodText, 'landscape');
-                y = doc.y + 10;
+            if (groupingMode !== 'none') {
+                if (y > 480) {
+                    doc.addPage();
+                    renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                    y = doc.y + 10;
+                }
+            } else {
+                if (y > 515) {
+                    doc.addPage();
+                    renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                    y = doc.y + 10;
+                }
             }
 
             doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
             y += 4;
             doc.fontSize(isDetallado ? 7 : 7.5).font('Helvetica-Bold').fillColor('#0f172a');
-            const totalLabel = shouldGroupByBranch ? 'TOTAL GENERAL:' : 'TOTALES:';
+            const totalLabel = (groupingMode !== 'none') ? 'TOTAL GENERAL:' : 'TOTALES:';
 
             if (!isDetallado) {
                 doc.text(totalLabel, startX + 2, y, { lineBreak: false });

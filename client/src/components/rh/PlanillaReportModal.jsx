@@ -153,11 +153,13 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 onClose();
             }
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [isOpen, onClose]);
 
     const handleDownload = () => {
@@ -224,7 +226,11 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                             <p className="text-xs text-slate-500 font-medium truncate">
                                 {isAguinaldo
                                     ? `Período: ${mesLabel} ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
-                                    : `Período: ${mesLabel} ${anio} • ${quincenaLabel}`}
+                                    : `Período: ${mesLabel} ${anio} • ${quincenaLabel}${
+                                        periodo?.departamento_ids && periodo.departamento_ids.length > 1
+                                            ? ` • ${periodo.departamento_ids.length} Deptos. (Páginas separadas)`
+                                            : (periodo?.departamento_ids && periodo.departamento_ids.length === 1 ? ' • 1 Depto.' : '')
+                                    }`}
                             </p>
                         </div>
                     </div>

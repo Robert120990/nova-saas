@@ -169,12 +169,17 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
         );
     }, [departamentos, deptoSearch]);
 
-    // Calculate effective branch count for grouping hint
+    // Calculate effective counts for grouping hints
     const effectiveBranchCount = allBranchesSelected 
         ? branches.length 
         : selectedBranchIds.length;
 
-    const willGroupByBranch = tipo === 'planilla' && effectiveBranchCount > 1;
+    const effectiveDeptoCount = allDeptosSelected 
+        ? departamentos.length 
+        : selectedDeptoIds.length;
+
+    const willGroupByDepto = tipo === 'planilla' && effectiveDeptoCount > 1;
+    const willGroupByBranch = tipo === 'planilla' && !willGroupByDepto && effectiveBranchCount > 1;
 
     const handleConfirm = () => {
         if (!allBranchesSelected && selectedBranchIds.length === 0) {
@@ -199,7 +204,9 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
             formato,
             formatoBancario
         });
-        onClose();
+        if (tipo === 'csv') {
+            onClose();
+        }
     };
 
     if (!isOpen) return null;
@@ -554,6 +561,16 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
                             </div>
                         </div>
                     </div>
+
+                    {/* Notice for Department Grouping in Planillas */}
+                    {willGroupByDepto && (
+                        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 text-indigo-900 text-xs">
+                            <Info size={16} className="text-indigo-600 flex-shrink-0 mt-0.5" />
+                            <p className="leading-relaxed">
+                                <strong>Agrupación por departamento activa:</strong> Al haber seleccionado {effectiveDeptoCount} departamentos, la planilla se mostrará agrupada por cada departamento en páginas separadas, con subtotales independientes y el total general acumulado al final.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Notice for Branch Grouping in Planillas */}
                     {willGroupByBranch && (
