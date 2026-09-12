@@ -236,6 +236,8 @@ router.delete('/categories/:id', categoryController.deleteCategory);
 
 // Products
 router.get('/products', productController.getProducts);
+router.get('/products/price-analysis', productController.getPriceAnalysis);
+router.post('/products/update-branch-price', productController.updateProductBranchPrice);
 router.get('/products/fuel', productController.getFuelProducts);
 router.patch('/products/fuel/prices', productController.updateFuelPrices);
 router.get('/products/lookup/:code', productController.lookupProduct);
@@ -1008,6 +1010,7 @@ router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.
 
 // RRHH - Planillas Quincenales
 router.get('/rh/planillas/cuentas-activas', rhPlanillaController.getCuentasActivas);
+router.get('/rh/planillas/abiertas', rhPlanillaController.getPlanillasAbiertas);
 router.post('/rh/planillas/calcular', rhPlanillaController.calcular);
 router.post('/rh/planillas/generar', rhPlanillaController.generarPlanilla);
 router.post('/rh/planillas/sincronizar', rhPlanillaController.sincronizarPlanilla);

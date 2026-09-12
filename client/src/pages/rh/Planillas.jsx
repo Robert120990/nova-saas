@@ -5,7 +5,7 @@ import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus } from 'lucide-react';
+import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus, AlertCircle } from 'lucide-react';
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
@@ -137,6 +137,30 @@ const Planillas = () => {
 
     const items = response.data || [];
 
+    const { data: abiertasData } = useQuery({
+        queryKey: ['rh-planillas-abiertas'],
+        queryFn: async () => (await axios.get('/api/rh/planillas/abiertas')).data
+    });
+
+    const tieneAbiertas = Boolean(abiertasData?.tiene_abiertas);
+    const planillasAbiertas = abiertasData?.planillas_abiertas || [];
+    const primeraAbierta = planillasAbiertas[0] || null;
+
+    const hayOtraAbierta = Boolean(
+        planillasAbiertas.some(
+            ab => !(ab.periodo_anio === periodoAnio && ab.periodo_mes === periodoMes && ab.quincena === quincena)
+        )
+    );
+    const otraAbiertaItem = hayOtraAbierta
+        ? planillasAbiertas.find(ab => !(ab.periodo_anio === periodoAnio && ab.periodo_mes === periodoMes && ab.quincena === quincena))
+        : null;
+
+    const esEstePeriodoAbierto = Boolean(
+        planillasAbiertas.some(
+            ab => ab.periodo_anio === periodoAnio && ab.periodo_mes === periodoMes && ab.quincena === quincena
+        )
+    );
+
     const { data: cuentasActivas = [] } = useQuery({
         queryKey: ['rh-cuentas-activas'],
         queryFn: async () => (await axios.get('/api/rh/planillas/cuentas-activas')).data,
@@ -155,7 +179,7 @@ const Planillas = () => {
                 });
                 setCalculo(res.data);
 
-                if (autoSaveRef.current && !savingRef.current) {
+                if (autoSaveRef.current && !savingRef.current && !hayOtraAbierta) {
                     autoSaveRef.current = false;
                     savingRef.current = true;
                     const data = {
@@ -177,6 +201,7 @@ const Planillas = () => {
                             ? axios.put(`/api/rh/planillas/${selected.id}`, data)
                             : axios.post('/api/rh/planillas', data));
                         queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                        queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
                         if (empleadoId) delete cacheRef.current[empleadoId];
                         if (!selected?.id) {
                             setSelected({ id: saveRes.data.id, empleado_id: empleadoId });
@@ -198,6 +223,12 @@ const Planillas = () => {
 
     const handleGenerar = async () => {
         if (!quincena) return toast.error('Seleccione una quincena');
+
+        if (hayOtraAbierta && otraAbiertaItem) {
+            const mesNom = months.find(m => m.value === otraAbiertaItem.periodo_mes)?.label || otraAbiertaItem.periodo_mes;
+            const qNom = otraAbiertaItem.quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
+            return toast.error(`No puede generar esta planilla. El período ${mesNom} ${otraAbiertaItem.periodo_anio} (${qNom}) aún está abierto. Debe cerrarlo antes de crear uno nuevo.`);
+        }
 
         try {
             const check = await axios.get('/api/rh/planillas/grupos', {
@@ -231,6 +262,7 @@ const Planillas = () => {
             setCodigoInput('');
             setSelected(null);
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al generar planilla');
         } finally {
@@ -397,6 +429,9 @@ const Planillas = () => {
     }, [cuentasActivas, activeTab]);
 
     const handleCodigoSearch = async () => {
+        if (hayOtraAbierta) {
+            return toast.error('No se puede buscar o registrar empleados mientras exista otra planilla abierta.');
+        }
         if (!codigoInput.trim()) return;
         try {
             const res = await axios.get('/api/rh/empleados', { params: { search: codigoInput.trim(), limit: 1, solo_activos: 1 } });
@@ -412,6 +447,9 @@ const Planillas = () => {
     };
 
     const handleSelectEmployee = (emp) => {
+        if (hayOtraAbierta) {
+            return toast.error('No se puede registrar empleados mientras exista otra planilla abierta.');
+        }
         loadEmpleado(emp.id);
         setIsEmpModalOpen(false);
     };
@@ -458,6 +496,7 @@ const Planillas = () => {
         mutationFn: (data) => axios.post('/api/rh/planillas/sincronizar', data),
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             cacheRef.current = {};
             toast.success(res.data.message);
             if (empleadoId) {
@@ -490,6 +529,7 @@ const Planillas = () => {
         onSuccess: () => {
             toast.success('Empleado excluido de esta planilla quincenal');
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             if (empleadoId) delete cacheRef.current[empleadoId];
             setSelected(null);
             setCalculo(null);
@@ -517,6 +557,11 @@ const Planillas = () => {
     };
 
     const handleAgregarEmpleado = async () => {
+        if (hayOtraAbierta && otraAbiertaItem) {
+            const mesNom = months.find(m => m.value === otraAbiertaItem.periodo_mes)?.label || otraAbiertaItem.periodo_mes;
+            const qNom = otraAbiertaItem.quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
+            return toast.error(`No puede registrar empleados en este período porque la planilla de ${mesNom} ${otraAbiertaItem.periodo_anio} (${qNom}) aún está abierta.`);
+        }
         if (!empleadoId || !calculo) return;
         savingRef.current = true;
         try {
@@ -537,6 +582,7 @@ const Planillas = () => {
             const saveRes = await axios.post('/api/rh/planillas', data);
             setSelected({ id: saveRes.data.id, empleado_id: empleadoId });
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             toast.success(`${empleadoData?.nombres || 'Empleado'} agregado a la planilla`);
         } catch (err) {
             toast.error(err.response?.data?.message || 'Error al agregar a la planilla');
@@ -623,6 +669,7 @@ const Planillas = () => {
         mutationFn: (data) => axios.post('/api/rh/planillas/cerrar-periodo', data),
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             toast.success(res.data.message);
         },
         onError: (error) => { toast.error(error.response?.data?.message || 'Error al cerrar periodo'); }
@@ -648,6 +695,7 @@ const Planillas = () => {
         mutationFn: (data) => axios.post('/api/rh/planillas/eliminar-periodo', data),
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             toast.success(res.data.message);
         },
         onError: (error) => { toast.error(error.response?.data?.message || 'Error al eliminar periodo'); }
@@ -694,6 +742,7 @@ const Planillas = () => {
                     await axios.post('/api/rh/planillas', data);
                 }
                 queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             } catch (e) {
                 console.error('Error saving before preview:', e);
             } finally {
@@ -734,6 +783,7 @@ const Planillas = () => {
                     await axios.post('/api/rh/planillas', data);
                 }
                 queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             } catch (e) {
                 console.error('Error saving before preview:', e);
             } finally {
@@ -789,6 +839,17 @@ const Planillas = () => {
     const ingresosAdicActual = Math.max(0, Math.round((percTotal - sueldoQuincActual) * 100) / 100);
     const sinEmpleado = !empleadoId;
 
+    const handleNuevaPlanillaClick = () => {
+        if (tieneAbiertas && primeraAbierta) {
+            const mesLabel = months.find(m => m.value === primeraAbierta.periodo_mes)?.label || primeraAbierta.periodo_mes;
+            const qLabel = primeraAbierta.quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
+            toast.error(`No puede crear una nueva planilla. El período ${mesLabel} ${primeraAbierta.periodo_anio} (${qLabel}) aún está abierto. Debe cerrarlo antes de iniciar una nueva.`);
+            return;
+        }
+        resetForm();
+        setActiveTab('nuevo');
+    };
+
     return (
         <div className="space-y-4 text-slate-900 pb-12">
             {activeTab === 'historial' ? (
@@ -800,13 +861,54 @@ const Planillas = () => {
                             <p className="text-slate-500 text-xs font-medium">Gestión y control de planillas quincenales</p>
                         </div>
                         <button
-                            onClick={() => { resetForm(); setActiveTab('nuevo'); }}
-                            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                            onClick={handleNuevaPlanillaClick}
+                            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 ${
+                                tieneAbiertas
+                                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 shadow-none cursor-not-allowed'
+                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                            }`}
+                            title={tieneAbiertas ? "Hay una planilla abierta pendiente de cierre" : "Crear nueva planilla"}
                         >
                             <Plus size={18} />
                             <span>Nueva Planilla</span>
                         </button>
                     </div>
+
+                    {/* Open Payroll Alert Banner */}
+                    {tieneAbiertas && primeraAbierta && (
+                        <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 shadow-sm">
+                            <div className="flex items-start sm:items-center gap-3">
+                                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5 sm:mt-0">
+                                    <AlertCircle size={20} />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-amber-900">
+                                        Existe una planilla abierta pendiente de pago
+                                    </p>
+                                    <p className="text-xs text-amber-700">
+                                        Período: <span className="font-semibold">{months.find(m => m.value === primeraAbierta.periodo_mes)?.label} {primeraAbierta.periodo_anio} ({primeraAbierta.quincena === 'primera' ? '1ra Quincena' : '2da Quincena'})</span> — {primeraAbierta.total_empleados} empleado(s). Para crear una nueva planilla, debe cerrar o eliminar este período abierto.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => handleVerDetalle(primeraAbierta)}
+                                    className="px-3 py-1.5 text-xs font-bold bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-xl transition-colors"
+                                >
+                                    Ver Planilla Abierta
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCerrarPeriodo(primeraAbierta)}
+                                    className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                                >
+                                    <Lock size={13} />
+                                    <span>Cerrar Período</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Filter Bar */}
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-end">
@@ -874,21 +976,21 @@ const Planillas = () => {
                                     <td className="px-3 py-2 flex items-center gap-1">
                                         <button
                                             onClick={() => handleVerDetalle(item)}
-                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                             title="Editar planilla"
                                         >
                                             <Edit size={16} />
                                         </button>
                                         <button
                                             onClick={() => handleEliminarPeriodo(item)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                             title="Eliminar período"
                                         >
                                             <Trash2 size={16} />
                                         </button>
                                         <button
                                             onClick={() => handleCerrarPeriodo(item)}
-                                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                             title="Cerrar período (Marcar pagada)"
                                         >
                                             <Lock size={16} />
@@ -896,21 +998,21 @@ const Planillas = () => {
                                         <span className="w-px h-4 bg-slate-200 mx-0.5" />
                                         <button
                                             onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'planilla' })}
-                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                             title="Ver Planilla Oficial (PDF)"
                                         >
                                             <FileText size={16} />
                                         </button>
                                         <button
                                             onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'recibos' })}
-                                            className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                                             title="Ver Recibos Masivos (PDF)"
                                         >
                                             <ReceiptText size={16} />
                                         </button>
                                         <button
                                             onClick={() => setExportModalConfig({ anio: item.periodo_anio, mes: item.periodo_mes, quincena: item.quincena, tipo: 'csv' })}
-                                            className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
                                             title="Exportar archivo bancario (CSV / TXT)"
                                         >
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -977,6 +1079,18 @@ const Planillas = () => {
                                     <span>Ver Recibos</span>
                                 </button>
                             )}
+                            {esEstePeriodoAbierto && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleCerrarPeriodo({ periodo_anio: periodoAnio, periodo_mes: periodoMes, quincena })}
+                                    disabled={cerrarMutation.isPending}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                    title="Cerrar este período (Marcar como pagada)"
+                                >
+                                    <Lock size={14} />
+                                    <span>{cerrarMutation.isPending ? 'Cerrando...' : 'Cerrar Período'}</span>
+                                </button>
+                            )}
                             {periodoBloqueado ? (
                                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-3 py-1.5 rounded-xl">
                                     <CheckCircle size={14} /> Período Generado
@@ -995,6 +1109,32 @@ const Planillas = () => {
                             </button>
                         </div>
                     </div>
+
+                    {/* Blocking Warning Banner if another period is open */}
+                    {hayOtraAbierta && otraAbiertaItem && (
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-900 shadow-sm">
+                            <div className="flex items-start sm:items-center gap-3">
+                                <div className="p-2 bg-rose-100 text-rose-700 rounded-xl shrink-0 mt-0.5 sm:mt-0">
+                                    <AlertCircle size={20} />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-rose-900">
+                                        Bloqueo de creación de planilla
+                                    </p>
+                                    <p className="text-xs text-rose-700">
+                                        No puede generar ni registrar empleados para este período porque la planilla de <span className="font-semibold">{months.find(m => m.value === otraAbiertaItem.periodo_mes)?.label} {otraAbiertaItem.periodo_anio} ({otraAbiertaItem.quincena === 'primera' ? '1ra' : '2da'} Quincena)</span> aún está abierta. Debe cerrarla o eliminarla antes de iniciar un período nuevo.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleVerDetalle(otraAbiertaItem)}
+                                className="px-3 py-1.5 text-xs font-bold bg-rose-200 hover:bg-rose-300 text-rose-900 rounded-xl transition-colors whitespace-nowrap self-stretch sm:self-auto text-center"
+                            >
+                                Ir a la planilla abierta
+                            </button>
+                        </div>
+                    )}
 
                     {/* Period Parameters Card */}
                     <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -1075,8 +1215,13 @@ const Planillas = () => {
                                     <button
                                         type="button"
                                         onClick={handleGenerar}
-                                        disabled={generando}
-                                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                                        disabled={generando || hayOtraAbierta}
+                                        className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 disabled:opacity-50 ${
+                                            hayOtraAbierta
+                                                ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                                        }`}
+                                        title={hayOtraAbierta ? "Hay otra planilla abierta pendiente de cierre" : "Generar planilla para todos"}
                                     >
                                         {generando ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
                                         {generando ? 'Generando para todos...' : 'Generar Planilla'}
@@ -1100,13 +1245,15 @@ const Planillas = () => {
                                         value={codigoInput}
                                         onChange={e => setCodigoInput(e.target.value)}
                                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCodigoSearch(); } }}
+                                        disabled={hayOtraAbierta}
                                         placeholder="Ej: 0001"
-                                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-mono"
+                                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-mono disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                                     />
                                     <button
                                         type="button"
                                         onClick={handleCodigoSearch}
-                                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors font-medium text-xs flex items-center gap-1.5"
+                                        disabled={hayOtraAbierta}
+                                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors font-medium text-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                         title="Buscar por código"
                                     >
                                         <Search size={15} />
@@ -1114,8 +1261,9 @@ const Planillas = () => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setIsEmpModalOpen(true)}
-                                        className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors font-bold text-xs flex items-center gap-1.5"
+                                        onClick={() => !hayOtraAbierta && setIsEmpModalOpen(true)}
+                                        disabled={hayOtraAbierta}
+                                        className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors font-bold text-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                         title="Ver lista de empleados (F3)"
                                     >
                                         <Users size={15} />

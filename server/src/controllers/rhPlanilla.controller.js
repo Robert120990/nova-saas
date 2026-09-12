@@ -7,6 +7,11 @@ const notificationService = require('../services/notification.service');
 const TABLE = 'rh_planillas';
 const LABEL = 'Planilla';
 
+const MESES = [
+    '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
 const isBonificacionCuenta = (c) => {
     return c.codigo === '02' || (c.descripcion || '').toUpperCase().includes('BONIF');
 };
@@ -131,6 +136,41 @@ const createPlanilla = async (req, res) => {
             total_percepciones, total_deducciones,
             descuento_isss, descuento_afp, descuento_renta, monto_recibir
         } = req.body;
+
+        if (!periodo_anio || !periodo_mes || !quincena) {
+            return res.status(400).json({ message: 'periodo_anio, periodo_mes y quincena requeridos' });
+        }
+
+        // 1. Verificar si hay planillas abiertas en otro período
+        const [abiertas] = await pool.query(
+            `SELECT periodo_anio, periodo_mes, quincena 
+             FROM ${TABLE} 
+             WHERE company_id = ? AND estado != 'pagada' 
+               AND NOT (periodo_anio = ? AND periodo_mes = ? AND quincena = ?)
+             LIMIT 1`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+        if (abiertas.length > 0) {
+            const ab = abiertas[0];
+            const mesNombre = MESES[ab.periodo_mes] || ab.periodo_mes;
+            const qLabel = ab.quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
+            return res.status(400).json({
+                message: `No se puede registrar esta planilla porque el período de ${mesNombre} ${ab.periodo_anio} (${qLabel}) aún está abierto. Debe cerrarlo antes de iniciar uno nuevo.`
+            });
+        }
+
+        // 2. Verificar si este período ya está pagado/cerrado
+        const [cerradas] = await pool.query(
+            `SELECT id FROM ${TABLE} 
+             WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ? AND estado = 'pagada' 
+             LIMIT 1`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+        if (cerradas.length > 0) {
+            return res.status(400).json({
+                message: 'No se puede agregar empleados a un período que ya ha sido pagado y cerrado.'
+            });
+        }
 
         const dias = dias_trabajados || 15;
 
@@ -292,10 +332,13 @@ const updatePlanilla = async (req, res) => {
         } = req.body;
 
         const [existing] = await pool.query(
-            `SELECT id FROM ${TABLE} WHERE id = ? AND company_id = ?`,
+            `SELECT id, estado FROM ${TABLE} WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (existing.length === 0) return res.status(404).json({ message: `${LABEL} no encontrada` });
+        if (existing[0].estado === 'pagada') {
+            return res.status(400).json({ message: 'No se puede modificar una planilla que ya ha sido pagada y cerrada.' });
+        }
 
         const updateFields = [];
         const updateParams = [];
@@ -494,6 +537,37 @@ const generarPlanilla = async (req, res) => {
         const { periodo_anio, periodo_mes, quincena } = req.body;
         if (!periodo_anio || !periodo_mes || !quincena) {
             return res.status(400).json({ message: 'periodo_anio, periodo_mes y quincena requeridos' });
+        }
+
+        // 1. Verificar si hay planillas abiertas en otro período
+        const [abiertas] = await pool.query(
+            `SELECT periodo_anio, periodo_mes, quincena 
+             FROM ${TABLE} 
+             WHERE company_id = ? AND estado != 'pagada' 
+               AND NOT (periodo_anio = ? AND periodo_mes = ? AND quincena = ?)
+             LIMIT 1`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+        if (abiertas.length > 0) {
+            const ab = abiertas[0];
+            const mesNombre = MESES[ab.periodo_mes] || ab.periodo_mes;
+            const qLabel = ab.quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
+            return res.status(400).json({
+                message: `No se puede generar una nueva planilla porque el período de ${mesNombre} ${ab.periodo_anio} (${qLabel}) aún está abierto. Debe cerrarlo antes de crear una nueva.`
+            });
+        }
+
+        // 2. Verificar si este período ya fue cerrado/pagado
+        const [cerradas] = await pool.query(
+            `SELECT id FROM ${TABLE} 
+             WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ? AND estado = 'pagada' 
+             LIMIT 1`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+        if (cerradas.length > 0) {
+            return res.status(400).json({
+                message: 'Este período ya fue cerrado y pagado. No se puede regenerar.'
+            });
         }
 
         const dias = 15;
@@ -700,6 +774,19 @@ const sincronizarPlanilla = async (req, res) => {
         const { periodo_anio, periodo_mes, quincena } = req.body;
         if (!periodo_anio || !periodo_mes || !quincena) {
             return res.status(400).json({ message: 'periodo_anio, periodo_mes y quincena requeridos' });
+        }
+
+        // Verificar si el período ya fue cerrado/pagado
+        const [cerradas] = await pool.query(
+            `SELECT id FROM ${TABLE} 
+             WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ? AND estado = 'pagada' 
+             LIMIT 1`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+        if (cerradas.length > 0) {
+            return res.status(400).json({
+                message: 'No se puede sincronizar un período que ya está cerrado y pagado.'
+            });
         }
 
         // 1. Empleados activos de la empresa
@@ -1307,6 +1394,26 @@ const getGruposPlanilla = async (req, res) => {
 
         const totalPages = Math.ceil(total / limit);
         res.json({ data: rows, total, page, totalPages });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getPlanillasAbiertas = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT p.periodo_anio, p.periodo_mes, p.quincena, COUNT(*) as total_empleados
+             FROM ${TABLE} p
+             WHERE p.company_id = ? AND p.estado != 'pagada'
+             GROUP BY p.periodo_anio, p.periodo_mes, p.quincena
+             ORDER BY p.periodo_anio DESC, p.periodo_mes DESC, FIELD(p.quincena, 'primera', 'segunda')`,
+            [req.company_id]
+        );
+        res.json({
+            tiene_abiertas: rows.length > 0,
+            total_abiertas: rows.length,
+            planillas_abiertas: rows
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -2542,6 +2649,6 @@ const exportPlanillaReportePDF = async (req, res) => {
 
 module.exports = {
     getPlanillas, getPlanilla, createPlanilla, updatePlanilla, deletePlanilla,
-    pagarPlanilla, cerrarPeriodo, eliminarPeriodo, calcular, generarPlanilla, sincronizarPlanilla, getGruposPlanilla, exportRecibosMasivos, getEmpleadoData, getCuentasActivas, exportPDF, exportRecibo,
+    pagarPlanilla, cerrarPeriodo, eliminarPeriodo, calcular, generarPlanilla, sincronizarPlanilla, getGruposPlanilla, getPlanillasAbiertas, exportRecibosMasivos, getEmpleadoData, getCuentasActivas, exportPDF, exportRecibo,
     exportPlanillaReportePDF
 };
