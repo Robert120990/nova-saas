@@ -3,12 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Search, Printer } from 'lucide-react';
+import { Plus, Edit, Trash2, Barcode, Store, Monitor, ShieldCheck, Tag, Box, Search, Printer, TrendingUp } from 'lucide-react';
 import Money from '../components/ui/Money';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
 import ProductLabelModal from '../components/products/ProductLabelModal';
+import ProductPriceAnalysisModal from '../components/products/ProductPriceAnalysisModal';
 import SearchableSelect from '../components/ui/SearchableSelect';
 
 const Products = () => {
@@ -16,6 +17,7 @@ const Products = () => {
     const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+    const [isPriceAnalysisOpen, setIsPriceAnalysisOpen] = useState(false);
     const [labelProduct, setLabelProduct] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedBranches, setSelectedBranches] = useState([]);
@@ -237,6 +239,14 @@ const Products = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <button 
+                        onClick={() => setIsPriceAnalysisOpen(true)}
+                        className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3.5 py-1.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95"
+                        title="Analizar precios, costos y márgenes de rentabilidad"
+                    >
+                        <TrendingUp size={18} className="text-indigo-600" />
+                        <span>Rentabilidad y Precios</span>
+                    </button>
+                    <button 
                         onClick={() => { setLabelProduct(null); setIsLabelModalOpen(true); }}
                         className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3.5 py-1.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95"
                     >
@@ -320,12 +330,12 @@ const Products = () => {
                                 <button 
                                     onClick={() => { setLabelProduct(p); setIsLabelModalOpen(true); }} 
                                     title="Imprimir Etiqueta" 
-                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 >
                                     <Printer size={15}/>
                                 </button>
-                                <button onClick={() => handleEdit(p)} title="Editar" className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                <button onClick={() => handleDeleteProduct(p.id)} title="Eliminar" className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                <button onClick={() => handleEdit(p)} title="Editar" className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteProduct(p.id)} title="Eliminar" className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}
@@ -740,6 +750,12 @@ const Products = () => {
                 products={products}
                 branches={branches}
                 onSelectProduct={(p) => setLabelProduct(p)}
+            />
+
+            <ProductPriceAnalysisModal
+                isOpen={isPriceAnalysisOpen}
+                onClose={() => setIsPriceAnalysisOpen(false)}
+                defaultBranchId={branches[0]?.id}
             />
         </div>
     );

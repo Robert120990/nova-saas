@@ -436,4 +436,150 @@ const getLubricantProducts = async (req, res) => {
     }
 };
 
-module.exports = { getProducts, lookupProduct, createProduct, updateProduct, deleteProduct, getFuelProducts, updateFuelPrices, getLubricantProducts };
+const getPriceAnalysis = async (req, res) => {
+    try {
+        const { branch_id, category_id, provider_id, search, status, page = 1, limit = 'all' } = req.query;
+        const isAll = limit === 'all' || limit === '0' || limit === 0 || !limit;
+        const pageNum = isAll ? 1 : Math.max(1, parseInt(page) || 1);
+        const limitNum = isAll ? 10000 : Math.min(2000, Math.max(10, parseInt(limit) || 50));
+        const offset = (pageNum - 1) * limitNum;
+
+        // 1. Resolver sucursal efectiva
+        let effectiveBranchId = branch_id ? parseInt(branch_id) : (req.user?.branch_id || null);
+        if (!effectiveBranchId) {
+            const [firstBranch] = await pool.query('SELECT id FROM branches WHERE company_id = ? ORDER BY id ASC LIMIT 1', [req.company_id]);
+            if (firstBranch.length > 0) effectiveBranchId = firstBranch[0].id;
+        }
+
+        let where = 'WHERE p.company_id = ?';
+        const params = [req.company_id];
+
+        if (status) {
+            where += ' AND p.status = ?';
+            params.push(status);
+        } else {
+            where += " AND p.status = 'activo'";
+        }
+
+        if (category_id) {
+            where += ' AND p.category_id = ?';
+            params.push(parseInt(category_id));
+        }
+
+        if (provider_id) {
+            where += ' AND p.provider_id = ?';
+            params.push(parseInt(provider_id));
+        }
+
+        if (search) {
+            where += ' AND (p.nombre LIKE ? OR p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barra LIKE ?)';
+            const st = `%${search}%`;
+            params.push(st, st, st, st);
+        }
+
+        const priceJoin = effectiveBranchId
+            ? 'LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?'
+            : 'LEFT JOIN product_branch_prices pbp ON FALSE';
+
+        const stockJoin = effectiveBranchId
+            ? 'LEFT JOIN inventory inv ON p.id = inv.product_id AND inv.branch_id = ?'
+            : 'LEFT JOIN (SELECT product_id, SUM(stock) as stock FROM inventory GROUP BY product_id) inv ON p.id = inv.product_id';
+
+        const branchParams = [];
+        if (effectiveBranchId) branchParams.push(effectiveBranchId);
+        if (effectiveBranchId) branchParams.push(effectiveBranchId);
+
+        // Contar total y estadísticas de alerta
+        const countSql = `
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN p.costo IS NULL OR p.costo <= 0 THEN 1 ELSE 0 END) as total_sin_costo,
+                   SUM(CASE WHEN p.costo > 0 AND COALESCE(pbp.precio_unitario, 0) <= p.costo THEN 1 ELSE 0 END) as total_perdida
+            FROM products p
+            ${priceJoin}
+            ${where}
+        `;
+        const countParams = effectiveBranchId ? [effectiveBranchId, ...params] : params;
+        const [countRes] = await pool.query(countSql, countParams);
+        const total = countRes[0]?.total || 0;
+
+        // Consulta de datos
+        const dataSql = `
+            SELECT p.id, p.codigo, p.codigo_barra, p.nombre, p.descripcion,
+                   COALESCE(p.costo, 0) as costo,
+                   COALESCE(pbp.precio_unitario, 0) as precio,
+                   COALESCE(inv.stock, 0) as existencia,
+                   c.id as category_id,
+                   c.name as category_name,
+                   pr.id as provider_id,
+                   pr.nombre as provider_name
+            FROM products p
+            LEFT JOIN product_categories c ON p.category_id = c.id
+            LEFT JOIN providers pr ON p.provider_id = pr.id
+            ${priceJoin}
+            ${stockJoin}
+            ${where}
+            ORDER BY p.nombre ASC
+            LIMIT ? OFFSET ?
+        `;
+
+        const queryParams = [...branchParams, ...params, limitNum, offset];
+        const [rows] = await pool.query(dataSql, queryParams);
+
+        res.json({
+            data: rows,
+            total,
+            page: pageNum,
+            totalPages: Math.ceil(total / limitNum),
+            branch_id: effectiveBranchId,
+            stats: {
+                total,
+                total_sin_costo: parseInt(countRes[0]?.total_sin_costo || 0),
+                total_perdida: parseInt(countRes[0]?.total_perdida || 0)
+            }
+        });
+    } catch (error) {
+        console.error('Error in getPriceAnalysis:', error);
+        res.status(500).json({ message: 'Error al obtener análisis de precios: ' + error.message });
+    }
+};
+
+const updateProductBranchPrice = async (req, res) => {
+    try {
+        const { product_id, branch_id, precio_unitario } = req.body;
+        if (!product_id || !branch_id || precio_unitario === undefined) {
+            return res.status(400).json({ message: 'product_id, branch_id y precio_unitario requeridos' });
+        }
+
+        const [prod] = await pool.query('SELECT id FROM products WHERE id = ? AND company_id = ?', [product_id, req.company_id]);
+        if (prod.length === 0) {
+            return res.status(404).json({ message: 'Producto no encontrado' });
+        }
+
+        const newPrice = Math.max(0, Math.round(parseFloat(precio_unitario) * 100) / 100);
+
+        // Asegurar relación con la sucursal
+        await pool.query(
+            `INSERT IGNORE INTO product_branch (product_id, branch_id) VALUES (?, ?)`,
+            [product_id, branch_id]
+        );
+
+        // Actualizar precio en la sucursal
+        await pool.query(
+            `INSERT INTO product_branch_prices (product_id, branch_id, precio_unitario)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE precio_unitario = ?`,
+            [product_id, branch_id, newPrice, newPrice]
+        );
+
+        res.json({ message: 'Precio actualizado exitosamente', precio: newPrice });
+    } catch (error) {
+        console.error('Error in updateProductBranchPrice:', error);
+        res.status(500).json({ message: 'Error al actualizar precio: ' + error.message });
+    }
+};
+
+module.exports = { 
+    getProducts, lookupProduct, createProduct, updateProduct, deleteProduct, 
+    getFuelProducts, updateFuelPrices, getLubricantProducts,
+    getPriceAnalysis, updateProductBranchPrice
+};
