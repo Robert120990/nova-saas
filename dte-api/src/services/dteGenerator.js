@@ -80,11 +80,14 @@ async function resolveActividadEconomica(codigoActividad) {
 }
 
 let cat008Cache = null;
+let cat008CacheTime = 0;
 async function getCat008Distritos() {
-    if (!cat008Cache) {
+    const now = Date.now();
+    if (!cat008Cache || (now - cat008CacheTime) > 300000) {
         try {
             const [rows] = await pool.query('SELECT code, dep_code, muni_code, description FROM cat_008_distrito');
             cat008Cache = rows || [];
+            cat008CacheTime = now;
         } catch (e) {
             console.warn('[DTE-API] Error cargando cat_008_distrito:', e.message);
             cat008Cache = [];
