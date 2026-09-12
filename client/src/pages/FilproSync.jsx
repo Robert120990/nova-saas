@@ -880,7 +880,7 @@ const FilproSync = () => {
                                                                             e.stopPropagation();
                                                                             copyToClipboard(doc.uuid);
                                                                         }}
-                                                                        className="p-0.5 text-slate-400 hover:text-indigo-600 transition-colors rounded"
+                                                                        className="p-0.5 text-slate-600 hover:text-indigo-600 transition-colors rounded"
                                                                         title="Copiar UUID completo"
                                                                     >
                                                                         {copiedUuid === doc.uuid ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
@@ -929,7 +929,7 @@ const FilproSync = () => {
                                                                         e.stopPropagation();
                                                                         handleOpenDetail(doc);
                                                                     }}
-                                                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                                                    className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
                                                                     title="Ver detalle completo del DTE"
                                                                 >
                                                                     <Eye className="w-3.5 h-3.5" />
@@ -947,7 +947,7 @@ const FilproSync = () => {
                                                                                 total: doc.monto_total
                                                                             });
                                                                         }}
-                                                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                                        className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                                         title="Revertir y eliminar esta venta de Nova SaaS"
                                                                     >
                                                                         <RotateCcw className="w-3.5 h-3.5" />
@@ -1080,7 +1080,7 @@ const FilproSync = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleOpenEditMapping(m)}
-                                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
                                                                 title="Editar mapeo"
                                                             >
                                                                 <Pencil className="w-4 h-4" />
@@ -1089,7 +1089,7 @@ const FilproSync = () => {
                                                                 type="button"
                                                                 onClick={() => handleDeleteMapping(m.id)}
                                                                 disabled={deleteMappingMutation.isPending}
-                                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                                 title="Eliminar mapeo"
                                                             >
                                                                 <Trash2 className="w-4 h-4" />
@@ -1604,7 +1604,7 @@ const FilproSync = () => {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleOpenCreateMapping(it.codigo, it.descripcion)}
-                                                                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                                            className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                                                                             title={`Mapear código ${it.codigo} en el sistema`}
                                                                         >
                                                                             <Tag className="w-3 h-3" />

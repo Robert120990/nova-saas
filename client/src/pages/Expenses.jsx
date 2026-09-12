@@ -1416,7 +1416,7 @@ const Expenses = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleVoidExpense(g.id, g.numero_documento)}
-                                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                                 title="Anular Gasto"
                                                             >
                                                                 <Trash2 size={15} />

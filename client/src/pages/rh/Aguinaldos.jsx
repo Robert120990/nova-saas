@@ -216,11 +216,11 @@ const Aguinaldos = () => {
                                 <span className="text-xs font-bold text-emerald-600">${parseFloat(item.total_monto).toFixed(2)}</span>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleVerPlanilla(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle de planilla"><Eye size={15} /></button>
-                                <button onClick={() => handleVerPlanillaPDF(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver Planilla de Aguinaldos en PDF (Formato Oficial)"><FileText size={15} /></button>
-                                <button onClick={() => handleVerRecibosPDF(item)} className="p-1 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Ver e Imprimir Recibos de Aguinaldo Masivos"><ReceiptText size={15} /></button>
-                                <button onClick={() => handleDownloadCSV(item)} className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Descargar CSV"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
-                                <button onClick={() => handleDelete(item)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar planilla"><Trash2 size={15} /></button>
+                                <button onClick={() => handleVerPlanilla(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle de planilla"><Eye size={15} /></button>
+                                <button onClick={() => handleVerPlanillaPDF(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver Planilla de Aguinaldos en PDF (Formato Oficial)"><FileText size={15} /></button>
+                                <button onClick={() => handleVerRecibosPDF(item)} className="p-1 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Ver e Imprimir Recibos de Aguinaldo Masivos"><ReceiptText size={15} /></button>
+                                <button onClick={() => handleDownloadCSV(item)} className="p-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Descargar CSV"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                                <button onClick={() => handleDelete(item)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar planilla"><Trash2 size={15} /></button>
                             </td>
                         </tr>
                     )} />

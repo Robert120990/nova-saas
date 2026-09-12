@@ -1192,7 +1192,7 @@ const PhysicalInventory = () => {
                                                     </button>
                                                 </>
                                             )}
-                                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle">
+                                            <button className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle">
                                                 <ChevronRight size={16} />
                                             </button>
                                         </div>
@@ -1509,7 +1509,7 @@ const PhysicalInventory = () => {
                                                         <td className="px-2 py-1.5">
                                                             <button
                                                                 onClick={() => setExpandedProduct(isExpanded ? null : group.product_id)}
-                                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                                 title="Ver escaneos individuales"
                                                             >
                                                                 <ChevronRight size={14} className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} />

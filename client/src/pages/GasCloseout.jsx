@@ -2273,7 +2273,7 @@ const GasCloseout = () => {
                             {editId && (
                                 <button
                                     onClick={() => navigate('/gas-station/historial-lecturas')}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                     title="Volver al historial"
                                 >
                                     <ArrowLeft size={18} />
@@ -2303,7 +2303,7 @@ const GasCloseout = () => {
                             </span>
                             <button
                                 onClick={handlePdf}
-                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
                                 title="Descargar PDF"
                             >
                                 <Printer size={16} />
@@ -3166,7 +3166,7 @@ const GasCloseout = () => {
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveGasto(g.id)}
-                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -3308,7 +3308,7 @@ const GasCloseout = () => {
                                                     <div className="flex items-center justify-center gap-0.5">
                                                         <button
                                                             onClick={() => handlePrintRemesaLabel(r)}
-                                                            className="p-0.5 text-slate-300 hover:text-indigo-500 transition-colors"
+                                                            className="p-0.5 text-slate-600 hover:text-indigo-500 transition-colors"
                                                             title="Imprimir etiqueta"
                                                         >
                                                             <Printer size={14} />
@@ -3316,7 +3316,7 @@ const GasCloseout = () => {
                                                         {estado !== 'cerrado' && (
                                                             <button
                                                                 onClick={() => handleRemoveRemesa(r.id)}
-                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                             >
                                                                 <Trash2 size={14} />
                                                             </button>
@@ -3480,7 +3480,7 @@ const GasCloseout = () => {
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveCupon(c.id)}
-                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -3661,7 +3661,7 @@ const GasCloseout = () => {
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveDescuento(d.id)}
-                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -3786,7 +3786,7 @@ const GasCloseout = () => {
                                                     {estado !== 'cerrado' && (
                                                         <button
                                                             onClick={() => handleRemoveAdelanto(a.id)}
-                                                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -3958,7 +3958,7 @@ const GasCloseout = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveTarjeta(t.id)}
-                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                                 title="Eliminar"
                                                             >
                                                                 <Trash2 size={11} />
@@ -4502,7 +4502,7 @@ const GasCloseout = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveCredito(c.id)}
-                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                                 title="Eliminar"
                                                             >
                                                                 <Trash2 size={11} />
@@ -4735,7 +4735,7 @@ const GasCloseout = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveVale(v.id)}
-                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                                 title="Eliminar"
                                                             >
                                                                 <Trash2 size={11} />
@@ -5221,7 +5221,7 @@ const GasCloseout = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveAnticipo(a.id)}
-                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                                 title="Eliminar"
                                                             >
                                                                 <Trash2 size={11} />
@@ -5456,7 +5456,7 @@ const GasCloseout = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveTrupput(t.id)}
-                                                                className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
                                                                 title="Eliminar"
                                                             >
                                                                 <Trash2 size={11} />
@@ -5606,7 +5606,7 @@ const GasCloseout = () => {
                                     <button
                                         type="button"
                                         onClick={() => setCloseoutDespachadores(prev => prev.filter((_, idx) => idx !== i))}
-                                        className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                                        className="p-1 text-slate-600 hover:text-red-500 transition-colors"
                                     >
                                         <X size={14} />
                                     </button>

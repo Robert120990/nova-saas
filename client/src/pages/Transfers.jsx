@@ -548,7 +548,7 @@ const Transfers = () => {
                                                 <td className="px-6 py-4 text-right" data-label="">
                                                     <button
                                                         onClick={() => removeItem(item.product_id)}
-                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                     >
                                                         <Trash2 size={18} />
                                                     </button>
@@ -641,7 +641,7 @@ const Transfers = () => {
                                         <div className="flex items-center justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingTransfer(t)}
-                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                 title="Ver detalle"
                                             >
                                                 <Eye size={14} />
@@ -656,14 +656,14 @@ const Transfers = () => {
                                                             setActiveTab('nuevo');
                                                             toast.info('Cargando datos para corrección. No olvides anular el anterior si es necesario.');
                                                         }}
-                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                         title="Editar (Crear copia)"
                                                     >
                                                         <Edit2 size={14} />
                                                     </button>
                                                     <button 
                                                         onClick={() => handleAnnulTransfer(t.id)}
-                                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                         title="Anular"
                                                     >
                                                         <Ban size={14} />

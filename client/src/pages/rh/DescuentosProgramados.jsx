@@ -114,8 +114,8 @@ const DescuentosProgramados = () => {
                             )}
                         </td>
                         <td className="px-3 py-1.5 flex gap-1">
-                            <button onClick={() => { setSelected(item); setIsModalOpen(true); }} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar"><Edit size={15} /></button>
-                            <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
+                            <button onClick={() => { setSelected(item); setIsModalOpen(true); }} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar"><Edit size={15} /></button>
+                            <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
                         </td>
                     </tr>
                 )} />

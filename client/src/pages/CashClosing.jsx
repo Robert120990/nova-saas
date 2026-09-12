@@ -824,7 +824,7 @@ const CashClosing = () => {
                                             onClick={handleRefreshSummary}
                                             disabled={isRefreshingSummary}
                                             title="Actualizar totales de ventas"
-                                            className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-300 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                            className="p-2 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
                                             <RefreshCw size={14} className={isRefreshingSummary ? 'animate-spin' : ''} />
                                         </button>

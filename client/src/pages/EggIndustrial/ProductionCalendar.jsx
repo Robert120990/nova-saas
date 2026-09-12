@@ -1925,7 +1925,7 @@ const ProductionCalendar = () => {
                                         <button
                                             type="button"
                                             onClick={() => handleRemoveTask(idx)}
-                                            className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                                            className="p-1 text-slate-600 hover:text-red-500 transition-colors"
                                         >
                                             <X className="w-3.5 h-3.5" />
                                         </button>

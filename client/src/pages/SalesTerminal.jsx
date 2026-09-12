@@ -1779,7 +1779,7 @@ const SalesTerminal = () => {
                                     <button
                                         type="button"
                                         onClick={() => handleCustomerSelect('', null)}
-                                        className="absolute top-2 right-2 p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                                        className="absolute top-2 right-2 p-1 rounded-lg text-slate-600 hover:text-red-500 hover:bg-red-50 transition-all"
                                         title="Quitar Cliente"
                                     >
                                         <X size={14} />
@@ -1952,7 +1952,7 @@ const SalesTerminal = () => {
                                         />
                                         <button 
                                             onClick={() => performBarcodeLookup(false)} 
-                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-600 hover:text-indigo-600 transition-colors"
                                         >
                                             <Search size={14} />
                                         </button>

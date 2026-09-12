@@ -316,7 +316,7 @@ const ShiftDTEs = () => {
                                     <div className="flex justify-end gap-1">
                                         <button
                                             onClick={() => { setDetailSaleId(sale.id); setIsDetailOpen(true); }}
-                                            className="p-2 rounded-xl transition-all flex items-center gap-1 border bg-white text-slate-400 hover:text-indigo-600 border-slate-100"
+                                            className="p-2 rounded-xl transition-all flex items-center gap-1 border bg-white text-slate-600 hover:text-indigo-600 border-slate-100"
                                             title="Ver detalle"
                                         >
                                             <Eye size={14} />
@@ -325,7 +325,7 @@ const ShiftDTEs = () => {
                                             <button
                                                 onClick={() => handleOpenChangeShift([sale.id])}
                                                 disabled={changeShiftMutation.isPending}
-                                                className="p-2 rounded-xl transition-all flex items-center gap-1 border bg-white text-slate-400 hover:text-indigo-600 border-slate-100 disabled:opacity-50"
+                                                className="p-2 rounded-xl transition-all flex items-center gap-1 border bg-white text-slate-600 hover:text-indigo-600 border-slate-100 disabled:opacity-50"
                                                 title="Cambiar a otro turno"
                                             >
                                                 <ArrowLeftRight size={14} />

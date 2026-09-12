@@ -787,7 +787,7 @@ const EggProduction = () => {
                                                         <span className="font-mono text-[10px] text-slate-500 select-all truncate max-w-[180px]">{b.batch_uuid}</span>
                                                         <button
                                                             onClick={() => { navigator.clipboard.writeText(b.batch_code_display || b.batch_uuid); toast.success('Lote copiado'); }}
-                                                            className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-colors flex-shrink-0"
+                                                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 hover:text-indigo-600 transition-colors flex-shrink-0"
                                                             title="Copiar Lote"
                                                         >
                                                             <Copy size={11} />
@@ -1403,7 +1403,7 @@ const EggProduction = () => {
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => handleRemoveTarimaFromRm(idx, ti)}
-                                                                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                                                                                className="p-1 text-slate-600 hover:text-rose-600 rounded transition-colors"
                                                                                 title="Quitar esta tarima"
                                                                             >
                                                                                 <Trash2 size={14} />

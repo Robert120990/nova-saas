@@ -189,8 +189,8 @@ const Branches = () => {
                                 {b.correo && <div className="text-xs text-slate-600 flex items-center gap-1"><Mail size={12} className="text-slate-400"/> {b.correo}</div>}
                             </td>
                             <td className="px-6 py-4 flex gap-2">
-                                <button onClick={() => handleEdit(b)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => handleDeleteBranch(b.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleEdit(b)} className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
+                                <button onClick={() => handleDeleteBranch(b.id)} className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

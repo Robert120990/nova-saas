@@ -405,7 +405,7 @@ const Empleados = () => {
                                 type="button"
                                 onClick={handleResetFilters}
                                 title="Limpiar filtros"
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200 hover:border-rose-200 transition-colors shrink-0"
+                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200 hover:border-rose-200 transition-colors shrink-0"
                             >
                                 <X size={15} />
                             </button>
@@ -433,8 +433,8 @@ const Empleados = () => {
                             </span>
                         </td>
                         <td className="px-3 py-1 flex gap-1">
-                            <button onClick={() => handleEdit(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
-                            <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                            <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
+                            <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                         </td>
                     </tr>
                 )} />
@@ -631,8 +631,8 @@ const Empleados = () => {
                                                         <td className="px-2 py-1.5 text-slate-600">{c.telefono}</td>
                                                         <td className="px-2 py-1.5 text-slate-500">{c.parentesco || <span className="text-slate-300">-</span>}</td>
                                                         <td className="px-2 py-1.5 flex gap-1">
-                                                            <button type="button" onClick={() => handleEditEmergency(idx)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit size={13} /></button>
-                                                            <button type="button" onClick={() => handleDeleteEmergency(idx)} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 size={13} /></button>
+                                                            <button type="button" onClick={() => handleEditEmergency(idx)} className="p-1 text-slate-600 hover:text-indigo-600 rounded"><Edit size={13} /></button>
+                                                            <button type="button" onClick={() => handleDeleteEmergency(idx)} className="p-1 text-slate-600 hover:text-red-600 rounded"><Trash2 size={13} /></button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -926,8 +926,8 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
                                 <td className="px-3 py-2 text-center text-slate-600">{d.cuotas_restantes}</td>
                                 <td className="px-3 py-2 text-slate-500">{d.numero_credito || <span className="text-slate-300">-</span>}</td>
                                 <td className="px-3 py-2 flex gap-1">
-                                    <button type="button" onClick={() => handleEdit(d)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit size={13} /></button>
-                                    <button type="button" onClick={() => handleDelete(d)} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 size={13} /></button>
+                                    <button type="button" onClick={() => handleEdit(d)} className="p-1 text-slate-600 hover:text-indigo-600 rounded"><Edit size={13} /></button>
+                                    <button type="button" onClick={() => handleDelete(d)} className="p-1 text-slate-600 hover:text-red-600 rounded"><Trash2 size={13} /></button>
                                 </td>
                             </tr>
                         ))}
@@ -1107,8 +1107,8 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
                                 <td className="px-3 py-2 text-slate-700 max-w-[200px] truncate">{a.motivo || '-'}</td>
                                 <td className="px-3 py-2 text-center">{a.justificada ? <span className="text-emerald-600 text-[10px] font-bold">Si</span> : <span className="text-slate-300">No</span>}</td>
                                 <td className="px-3 py-2 flex gap-1">
-                                    <button type="button" onClick={() => openModal(a)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
-                                    <button type="button" onClick={() => handleDelete(a)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                                    <button type="button" onClick={() => openModal(a)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
+                                    <button type="button" onClick={() => handleDelete(a)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                                 </td>
                             </tr>
                         ))}
@@ -1285,7 +1285,7 @@ const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
                                                 type="button"
                                                 onClick={() => handlePrintPDF(a)}
                                                 disabled={loadingPdfId === a.id}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
                                                 title="Descargar / Imprimir PDF Oficial"
                                             >
                                                 {loadingPdfId === a.id ? <Loader2 size={15} className="animate-spin text-indigo-600" /> : <FileText size={15} />}
@@ -1296,7 +1296,7 @@ const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
                                                     setSelectedActionForEdit(a);
                                                     setIsActionModalOpen(true);
                                                 }}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                 title="Editar Acción"
                                             >
                                                 <Edit size={15} />
@@ -1304,7 +1304,7 @@ const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleDelete(a)}
-                                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                 title="Eliminar"
                                             >
                                                 <Trash2 size={15} />

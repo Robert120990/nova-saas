@@ -147,8 +147,8 @@ const Sellers = () => {
                         </td>
                         <td className="px-3 py-1">
                             <div className="flex items-center gap-1 justify-end">
-                                <button onClick={() => handleEdit(seller)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Editar"><Edit size={15}/></button>
-                                <button onClick={() => setSellerToDelete(seller)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Eliminar"><Trash2 size={15}/></button>
+                                <button onClick={() => handleEdit(seller)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Editar"><Edit size={15}/></button>
+                                <button onClick={() => setSellerToDelete(seller)} className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Eliminar"><Trash2 size={15}/></button>
                             </div>
                         </td>
                     </tr>

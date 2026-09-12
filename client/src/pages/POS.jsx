@@ -144,14 +144,14 @@ const POS = () => {
                             <div className="flex items-center gap-2">
                                 <button 
                                     onClick={() => handleEdit(pos)}
-                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                    className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                     title="Editar"
                                 >
                                     <Edit size={18} />
                                 </button>
                                 <button 
                                     onClick={() => handleDelete(pos.id)}
-                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                    className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                     title="Eliminar"
                                 >
                                     <Trash2 size={18} />

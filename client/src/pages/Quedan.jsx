@@ -509,7 +509,7 @@ const Quedan = () => {
                                     <button
                                         type="button"
                                         onClick={() => openDetailModal(c.id)}
-                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                        className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                         title="Ver detalle"
                                     >
                                         <Eye size={14} />
@@ -519,7 +519,7 @@ const Quedan = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => openEditForm(c.id)}
-                                                className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                 title="Editar"
                                             >
                                                 <Edit size={14} />
@@ -528,7 +528,7 @@ const Quedan = () => {
                                                 type="button"
                                                 onClick={() => handleRequest(c.id)}
                                                 disabled={requestMutation.isPending}
-                                                className="p-1.5 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all disabled:opacity-40"
+                                                className="p-1.5 text-slate-600 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all disabled:opacity-40"
                                                 title="Solicitar a RRS"
                                             >
                                                 <Send size={14} />
@@ -536,7 +536,7 @@ const Quedan = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleDelete(c.id)}
-                                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                 title="Eliminar"
                                             >
                                                 <Trash2 size={14} />
@@ -548,7 +548,7 @@ const Quedan = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => openDeliverModal(c.id)}
-                                                className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                                                 title="Entregar"
                                             >
                                                 <Handshake size={14} />
@@ -557,7 +557,7 @@ const Quedan = () => {
                                                 type="button"
                                                 onClick={() => handleRevert(c.id)}
                                                 disabled={revertMutation.isPending}
-                                                className="p-1.5 text-slate-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
+                                                className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
                                                 title="Revertir"
                                             >
                                                 <Undo2 size={14} />
@@ -722,11 +722,11 @@ const Quedan = () => {
                                             <td className="py-2 px-2">
                                                 <div className="flex gap-1">
                                                     <button onClick={() => openEditItem(item._key)}
-                                                        className="p-1 text-slate-300 hover:text-indigo-600 transition-colors" title="Editar">
+                                                        className="p-1 text-slate-600 hover:text-indigo-600 transition-colors" title="Editar">
                                                         <Edit size={13} />
                                                     </button>
                                                     <button onClick={() => removeItem(item._key)}
-                                                        className="p-1 text-slate-300 hover:text-rose-500 transition-colors" title="Eliminar">
+                                                        className="p-1 text-slate-600 hover:text-rose-500 transition-colors" title="Eliminar">
                                                         <Trash2 size={13} />
                                                     </button>
                                                 </div>

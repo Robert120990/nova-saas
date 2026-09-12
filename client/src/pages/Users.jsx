@@ -234,14 +234,14 @@ const Users = () => {
                                 <div className="flex items-center gap-2">
                                     <button 
                                         onClick={() => handleEdit(u)} 
-                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                        className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                         title="Editar"
                                     >
                                         <Edit size={16}/>
                                     </button>
                                     <button 
                                         onClick={() => handleDelete(u.id, u.nombre)} 
-                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                        className="p-1.5 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                                         title="Eliminar"
                                     >
                                         <Trash2 size={16}/>

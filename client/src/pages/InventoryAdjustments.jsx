@@ -671,7 +671,7 @@ const InventoryAdjustments = () => {
                                                     <td className="px-6 py-1.5 text-right" data-label="">
                                                         <button 
                                                             onClick={() => removeItem(item.product_id)}
-                                                            className="p-1 text-slate-300 hover:text-rose-500 transition-colors"
+                                                            className="p-1 text-slate-600 hover:text-rose-500 transition-colors"
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -760,7 +760,7 @@ const InventoryAdjustments = () => {
                                         <div className="flex items-center justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingAdjustment(a)}
-                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                             >
                                                 <Eye size={14} />
                                             </button>
@@ -768,13 +768,13 @@ const InventoryAdjustments = () => {
                                                 <>
                                                     <button 
                                                         onClick={() => setEditingAdjustment(a)}
-                                                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                                                     >
                                                         <Edit2 size={14} />
                                                     </button>
                                                     <button 
                                                         onClick={() => handleVoidAdjustment(a.id)}
-                                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                     >
                                                         <XCircle size={14} />
                                                     </button>

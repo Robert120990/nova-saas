@@ -724,7 +724,7 @@ const GasCouponLiquidation = () => {
                                                     <button
                                                         onClick={() => handleDelete(liq.id, liq.correlativo)}
                                                         title="Eliminar y Liberar Cupones"
-                                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                     >
                                                         <Trash2 size={16} />
                                                     </button>

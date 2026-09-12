@@ -499,10 +499,10 @@ const AddPayment = () => {
                                         <td className="px-6 py-4 text-center"><span className={`px-2 py-0.5 rounded-xl text-[8px] font-black uppercase border shadow-sm ${metodoBadge(p.metodo_pago)}`}>{p.metodo_pago}</span></td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => setViewPaymentId(p.id)} title="Ver Detalle" className="p-1.5 hover:bg-white text-slate-400 hover:text-indigo-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Eye size={14} /></button>
-                                                <button onClick={() => handlePrintPDF(p.id)} title="Imprimir Recibo" className="p-1.5 hover:bg-white text-slate-400 hover:text-rose-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Printer size={14} /></button>
-                                                <button onClick={() => handleSendEmail(p.id)} title="Enviar por Correo" className="p-1.5 hover:bg-white text-slate-400 hover:text-blue-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Mail size={14} /></button>
-                                                <button onClick={() => handleDelete(p.id)} title="Eliminar Abono" className="p-1.5 hover:bg-white text-slate-400 hover:text-rose-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Trash2 size={14} /></button>
+                                                <button onClick={() => setViewPaymentId(p.id)} title="Ver Detalle" className="p-1.5 hover:bg-white text-slate-600 hover:text-indigo-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Eye size={14} /></button>
+                                                <button onClick={() => handlePrintPDF(p.id)} title="Imprimir Recibo" className="p-1.5 hover:bg-white text-slate-600 hover:text-rose-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Printer size={14} /></button>
+                                                <button onClick={() => handleSendEmail(p.id)} title="Enviar por Correo" className="p-1.5 hover:bg-white text-slate-600 hover:text-blue-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Mail size={14} /></button>
+                                                <button onClick={() => handleDelete(p.id)} title="Eliminar Abono" className="p-1.5 hover:bg-white text-slate-600 hover:text-rose-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Trash2 size={14} /></button>
                                             </div>
                                         </td>
                                     </tr>
