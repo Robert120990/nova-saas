@@ -72,6 +72,10 @@ const getExpenses = async (req, res) => {
                 COALESCE(SUM(eh.iva), 0) AS total_iva,
                 COALESCE(SUM(eh.retencion), 0) AS total_retencion,
                 COALESCE(SUM(eh.percepcion), 0) AS total_percepcion,
+                COALESCE(SUM(eh.fovial), 0) AS total_fovial,
+                COALESCE(SUM(eh.cotrans), 0) AS total_cotrans,
+                COALESCE(SUM(eh.anticipo_cuenta), 0) AS total_anticipo_cuenta,
+                COALESCE(SUM(eh.monto_sujeto), 0) AS total_monto_sujeto,
                 COALESCE(SUM(eh.total_exenta), 0) AS total_exenta,
                 COALESCE(SUM(eh.total_nosujeta), 0) AS total_nosujeta
             FROM expense_headers eh
@@ -226,22 +230,24 @@ const createExpense = async (req, res) => {
         }
 
         // 1. Insertar Cabecera
+        const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
+        const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         const [headerResult] = await connection.query(`
             INSERT INTO expense_headers 
             (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
              tipo_documento_id, condicion_operacion_id, observaciones,
              total_nosujeta, total_exenta, total_gravada, 
-             iva, retencion, percepcion, fovial, cotrans, monto_total,
+             iva, retencion, percepcion, fovial, cotrans, anticipo_cuenta, monto_sujeto, monto_total,
              period_year, period_month,
              documento_afectado, fecha_afectada, num_control, sello_recepcion,
              tipo_operacion, tipo_clasificacion, tipo_sector, tipo_costo,
              gravadas_importaciones, gravadas_internaciones, iva_importaciones)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
+            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
             documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
             tipo_operacion || '1', tipo_clasificacion || '2', tipo_sector || '4', tipo_costo || '2',
@@ -355,12 +361,14 @@ const updateExpense = async (req, res) => {
         }
 
         // 2. Actualizar Cabecera
+        const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
+        const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         await connection.query(`
             UPDATE expense_headers SET 
                 branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?,
                 tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
-                iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, monto_total = ?,
+                iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, anticipo_cuenta = ?, monto_sujeto = ?, monto_total = ?,
                 period_year = ?, period_month = ?,
                 documento_afectado = ?, fecha_afectada = ?, num_control = ?, sello_recepcion = ?,
                 tipo_operacion = ?, tipo_clasificacion = ?, tipo_sector = ?, tipo_costo = ?,
@@ -370,7 +378,7 @@ const updateExpense = async (req, res) => {
             branch_id, provider_id, fecha, numero_documento,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
-            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, monto_total || 0,
+            iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
             documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
             tipo_operacion || '1', tipo_clasificacion || '2', tipo_sector || '4', tipo_costo || '2',
@@ -520,6 +528,8 @@ const getExpenseReportPDF = async (req, res) => {
                         { header: 'Percepción', key: 'percepcion', width: 12 },
                         { header: 'FOVIAL', key: 'fovial', width: 10 },
                         { header: 'COTRANS', key: 'cotrans', width: 10 },
+                        { header: 'Anticipo Cta.', key: 'anticipo_cuenta', width: 12 },
+                        { header: 'Monto Sujeto', key: 'monto_sujeto', width: 12 },
                         { header: 'Total', key: 'total', width: 12 }
                     ],
                     data: rows.map(r => ({
@@ -536,6 +546,8 @@ const getExpenseReportPDF = async (req, res) => {
                         percepcion: parseFloat(r.percepcion || 0).toFixed(2),
                         fovial: parseFloat(r.fovial || 0).toFixed(2),
                         cotrans: parseFloat(r.cotrans || 0).toFixed(2),
+                        anticipo_cuenta: parseFloat(r.anticipo_cuenta || 0).toFixed(2),
+                        monto_sujeto: parseFloat(r.monto_sujeto || 0).toFixed(2),
                         total: parseFloat(r.monto_total || 0).toFixed(2)
                     }))
                 }]

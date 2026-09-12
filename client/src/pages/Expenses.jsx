@@ -153,13 +153,13 @@ const DOCUMENT_TYPES = [
 const DOC_TYPE_FIELD_CONFIG = {
     '01': {
         primary: ['totalGravada'],
-        secondary: ['totalExenta', 'totalNosujeta', 'manualFovial', 'manualCotrans'],
+        secondary: ['totalExenta', 'totalNosujeta', 'manualFovial', 'manualCotrans', 'manualAnticipoCuenta'],
         disabled: ['manualIVA', 'gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones'],
         tip: 'Factura Consumidor Final: Digita el valor en Compras Gravadas Locales (o Exentas). No genera IVA Crédito Fiscal deducible.'
     },
     '02': {
         primary: ['totalGravada', 'manualIVA'],
-        secondary: ['totalExenta', 'totalNosujeta', 'manualRetencion', 'manualPercepcion', 'manualFovial', 'manualCotrans'],
+        secondary: ['totalExenta', 'totalNosujeta', 'manualRetencion', 'manualPercepcion', 'manualFovial', 'manualCotrans', 'manualAnticipoCuenta'],
         disabled: ['gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones'],
         tip: 'Crédito Fiscal: Digita la base en Compras Gravadas Locales; el IVA 13% se calcula automáticamente. Si aplica retención o percepción 1%, ingrésala en su respectivo campo.'
     },
@@ -188,10 +188,10 @@ const DOC_TYPE_FIELD_CONFIG = {
         tip: 'Comprobante de Retención: Registra únicamente el monto retenido en el campo Retención 1%.'
     },
     '07': {
-        primary: ['totalGravada'],
+        primary: ['totalGravada', 'manualMontoSujeto', 'manualAnticipoCuenta'],
         secondary: ['totalExenta', 'manualRetencion', 'manualPercepcion'],
         disabled: ['gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones'],
-        tip: 'Doc. Contable de Liquidación: Digita el valor liquidado en Compras Gravadas Locales o Exentas.'
+        tip: 'Doc. Contable de Liquidación: Para comprobantes de liquidación se ingresa el Monto Sujeto y el Anticipo a Cuenta, además del valor liquidado.'
     },
     '08': {
         primary: ['totalGravada', 'manualIVA'],
@@ -326,6 +326,8 @@ const Expenses = () => {
         percepcion: 0,
         fovial: 0,
         cotrans: 0,
+        anticipo_cuenta: 0,
+        monto_sujeto: 0,
         total: 0
     });
 
@@ -335,6 +337,8 @@ const Expenses = () => {
     const [manualPercepcion, setManualPercepcion] = useState(0);
     const [manualFovial, setManualFovial] = useState(0);
     const [manualCotrans, setManualCotrans] = useState(0);
+    const [manualAnticipoCuenta, setManualAnticipoCuenta] = useState(0);
+    const [manualMontoSujeto, setManualMontoSujeto] = useState(0);
 
     // Dirty Flags
     const [isIvaDirty, setIsIvaDirty] = useState(false);
@@ -496,6 +500,8 @@ const Expenses = () => {
         const currentPerc = parseFloat(isPercDirty ? manualPercepcion : percepcion) || 0;
         const currentFov = parseFloat(manualFovial) || 0;
         const currentCot = parseFloat(manualCotrans) || 0;
+        const currentAnt = parseFloat(manualAnticipoCuenta) || 0;
+        const currentMontoSujeto = parseFloat(manualMontoSujeto) || 0;
 
         // Si es Nota de Crédito, el total y el IVA representan una deducción (resta)
         const subtotalNeto = gravada + exenta + nosujeta + gImp + gInt;
@@ -518,10 +524,12 @@ const Expenses = () => {
             percepcion: currentPerc,
             fovial: currentFov,
             cotrans: currentCot,
+            anticipo_cuenta: currentAnt,
+            monto_sujeto: currentMontoSujeto,
             total: Math.round(finalTotal * 100) / 100
         });
 
-    }, [totalGravada, totalExenta, totalNosujeta, gravadasImportaciones, gravadasInternaciones, ivaImportaciones, tipoDocId, esNotaCredito, selectedProvider, currentCompany, isIvaDirty, isRetDirty, isPercDirty, manualIVA, manualRetencion, manualPercepcion, manualFovial, manualCotrans, taxSettings]);
+    }, [totalGravada, totalExenta, totalNosujeta, gravadasImportaciones, gravadasInternaciones, ivaImportaciones, tipoDocId, esNotaCredito, selectedProvider, currentCompany, isIvaDirty, isRetDirty, isPercDirty, manualIVA, manualRetencion, manualPercepcion, manualFovial, manualCotrans, manualAnticipoCuenta, manualMontoSujeto, taxSettings]);
 
     const handleGravadaChange = (e) => {
         const val = e.target.value;
@@ -672,6 +680,22 @@ const Expenses = () => {
                     setIsPercDirty(true);
                     filledFields.push('Percepción');
                 }
+
+                if (data.totales?.anticipo_cuenta || data.anticipo_cuenta) {
+                    const antVal = parseFloat(data.totales?.anticipo_cuenta || data.anticipo_cuenta) || 0;
+                    if (antVal > 0) {
+                        setManualAnticipoCuenta(antVal);
+                        filledFields.push(`Anticipo Cuenta ($${antVal.toFixed(2)})`);
+                    }
+                }
+
+                if (data.totales?.monto_sujeto || data.monto_sujeto) {
+                    const msVal = parseFloat(data.totales?.monto_sujeto || data.monto_sujeto) || 0;
+                    if (msVal > 0) {
+                        setManualMontoSujeto(msVal);
+                        filledFields.push(`Monto Sujeto ($${msVal.toFixed(2)})`);
+                    }
+                }
             }
 
             toast.dismiss(loadingToast);
@@ -750,6 +774,8 @@ const Expenses = () => {
         setManualPercepcion(0);
         setManualFovial(0);
         setManualCotrans(0);
+        setManualAnticipoCuenta(0);
+        setManualMontoSujeto(0);
         setIsIvaDirty(false);
         setIsRetDirty(false);
         setIsPercDirty(false);
@@ -880,6 +906,8 @@ const Expenses = () => {
             setManualPercepcion(parseFloat(detail.percepcion || 0));
             setManualFovial(parseFloat(detail.fovial || 0));
             setManualCotrans(parseFloat(detail.cotrans || 0));
+            setManualAnticipoCuenta(parseFloat(detail.anticipo_cuenta || 0));
+            setManualMontoSujeto(parseFloat(detail.monto_sujeto || 0));
             setIsIvaDirty(true);
             setIsRetDirty(true);
             setIsPercDirty(true);
@@ -923,7 +951,8 @@ const Expenses = () => {
         const gInt = parseFloat(gravadasInternaciones) || 0;
         const totalBases = grav + exe + nos + gImp + gInt;
 
-        if (totalBases === 0 && totals.total === 0 && !esNotaCredito) {
+        const isLiquidacion = tipoDocId === '07';
+        if (totalBases === 0 && totals.total === 0 && !esNotaCredito && (!isLiquidacion || (totals.monto_sujeto === 0 && totals.anticipo_cuenta === 0))) {
             return toast.error('Debe ingresar al menos un monto en compras gravadas, exentas o no sujetas');
         }
 
@@ -971,6 +1000,8 @@ const Expenses = () => {
             percepcion: totals.percepcion,
             fovial: totals.fovial,
             cotrans: totals.cotrans,
+            anticipo_cuenta: totals.anticipo_cuenta || 0,
+            monto_sujeto: totals.monto_sujeto || 0,
             monto_total: totals.total,
             period_year: finalPeriodYear,
             period_month: finalPeriodMonth,
@@ -978,7 +1009,7 @@ const Expenses = () => {
                 description: (observaciones || '').trim().toUpperCase() || 'GASTO REGISTRADO',
                 expense_type_id: null,
                 tax_type: grav > 0 ? 'gravada' : (exe > 0 ? 'exenta' : 'nosujeta'),
-                total: totals.total
+                total: totals.total || totals.monto_sujeto || 0
             }]
         };
 
@@ -1007,6 +1038,8 @@ const Expenses = () => {
             NO_SUJETAS: parseFloat(e.total_nosujeta || 0),
             IVA_CREDITO: parseFloat(e.iva || 0),
             RETENCION: parseFloat(e.retencion || 0),
+            ANTICIPO_CUENTA: parseFloat(e.anticipo_cuenta || 0),
+            MONTO_SUJETO: parseFloat(e.monto_sujeto || 0),
             TOTAL: parseFloat(e.monto_total || 0),
             ESTADO: e.status,
             PERIODO: `${e.period_month || ''}/${e.period_year || ''}`
@@ -1024,7 +1057,8 @@ const Expenses = () => {
         total_monto: 0,
         total_gravada: 0,
         total_iva: 0,
-        total_retencion: 0
+        total_retencion: 0,
+        total_anticipo_cuenta: 0
     };
 
     return (
@@ -2025,8 +2059,8 @@ const Expenses = () => {
                                         </div>
                                     )}
 
-                                    {/* Retención, Percepción, FOVIAL, COTRANS */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100">
+                                    {/* Retención, Percepción, FOVIAL, COTRANS, Anticipo a Cuenta, Monto Sujeto */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1 border-t border-slate-100">
                                         <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-200/80 focus-within:border-rose-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-rose-500/20 transition-all">
                                             <div className="flex items-center justify-between mb-1">
                                                 <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Retención 1%</label>
@@ -2103,6 +2137,62 @@ const Expenses = () => {
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
                                                     className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-slate-800 focus:border-indigo-500 transition-colors h-[28px]"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className={`bg-slate-50/70 p-2 rounded-xl border transition-all ${
+                                            tipoDocId === '07' 
+                                                ? 'border-blue-400 ring-1 ring-blue-500/20 bg-blue-50/40' 
+                                                : 'border-slate-200/80'
+                                        } focus-within:border-blue-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-500/20`}>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Anticipo Cta.</label>
+                                                {tipoDocId === '07' ? (
+                                                    <span className="text-[7px] font-black uppercase text-blue-700 bg-blue-100 px-1 py-0.2 rounded">Liquidación</span>
+                                                ) : (
+                                                    <span className="text-[7px] text-blue-600 font-bold uppercase">Info</span>
+                                                )}
+                                            </div>
+                                            <div className="relative">
+                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-400 font-mono font-bold text-[10px]">$</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={manualAnticipoCuenta}
+                                                    onChange={(e) => setManualAnticipoCuenta(e.target.value)}
+                                                    onFocus={handleFocusSelect}
+                                                    placeholder="0.00"
+                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-blue-700 font-semibold focus:border-blue-500 transition-colors h-[28px]"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className={`bg-slate-50/70 p-2 rounded-xl border transition-all ${
+                                            tipoDocId === '07' 
+                                                ? 'border-indigo-400 ring-1 ring-indigo-500/20 bg-indigo-50/40' 
+                                                : 'border-slate-200/80'
+                                        } focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-indigo-500/20`}>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Monto Sujeto</label>
+                                                {tipoDocId === '07' ? (
+                                                    <span className="text-[7px] font-black uppercase text-indigo-700 bg-indigo-100 px-1 py-0.2 rounded">Liquidación</span>
+                                                ) : (
+                                                    <span className="text-[7px] text-indigo-600 font-bold uppercase">Info</span>
+                                                )}
+                                            </div>
+                                            <div className="relative">
+                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-indigo-400 font-mono font-bold text-[10px]">$</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={manualMontoSujeto}
+                                                    onChange={(e) => setManualMontoSujeto(e.target.value)}
+                                                    onFocus={handleFocusSelect}
+                                                    placeholder="0.00"
+                                                    className="w-full pl-5 pr-2 py-1 bg-white border border-slate-200 rounded-lg outline-none text-xs font-mono text-right text-indigo-700 font-semibold focus:border-indigo-500 transition-colors h-[28px]"
                                                 />
                                             </div>
                                         </div>
@@ -2206,6 +2296,24 @@ const Expenses = () => {
                                                 <span>Percepción 1%:</span>
                                                 <span className="font-mono font-bold">
                                                     +<Money value={totals.percepcion} />
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {parseFloat(totals.anticipo_cuenta || 0) > 0 && (
+                                            <div className="flex justify-between items-center text-blue-300">
+                                                <span className="text-slate-400">Anticipo a Cuenta (Info):</span>
+                                                <span className="font-mono font-bold">
+                                                    <Money value={totals.anticipo_cuenta} />
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {parseFloat(totals.monto_sujeto || 0) > 0 && (
+                                            <div className="flex justify-between items-center text-indigo-300">
+                                                <span className="text-slate-400">Monto Sujeto (Info):</span>
+                                                <span className="font-mono font-bold">
+                                                    <Money value={totals.monto_sujeto} />
                                                 </span>
                                             </div>
                                         )}
@@ -2434,6 +2542,22 @@ const Expenses = () => {
                                         <Money value={parseFloat(viewingExpense.fovial || 0) + parseFloat(viewingExpense.cotrans || 0)} />
                                     </span>
                                 </div>
+                                {parseFloat(viewingExpense.anticipo_cuenta || 0) > 0 && (
+                                    <div>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Anticipo a Cuenta</span>
+                                        <span className="text-xs font-mono text-blue-600 font-bold">
+                                            <Money value={viewingExpense.anticipo_cuenta} />
+                                        </span>
+                                    </div>
+                                )}
+                                {parseFloat(viewingExpense.monto_sujeto || 0) > 0 && (
+                                    <div>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Monto Sujeto</span>
+                                        <span className="text-xs font-mono text-indigo-600 font-bold">
+                                            <Money value={viewingExpense.monto_sujeto} />
+                                        </span>
+                                    </div>
+                                )}
                                 <div className="sm:col-span-2 p-3 bg-white rounded-xl border border-slate-200">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Liquidado del Gasto</span>
                                     <span className="text-lg font-mono font-black text-slate-900"><Money value={viewingExpense.monto_total} /></span>

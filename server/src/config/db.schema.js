@@ -285,7 +285,7 @@ REGLAS DE MULTI-TENENCIA:
 - fecha DATE, numero_documento
 - tipo_documento_id VARCHAR, condicion_operacion_id VARCHAR
 - total_nosujeta, total_exenta, total_gravada DECIMAL
-- iva, retencion, percepcion, fovial, cotrans DECIMAL
+- iva, retencion, percepcion, fovial, cotrans, anticipo_cuenta, monto_sujeto DECIMAL
 - monto_total DECIMAL, status ENUM('ACTIVO','ANULADO')
 - period_year INT, period_month INT
 - observaciones, created_at, updated_at
