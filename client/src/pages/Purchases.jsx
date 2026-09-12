@@ -475,7 +475,7 @@ const Purchases = () => {
         };
     }, [isQrModalOpen, qrSessionId, tipoDocs]);
 
-    const { data: purchasesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
+    const { data: purchasesData = { data: [], total: 0, totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
         queryKey: ['purchases', historySearch, historyPage, branchId],
         queryFn: async () => (await axios.get('/api/purchases', { 
             params: { search: historySearch, page: historyPage, limit, branch_id: branchId || undefined }
@@ -1512,7 +1512,7 @@ const Purchases = () => {
                                         <button 
                                             type="button"
                                             onClick={performBarcodeLookup} 
-                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-600 hover:text-indigo-600 transition-colors"
                                             title="Buscar producto"
                                         >
                                             <Search size={14} />
@@ -1655,7 +1655,7 @@ const Purchases = () => {
                                                     <Money value={item.total} />
                                                 </td>
                                                 <td className="px-5 py-1.5 text-right" data-label="">
-                                                    <button onClick={() => removeItem(item.uid)} className="p-1 text-slate-300 hover:text-rose-500">
+                                                    <button onClick={() => removeItem(item.uid)} className="p-1 text-slate-600 hover:text-rose-500">
                                                         <Trash2 size={12} />
                                                     </button>
                                                 </td>
@@ -1935,21 +1935,21 @@ const Purchases = () => {
                                         <div className="flex justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingPurchase(c)} 
-                                                className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                 title="Ver Detalle"
                                             >
                                                 <Eye size={14} />
                                             </button>
                                             <button 
                                                 onClick={() => handleEdit(c)} 
-                                                className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                 title="Editar"
                                             >
                                                 <Edit size={14} />
                                             </button>
                                             <button 
                                                 onClick={() => handleDownloadPDF(c.id, c.numero_documento)}
-                                                className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                                                 title="Exportar PDF"
                                             >
                                                 <FilePdf size={14} />
@@ -1957,7 +1957,7 @@ const Purchases = () => {
                                             {c.status !== 'ANULADO' && (
                                                 <button 
                                                     onClick={() => handleVoidPurchase(c.id)} 
-                                                    className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                    className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                     title="Anular"
                                                 >
                                                     <XCircle size={14} />
@@ -1971,7 +1971,7 @@ const Purchases = () => {
                          <Pagination 
                             currentPage={historyPage}
                             totalPages={purchasesData.totalPages}
-                            totalItems={purchasesData.totalItems}
+                            totalItems={purchasesData.total ?? purchasesData.totalItems ?? 0}
                             onPageChange={setHistoryPage}
                             itemsOnPage={purchasesData?.data?.length || 0}
                             isLoading={loadingHistory}

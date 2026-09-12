@@ -94,6 +94,7 @@ const getPurchases = async (req, res) => {
         res.json({
             data: rows,
             total,
+            totalItems: total,
             page: parseInt(page),
             totalPages: Math.ceil(total / limit)
         });

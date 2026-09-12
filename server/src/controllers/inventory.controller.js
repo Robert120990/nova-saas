@@ -271,6 +271,7 @@ const getTransfers = async (req, res) => {
 
         res.json({
             data: rows,
+            total,
             totalItems: total,
             totalPages: Math.ceil(total / limit),
             currentPage: parseInt(page)
@@ -424,6 +425,7 @@ const getPhysicalInventories = async (req, res) => {
 
         res.json({
             data: rows,
+            total,
             totalItems: total,
             totalPages: Math.ceil(total / limit)
         });

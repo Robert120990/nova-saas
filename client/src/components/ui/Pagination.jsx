@@ -5,15 +5,20 @@ const Pagination = ({
     page,
     totalPages, 
     totalItems, 
+    total,
     onPageChange, 
     itemsOnPage, 
     isLoading,
     limit = 15,
-    onLimitChange
+    onLimitChange,
+    compact = false
 }) => {
     const cur = Number(currentPage ?? page) || 1;
+    const count = totalItems !== undefined && totalItems !== null 
+        ? totalItems 
+        : (total !== undefined && total !== null ? total : undefined);
 
-    if (totalPages <= 1 && totalItems <= itemsOnPage) return null;
+    if (totalPages <= 1 && count !== undefined && itemsOnPage !== undefined && count <= itemsOnPage) return null;
 
     return (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 py-4">
@@ -34,9 +39,20 @@ const Pagination = ({
                         <span className="text-[11px] text-slate-400 font-medium">por pág.</span>
                     </div>
                 )}
-                <div className="text-xs sm:text-sm text-slate-500 font-medium truncate">
-                    <span className="hidden sm:inline">Mostrando </span><span className="text-slate-900 font-bold">{itemsOnPage}</span> de <span className="text-slate-900 font-bold">{totalItems}</span>
-                </div>
+                {(itemsOnPage !== undefined || count !== undefined) && (
+                    <div className="text-xs sm:text-sm text-slate-500 font-medium truncate">
+                        {itemsOnPage !== undefined && (
+                            <>
+                                <span className="hidden sm:inline">Mostrando </span>
+                                <span className="text-slate-900 font-bold">{itemsOnPage}</span>
+                            </>
+                        )}
+                        {itemsOnPage !== undefined && count !== undefined && ' de '}
+                        {count !== undefined && (
+                            <span className="text-slate-900 font-bold">{count}</span>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">

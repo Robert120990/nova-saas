@@ -523,7 +523,9 @@ const getSales = async (req, res) => {
 
         res.json({
             data: rows,
+            total: totalItems,
             totalItems: totalItems,
+            page: parseInt(page) || 1,
             totalPages: Math.ceil(totalItems / limit)
         });
     } catch (error) {
