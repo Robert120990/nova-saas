@@ -644,7 +644,13 @@ const Planillas = () => {
 
             // CSV: sep=, fuerza a Excel (locale español) a usar coma como separador
             // BOM (\uFEFF) garantiza que ñ, tildes, etc. se muestren correctamente
-            const csvRows = rows.map(r => makeRow(r, ','));
+            // Cuenta entre comillas para evitar que Excel convierta números largos a notación científica (1E+13)
+            const csvRows = rows.map(r => {
+                const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
+                const cuenta = r.cuenta_planillera || '';
+                const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
+                return `"${cuenta}",${monto},${nombre}`;
+            });
             const contentCsv = '\uFEFF' + 'sep=,\n' + csvRows.join('\n');
             const contentTxt = rows.map(r => makeRow(r, '\t')).join('\n');
 
