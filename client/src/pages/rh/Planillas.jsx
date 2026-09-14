@@ -634,11 +634,16 @@ const Planillas = () => {
             const rows = res.data.data || [];
             if (!rows.length) return toast.error('Sin datos para los filtros seleccionados');
             
-            const content = rows.map(r => {
+            // CSV: separado por comas para Excel | TXT: separado por tabs para banco
+            const makeRow = (r, sep) => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
                 const cuenta = r.cuenta_planillera || '';
-                return `${cuenta}\t${parseFloat(r.monto_recibir || 0).toFixed(2)}\t${nombre}`;
-            }).join('\n');
+                const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
+                return `${cuenta}${sep}${monto}${sep}${nombre}`;
+            };
+
+            const contentCsv = rows.map(r => makeRow(r, ',')).join('\n');
+            const contentTxt = rows.map(r => makeRow(r, '\t')).join('\n');
 
             const baseName = `PLANILLAS_${anio}${String(mes).padStart(2, '0')}_${quincena}`;
 
@@ -655,16 +660,16 @@ const Planillas = () => {
             };
 
             if (formatoBancario === 'csv' || formatoBancario === 'ambos') {
-                triggerDownload(content, `${baseName}.csv`, 'text/csv;charset=utf-8');
+                triggerDownload(contentCsv, `${baseName}.csv`, 'text/csv;charset=utf-8');
             }
 
             if (formatoBancario === 'txt' || formatoBancario === 'ambos') {
                 if (formatoBancario === 'ambos') {
                     setTimeout(() => {
-                        triggerDownload(content, `${baseName}.txt`, 'text/plain;charset=utf-8');
+                        triggerDownload(contentTxt, `${baseName}.txt`, 'text/plain;charset=utf-8');
                     }, 250);
                 } else {
-                    triggerDownload(content, `${baseName}.txt`, 'text/plain;charset=utf-8');
+                    triggerDownload(contentTxt, `${baseName}.txt`, 'text/plain;charset=utf-8');
                 }
             }
 
