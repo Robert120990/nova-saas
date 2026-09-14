@@ -642,7 +642,10 @@ const Planillas = () => {
                 return `${cuenta}${sep}${monto}${sep}${nombre}`;
             };
 
-            const contentCsv = rows.map(r => makeRow(r, ',')).join('\n');
+            // CSV: sep=, fuerza a Excel (locale español) a usar coma como separador
+            // BOM (\uFEFF) garantiza que ñ, tildes, etc. se muestren correctamente
+            const csvRows = rows.map(r => makeRow(r, ','));
+            const contentCsv = '\uFEFF' + 'sep=,\n' + csvRows.join('\n');
             const contentTxt = rows.map(r => makeRow(r, '\t')).join('\n');
 
             const baseName = `PLANILLAS_${anio}${String(mes).padStart(2, '0')}_${quincena}`;
