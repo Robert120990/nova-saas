@@ -480,25 +480,27 @@ exports.entregarDelivery = async (req, res) => {
                             [llave]
                         );
 
-                        await rrsPool.query(
-                            `INSERT INTO movimientos_bancarios 
-                             (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                            [
-                                cuenta.id_empresa,
-                                llave,
-                                '01',
-                                documento,
-                                cuenta.numero,
-                                concepto,
-                                montoTotal.toFixed(2),
-                                '0.0',
-                                '',
-                                fechaStr,
-                                montoTotal.toFixed(2),
-                                'P'
-                            ]
-                        );
+                        if (montoTotal > 0) {
+                            await rrsPool.query(
+                                `INSERT INTO movimientos_bancarios 
+                                 (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    cuenta.id_empresa,
+                                    llave,
+                                    '01',
+                                    documento,
+                                    cuenta.numero,
+                                    concepto,
+                                    montoTotal.toFixed(2),
+                                    '0.0',
+                                    '',
+                                    fechaStr,
+                                    montoTotal.toFixed(2),
+                                    'P'
+                                ]
+                            );
+                        }
 
                         for (const extra of remesasExtra) {
                             const montoExtra = parseFloat(extra.monto) || 0;
