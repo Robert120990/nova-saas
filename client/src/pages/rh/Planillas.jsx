@@ -180,7 +180,8 @@ const Planillas = () => {
             try {
                 const res = await axios.post('/api/rh/planillas/calcular', {
                     empleado_id: empleadoId,
-                    detalles: detalles
+                    detalles: detalles,
+                    quincena
                 });
                 setCalculo(res.data);
 
@@ -1560,7 +1561,11 @@ const Planillas = () => {
                                                         </div>
                                                         <div className="flex justify-between items-center text-xs">
                                                             <span className="text-slate-600 font-medium">Renta</span>
-                                                            <span className="font-bold text-rose-600">${calculo.descuento_renta.toFixed(2)}</span>
+                                                            {quincena === 'primera' ? (
+                                                                <span className="text-[10px] font-semibold text-slate-400 italic">No aplica (1ra quinc.)</span>
+                                                            ) : (
+                                                                <span className="font-bold text-rose-600">${(calculo.descuento_renta || 0).toFixed(2)}</span>
+                                                            )}
                                                         </div>
                                                         {((calculo.total_deducciones_cuentas !== undefined ? calculo.total_deducciones_cuentas : otrasDedActual) > 0) && (
                                                             <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-1.5">

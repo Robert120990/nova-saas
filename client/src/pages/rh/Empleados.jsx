@@ -223,6 +223,7 @@ const Empleados = () => {
         data.bonificacion_fija = parseFloat(data.bonificacion_fija) || 0;
         data.es_activo = data.es_activo === 'on' || data.es_activo === '1' ? 1 : 0;
         data.es_jubilado = data.es_jubilado === 'on' || data.es_jubilado === '1' ? 1 : 0;
+        data.aplica_renta = data.aplica_renta === 'on' || data.aplica_renta === '1' ? 1 : 0;
         data.en_vacaciones = data.en_vacaciones === 'on' || data.en_vacaciones === '1' ? 1 : 0;
         data.incapacitado = data.incapacitado === 'on' || data.incapacitado === '1' ? 1 : 0;
 
@@ -717,7 +718,7 @@ const Empleados = () => {
                                     <input name="cuenta_planillera" defaultValue={selected?.cuenta_planillera || ''} placeholder="Cuenta bancaria" className={fieldCls} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="es_activo" defaultChecked={selected ? !!selected.es_activo : true} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Activo</span>
@@ -725,6 +726,10 @@ const Empleados = () => {
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="es_jubilado" defaultChecked={!!selected?.es_jubilado} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Jubilado</span>
+                                </label>
+                                <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors" title="Si está activo, se aplica descuento de renta en la segunda quincena usando la tabla mensual">
+                                    <input type="checkbox" name="aplica_renta" defaultChecked={selected ? (selected.aplica_renta === undefined || selected.aplica_renta === null ? true : !!selected.aplica_renta) : true} className="rounded text-indigo-600" />
+                                    <span className="text-xs font-bold text-slate-600">Aplica Renta</span>
                                 </label>
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="en_vacaciones" defaultChecked={!!selected?.en_vacaciones} className="rounded text-indigo-600" />

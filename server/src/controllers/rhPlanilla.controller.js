@@ -601,7 +601,7 @@ const generarPlanilla = async (req, res) => {
         const dias = 15;
 
         const [empleados] = await pool.query(
-            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, codigo, nombres, apellidos 
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos 
              FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
             [req.company_id]
         );
@@ -643,14 +643,17 @@ const generarPlanilla = async (req, res) => {
             isssTope = isssRows[0].tope_quincenal || (isssRows[0].tope_mensual ? isssRows[0].tope_mensual / 2 : Infinity);
         }
 
+        // Renta: solo aplica en 2da quincena, usando tabla MENSUAL (tipo 'M')
         let rentaConfigId = null;
-        const [rentaConfigRows] = await pool.query(
-            `SELECT id, tipo FROM rh_renta_config 
-             WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
-             ORDER BY FIELD(tipo, 'Q', 'M'), fecha_desde DESC LIMIT 1`,
-            [req.company_id, today, today]
-        );
-        if (rentaConfigRows.length > 0) rentaConfigId = rentaConfigRows[0].id;
+        if (quincena === 'segunda') {
+            const [rentaConfigRows] = await pool.query(
+                `SELECT id, tipo FROM rh_renta_config 
+                 WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
+                 ORDER BY fecha_desde DESC LIMIT 1`,
+                [req.company_id, today, today]
+            );
+            if (rentaConfigRows.length > 0) rentaConfigId = rentaConfigRows[0].id;
+        }
 
         for (const emp of empleados) {
             const sueldoBase = parseFloat(emp.sueldo_base || 0);
@@ -758,9 +761,11 @@ const generarPlanilla = async (req, res) => {
             }
             const ingresoGravado = totalPercepciones - descuentoISSS - descuentoAFP;
             let descuentoRenta = 0;
-            if (esJubilado) {
+            // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
+            const aplicaRentaEmp = quincena === 'segunda' && (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+            if (aplicaRentaEmp && esJubilado) {
                 descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
-            } else if (rentaConfigId && ingresoGravado > 0) {
+            } else if (aplicaRentaEmp && rentaConfigId && ingresoGravado > 0) {
                 const [bracketRows] = await pool.query(
                     `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
                     [rentaConfigId, ingresoGravado, ingresoGravado]
@@ -819,7 +824,7 @@ const sincronizarPlanilla = async (req, res) => {
 
         // 1. Empleados activos de la empresa
         const [empleados] = await pool.query(
-            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, codigo, nombres, apellidos, en_vacaciones, incapacitado 
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado 
              FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
             [req.company_id]
         );
@@ -869,14 +874,17 @@ const sincronizarPlanilla = async (req, res) => {
             isssTope = isssRows[0].tope_quincenal || (isssRows[0].tope_mensual ? isssRows[0].tope_mensual / 2 : Infinity);
         }
 
+        // Renta: solo aplica en 2da quincena, usando tabla MENSUAL (tipo 'M')
         let rentaConfigId = null;
-        const [rentaConfigRows] = await pool.query(
-            `SELECT id, tipo FROM rh_renta_config 
-             WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
-             ORDER BY FIELD(tipo, 'Q', 'M'), fecha_desde DESC LIMIT 1`,
-            [req.company_id, today, today]
-        );
-        if (rentaConfigRows.length > 0) rentaConfigId = rentaConfigRows[0].id;
+        if (quincena === 'segunda') {
+            const [rentaConfigRows] = await pool.query(
+                `SELECT id, tipo FROM rh_renta_config 
+                 WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
+                 ORDER BY fecha_desde DESC LIMIT 1`,
+                [req.company_id, today, today]
+            );
+            if (rentaConfigRows.length > 0) rentaConfigId = rentaConfigRows[0].id;
+        }
 
         let agregadosCount = 0;
         let actualizadosCount = 0;
@@ -989,9 +997,11 @@ const sincronizarPlanilla = async (req, res) => {
             }
             const ingresoGravado = totalPercepciones - descuentoISSS - descuentoAFP;
             let descuentoRenta = 0;
-            if (esJubilado) {
+            // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
+            const aplicaRentaEmpA = quincena === 'segunda' && (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+            if (aplicaRentaEmpA && esJubilado) {
                 descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
-            } else if (rentaConfigId && ingresoGravado > 0) {
+            } else if (aplicaRentaEmpA && rentaConfigId && ingresoGravado > 0) {
                 const [bracketRows] = await pool.query(
                     `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
                     [rentaConfigId, ingresoGravado, ingresoGravado]
@@ -1162,9 +1172,11 @@ const sincronizarPlanilla = async (req, res) => {
                 }
                 const ingresoGravado = totalPercepciones - descuentoISSS - descuentoAFP;
                 let descuentoRenta = 0;
-                if (esJubilado) {
+                // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
+                const aplicaRentaEmpB = quincena === 'segunda' && (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+                if (aplicaRentaEmpB && esJubilado) {
                     descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
-                } else if (rentaConfigId && ingresoGravado > 0) {
+                } else if (aplicaRentaEmpB && rentaConfigId && ingresoGravado > 0) {
                     const [bracketRows] = await pool.query(
                         `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
                         [rentaConfigId, ingresoGravado, ingresoGravado]
@@ -1215,11 +1227,11 @@ const calcular = async (req, res) => {
     try {
         const { planilla_id, empleado_id: reqEmpleadoId, detalles: reqDetalles, quincena: reqQuincena } = req.body;
 
-        let empleadoId, afpId, esJubilado, detalles, quincena = reqQuincena || 'primera';
+        let empleadoId, afpId, esJubilado, aplicaRenta, detalles, quincena = reqQuincena || 'primera';
 
         if (planilla_id) {
             const [planillaRows] = await pool.query(
-                `SELECT p.*, e.afp_id, e.es_jubilado, e.sueldo_base, e.bonificacion_fija
+                `SELECT p.*, e.afp_id, e.es_jubilado, e.aplica_renta, e.sueldo_base, e.bonificacion_fija
                  FROM ${TABLE} p
                  JOIN rh_empleados e ON p.empleado_id = e.id
                  WHERE p.id = ? AND p.company_id = ?`,
@@ -1230,6 +1242,7 @@ const calcular = async (req, res) => {
             empleadoId = planilla.empleado_id;
             afpId = planilla.afp_id;
             esJubilado = !!planilla.es_jubilado;
+            aplicaRenta = planilla.aplica_renta === 0 ? false : true;
             quincena = planilla.quincena || quincena;
 
             const [dRows] = await pool.query(
@@ -1240,12 +1253,13 @@ const calcular = async (req, res) => {
         } else if (reqEmpleadoId && reqDetalles) {
             empleadoId = reqEmpleadoId;
             const [empRows] = await pool.query(
-                `SELECT afp_id, es_jubilado FROM rh_empleados WHERE id = ? AND company_id = ?`,
+                `SELECT afp_id, es_jubilado, aplica_renta FROM rh_empleados WHERE id = ? AND company_id = ?`,
                 [reqEmpleadoId, req.company_id]
             );
             if (empRows.length === 0) return res.status(404).json({ message: 'Empleado no encontrado' });
             afpId = empRows[0].afp_id;
             esJubilado = !!empRows[0].es_jubilado;
+            aplicaRenta = empRows[0].aplica_renta === 0 ? false : true;
             detalles = reqDetalles;
         } else {
             return res.status(400).json({ message: 'planilla_id o (empleado_id + detalles) requerido' });
@@ -1307,14 +1321,18 @@ const calcular = async (req, res) => {
         const ingresoGravado = totalPercepciones - descuentoISSS - descuentoAFP;
         let rentaInfo = null;
 
-        if (esJubilado) {
+        // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
+        // Usa tabla MENSUAL (tipo 'M') exclusivamente
+        const aplicaRentaCalc = quincena === 'segunda' && (aplicaRenta !== false);
+
+        if (aplicaRentaCalc && esJubilado) {
             descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
             rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
-        } else {
+        } else if (aplicaRentaCalc) {
             const [rentaConfigRows] = await pool.query(
                 `SELECT id, tipo FROM rh_renta_config 
-                 WHERE company_id = ? AND (tipo = 'Q' OR tipo = 'M') AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
-                 ORDER BY FIELD(tipo, 'Q', 'M'), fecha_desde DESC LIMIT 1`,
+                 WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
+                 ORDER BY fecha_desde DESC LIMIT 1`,
                 [req.company_id, today, today]
             );
 
