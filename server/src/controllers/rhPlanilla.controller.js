@@ -33,6 +33,7 @@ const getPlanillas = async (req, res) => {
                    e.nombres as empleado_nombres,
                    e.apellidos as empleado_apellidos,
                    e.sueldo_base as empleado_sueldo_base,
+                   e.cuenta_planillera,
                    e.branch_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre

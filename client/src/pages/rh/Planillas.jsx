@@ -636,7 +636,8 @@ const Planillas = () => {
             
             const content = rows.map(r => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
-                return `${r.empleado_codigo || ''}\t${parseFloat(r.monto_recibir || 0).toFixed(2)}\t${nombre}`;
+                const cuenta = r.cuenta_planillera || '';
+                return `${r.empleado_codigo || ''}\t${cuenta}\t${parseFloat(r.monto_recibir || 0).toFixed(2)}\t${nombre}`;
             }).join('\n');
 
             const baseName = `PLANILLAS_${anio}${String(mes).padStart(2, '0')}_${quincena}`;
