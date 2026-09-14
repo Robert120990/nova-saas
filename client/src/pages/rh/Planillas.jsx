@@ -112,6 +112,11 @@ const Planillas = () => {
     const cacheRef = useRef({});
     const autoSaveRef = useRef(false);
     const savingRef = useRef(false);
+    const selectedRef = useRef(null);
+
+    useEffect(() => {
+        selectedRef.current = selected;
+    }, [selected]);
 
     useDirtyTracker('planillas', activeTab === 'nuevo' && empleadoId && detalles.length > 0);
 
@@ -197,14 +202,20 @@ const Planillas = () => {
                         monto_recibir: res.data.monto_recibir
                     };
                     try {
-                        const saveRes = await (selected?.id
-                            ? axios.put(`/api/rh/planillas/${selected.id}`, data)
+                        const targetPlanillaId = selectedRef.current?.id || selected?.id;
+                        const saveRes = await (targetPlanillaId
+                            ? axios.put(`/api/rh/planillas/${targetPlanillaId}`, data)
                             : axios.post('/api/rh/planillas', data));
                         queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
                         queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
-                        if (empleadoId) delete cacheRef.current[empleadoId];
-                        if (!selected?.id) {
-                            setSelected({ id: saveRes.data.id, empleado_id: empleadoId });
+                        const newPlanillaId = targetPlanillaId || saveRes.data.id;
+                        if (newPlanillaId) {
+                            const newSel = { id: newPlanillaId, empleado_id: empleadoId };
+                            setSelected(newSel);
+                            selectedRef.current = newSel;
+                            if (cacheRef.current[empleadoId]) {
+                                cacheRef.current[empleadoId].planilla_id = newPlanillaId;
+                            }
                         }
                     } catch (err) {
                         toast.error(err.response?.data?.message || 'Error al guardar');
@@ -272,7 +283,11 @@ const Planillas = () => {
 
     const cacheDetallesActual = () => {
         if (empleadoId) {
-            cacheRef.current[empleadoId] = { detalles: [...detalles], calculo: calculo ? { ...calculo } : null };
+            cacheRef.current[empleadoId] = {
+                detalles: [...detalles],
+                calculo: calculo ? { ...calculo } : null,
+                planilla_id: selectedRef.current?.id || selected?.id || null
+            };
         }
     };
 
@@ -290,10 +305,15 @@ const Planillas = () => {
             setEmpleadoId(id);
             setCodigoInput(data.codigo);
 
+            const effectivePlanillaId = data.planilla_id || cachedPlanillaId;
+
             if (cached) {
                 setDetalles(cached.detalles);
                 setCalculo(cached.calculo);
-                setSelected(cachedPlanillaId ? { id: cachedPlanillaId, empleado_id: id } : null);
+                setSelected(effectivePlanillaId ? { id: effectivePlanillaId, empleado_id: id } : null);
+                if (effectivePlanillaId) {
+                    cacheRef.current[id] = { ...cached, planilla_id: effectivePlanillaId };
+                }
             } else if (data.planilla_id) {
                 setSelected({ id: data.planilla_id, empleado_id: id });
                 setDiasTrabajados(data.dias_trabajados !== undefined && data.dias_trabajados !== null ? parseInt(data.dias_trabajados) : 15);
@@ -563,6 +583,10 @@ const Planillas = () => {
             return toast.error(`No puede registrar empleados en este período porque la planilla de ${mesNom} ${otraAbiertaItem.periodo_anio} (${qNom}) aún está abierta.`);
         }
         if (!empleadoId || !calculo) return;
+        if (savingRef.current) return;
+        if (selectedRef.current?.id || selected?.id) {
+            return toast.info('El empleado ya se encuentra agregado a esta planilla.');
+        }
         savingRef.current = true;
         try {
             const data = {
@@ -580,7 +604,12 @@ const Planillas = () => {
                 monto_recibir: calculo.monto_recibir
             };
             const saveRes = await axios.post('/api/rh/planillas', data);
-            setSelected({ id: saveRes.data.id, empleado_id: empleadoId });
+            const newSel = { id: saveRes.data.id, empleado_id: empleadoId };
+            setSelected(newSel);
+            selectedRef.current = newSel;
+            if (cacheRef.current[empleadoId]) {
+                cacheRef.current[empleadoId].planilla_id = saveRes.data.id;
+            }
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             toast.success(`${empleadoData?.nombres || 'Empleado'} agregado a la planilla`);

@@ -182,22 +182,50 @@ const createPlanilla = async (req, res) => {
         const sueldoBase = parseFloat(empRows[0].sueldo_base || 0);
         const bonificacionFija = parseFloat(empRows[0].bonificacion_fija || 0);
 
-        const [result] = await pool.query(
-            `INSERT INTO ${TABLE} 
-             (company_id, empleado_id, periodo_anio, periodo_mes, quincena,
-              dias_trabajados, sueldo_base, bonificacion_fija,
-              total_percepciones, total_deducciones, descuento_isss, descuento_afp, descuento_renta, monto_recibir)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                req.company_id, empleado_id, periodo_anio, periodo_mes, quincena,
-                dias, sueldoBase, bonificacionFija,
-                total_percepciones || 0, total_deducciones || 0,
-                descuento_isss || 0, descuento_afp || 0, descuento_renta || 0, monto_recibir || 0
-            ]
+        // 3. Verificar si el empleado ya tiene un registro en este período (upsert)
+        const [existing] = await pool.query(
+            `SELECT id FROM ${TABLE} 
+             WHERE company_id = ? AND empleado_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ?`,
+            [req.company_id, empleado_id, periodo_anio, periodo_mes, quincena]
         );
-        const planillaId = result.insertId;
+
+        let planillaId;
+        if (existing.length > 0) {
+            planillaId = existing[0].id;
+            await pool.query(
+                `UPDATE ${TABLE} SET 
+                    dias_trabajados = ?, sueldo_base = ?, bonificacion_fija = ?,
+                    total_percepciones = ?, total_deducciones = ?,
+                    descuento_isss = ?, descuento_afp = ?, descuento_renta = ?,
+                    monto_recibir = ?, updated_at = NOW()
+                 WHERE id = ?`,
+                [
+                    dias, sueldoBase, bonificacionFija,
+                    total_percepciones || 0, total_deducciones || 0,
+                    descuento_isss || 0, descuento_afp || 0, descuento_renta || 0,
+                    monto_recibir || 0,
+                    planillaId
+                ]
+            );
+        } else {
+            const [result] = await pool.query(
+                `INSERT INTO ${TABLE} 
+                 (company_id, empleado_id, periodo_anio, periodo_mes, quincena,
+                  dias_trabajados, sueldo_base, bonificacion_fija,
+                  total_percepciones, total_deducciones, descuento_isss, descuento_afp, descuento_renta, monto_recibir)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    req.company_id, empleado_id, periodo_anio, periodo_mes, quincena,
+                    dias, sueldoBase, bonificacionFija,
+                    total_percepciones || 0, total_deducciones || 0,
+                    descuento_isss || 0, descuento_afp || 0, descuento_renta || 0, monto_recibir || 0
+                ]
+            );
+            planillaId = result.insertId;
+        }
 
         if (detalles && detalles.length > 0) {
+            await pool.query(`DELETE FROM rh_planilla_detalles WHERE planilla_id = ?`, [planillaId]);
             const values = detalles.map(d => [
                 planillaId, d.cuenta_id, d.codigo, d.descripcion,
                 d.operacion, d.tipo_valor,
@@ -211,11 +239,11 @@ const createPlanilla = async (req, res) => {
                  VALUES ?`,
                 [values]
             );
-        } else {
+        } else if (existing.length === 0) {
             await cargarCuentasPorDefecto(pool, planillaId, req.company_id, dias, sueldoBase, empleado_id, quincena, bonificacionFija);
         }
 
-        res.status(201).json({ id: planillaId });
+        res.status(existing.length > 0 ? 200 : 201).json({ id: planillaId });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
