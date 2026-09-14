@@ -5380,7 +5380,13 @@ const generatePlanillaPDF = (data) => {
             doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
             ry += 4;
 
-            const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            // Agrupar horas extras en una sola fila
+            const rawPercepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            const horasExtras = rawPercepciones.filter(d => d.tipo_valor === 'horas');
+            const otrasPercepciones = rawPercepciones.filter(d => d.tipo_valor !== 'horas');
+            const percepciones = horasExtras.length > 0
+                ? [...otrasPercepciones, { codigo: 'HE', descripcion: 'HORAS EXTRAS', valor_ingresado: horasExtras.reduce((s, d) => s + parseFloat(d.valor_ingresado || 0), 0) }]
+                : otrasPercepciones;
             const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
 
             doc.font('Helvetica').fontSize(8);
@@ -5482,7 +5488,13 @@ const generatePlanillaReciboPDF = (data) => {
             const responsable = data.responsable_nombre || 'RECURSOS HUMANOS';
             const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : 'N/A';
 
-            const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            // Agrupar horas extras en una sola fila
+            const rawPercepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            const horasExtras = rawPercepciones.filter(d => d.tipo_valor === 'horas');
+            const otrasPercepciones = rawPercepciones.filter(d => d.tipo_valor !== 'horas');
+            const percepciones = horasExtras.length > 0
+                ? [...otrasPercepciones, { codigo: 'HE', descripcion: 'HORAS EXTRAS', valor_ingresado: horasExtras.reduce((s, d) => s + parseFloat(d.valor_ingresado || 0), 0) }]
+                : otrasPercepciones;
             const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
 
             const drawCopy = (yStart, label) => {
