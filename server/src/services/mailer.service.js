@@ -662,7 +662,11 @@ module.exports = {
                     nit: dteJson.receptor.nit,
                     nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                     numDocumento: dteJson.receptor.numDocumento,
-                    direccion: dteJson.receptor.direccion
+                    direccion: dteJson.receptor.direccion,
+                    codActividad: dteJson.receptor.codActividad || null,
+                    descActividad: dteJson.receptor.descActividad || null,
+                    codPais: dteJson.receptor.codPais || null,
+                    nombrePais: dteJson.receptor.nombrePais || null
                 },
                 dte: {
                     tipoDte: dteJson.identificacion.tipoDte,
@@ -832,7 +836,11 @@ module.exports = {
                     nit: dteJson.receptor.nit,
                     nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                     numDocumento: dteJson.receptor.numDocumento,
-                    direccion: dteJson.receptor.direccion
+                    direccion: dteJson.receptor.direccion,
+                    codActividad: dteJson.receptor.codActividad || null,
+                    descActividad: dteJson.receptor.descActividad || null,
+                    codPais: dteJson.receptor.codPais || null,
+                    nombrePais: dteJson.receptor.nombrePais || null
                 },
                 dte: {
                     tipoDte: dteJson.identificacion.tipoDte,
