@@ -10,7 +10,7 @@ import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import { IMaskInput } from 'react-imask';
 import { MoneyInput } from '../../components/ui/Money';
 import {
-    Plus, Edit, Trash2, Search,
+    Plus, Edit, Trash2, Search, X,
     UserCircle, Briefcase, Wallet, ScrollText, CalendarX, Loader2,
     FileSignature, FileText
 } from 'lucide-react';
@@ -53,6 +53,10 @@ const Empleados = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [filterCargo, setFilterCargo] = useState('');
+    const [filterDept, setFilterDept] = useState('');
+    const [filterBranch, setFilterBranch] = useState('');
+    const [filterEstado, setFilterEstado] = useState('activo');
     const [emergencyContacts, setEmergencyContacts] = useState([]);
     const [showEmergencyForm, setShowEmergencyForm] = useState(false);
     const [editEmergency, setEditEmergency] = useState(null);
@@ -66,11 +70,25 @@ const Empleados = () => {
     }, [searchTerm]);
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['rh-empleados', debouncedSearch, page],
-        queryFn: async () => (await axios.get('/api/rh/empleados', { params: { search: debouncedSearch, page } })).data
+        queryKey: ['rh-empleados', debouncedSearch, page, filterCargo, filterDept, filterBranch, filterEstado],
+        queryFn: async () => (await axios.get('/api/rh/empleados', {
+            params: {
+                search: debouncedSearch,
+                page,
+                cargo_id: filterCargo || undefined,
+                departamento_personal_id: filterDept || undefined,
+                branch_id: filterBranch || undefined,
+                estado: filterEstado !== 'todos' ? filterEstado : undefined,
+            }
+        })).data
     });
 
     const items = response.data || [];
+
+    const { data: branches = [] } = useQuery({
+        queryKey: ['branches'],
+        queryFn: async () => (await axios.get('/api/branches')).data
+    });
 
     const { data: cargos = [] } = useQuery({
         queryKey: ['rh-cargos-all'],
@@ -205,10 +223,11 @@ const Empleados = () => {
         data.bonificacion_fija = parseFloat(data.bonificacion_fija) || 0;
         data.es_activo = data.es_activo === 'on' || data.es_activo === '1' ? 1 : 0;
         data.es_jubilado = data.es_jubilado === 'on' || data.es_jubilado === '1' ? 1 : 0;
+        data.aplica_renta = data.aplica_renta === 'on' || data.aplica_renta === '1' ? 1 : 0;
         data.en_vacaciones = data.en_vacaciones === 'on' || data.en_vacaciones === '1' ? 1 : 0;
         data.incapacitado = data.incapacitado === 'on' || data.incapacitado === '1' ? 1 : 0;
 
-        ['afp_id', 'cargo_id', 'departamento_personal_id', 'tipo_contrato_id'].forEach(k => {
+        ['afp_id', 'cargo_id', 'departamento_personal_id', 'tipo_contrato_id', 'branch_id'].forEach(k => {
             if (data[k] === '' || data[k] === 'null') data[k] = null;
         });
 
@@ -271,6 +290,17 @@ const Empleados = () => {
         setIsModalOpen(true);
     };
 
+    const hasActiveFilters = Boolean(debouncedSearch || filterCargo || filterDept || filterBranch || filterEstado !== 'activo');
+    const handleResetFilters = () => {
+        setSearchTerm('');
+        setDebouncedSearch('');
+        setFilterCargo('');
+        setFilterDept('');
+        setFilterBranch('');
+        setFilterEstado('activo');
+        setPage(1);
+    };
+
     return (
         <div className="space-y-3 text-slate-900">
             <div className="flex items-center justify-between">
@@ -296,13 +326,97 @@ const Empleados = () => {
                 </button>
             </div>
 
-            <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm" />
+            {/* Barra de Filtros y Búsqueda */}
+            <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                    {/* Búsqueda */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Buscar código, nombre, DUI..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-medium transition-all"
+                        />
+                    </div>
+
+                    {/* Filtro Sucursal */}
+                    <div>
+                        <select
+                            value={filterBranch}
+                            onChange={(e) => { setFilterBranch(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-medium text-slate-700 transition-all"
+                        >
+                            <option value="">Todas las sucursales</option>
+                            {branches.map(b => (
+                                <option key={b.id} value={b.id}>
+                                    {b.nombre}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Filtro Departamento */}
+                    <div>
+                        <select
+                            value={filterDept}
+                            onChange={(e) => { setFilterDept(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-medium text-slate-700 transition-all"
+                        >
+                            <option value="">Todos los departamentos</option>
+                            {departamentos.map(d => (
+                                <option key={d.id} value={d.id}>
+                                    {d.descripcion}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Filtro Cargo */}
+                    <div>
+                        <select
+                            value={filterCargo}
+                            onChange={(e) => { setFilterCargo(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-medium text-slate-700 transition-all"
+                        >
+                            <option value="">Todos los cargos</option>
+                            {cargos.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    {c.descripcion}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Filtro Estado */}
+                    <div className="flex items-center gap-1.5">
+                        <select
+                            value={filterEstado}
+                            onChange={(e) => { setFilterEstado(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 text-xs font-medium text-slate-700 transition-all"
+                        >
+                            <option value="activo">Solo Activos</option>
+                            <option value="todos">Todos los estados</option>
+                            <option value="inactivo">Solo Inactivos</option>
+                        </select>
+
+                        {hasActiveFilters && (
+                            <button
+                                type="button"
+                                onClick={handleResetFilters}
+                                title="Limpiar filtros"
+                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200 hover:border-rose-200 transition-colors shrink-0"
+                            >
+                                <X size={15} />
+                            </button>
+                        )}
+                    </div>
+                </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <Table headers={['Código', 'Nombre', 'DUI', 'Cargo', 'Departamento', 'Estado', 'Acciones']} data={items} isLoading={isLoading} renderRow={(item) => (
+                <Table headers={['Código', 'Nombre', 'DUI', 'Cargo', 'Departamento', 'Sucursal', 'Estado', 'Acciones']} data={items} isLoading={isLoading} renderRow={(item) => (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
                         <td className="px-3 py-1">
                             <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{item.codigo}</span>
@@ -313,14 +427,15 @@ const Empleados = () => {
                         <td className="px-3 py-1 text-[10px] font-mono text-slate-500">{item.num_dui}</td>
                         <td className="px-3 py-1 text-xs text-slate-600">{item.cargo_nombre || <span className="text-slate-300 italic">Sin cargo</span>}</td>
                         <td className="px-3 py-1 text-xs text-slate-600">{item.departamento_nombre || <span className="text-slate-300 italic">Sin depto.</span>}</td>
+                        <td className="px-3 py-1 text-xs text-slate-600">{item.sucursal_nombre || <span className="text-slate-300 italic">Sin sucursal</span>}</td>
                         <td className="px-3 py-1">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.es_activo ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                                 {item.es_activo ? 'Activo' : 'Inactivo'}
                             </span>
                         </td>
                         <td className="px-3 py-1 flex gap-1">
-                            <button onClick={() => handleEdit(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
-                            <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                            <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
+                            <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                         </td>
                     </tr>
                 )} />
@@ -517,8 +632,8 @@ const Empleados = () => {
                                                         <td className="px-2 py-1.5 text-slate-600">{c.telefono}</td>
                                                         <td className="px-2 py-1.5 text-slate-500">{c.parentesco || <span className="text-slate-300">-</span>}</td>
                                                         <td className="px-2 py-1.5 flex gap-1">
-                                                            <button type="button" onClick={() => handleEditEmergency(idx)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit size={13} /></button>
-                                                            <button type="button" onClick={() => handleDeleteEmergency(idx)} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 size={13} /></button>
+                                                            <button type="button" onClick={() => handleEditEmergency(idx)} className="p-1 text-slate-600 hover:text-indigo-600 rounded"><Edit size={13} /></button>
+                                                            <button type="button" onClick={() => handleDeleteEmergency(idx)} className="p-1 text-slate-600 hover:text-red-600 rounded"><Trash2 size={13} /></button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -535,12 +650,16 @@ const Empleados = () => {
                                 <Briefcase size={16} className="text-indigo-600" />
                                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Datos Laborales</h3>
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div>
-                                    <label className={labelCls}>Cargo</label>
-                                    <select name="cargo_id" defaultValue={selected?.cargo_id || ''} className={fieldCls}>
+                                    <label className={labelCls}>Sucursal</label>
+                                    <select name="branch_id" defaultValue={selected?.branch_id || ''} className={fieldCls}>
                                         <option value="">Seleccionar...</option>
-                                        {cargos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.descripcion}</option>)}
+                                        {branches.map(b => (
+                                            <option key={b.id} value={b.id}>
+                                                {b.codigo ? `${b.codigo} - ${b.nombre}` : b.nombre}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
@@ -548,6 +667,13 @@ const Empleados = () => {
                                     <select name="departamento_personal_id" defaultValue={selected?.departamento_personal_id || ''} className={fieldCls}>
                                         <option value="">Seleccionar...</option>
                                         {departamentos.map(d => <option key={d.id} value={d.id}>{d.codigo} - {d.descripcion}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Cargo</label>
+                                    <select name="cargo_id" defaultValue={selected?.cargo_id || ''} className={fieldCls}>
+                                        <option value="">Seleccionar...</option>
+                                        {cargos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.descripcion}</option>)}
                                     </select>
                                 </div>
                                 <div>
@@ -592,7 +718,7 @@ const Empleados = () => {
                                     <input name="cuenta_planillera" defaultValue={selected?.cuenta_planillera || ''} placeholder="Cuenta bancaria" className={fieldCls} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="es_activo" defaultChecked={selected ? !!selected.es_activo : true} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Activo</span>
@@ -600,6 +726,10 @@ const Empleados = () => {
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="es_jubilado" defaultChecked={!!selected?.es_jubilado} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Jubilado</span>
+                                </label>
+                                <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors" title="Si está activo, se aplica descuento de renta en la segunda quincena usando la tabla mensual">
+                                    <input type="checkbox" name="aplica_renta" defaultChecked={selected ? (selected.aplica_renta === undefined || selected.aplica_renta === null ? true : !!selected.aplica_renta) : true} className="rounded text-indigo-600" />
+                                    <span className="text-xs font-bold text-slate-600">Aplica Renta</span>
                                 </label>
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="en_vacaciones" defaultChecked={!!selected?.en_vacaciones} className="rounded text-indigo-600" />
@@ -801,8 +931,8 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
                                 <td className="px-3 py-2 text-center text-slate-600">{d.cuotas_restantes}</td>
                                 <td className="px-3 py-2 text-slate-500">{d.numero_credito || <span className="text-slate-300">-</span>}</td>
                                 <td className="px-3 py-2 flex gap-1">
-                                    <button type="button" onClick={() => handleEdit(d)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit size={13} /></button>
-                                    <button type="button" onClick={() => handleDelete(d)} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 size={13} /></button>
+                                    <button type="button" onClick={() => handleEdit(d)} className="p-1 text-slate-600 hover:text-indigo-600 rounded"><Edit size={13} /></button>
+                                    <button type="button" onClick={() => handleDelete(d)} className="p-1 text-slate-600 hover:text-red-600 rounded"><Trash2 size={13} /></button>
                                 </td>
                             </tr>
                         ))}
@@ -982,8 +1112,8 @@ const AusenciasTab = ({ visible, selected, ausencias, ausenciaMutation, deleteAu
                                 <td className="px-3 py-2 text-slate-700 max-w-[200px] truncate">{a.motivo || '-'}</td>
                                 <td className="px-3 py-2 text-center">{a.justificada ? <span className="text-emerald-600 text-[10px] font-bold">Si</span> : <span className="text-slate-300">No</span>}</td>
                                 <td className="px-3 py-2 flex gap-1">
-                                    <button type="button" onClick={() => openModal(a)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
-                                    <button type="button" onClick={() => handleDelete(a)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                                    <button type="button" onClick={() => openModal(a)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
+                                    <button type="button" onClick={() => handleDelete(a)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                                 </td>
                             </tr>
                         ))}
@@ -1160,7 +1290,7 @@ const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
                                                 type="button"
                                                 onClick={() => handlePrintPDF(a)}
                                                 disabled={loadingPdfId === a.id}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
                                                 title="Descargar / Imprimir PDF Oficial"
                                             >
                                                 {loadingPdfId === a.id ? <Loader2 size={15} className="animate-spin text-indigo-600" /> : <FileText size={15} />}
@@ -1171,7 +1301,7 @@ const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
                                                     setSelectedActionForEdit(a);
                                                     setIsActionModalOpen(true);
                                                 }}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                 title="Editar Acción"
                                             >
                                                 <Edit size={15} />
@@ -1179,7 +1309,7 @@ const AccionesPersonalTab = ({ visible, selected, acciones = [], refetch }) => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleDelete(a)}
-                                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                 title="Eliminar"
                                             >
                                                 <Trash2 size={15} />

@@ -244,12 +244,12 @@ const Companies = () => {
                                 <button 
                                     onClick={() => navigate(`/configuracion/modulos-empresa?company_id=${company.id}`)} 
                                     title="Configurar módulos de esta empresa"
-                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 >
                                     <Layers size={18}/>
                                 </button>
-                                <button onClick={() => handleEdit(company)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => handleEdit(company)} className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
+                                <button onClick={() => handleDeleteCompany(company.id)} className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}

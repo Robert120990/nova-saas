@@ -3,6 +3,10 @@ import {
     Building2,
     GitBranch,
     Monitor,
+    Activity,
+    Server,
+    Cpu,
+    HardDrive,
     Users,
     ShoppingCart,
     Package,
@@ -29,6 +33,7 @@ import {
     Sparkles,
     Undo2,
     RefreshCcw,
+    RefreshCw,
     ScrollText,
     Fuel,
     Droplets,
@@ -65,6 +70,7 @@ import {
     Clock,
     Scale,
     Palmtree,
+    Ticket,
 } from 'lucide-react';
 
 const iconMap = {
@@ -72,6 +78,10 @@ const iconMap = {
     Building2,
     GitBranch,
     Monitor,
+    Activity,
+    Server,
+    Cpu,
+    HardDrive,
     Users,
     ShoppingCart,
     Package,
@@ -98,6 +108,7 @@ const iconMap = {
     Sparkles,
     Undo2,
     RefreshCcw,
+    RefreshCw,
     ScrollText,
     Fuel,
     Droplets,
@@ -134,6 +145,7 @@ const iconMap = {
     Clock,
     Scale,
     Palmtree,
+    Ticket,
 };
 
 export default iconMap;

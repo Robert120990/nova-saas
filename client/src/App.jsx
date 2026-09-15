@@ -8,11 +8,13 @@ import { ConfirmProvider } from './context/ConfirmContext';
 // Pages
 import Login from './pages/Login';
 import PublicDTE from './pages/PublicDTE';
+import MobileDteScanner from './pages/MobileDteScanner';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
 import CompanyModules from './pages/CompanyModules';
 import Branches from './pages/Branches';
 import POS from './pages/POS';
+import FilproSync from './pages/FilproSync';
 import Customers from './pages/Customers';
 import Products from './pages/Products';
 import Sellers from './pages/Sellers';
@@ -64,7 +66,7 @@ import SalesByCustomerReport from './pages/SalesByCustomerReport';
 import Contingency from './pages/Contingency';
 import Eret from './pages/Eret';
 import AuditLog from './pages/AuditLog';
-import LogViewer from './pages/LogViewer';
+import ServerMetrics from './pages/ServerMetrics';
 import ConnectedUsers from './pages/ConnectedUsers';
 import Changelog from './pages/Changelog';
 import KeyboardShortcuts from './pages/KeyboardShortcuts';
@@ -120,9 +122,13 @@ import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
 import FuelInventoryReport from './pages/FuelInventoryReport';
 import GalonajeVendidoReport from './pages/GalonajeVendidoReport';
 import GasRemesaDeliveries from './pages/GasRemesaDeliveries';
+import GasCouponLiquidation from './pages/GasCouponLiquidation';
 import SalesRemesaDeliveries from './pages/SalesRemesaDeliveries';
 import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
 import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
+import GasLubricantsReport from './pages/GasLubricantsReport';
+import GasComplementariasReport from './pages/GasComplementariasReport';
+import GasVentasAnalyticsReport from './pages/GasVentasAnalyticsReport';
 
 // Control de Pozo Pages
 import PozoServicios from './pages/PozoServicios';
@@ -222,6 +228,7 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/dte" element={<PublicDTE />} />
                     <Route path="/scan/:token" element={<ScanInventory />} />
+                    <Route path="/scan-dte/:sessionId" element={<MobileDteScanner />} />
                     
                     {/* Protected Shell */}
                     <Route element={<ProtectedRoute />}>
@@ -229,6 +236,8 @@ function App() {
                         <Route path="/companies" element={<Companies />} />
                         <Route path="/branches" element={<Branches />} />
                         <Route path="/pos" element={<POS />} />
+                        <Route path="/sistema/filpro" element={<FilproSync />} />
+                        <Route path="/filpro" element={<FilproSync />} />
                         <Route path="/customers" element={<Customers />} />
                         <Route path="/products" element={<Products />} />
                         <Route path="/sellers" element={<Sellers />} />
@@ -239,7 +248,8 @@ function App() {
                         <Route path="/user-access" element={<UserAccess />} />
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
-                        <Route path="/configuracion/logs" element={<LogViewer />} />
+                        <Route path="/configuracion/servidor" element={<ServerMetrics />} />
+                        <Route path="/configuracion/logs" element={<Navigate to="/configuracion/servidor" replace />} />
                         <Route path="/configuracion/notificaciones" element={<NotificacionesConfig />} />
                         <Route path="/configuracion/whatsapp" element={<WhatsAppConfig />} />
                         <Route path="/configuracion/modulos-empresa" element={<CompanyModules />} />
@@ -325,6 +335,7 @@ function App() {
                         <Route path="/gas-station/anticipos" element={<GasAdvances />} />
                         <Route path="/gas-station/trupput" element={<GasTrupput />} />
                         <Route path="/gas-station/entrega-remesas" element={<GasRemesaDeliveries />} />
+                        <Route path="/gas-station/liquidacion-cupones" element={<GasCouponLiquidation />} />
                         <Route path="/ventas/entrega-remesas" element={<SalesRemesaDeliveries />} />
                         <Route path="/gas-station/reporte-ventas" element={<ReporteVentasCombustible />} />
                         <Route path="/gas-station/reporte-detalle-cierre" element={<GasCloseoutDetailReport />} />
@@ -332,6 +343,9 @@ function App() {
                         <Route path="/gas-station/galonaje-vendido" element={<GalonajeVendidoReport />} />
                         <Route path="/gas-station/reporte-acumulado-diario" element={<GasAccumulatedDailyReport />} />
                         <Route path="/gas-station/reporte-resumen-gln-vendidos" element={<FuelSalesSummaryReport />} />
+                        <Route path="/gas-station/reporte-lubricantes-vendidos" element={<GasLubricantsReport />} />
+                        <Route path="/gas-station/reporte-complementarias" element={<GasComplementariasReport />} />
+                        <Route path="/gas-station/reporte-analitico-ventas" element={<GasVentasAnalyticsReport />} />
 
                         {/* Control de Pozo */}
                         <Route path="/pozo/servicios" element={<PozoServicios />} />

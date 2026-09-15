@@ -136,13 +136,13 @@ const DiscountRules = () => {
                             <div className="flex gap-1">
                                 <button
                                     onClick={() => { setEditingRule(rule); setSelectedProductId(rule.product_id); setIsModalOpen(true); }}
-                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                    className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                 >
                                     <Edit size={14} />
                                 </button>
                                 <button
                                     onClick={() => { if (confirm('¿Eliminar esta regla?')) deleteMutation.mutate(rule.id); }}
-                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                    className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                 >
                                     <Trash2 size={14} />
                                 </button>

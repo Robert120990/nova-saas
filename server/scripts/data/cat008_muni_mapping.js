@@ -71,10 +71,10 @@ module.exports = [
   // Este (25): San Juan Nonualco, San Rafael Obrajuelo, Zacatecoluca
   { dep: '08', muni: '25', codes: ['10','17','21'] },
   // ---------- 09 Cabañas ----------
-  // Oeste (10): Cinquera, Ilobasco, Jutiapa, Tejutepeque
-  { dep: '09', muni: '10', codes: ['01','03','04','07'] },
-  // Este (11): Guacotecti, San Isidro, Sensuntepeque, Victoria, Dolores
-  { dep: '09', muni: '11', codes: ['02','05','06','08','09'] },
+  // Este (10): Guacotecti, San Isidro, Sensuntepeque, Victoria, Dolores
+  { dep: '09', muni: '10', codes: ['02','05','06','08','09'] },
+  // Oeste (11): Cinquera, Ilobasco, Jutiapa, Tejutepeque
+  { dep: '09', muni: '11', codes: ['01','03','04','07'] },
   // ---------- 10 San Vicente ----------
   // Norte (14): Apastepeque, Santa Clara, San Ildefonso, San Esteban Catarina, San Sebastián, San Lorenzo, Santo Domingo
   { dep: '10', muni: '14', codes: ['01','04','07','06','09','08','05'] },

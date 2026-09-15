@@ -4,6 +4,38 @@ const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const aiService = require('../services/ai.service');
+const crypto = require('crypto');
+const os = require('os');
+
+const getLocalIpAddress = () => {
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    return iface.address;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error al detectar IP local:', e);
+    }
+    return null;
+};
+
+// In-memory store for mobile QR scanning sessions
+const scanSessions = new Map();
+
+// Periodic cleanup of expired sessions every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of scanSessions.entries()) {
+        if (session.expiresAt && session.expiresAt < now) {
+            scanSessions.delete(id);
+        }
+    }
+}, 10 * 60 * 1000);
 
 /**
  * Obtener lista de compras con búsqueda y paginación
@@ -43,9 +75,9 @@ const getPurchases = async (req, res) => {
 
         const searchWords = search ? getSearchWords(search) : [];
         searchWords.forEach(word => {
-            query += ` AND (ph.numero_documento LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
+            query += ` AND (ph.numero_documento LIKE ? OR ph.numero_control LIKE ? OR ph.sello_recepcion LIKE ? OR ph.num_quedan LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
             const searchTerm = `%${word}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         });
 
         // Count total for pagination
@@ -62,6 +94,7 @@ const getPurchases = async (req, res) => {
         res.json({
             data: rows,
             total,
+            totalItems: total,
             page: parseInt(page),
             totalPages: Math.ceil(total / limit)
         });
@@ -81,11 +114,13 @@ const getPurchaseById = async (req, res) => {
 
         const [header] = await pool.query(`
             SELECT ph.*, p.nombre AS provider_nombre, br.nombre AS branch_nombre,
-                   cat.description AS tipo_documento_nombre
+                   cat.description AS tipo_documento_nombre,
+                   cat_cond.description AS condicion_operacion_nombre
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
             LEFT JOIN branches br ON ph.branch_id = br.id
             LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+            LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code COLLATE utf8mb4_unicode_ci
             WHERE ph.id = ? AND ph.company_id = ?
         `, [id, companyId]);
 
@@ -94,9 +129,12 @@ const getPurchaseById = async (req, res) => {
         }
 
         const [items] = await pool.query(`
-            SELECT pi.*, p.nombre, p.codigo, p.tipo_combustible
+            SELECT pi.*, 
+                   COALESCE(NULLIF(pi.descripcion, ''), p.nombre, 'Sin descripción') AS nombre, 
+                   COALESCE(p.codigo, '—') AS codigo, 
+                   COALESCE(p.tipo_combustible, 0) AS tipo_combustible
             FROM purchase_items pi
-            JOIN products p ON pi.product_id = p.id
+            LEFT JOIN products p ON pi.product_id = p.id
             WHERE pi.purchase_id = ?
         `, [id]);
 
@@ -150,7 +188,7 @@ const createPurchase = async (req, res) => {
         let finalIva = 0;
         if (tipo_documento_id === '01' || isProviderExempt) {
             finalIva = 0;
-        } else if (['03', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
+        } else if (['03', '05', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
             finalIva = Math.round(gravadaNum * 0.13 * 100) / 100;
         } else {
             finalIva = parseFloat(iva) || 0;
@@ -194,19 +232,26 @@ const createPurchase = async (req, res) => {
         }
 
         // 1. Insertar Cabecera
+        const numeroControl = req.body.numero_control || req.body.num_control || null;
+        const selloRecepcion = req.body.sello_recepcion || null;
+        const numQuedan = (req.body.num_quedan || req.body.numero_quedan || '').trim() || null;
+
         const [headerResult] = await connection.query(`
              INSERT INTO purchase_headers 
              (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
-              tipo_documento_id, condicion_operacion_id, observaciones,
+              numero_control, sello_recepcion,
+              tipo_documento_id, condicion_operacion_id, observaciones, num_quedan,
               dias_credito, fecha_vencimiento,
               total_nosujeta, total_exenta, total_gravada, 
               iva, retencion, percepcion, fovial, cotrans, monto_total,
               documento_afectado, fecha_afectada,
               period_year, period_month)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          `, [
              companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
+             numeroControl, selloRecepcion,
              tipo_documento_id, condicion_operacion_id, observaciones,
+             numQuedan ? numQuedan.toUpperCase() : null,
              dias_credito || 0, fecha_vencimiento || null,
              nosujetaNum, exentaNum, gravadaNum,
              finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
@@ -218,25 +263,30 @@ const createPurchase = async (req, res) => {
 
         // 2. Insertar Items y Actualizar Inventario
         for (const item of items) {
-            const { product_id, cantidad, precio_unitario } = item;
+            const { product_id, cantidad, precio_unitario, descripcion, nombre } = item;
             const qty = parseFloat(cantidad);
             const price = parseFloat(precio_unitario);
-            const total = qty * price;
+            const total = Math.round(qty * price * 10000) / 10000;
+            const finalProductId = product_id ? parseInt(product_id, 10) : null;
+            const itemDesc = (descripcion || nombre || '').trim() || null;
 
             await connection.query(`
-                INSERT INTO purchase_items (purchase_id, product_id, cantidad, precio_unitario, total)
-                VALUES (?, ?, ?, ?, ?)
-            `, [purchaseId, product_id, qty, price, total]);
+                INSERT INTO purchase_items (purchase_id, product_id, descripcion, cantidad, precio_unitario, total)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [purchaseId, finalProductId, itemDesc, qty, price, total]);
 
-            // Determinar impacto (Entrada por defecto, Salida si es Nota de Crédito 06)
-            const esNotaCredito = tipo_documento_id === '06';
+            // Si no tiene product_id (ítem sin código), no afecta inventario ni kardex
+            if (!finalProductId) continue;
+
+            // Determinar impacto (Entrada por defecto, Salida si es Nota de Crédito 05/06)
+            const esNotaCredito = tipo_documento_id === '05' || tipo_documento_id === '06';
             const sqlImpacto = esNotaCredito 
                 ? 'UPDATE inventory SET stock = stock - ? WHERE id = ?'
                 : 'UPDATE inventory SET stock = stock + ? WHERE id = ?';
             const movTipo = esNotaCredito ? 'SALIDA' : 'ENTRADA';
 
             // Resolver ID efectivo para inventario
-            const effectiveProductId = await getEffectiveProductId(connection, product_id);
+            const effectiveProductId = await getEffectiveProductId(connection, finalProductId);
 
             // Actualizar Inventario
             const [stockRows] = await connection.query(
@@ -267,13 +317,22 @@ const createPurchase = async (req, res) => {
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPRA')
             `, [companyId, branch_id, effectiveProductId, movTipo, qty, price, purchaseId]);
 
-            // ACTUALIZACIÓN DE COSTO: Si es un ingreso, actualizar el costo en la tabla de productos
-            const esIngreso = ['01', '03', '05', '14'].includes(tipo_documento_id);
-            if (esIngreso) {
-                await connection.query(
-                    'UPDATE products SET costo = ? WHERE id = ?',
-                    [price, product_id]
-                );
+            // ACTUALIZACIÓN DE COSTO Y PROVEEDOR: Si es un ingreso (no es nota de crédito), actualizar costo y proveedor en el producto.
+            // Si solo se está usando descripción (sin product_id), no aplica.
+            const esIngreso = !esNotaCredito;
+            if (esIngreso && finalProductId) {
+                const finalProviderId = provider_id ? parseInt(provider_id, 10) : null;
+                if (finalProviderId) {
+                    await connection.query(
+                        'UPDATE products SET costo = ?, provider_id = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProviderId, finalProductId, companyId]
+                    );
+                } else {
+                    await connection.query(
+                        'UPDATE products SET costo = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProductId, companyId]
+                    );
+                }
             }
         }
 
@@ -334,7 +393,8 @@ const updatePurchase = async (req, res) => {
 
         // REVERSAR IMPACTO ANTIGUO
         for (const oldItem of oldItems) {
-            const esNC = oldTipoDoc === '06';
+            if (!oldItem.product_id) continue;
+            const esNC = oldTipoDoc === '05' || oldTipoDoc === '06';
             const reverseSql = esNC 
                 ? 'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?'
                 : 'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?';
@@ -371,7 +431,7 @@ const updatePurchase = async (req, res) => {
         let finalIva = 0;
         if (tipo_documento_id === '01' || isProviderExempt) {
             finalIva = 0;
-        } else if (['03', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
+        } else if (['03', '05', '06'].includes(tipo_documento_id) && gravadaNum > 0) {
             finalIva = Math.round(gravadaNum * 0.13 * 100) / 100;
         } else {
             finalIva = parseFloat(iva) || 0;
@@ -419,10 +479,15 @@ const updatePurchase = async (req, res) => {
         }
 
         // 2. Actualizar Cabecera
+        const numeroControl = req.body.numero_control || req.body.num_control || null;
+        const selloRecepcion = req.body.sello_recepcion || null;
+        const numQuedan = (req.body.num_quedan || req.body.numero_quedan || '').trim() || null;
+
         await connection.query(`
             UPDATE purchase_headers SET 
                 branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?,
-                tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
+                numero_control = ?, sello_recepcion = ?,
+                tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?, num_quedan = ?,
                 dias_credito = ?, fecha_vencimiento = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
                 iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, monto_total = ?,
@@ -431,7 +496,9 @@ const updatePurchase = async (req, res) => {
             WHERE id = ? AND company_id = ?
         `, [
             branch_id, provider_id, fecha, numero_documento,
+            numeroControl, selloRecepcion,
             tipo_documento_id, condicion_operacion_id, observaciones,
+            numQuedan ? numQuedan.toUpperCase() : null,
             dias_credito || 0, fecha_vencimiento || null,
             nosujetaNum, exentaNum, gravadaNum,
             finalIva, retencionNum, percepcionNum, fovialNum, cotransNum, finalMontoTotal,
@@ -442,20 +509,24 @@ const updatePurchase = async (req, res) => {
 
         // 3. Insertar Nuevos Items y Aplicar NUEVO IMPACTO
         for (const item of items) {
-            const { product_id, cantidad, precio_unitario } = item;
+            const { product_id, cantidad, precio_unitario, descripcion, nombre } = item;
             const qty = parseFloat(cantidad);
             const price = parseFloat(precio_unitario);
-            const total = qty * price;
+            const total = Math.round(qty * price * 10000) / 10000;
+            const finalProductId = product_id ? parseInt(product_id, 10) : null;
+            const itemDesc = (descripcion || nombre || '').trim() || null;
 
             await connection.query(`
-                INSERT INTO purchase_items (purchase_id, product_id, cantidad, precio_unitario, total)
-                VALUES (?, ?, ?, ?, ?)
-            `, [id, product_id, qty, price, total]);
+                INSERT INTO purchase_items (purchase_id, product_id, descripcion, cantidad, precio_unitario, total)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `, [id, finalProductId, itemDesc, qty, price, total]);
+
+            if (!finalProductId) continue;
 
             // Resolver ID efectivo para inventario
-            const effectiveProductId = await getEffectiveProductId(connection, product_id);
+            const effectiveProductId = await getEffectiveProductId(connection, finalProductId);
 
-            const newEsNC = tipo_documento_id === '06';
+            const newEsNC = tipo_documento_id === '05' || tipo_documento_id === '06';
             const applySql = newEsNC
                 ? 'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?'
                 : 'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?';
@@ -480,21 +551,41 @@ const updatePurchase = async (req, res) => {
                 );
             }
 
+            // ACTUALIZACIÓN DE COSTO Y PROVEEDOR: Si es un ingreso (no es nota de crédito), actualizar costo y proveedor en el producto.
+            // Si solo se está usando descripción (sin product_id), no aplica.
+            const esIngreso = !newEsNC;
+            if (esIngreso && finalProductId) {
+                const finalProviderId = provider_id ? parseInt(provider_id, 10) : null;
+                if (finalProviderId) {
+                    await connection.query(
+                        'UPDATE products SET costo = ?, provider_id = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProviderId, finalProductId, companyId]
+                    );
+                } else {
+                    await connection.query(
+                        'UPDATE products SET costo = ? WHERE id = ? AND company_id = ?',
+                        [price, finalProductId, companyId]
+                    );
+                }
+            }
         }
 
         // Registrar movimientos por DELTA (efecto_nuevo - efecto_viejo); el movimiento COMPRA original queda intacto
         const oldEffects = {};
         for (const oldItem of oldItems) {
-            const efectoViejo = (oldTipoDoc === '06' ? -1 : 1) * parseFloat(oldItem.cantidad);
+            if (!oldItem.product_id) continue;
+            const efectoViejo = ((oldTipoDoc === '05' || oldTipoDoc === '06') ? -1 : 1) * parseFloat(oldItem.cantidad);
             oldEffects[oldItem.product_id] = (oldEffects[oldItem.product_id] || 0) + efectoViejo;
         }
 
         const newEffects = {};
         const newPrices = {};
         for (const item of items) {
-            const efectoNuevo = (tipo_documento_id === '06' ? -1 : 1) * parseFloat(item.cantidad);
-            newEffects[item.product_id] = (newEffects[item.product_id] || 0) + efectoNuevo;
-            newPrices[item.product_id] = parseFloat(item.precio_unitario);
+            const finalPId = item.product_id ? parseInt(item.product_id, 10) : null;
+            if (!finalPId) continue;
+            const efectoNuevo = ((tipo_documento_id === '05' || tipo_documento_id === '06') ? -1 : 1) * parseFloat(item.cantidad);
+            newEffects[finalPId] = (newEffects[finalPId] || 0) + efectoNuevo;
+            newPrices[finalPId] = parseFloat(item.precio_unitario);
         }
 
         for (const productKey of new Set([...Object.keys(oldEffects), ...Object.keys(newEffects)])) {
@@ -546,7 +637,7 @@ const voidPurchase = async (req, res) => {
         if (purchase[0].status === 'ANULADO') throw new Error('La compra ya está anulada');
 
         const { branch_id, tipo_documento_id } = purchase[0];
-        const esNotaCredito = tipo_documento_id === '06';
+        const esNotaCredito = tipo_documento_id === '05' || tipo_documento_id === '06';
 
         // 2. Obtener items para reversar inventario
         const [items] = await connection.query(
@@ -556,6 +647,7 @@ const voidPurchase = async (req, res) => {
 
         for (const item of items) {
             const { product_id, cantidad } = item;
+            if (!product_id) continue;
             const qty = parseFloat(cantidad);
 
             // Resolver ID efectivo para reversión
@@ -617,12 +709,14 @@ const exportPurchasePDF = async (req, res) => {
             SELECT ph.*, p.nombre AS provider_nombre, p.nrc AS provider_nrc, p.nit AS provider_nit,
                    b.nombre AS branch_nombre, b.direccion AS branch_direccion,
                    cat.description AS tipo_doc_nombre,
+                   cat_cond.description AS condicion_nombre,
                    c.razon_social AS company_nombre, c.nit AS company_nit
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
             LEFT JOIN branches b ON ph.branch_id = b.id
             LEFT JOIN companies c ON ph.company_id = c.id
             LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+            LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code COLLATE utf8mb4_unicode_ci
             WHERE ph.id = ? AND ph.company_id = ?
         `, [id, companyId]);
 
@@ -631,9 +725,11 @@ const exportPurchasePDF = async (req, res) => {
 
         // 2. Obtener items
         const [items] = await pool.query(`
-            SELECT pi.*, prod.nombre, prod.codigo
+            SELECT pi.*, 
+                   COALESCE(NULLIF(pi.descripcion, ''), prod.nombre, 'Sin descripción') AS nombre, 
+                   COALESCE(prod.codigo, '—') AS codigo
             FROM purchase_items pi
-            JOIN products prod ON pi.product_id = prod.id
+            LEFT JOIN products prod ON pi.product_id = prod.id
             WHERE pi.purchase_id = ?
         `, [id]);
 
@@ -670,9 +766,30 @@ const exportPurchasePDF = async (req, res) => {
         doc.font('Helvetica').text(`Tipo: ${p.tipo_doc_nombre || '---'}`, startX + 300, currentY + 15);
         doc.text(`Número: ${p.numero_documento || '---'}`, startX + 300, currentY + 30);
         
+        let extraY = 45;
+        if (p.numero_control) {
+            doc.text(`N° Control: ${p.numero_control}`, startX + 300, currentY + extraY);
+            extraY += 15;
+        }
+
         let fechaDoc = '---';
         try { if (p.fecha) fechaDoc = new Date(p.fecha).toLocaleDateString(); } catch (e) {}
-        doc.text(`Fecha: ${fechaDoc}`, startX + 300, currentY + 45);
+        doc.text(`Fecha: ${fechaDoc}`, startX + 300, currentY + extraY);
+        extraY += 15;
+
+        const condLabel = p.condicion_nombre || (String(p.condicion_operacion_id) === '2' ? 'Crédito' : 'Contado');
+        doc.text(`Condición: ${condLabel}${String(p.condicion_operacion_id) === '2' && p.dias_credito ? ` (${p.dias_credito} días)` : ''}`, startX + 300, currentY + extraY);
+
+        if (p.num_quedan) {
+            extraY += 15;
+            doc.text(`N° Quedan: ${p.num_quedan}`, startX + 300, currentY + extraY);
+        }
+
+        if (p.sello_recepcion) {
+            extraY += 15;
+            doc.fontSize(8).text(`Sello: ${p.sello_recepcion}`, startX + 300, currentY + extraY, { width: 230 });
+            doc.fontSize(10);
+        }
 
         doc.moveDown(4);
 
@@ -740,12 +857,8 @@ const exportPurchasePDF = async (req, res) => {
  */
 const getPurchaseReportPDF = async (req, res) => {
     try {
-        const { start_date, end_date, branch_id, provider_id } = req.query;
+        const { start_date, end_date, branch_id, provider_id, search } = req.query;
         const companyId = req.company_id || req.user?.company_id;
-
-        if (!start_date || !end_date) {
-            return res.status(400).json({ message: 'Rango de fechas requerido' });
-        }
 
         // 1. Obtener datos de la empresa
         const company = await reportPdfHelper.getCompanyInfo(companyId);
@@ -762,9 +875,20 @@ const getPurchaseReportPDF = async (req, res) => {
             LEFT JOIN branches br ON ph.branch_id = br.id
             LEFT JOIN cat_002_tipo_dte cat_dte ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat_dte.code
             LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code
-            WHERE ph.company_id = ? AND ph.fecha BETWEEN ? AND ? AND ph.status != 'ANULADO'
+            WHERE ph.company_id = ? AND ph.status != 'ANULADO'
         `;
-        const params = [companyId, start_date, end_date];
+        const params = [companyId];
+
+        if (start_date && end_date) {
+            sql += " AND ph.fecha BETWEEN ? AND ?";
+            params.push(start_date, end_date);
+        } else if (start_date) {
+            sql += " AND ph.fecha >= ?";
+            params.push(start_date);
+        } else if (end_date) {
+            sql += " AND ph.fecha <= ?";
+            params.push(end_date);
+        }
 
         if (branch_id && branch_id !== 'all') {
             sql += " AND ph.branch_id = ?";
@@ -774,6 +898,15 @@ const getPurchaseReportPDF = async (req, res) => {
         if (provider_id && provider_id !== 'all') {
             sql += " AND ph.provider_id = ?";
             params.push(provider_id);
+        }
+
+        if (search) {
+            const words = search.trim().split(/\s+/).filter(Boolean);
+            words.forEach(word => {
+                sql += ` AND (ph.numero_documento LIKE ? OR ph.numero_control LIKE ? OR ph.sello_recepcion LIKE ? OR p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR ph.observaciones LIKE ?) `;
+                const searchTerm = `%${word}%`;
+                params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            });
         }
 
         sql += " ORDER BY p.nombre ASC, ph.fecha ASC";
@@ -790,6 +923,7 @@ const getPurchaseReportPDF = async (req, res) => {
                         { header: 'Fecha', key: 'fecha', width: 15 },
                         { header: 'Tipo Doc', key: 'tipo_doc', width: 12 },
                         { header: 'Documento', key: 'documento', width: 15 },
+                        { header: 'N° Control', key: 'num_control', width: 20 },
                         { header: 'Condición', key: 'condicion', width: 12 },
                         { header: 'Gravada', key: 'gravada', width: 12 },
                         { header: 'Exenta', key: 'exenta', width: 12 },
@@ -806,6 +940,7 @@ const getPurchaseReportPDF = async (req, res) => {
                         fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
                         tipo_doc: r.tipo_doc_nombre,
                         documento: r.numero_documento,
+                        num_control: r.numero_control || '---',
                         condicion: r.condicion_nombre,
                         gravada: parseFloat(r.total_gravada || 0).toFixed(2),
                         exenta: parseFloat(r.total_exenta || 0).toFixed(2),
@@ -829,8 +964,17 @@ const getPurchaseReportPDF = async (req, res) => {
             if (bRows.length > 0) branchName = (bRows[0].nombre || '').toUpperCase();
         }
 
-        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
-        const subtitle = `SUCURSAL: ${branchName}`;
+        let periodText = '';
+        if (start_date && end_date) {
+            periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+        } else if (start_date) {
+            periodText = `DESDE EL ${reportPdfHelper.formatDate(start_date)}`;
+        } else if (end_date) {
+            periodText = `AL ${reportPdfHelper.formatDate(end_date)}`;
+        } else {
+            periodText = `AL ${reportPdfHelper.formatDate(new Date())}`;
+        }
+        const subtitle = `SUCURSAL: ${branchName}${search ? `   |   FILTRO: "${search}"` : ''}`;
 
         const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
         const startX = 30;
@@ -1012,6 +1156,312 @@ const getPurchaseReportPDF = async (req, res) => {
     }
 };
 
+/**
+ * Escanear factura/DTE físico o digital mediante IA y extraer datos
+ */
+const matchProductsForItems = async (items, companyId) => {
+    if (!items || !Array.isArray(items) || items.length === 0) return items;
+    try {
+        const [dbProducts] = await pool.query(
+            `SELECT id, codigo, nombre, tipo_combustible FROM products WHERE company_id = ? AND status = 'activo'`,
+            [companyId]
+        );
+        return items.map(item => {
+            const rawCode = (item.codigo || '').trim().toLowerCase();
+            const rawDesc = (item.descripcion || '').trim().toLowerCase();
+            let matched = null;
+            if (rawCode) {
+                matched = dbProducts.find(p => (p.codigo || '').trim().toLowerCase() === rawCode);
+            }
+            if (!matched && rawDesc && rawDesc.length > 2) {
+                matched = dbProducts.find(p => (p.nombre || '').trim().toLowerCase() === rawDesc);
+            }
+            return {
+                ...item,
+                matchedProduct: matched ? {
+                    id: matched.id,
+                    codigo: matched.codigo,
+                    nombre: matched.nombre,
+                    tipo_combustible: matched.tipo_combustible || 0
+                } : null
+            };
+        });
+    } catch (err) {
+        console.error('Error al cotejar productos con base de datos:', err);
+        return items;
+    }
+};
+
+const scanDteInvoice = async (req, res) => {
+    try {
+        if (!req.file && !req.body?.image) {
+            return res.status(400).json({ message: 'No se recibió ninguna imagen o archivo para escanear.' });
+        }
+
+        let buffer;
+        let mimeType = 'image/jpeg';
+
+        if (req.file) {
+            buffer = req.file.buffer;
+            mimeType = req.file.mimetype;
+        } else if (req.body.image) {
+            const matches = req.body.image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                mimeType = matches[1];
+                buffer = Buffer.from(matches[2], 'base64');
+            } else {
+                buffer = Buffer.from(req.body.image, 'base64');
+            }
+        }
+
+        const companyId = req.company_id || req.user?.company_id;
+        const recognizeItems = req.body?.recognizeItems === 'true' || req.body?.recognizeItems === true || req.query?.recognizeItems === 'true';
+
+        // Llamar a servicio de IA
+        const extracted = await aiService.extractDteFromImage(buffer, mimeType, { recognizeItems });
+
+        if (extracted.items && extracted.items.length > 0) {
+            extracted.items = await matchProductsForItems(extracted.items, companyId);
+        }
+
+        // Buscar si existe un proveedor que coincida por NIT, NRC o nombre
+        let matchedProvider = null;
+        if (extracted.emisor && (extracted.emisor.nit || extracted.emisor.nrc || extracted.emisor.nombre)) {
+            const cleanNit = (extracted.emisor.nit || '').replace(/[^0-9]/g, '');
+            const cleanNrc = (extracted.emisor.nrc || '').replace(/[^0-9]/g, '');
+            const searchName = (extracted.emisor.nombre || '').trim();
+
+            let pQuery = `SELECT id, nombre, nit, nrc, dias_credito FROM providers WHERE company_id = ? AND (1=0`;
+            const pParams = [companyId];
+
+            if (cleanNit.length > 5) {
+                pQuery += ` OR REPLACE(nit, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNit}%`);
+            }
+            if (cleanNrc.length > 2) {
+                pQuery += ` OR REPLACE(nrc, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNrc}%`);
+            }
+            if (searchName.length > 3) {
+                pQuery += ` OR nombre LIKE ?`;
+                pParams.push(`%${searchName}%`);
+            }
+            pQuery += `) LIMIT 1`;
+
+            const [pRows] = await pool.query(pQuery, pParams);
+            if (pRows.length > 0) {
+                matchedProvider = pRows[0];
+            }
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                ...extracted,
+                matchedProvider
+            }
+        });
+
+    } catch (error) {
+        console.error("Error al escanear DTE con IA:", error);
+        return res.status(500).json({
+            message: error.message || "Error al procesar la imagen del DTE con IA"
+        });
+    }
+};
+
+/**
+ * Crear una nueva sesión temporal de escaneo móvil con QR
+ */
+const createScanSession = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        const branchId = req.user?.branch_id || req.body?.branch_id || null;
+        const userId = req.user?.id || null;
+
+        if (!companyId) {
+            return res.status(401).json({ message: "Sesión no válida o sin empresa asignada" });
+        }
+
+        const sessionId = crypto.randomUUID();
+        const now = Date.now();
+        const ttlMs = 10 * 60 * 1000; // 10 minutes
+
+        const session = {
+            id: sessionId,
+            companyId,
+            branchId,
+            userId,
+            status: "pending", // "pending" | "processing" | "completed" | "error"
+            data: null,
+            error: null,
+            createdAt: now,
+            expiresAt: now + ttlMs,
+        };
+
+        scanSessions.set(sessionId, session);
+
+        res.json({
+            success: true,
+            sessionId,
+            lanIp: getLocalIpAddress(),
+            expiresAt: session.expiresAt,
+            expiresInSeconds: Math.floor(ttlMs / 1000),
+        });
+    } catch (error) {
+        console.error("Error al crear sesión de escaneo móvil:", error);
+        res.status(500).json({ message: "Error al iniciar sesión de escaneo móvil" });
+    }
+};
+
+/**
+ * Consultar el estado de una sesión de escaneo móvil
+ */
+const getScanSessionStatus = async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const session = scanSessions.get(sessionId);
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                status: "expired",
+                message: "La sesión de escaneo no existe o ha expirado.",
+            });
+        }
+
+        if (session.expiresAt && session.expiresAt < Date.now()) {
+            scanSessions.delete(sessionId);
+            return res.status(410).json({
+                success: false,
+                status: "expired",
+                message: "La sesión de escaneo ha expirado.",
+            });
+        }
+
+        res.json({
+            success: true,
+            status: session.status,
+            data: session.data,
+            error: session.error,
+            expiresAt: session.expiresAt,
+        });
+    } catch (error) {
+        console.error("Error al consultar estado de escaneo:", error);
+        res.status(500).json({ message: "Error al consultar estado de la sesión" });
+    }
+};
+
+/**
+ * Subir foto desde el celular para procesar con IA y asociar a la sesión
+ */
+const uploadMobileScan = async (req, res) => {
+    const { sessionId } = req.params;
+    const session = scanSessions.get(sessionId);
+
+    if (!session) {
+        return res.status(404).json({
+            success: false,
+            message: "La sesión de escaneo no existe o ha expirado. Genere un nuevo código QR.",
+        });
+    }
+
+    if (session.expiresAt && session.expiresAt < Date.now()) {
+        scanSessions.delete(sessionId);
+        return res.status(410).json({
+            success: false,
+            message: "La sesión de escaneo ha expirado. Por favor genere un nuevo código QR.",
+        });
+    }
+
+    if (!req.file && !req.body?.image) {
+        return res.status(400).json({ message: "No se recibió ninguna imagen para procesar." });
+    }
+
+    session.status = "processing";
+
+    try {
+        let buffer;
+        let mimeType = 'image/jpeg';
+
+        if (req.file) {
+            buffer = req.file.buffer;
+            mimeType = req.file.mimetype;
+        } else if (req.body.image) {
+            const matches = req.body.image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                mimeType = matches[1];
+                buffer = Buffer.from(matches[2], 'base64');
+            } else {
+                buffer = Buffer.from(req.body.image, 'base64');
+            }
+        }
+
+        const companyId = session.companyId;
+        const recognizeItems = req.body?.recognizeItems === 'true' || req.body?.recognizeItems === true || req.query?.recognizeItems === 'true';
+
+        // Procesar con IA
+        const extracted = await aiService.extractDteFromImage(buffer, mimeType, { recognizeItems });
+
+        if (extracted.items && extracted.items.length > 0) {
+            extracted.items = await matchProductsForItems(extracted.items, companyId);
+        }
+
+        // Buscar proveedor en la base de datos de la empresa
+        let matchedProvider = null;
+        if (extracted.emisor && (extracted.emisor.nit || extracted.emisor.nrc || extracted.emisor.nombre)) {
+            const cleanNit = (extracted.emisor.nit || '').replace(/[^0-9]/g, '');
+            const cleanNrc = (extracted.emisor.nrc || '').replace(/[^0-9]/g, '');
+            const searchName = (extracted.emisor.nombre || '').trim();
+
+            let pQuery = `SELECT id, nombre, nit, nrc, dias_credito FROM providers WHERE company_id = ? AND (1=0`;
+            const pParams = [companyId];
+
+            if (cleanNit.length > 5) {
+                pQuery += ` OR REPLACE(nit, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNit}%`);
+            }
+            if (cleanNrc.length > 2) {
+                pQuery += ` OR REPLACE(nrc, '-', '') LIKE ?`;
+                pParams.push(`%${cleanNrc}%`);
+            }
+            if (searchName.length > 3) {
+                pQuery += ` OR nombre LIKE ?`;
+                pParams.push(`%${searchName}%`);
+            }
+            pQuery += `) LIMIT 1`;
+
+            const [pRows] = await pool.query(pQuery, pParams);
+            if (pRows.length > 0) {
+                matchedProvider = pRows[0];
+            }
+        }
+
+        const resultData = {
+            ...extracted,
+            matchedProvider,
+        };
+
+        session.status = 'completed';
+        session.data = resultData;
+        session.error = null;
+
+        return res.json({
+            success: true,
+            status: 'completed',
+            data: resultData,
+        });
+    } catch (error) {
+        console.error('Error al procesar escaneo móvil con IA:', error);
+        session.status = 'error';
+        session.error = error.message || 'Error al procesar la imagen con IA';
+        return res.status(500).json({
+            success: false,
+            message: session.error,
+        });
+    }
+};
+
 module.exports = {
     getPurchases,
     getPurchaseById,
@@ -1019,5 +1469,9 @@ module.exports = {
     voidPurchase,
     exportPurchasePDF,
     updatePurchase,
-    getPurchaseReportPDF
+    getPurchaseReportPDF,
+    scanDteInvoice,
+    createScanSession,
+    getScanSessionStatus,
+    uploadMobileScan
 };

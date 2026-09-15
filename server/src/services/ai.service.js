@@ -31,9 +31,9 @@ class AIService {
 
         if (this.gemini) {
             try {
-                console.log('[AI Service] Falling back to Gemini (using gemini-2.0-flash)...');
+                console.log('[AI Service] Falling back to Gemini (using gemini-flash-latest)...');
                 const model = this.gemini.getGenerativeModel({
-                    model: "gemini-2.0-flash",
+                    model: "gemini-flash-latest",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -111,7 +111,7 @@ class AIService {
             } else {
                 console.log('[AI Service] Generating final Gemini response...');
                 const model = this.gemini.getGenerativeModel({
-                    model: "gemini-2.0-flash",
+                    model: "gemini-flash-latest",
                     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] }
                 });
 
@@ -131,6 +131,114 @@ class AIService {
             }
             throw error;
         }
+    }
+
+    async extractDteFromImage(imageBuffer, mimeType = 'image/jpeg', options = {}) {
+        const recognizeItems = options.recognizeItems === true;
+
+        if (!this.gemini) {
+            throw new Error('El servicio de IA no está configurado (falta GEMINI_API_KEY).');
+        }
+
+        const base64Data = imageBuffer.toString('base64');
+
+        const prompt = `Eres un asistente contable experto en Documentos Tributarios Electrónicos (DTE) de El Salvador del Ministerio de Hacienda.
+Analiza con máxima precisión la imagen de este DTE, factura o comprobante de crédito fiscal.
+
+Extrae TODOS los campos visibles y responde EXCLUSIVAMENTE con un JSON válido y estricto (sin bloques markdown ni explicaciones adicionales):
+{
+  "codigo_generacion": "Código de generación en mayúsculas (UUID de 36 caracteres: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)",
+  "numero_control": "Número de control oficial (ejemplo: DTE-03-M001P003-000000000002053 o DTE-01-...)",
+  "sello_recepcion": "Sello de recepción oficial otorgado por Hacienda (cadena de 40 caracteres)",
+  "fecha_emision": "Fecha de emisión en formato YYYY-MM-DD si es visible, o null",
+  "tipo_documento_id": "03 para Crédito Fiscal (CCF), 01 para Factura, 05 para Nota de Crédito, 06 para Nota de Débito",
+  "tipo_documento_nombre": "Nombre descriptivo del tipo de documento",
+  "emisor": {
+    "nombre": "Nombre o Razón Social del emisor / proveedor si es visible, o null",
+    "nit": "NIT del emisor si es visible, o null",
+    "nrc": "NRC del emisor si es visible, o null"
+  },
+  "totales": {
+    "total_gravada": 0.0,
+    "total_exenta": 0.0,
+    "total_nosujeta": 0.0,
+    "iva": 0.0,
+    "retencion": 0.0,
+    "percepcion": 0.0,
+    "monto_total": 0.0
+  }${recognizeItems ? `,
+  "items": [
+    {
+      "codigo": "Código del producto o ítem si es visible, o null",
+      "descripcion": "Descripción o nombre del producto o servicio",
+      "cantidad": 1.0,
+      "precio_unitario": 0.0,
+      "total": 0.0
+    }
+  ]` : ''}
+}
+
+REGLAS:
+- Si un campo no es visible o está cortado en la foto, asígnalo como null (o 0.0 en valores numéricos).
+- Asegúrate de que el código de generación y número de control estén en MAYÚSCULAS y limpios de espacios.
+- IMPORTANTE: Tanto el código de generación (UUID) como el sello de recepción de Hacienda están compuestos ÚNICAMENTE por caracteres hexadecimales (dígitos 0-9 y letras A-F). En caracteres hexadecimales NUNCA existe la letra 'O'; si ves una forma redonda es el número cero '0'.
+- El sello de recepción debe contener todos los caracteres visibles sin espacios.${recognizeItems ? `
+- Extrae con precisión cada una de las filas o renglones de la tabla de detalle/cuerpo de la factura en el arreglo "items". Asegura cantidad numérica, precio unitario sin IVA y total de la línea.` : ''}`;
+
+        const candidateModels = [
+            'gemini-flash-latest',
+            'gemini-flash-lite-latest',
+            'gemini-3.7-flash',
+            'gemini-2.5-flash-lite',
+            'gemini-pro-latest'
+        ];
+
+        let lastError = null;
+        for (const modelName of candidateModels) {
+            try {
+                const model = this.gemini.getGenerativeModel({ model: modelName });
+                const result = await model.generateContent([
+                    {
+                        inlineData: {
+                            data: base64Data,
+                            mimeType: mimeType || 'image/jpeg'
+                        }
+                    },
+                    prompt
+                ]);
+
+                const rawText = result.response.text();
+                const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const parsed = JSON.parse(cleanJson);
+
+                // Normalización post-procesamiento para evitar errores comunes de OCR en caracteres hexadecimales
+                if (parsed.codigo_generacion) {
+                    let cg = String(parsed.codigo_generacion).trim().toUpperCase();
+                    cg = cg.replace(/O/g, '0');
+                    parsed.codigo_generacion = cg;
+                }
+
+                if (parsed.sello_recepcion) {
+                    let sr = String(parsed.sello_recepcion).trim().toUpperCase().replace(/\s+/g, '');
+                    sr = sr.replace(/O/g, '0');
+                    parsed.sello_recepcion = sr;
+                }
+
+                if (parsed.numero_control) {
+                    parsed.numero_control = String(parsed.numero_control).trim().toUpperCase().replace(/\s+/g, '');
+                }
+
+                return parsed;
+            } catch (error) {
+                console.warn(`[AI Service] Error con modelo ${modelName} (${error.message}). Intentando modelo alternativo...`);
+                lastError = error;
+                // Pequeña pausa antes de intentar con el siguiente modelo si hay saturación temporal
+                await new Promise(res => setTimeout(res, 600));
+            }
+        }
+
+        console.error('[AI Service] Todos los modelos de Gemini fallaron:', lastError?.message);
+        throw new Error(`El servicio de IA experimentó alta demanda. Por favor, reintenta en un momento. (${lastError?.message || '503'})`);
     }
 }
 

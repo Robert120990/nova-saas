@@ -370,15 +370,118 @@ const createSale = async (req, res) => {
  * Obtiene el historial de ventas paginado.
  */
 const getSales = async (req, res) => {
-    const { page = 1, limit = 15, dte_type, start_date, end_date, search = '', customer_id, status, only_processed, exclude_has_nc, shift_id, has_dte } = req.query;
+    const { 
+        page = 1, 
+        limit = 15, 
+        dte_type, 
+        tipo_documento,
+        start_date, 
+        end_date, 
+        search = '', 
+        customer_id, 
+        status, 
+        dte_status,
+        branch_id,
+        only_processed, 
+        exclude_has_nc, 
+        shift_id, 
+        has_dte 
+    } = req.query;
     const offset = (page - 1) * limit;
 
     try {
-        let sql = `
+        let whereClause = ' WHERE h.company_id = ?';
+        const whereParams = [req.company_id];
+
+        if (req.user.branch_id) {
+            whereClause += ' AND h.branch_id = ?';
+            whereParams.push(req.user.branch_id);
+        } else if (branch_id && branch_id !== 'all') {
+            whereClause += ' AND h.branch_id = ?';
+            whereParams.push(branch_id);
+        }
+
+        if (search && search.trim()) {
+            const searchPattern = `%${search.trim()}%`;
+            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ? OR h.observaciones LIKE ?)';
+            whereParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+        }
+
+        const docType = tipo_documento || dte_type;
+        if (docType && docType !== 'all') {
+            if (docType === 'COMPLEMENTARIA') {
+                whereClause += " AND h.observaciones LIKE '%Complementaria%'";
+            } else {
+                whereClause += ' AND (h.tipo_documento = ? OR h.dte_type = ?)';
+                whereParams.push(docType, docType);
+            }
+        }
+
+        if (start_date && end_date) {
+            whereClause += ' AND h.fecha_emision BETWEEN ? AND ?';
+            whereParams.push(start_date, end_date);
+        } else if (start_date) {
+            whereClause += ' AND h.fecha_emision >= ?';
+            whereParams.push(start_date);
+        } else if (end_date) {
+            whereClause += ' AND h.fecha_emision <= ?';
+            whereParams.push(end_date);
+        }
+
+        if (customer_id) {
+            whereClause += ' AND h.customer_id = ?';
+            whereParams.push(customer_id);
+        }
+
+        if (shift_id) {
+            whereClause += ' AND h.shift_id = ?';
+            whereParams.push(shift_id);
+        }
+
+        if (has_dte === 'true') {
+            whereClause += ' AND (d_c.id IS NOT NULL OR d_v.id IS NOT NULL)';
+        }
+
+        const effectiveStatus = status || dte_status;
+        if (effectiveStatus && effectiveStatus !== 'all') {
+            if (effectiveStatus === 'ACCEPTED') {
+                whereClause += " AND ((d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED') AND h.estado NOT IN ('invalidado', 'anulado'))";
+            } else if (effectiveStatus === 'REJECTED') {
+                whereClause += " AND (d_c.status = 'REJECTED' OR d_v.status = 'REJECTED')";
+            } else if (effectiveStatus === 'INVALIDADO' || effectiveStatus === 'anulado') {
+                whereClause += " AND (h.estado IN ('invalidado', 'anulado') OR d_c.status = 'INVALIDADO' OR d_v.status = 'INVALIDADO')";
+            } else if (effectiveStatus === 'PENDING') {
+                whereClause += " AND ((d_c.id IS NULL AND d_v.id IS NULL) OR COALESCE(d_c.status, d_v.status) NOT IN ('ACCEPTED', 'REJECTED', 'INVALIDADO')) AND h.estado NOT IN ('invalidado', 'anulado')";
+            } else {
+                whereClause += ' AND h.estado = ?';
+                whereParams.push(effectiveStatus);
+            }
+        }
+
+        if (only_processed === 'true') {
+            whereClause += " AND (d_c.status = 'ACCEPTED' OR d_v.status = 'ACCEPTED')";
+        }
+
+        if (exclude_has_nc === 'true') {
+            whereClause += ` AND NOT EXISTS (
+                SELECT 1 FROM sales_linked_documents ld 
+                JOIN sales_headers h2 ON ld.sale_id = h2.id 
+                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
+                AND (
+                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
+                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
+                    (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
+                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
+                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
+                )
+            )`;
+        }
+
+        const sql = `
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
-            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.ambiente, d_c.ambiente, '00') as dte_ambiente, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
+            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.ambiente, d_v.ambiente, '00') as dte_ambiente, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
             comp.nit as company_nit,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'
@@ -395,134 +498,34 @@ const getSales = async (req, res) => {
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id
-            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
-            WHERE h.company_id = ?
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            ${whereClause}
+            ORDER BY h.fecha_emision DESC, h.hora_emision DESC
+            LIMIT ? OFFSET ?
         `;
-        const params = [req.company_id];
+        const params = [...whereParams, parseInt(limit), parseInt(offset)];
 
-        if (req.user.branch_id) {
-            sql += ' AND h.branch_id = ?';
-            params.push(req.user.branch_id);
-        }
-
-        if (search) {
-            sql += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ?)';
-            const searchPattern = `%${search}%`;
-            params.push(searchPattern, searchPattern, searchPattern, searchPattern);
-        }
-
-        if (dte_type) {
-            sql += ' AND h.dte_type = ?';
-            params.push(dte_type);
-        }
-        if (start_date && end_date) {
-            sql += ' AND h.created_at BETWEEN ? AND ?';
-            params.push(start_date, end_date);
-        }
-
-        if (customer_id) {
-            sql += ' AND h.customer_id = ?';
-            params.push(customer_id);
-        }
-
-        if (shift_id) {
-            sql += ' AND h.shift_id = ?';
-            params.push(shift_id);
-        }
-
-        if (has_dte === 'true') {
-            sql += ' AND (d_v.id IS NOT NULL OR d_c.id IS NOT NULL)';
-        }
-
-        if (status) {
-            sql += ' AND h.estado = ?';
-            params.push(status);
-        }
-
-        if (only_processed === 'true') {
-            sql += " AND (d_v.status = 'ACCEPTED' OR d_c.status = 'ACCEPTED')";
-        }
-
-        if (exclude_has_nc === 'true') {
-            sql += ` AND NOT EXISTS (
-                SELECT 1 FROM sales_linked_documents ld 
-                JOIN sales_headers h2 ON ld.sale_id = h2.id 
-                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
-                AND (
-                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
-                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR 
-                    (ld.doc_number = d_v.numero_control COLLATE utf8mb4_unicode_ci AND d_v.numero_control IS NOT NULL AND d_v.numero_control != '') OR
-                    (ld.doc_number = d_c.numero_control COLLATE utf8mb4_unicode_ci AND d_c.numero_control IS NOT NULL AND d_c.numero_control != '') OR
-                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
-                )
-            )`;
-        }
-
-        let countSql = `SELECT COUNT(*) as total FROM sales_headers h LEFT JOIN customers c ON h.customer_id = c.id WHERE h.company_id = ?`;
-        const countParams = [req.company_id];
-        
-        if (req.user.branch_id) {
-            countSql += ' AND h.branch_id = ?';
-            countParams.push(req.user.branch_id);
-        }
-        if (search) {
-            countSql += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ?)';
-            countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-        }
-
-        if (dte_type) {
-            countSql += ' AND h.dte_type = ?';
-            countParams.push(dte_type);
-        }
-
-        if (customer_id) {
-            countSql += ' AND h.customer_id = ?';
-            countParams.push(customer_id);
-        }
-
-        if (shift_id) {
-            countSql += ' AND h.shift_id = ?';
-            countParams.push(shift_id);
-        }
-
-        if (has_dte === 'true') {
-            countSql += ` AND (EXISTS (SELECT 1 FROM dtes d2 WHERE d2.venta_id = h.id AND d2.company_id = h.company_id) OR EXISTS (SELECT 1 FROM dtes d2 WHERE d2.codigo_generacion = h.codigo_generacion AND d2.company_id = h.company_id))`;
-        }
-
-        if (status) {
-            countSql += ' AND h.estado = ?';
-            countParams.push(status);
-        }
-
-        if (only_processed === 'true') {
-            countSql += " AND (EXISTS (SELECT 1 FROM dtes d2 WHERE d2.venta_id = h.id AND d2.status = 'ACCEPTED') OR EXISTS (SELECT 1 FROM dtes d2 WHERE d2.codigo_generacion = h.codigo_generacion AND d2.status = 'ACCEPTED'))";
-        }
-
-        if (exclude_has_nc === 'true') {
-            countSql += ` AND NOT EXISTS (
-                SELECT 1 FROM sales_linked_documents ld 
-                JOIN sales_headers h2 ON ld.sale_id = h2.id 
-                WHERE h2.tipo_documento = '05' AND h2.estado = 'emitido'
-                AND (
-                    (ld.doc_number = h.codigo_generacion COLLATE utf8mb4_unicode_ci AND h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '') OR 
-                    (ld.doc_number = h.numero_control COLLATE utf8mb4_unicode_ci AND h.numero_control IS NOT NULL AND h.numero_control != '') OR
-                    (ld.doc_number = CAST(h.id AS CHAR) COLLATE utf8mb4_unicode_ci)
-                )
-            )`;
-        }
-
-        sql += ' ORDER BY h.fecha_emision DESC, h.hora_emision DESC LIMIT ? OFFSET ?';
-        params.push(parseInt(limit), parseInt(offset));
+        const countSql = `
+            SELECT COUNT(*) as total 
+            FROM sales_headers h 
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            ${whereClause}
+        `;
+        const countParams = [...whereParams];
 
         const [rows] = await pool.query(sql, params);
         const [totalRows] = await pool.query(countSql, countParams);
 
-        const totalItems = totalRows[0].total;
+        const totalItems = totalRows[0]?.total || 0;
 
         res.json({
             data: rows,
+            total: totalItems,
             totalItems: totalItems,
+            page: parseInt(page) || 1,
             totalPages: Math.ceil(totalItems / limit)
         });
     } catch (error) {
@@ -547,15 +550,15 @@ const getSaleById = async (req, res) => {
             COALESCE(NULLIF(TRIM(cb.distrito), ''), c.distrito) as customer_distrito,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             comp.nit as company_nit,
-            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error, COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
+            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error, COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN customer_branches cb ON h.customer_branch_id = cb.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN branches b ON h.branch_id = b.id
             LEFT JOIN companies comp ON h.company_id = comp.id
-            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ?
         `, [id, req.company_id]);
 
@@ -2003,6 +2006,99 @@ const exportSalesDetailPDF = async (req, res) => {
     }
 };
 
+async function resolveRTEELogo(companyId, branchId, branchLogo, compLogo) {
+    const checkFile = (rawUrl) => {
+        if (!rawUrl) return null;
+        const cleanPath = rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl;
+        const abs1 = path.join(__dirname, '..', '..', cleanPath);
+        if (fs.existsSync(abs1)) return abs1;
+        const fileName = path.basename(cleanPath);
+        const abs2 = path.join(__dirname, '..', '..', 'uploads', fileName);
+        if (fs.existsSync(abs2)) return abs2;
+        return null;
+    };
+
+    // 1. Priorizar estrictamente el logo configurado para la sucursal emisora
+    if (branchLogo) {
+        const found = checkFile(branchLogo);
+        if (found) return found;
+    }
+
+    if (branchId) {
+        try {
+            const [b] = await pool.query('SELECT logo_url FROM branches WHERE id = ?', [branchId]);
+            if (b.length && b[0].logo_url) {
+                const found = checkFile(b[0].logo_url);
+                if (found) return found;
+            }
+        } catch (_) {}
+    }
+
+    // 2. Si la sucursal no tiene logo propio, recurrir al logo corporativo de la empresa
+    if (compLogo) {
+        const found = checkFile(compLogo);
+        if (found) return found;
+    }
+
+    if (companyId) {
+        try {
+            const [c] = await pool.query('SELECT logo_url FROM companies WHERE id = ?', [companyId]);
+            if (c.length && c[0].logo_url) {
+                const found = checkFile(c[0].logo_url);
+                if (found) return found;
+            }
+        } catch (_) {}
+    }
+
+    // NUNCA tomar el logo de otra sucursal hermana porque pueden ser franquicias distintas (ej: Shell vs Puma)
+    return null;
+}
+
+async function resolveUbicacionCompleta(depCode, munCode, distCode, direccionComp) {
+    let depNombre = '';
+    let munNombre = '';
+    let distNombre = '';
+
+    try {
+        if (depCode) {
+            const [dep] = await pool.query('SELECT description FROM cat_012_departamento WHERE code = ? LIMIT 1', [depCode]);
+            if (dep.length) depNombre = dep[0].description;
+        }
+        if (depCode && munCode) {
+            const [mun] = await pool.query('SELECT description FROM cat_013_municipio WHERE dep_code = ? AND code = ? LIMIT 1', [depCode, munCode]);
+            if (mun.length) munNombre = mun[0].description;
+        }
+        if (depCode && munCode && distCode) {
+            const [dist] = await pool.query('SELECT description FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? AND code = ? LIMIT 1', [depCode, munCode, distCode]);
+            if (dist.length) distNombre = dist[0].description;
+        }
+    } catch (_) {}
+
+    const toTitleCase = (str) => {
+        if (!str) return '';
+        return str.toLowerCase().replace(/(?:^|\s)\S/g, (a) => a.toUpperCase());
+    };
+
+    const parts = [];
+    if (direccionComp) parts.push(direccionComp.trim().replace(/,\s*$/, ''));
+    if (distNombre) parts.push(toTitleCase(distNombre));
+    else if (munNombre) parts.push(toTitleCase(munNombre));
+    if (depNombre) parts.push(toTitleCase(depNombre));
+
+    const fullText = parts.reduce((acc, part) => {
+        if (!part) return acc;
+        if (!acc) return part;
+        if (acc.toLowerCase().includes(part.toLowerCase())) return acc;
+        return `${acc}, ${part}`;
+    }, '');
+
+    return {
+        textoCompleto: fullText,
+        departamento_nombre: toTitleCase(depNombre) || 'San Salvador',
+        municipio_nombre: toTitleCase(distNombre || munNombre) || 'San Salvador'
+    };
+}
+
 const exportRTEE = async (req, res) => {
     const { id } = req.params;
 
@@ -2012,14 +2108,14 @@ const exportRTEE = async (req, res) => {
             `SELECT h.*, h.estado as sale_estado,
             s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
             c.nrc as customer_nrc,
-            COALESCE(d_v.status, d_c.status) as dte_status, COALESCE(d_v.numero_control, d_c.numero_control) as dte_control, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_v.respuesta_hacienda, d_c.respuesta_hacienda) as dte_error,
-            COALESCE(d_v.json_original, d_c.json_original) as json_original, COALESCE(d_v.sello_recepcion, d_c.sello_recepcion) as sello_recepcion, COALESCE(d_v.fh_procesamiento, d_c.fh_procesamiento) as fh_procesamiento
+            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
+            COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN points_of_sale p ON h.pos_id = p.id
-            LEFT JOIN dtes d_v ON d_v.venta_id = h.id AND d_v.company_id = h.company_id
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             WHERE h.id = ? AND h.company_id = ? LIMIT 1`, [id, req.company_id]);
 
         if (header.length === 0) {
@@ -2044,36 +2140,42 @@ const exportRTEE = async (req, res) => {
         const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [req.company_id]);
         const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
 
-        // --- Lógica de Logo ---
-        let logoPath = null;
-        const rawLogoUrl = (branch[0]?.logo_url || company[0]?.logo_url);
-        
-        if (rawLogoUrl) {
-            const cleanPath = rawLogoUrl.startsWith('/') ? rawLogoUrl.substring(1) : rawLogoUrl;
-            const absoluteLogoPath = path.join(__dirname, '..', '..', cleanPath);
-            
-            if (fs.existsSync(absoluteLogoPath)) {
-                logoPath = absoluteLogoPath;
-            }
-        }
+        const branchRow = branch[0] || {};
+        const companyRow = company[0] || {};
 
-        // 3. Mapear datos para el servicio de PDF
-        const [emisorDescActividad, receptorDescActividad] = await Promise.all([
+        // --- Lógica de Logo Robusta sin préstamos entre sucursales ---
+        const logoPath = await resolveRTEELogo(req.company_id, venta.branch_id, branchRow.logo_url, companyRow.logo_url);
+
+        // Resolver ubicación detallada de la sucursal (dirección, distrito, municipio, departamento)
+        const depCode = branchRow.departamento || dteJson.emisor?.direccion?.departamento || companyRow.departamento;
+        const munCode = branchRow.municipio || dteJson.emisor?.direccion?.municipio || companyRow.municipio;
+        const distCode = branchRow.distrito || dteJson.emisor?.direccion?.distrito;
+        const dirComplemento = branchRow.direccion || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+        const [emisorDescActividad, receptorDescActividad, ubicacionInfo] = await Promise.all([
             resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
-            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad)
+            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad),
+            resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento)
         ]);
 
         const reportData = {
             emisor: {
-                nombre: company[0].razon_social,
-                nit: company[0].nit,
-                nrc: company[0].nrc,
+                nombre: companyRow.razon_social || dteJson.emisor?.nombre,
+                nombre_comercial: dteJson.emisor?.nombreComercial || companyRow.nombre_comercial || null,
+                sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
+                cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
+                tipo_establecimiento: branchRow.tipo_establecimiento || dteJson.emisor?.tipoEstablecimiento || null,
+                es_casa_matriz: branchRow.es_casa_matriz ?? 0,
+                nit: companyRow.nit || dteJson.emisor?.nit,
+                nrc: companyRow.nrc || dteJson.emisor?.nrc,
                 descActividad: emisorDescActividad,
-                direccion: dteJson.emisor.direccion,
-                telefono: dteJson.emisor.telefono,
-                correo: dteJson.emisor.correo,
-                departamento_nombre: 'San Salvador',
-                municipio_nombre: 'San Salvador',
+                direccion: dteJson.emisor?.direccion || branchRow.direccion,
+                direccion_completa: ubicacionInfo.textoCompleto,
+                telefono: dteJson.emisor?.telefono || branchRow.telefono,
+                correo: dteJson.emisor?.correo || branchRow.correo,
+                departamento_nombre: ubicacionInfo.departamento_nombre,
+                municipio_nombre: ubicacionInfo.municipio_nombre,
                 logoPath: logoPath
             },
             receptor: {
@@ -2136,7 +2238,9 @@ const exportRTEE = async (req, res) => {
             }))
         };
 
-        reportData.isVoided = (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO';
+        reportData.isVoided = ['anulado', 'invalidado'].includes((venta.estado || '').toLowerCase()) ||
+                              ['anulado', 'invalidado'].includes((venta.sale_estado || '').toLowerCase()) ||
+                              venta.dte_status === 'INVALIDADO';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
@@ -2188,31 +2292,42 @@ const getPublicRTEE = async (req, res) => {
         const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [venta.company_id]);
         const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
 
-        let logoPath = null;
-        const rawLogoUrl = (branch[0]?.logo_url || company[0]?.logo_url);
-        
-        if (rawLogoUrl) {
-            const cleanPath = rawLogoUrl.startsWith('/') ? rawLogoUrl.substring(1) : rawLogoUrl;
-            const absoluteLogoPath = path.join(__dirname, '..', '..', cleanPath);
-            if (fs.existsSync(absoluteLogoPath)) logoPath = absoluteLogoPath;
-        }
+        const branchRow = branch[0] || {};
+        const companyRow = company[0] || {};
 
-        const [emisorDescActividad, receptorDescActividad] = await Promise.all([
+        // --- Lógica de Logo Robusta sin préstamos entre sucursales ---
+        const logoPath = await resolveRTEELogo(venta.company_id, venta.branch_id, branchRow.logo_url, companyRow.logo_url);
+
+        // Resolver ubicación detallada de la sucursal (dirección, distrito, municipio, departamento)
+        const depCode = branchRow.departamento || dteJson.emisor?.direccion?.departamento || companyRow.departamento;
+        const munCode = branchRow.municipio || dteJson.emisor?.direccion?.municipio || companyRow.municipio;
+        const distCode = branchRow.distrito || dteJson.emisor?.direccion?.distrito;
+        const dirComplemento = branchRow.direccion || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+        const [emisorDescActividad, receptorDescActividad, ubicacionInfo] = await Promise.all([
             resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
-            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad)
+            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad),
+            resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento)
         ]);
 
         const reportData = {
             emisor: {
-                nombre: company[0].razon_social,
-                nit: company[0].nit,
-                nrc: company[0].nrc,
+                nombre: companyRow.razon_social || dteJson.emisor?.nombre,
+                nombre_comercial: dteJson.emisor?.nombreComercial || companyRow.nombre_comercial || null,
+                sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
+                cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
+                tipo_establecimiento: branchRow.tipo_establecimiento || dteJson.emisor?.tipoEstablecimiento || null,
+                es_casa_matriz: branchRow.es_casa_matriz ?? 0,
+                nit: companyRow.nit || dteJson.emisor?.nit,
+                nrc: companyRow.nrc || dteJson.emisor?.nrc,
                 descActividad: emisorDescActividad,
-                direccion: dteJson.emisor.direccion,
-                telefono: dteJson.emisor.telefono,
-                correo: dteJson.emisor.correo,
-                departamento_nombre: 'San Salvador',
-                municipio_nombre: 'San Salvador',
+                direccion: dteJson.emisor?.direccion || branchRow.direccion,
+                direccion_completa: ubicacionInfo.textoCompleto,
+                telefono: dteJson.emisor?.telefono || branchRow.telefono,
+                correo: dteJson.emisor?.correo || branchRow.correo,
+                departamento_nombre: ubicacionInfo.departamento_nombre,
+                municipio_nombre: ubicacionInfo.municipio_nombre,
                 logoPath: logoPath
             },
             receptor: {
@@ -2275,7 +2390,8 @@ const getPublicRTEE = async (req, res) => {
             }))
         };
 
-        reportData.isVoided = (venta.estado || '').toLowerCase() === 'anulado' || venta.dte_status === 'INVALIDADO';
+        reportData.isVoided = ['anulado', 'invalidado'].includes((venta.estado || '').toLowerCase()) ||
+                              venta.dte_status === 'INVALIDADO';
 
         const pdfBuffer = await pdfService.generateRTEE(reportData);
 
@@ -2757,6 +2873,7 @@ const getRetornoStatus = async (req, res) => {
 
 const regenerateDTE = async (req, res) => {
     const { id } = req.params;
+    const { updateDateTime, target_shift_id } = req.body;
     let connection;
 
     try {
@@ -2791,6 +2908,324 @@ const regenerateDTE = async (req, res) => {
             if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
         }
 
+        // Consultar el estado del DTE activo previo
+        const [dteRows] = await connection.query(
+            `SELECT id, codigo_generacion, numero_control, status, sello_recepcion, json_original 
+             FROM dtes 
+             WHERE (venta_id = ? OR (codigo_generacion = ? AND codigo_generacion IS NOT NULL AND codigo_generacion != '')) 
+               AND company_id = ? 
+             ORDER BY id DESC LIMIT 1`,
+            [id, sale.codigo_generacion, req.company_id]
+        );
+        const activeDte = dteRows[0] || null;
+        const isAlreadyAccepted = (activeDte?.status === 'ACCEPTED' || Boolean(activeDte?.sello_recepcion) || Boolean(sale.sello_recepcion));
+
+        const company = { ...sale, id: sale.company_id };
+
+        // Días de crédito si aplica
+        let diasCredito = 15;
+        if (sale.customer_id) {
+            const [custDias] = await connection.query(
+                'SELECT dias_credito FROM customers WHERE id = ? AND company_id = ?',
+                [sale.customer_id, req.company_id]
+            );
+            if (custDias.length > 0 && custDias[0].dias_credito != null) {
+                diasCredito = parseInt(custDias[0].dias_credito) || 15;
+            }
+        }
+
+        // =====================================================================
+        // CASO B: DTE YA ACEPTADO POR HACIENDA -> CREAR NUEVA VENTA Y EMITIR DTE
+        // =====================================================================
+        if (isAlreadyAccepted) {
+            if (!target_shift_id) {
+                return res.status(400).json({
+                    message: 'Debe seleccionar un turno abierto en la sucursal para registrar la nueva venta.'
+                });
+            }
+
+            const [shiftRows] = await connection.query(
+                `SELECT id, branch_id, status FROM pos_shifts 
+                 WHERE id = ? AND company_id = ? AND branch_id = ? AND status = 'open'`,
+                [target_shift_id, req.company_id, sale.branch_id]
+            );
+            if (shiftRows.length === 0) {
+                return res.status(400).json({
+                    message: 'El turno seleccionado no está abierto o no pertenece a la sucursal de la venta. Debe abrir un turno antes de proceder.'
+                });
+            }
+
+            await connection.beginTransaction();
+
+            const now = new Date();
+            const horaEmision = now.toTimeString().split(' ')[0];
+            const origControl = sale.numero_control || activeDte?.numero_control || `VTA-${sale.id}`;
+            const nuevaObservacion = sale.observaciones 
+                ? `${sale.observaciones} | Regenerado a partir de venta #${sale.id} (DTE previo: ${origControl})`
+                : `Regenerado a partir de venta #${sale.id} (DTE previo: ${origControl})`;
+
+            // 1. Insertar nueva cabecera de venta
+            const [newSaleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
+                company_id: req.company_id,
+                branch_id: sale.branch_id,
+                customer_id: sale.customer_id,
+                customer_branch_id: sale.customer_branch_id || null,
+                seller_id: sale.seller_id,
+                pos_id: sale.pos_id,
+                shift_id: target_shift_id,
+                dte_type: sale.dte_type || sale.tipo_documento,
+                tipo_documento: sale.tipo_documento || sale.dte_type,
+                condicion_operacion: sale.condicion_operacion || 1,
+                fecha_emision: now,
+                hora_emision: horaEmision,
+                estado: 'emitido',
+                total_gravado: sale.total_gravado || 0,
+                total_exento: sale.total_exento || 0,
+                total_nosujetas: sale.total_nosujetas || 0,
+                fovial: sale.fovial || 0,
+                cotrans: sale.cotrans || 0,
+                total_iva: sale.total_iva || 0,
+                descuento_general: sale.descuento_general || 0,
+                iva_percibido: sale.iva_percibido || 0,
+                iva_retenido: sale.iva_retenido || 0,
+                total_pagar: sale.total_pagar || 0,
+                payment_condition: sale.payment_condition || 1,
+                observaciones: nuevaObservacion,
+                export_item_type: sale.export_item_type || null,
+                fiscal_enclosure: sale.fiscal_enclosure || null,
+                export_regime: sale.export_regime || null,
+                dest_country_code: sale.dest_country_code || null,
+                remission_type: sale.remission_type || null,
+                transporter_name: sale.transporter_name || null,
+                vehicle_plate: sale.vehicle_plate || null,
+                cliente_nombre: sale.cliente_nombre || null,
+                created_at: now
+            }]);
+            const newSaleId = newSaleResult.insertId;
+
+            // 2. Insertar ítems y descontar inventario
+            for (const item of items) {
+                await connection.query('INSERT INTO sales_items SET ?', [{
+                    sale_id: newSaleId,
+                    product_id: item.product_id || null,
+                    codigo: item.codigo || null,
+                    combo_id: item.combo_id || null,
+                    descripcion: item.descripcion,
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
+                    monto_descuento: item.monto_descuento || 0,
+                    venta_gravada: item.venta_gravada || 0,
+                    venta_exenta: item.venta_exenta || 0,
+                    tributos: typeof item.tributos === 'string' ? item.tributos : JSON.stringify(item.tributos || []),
+                    retention_type: item.retention_type || null,
+                    retention_code: item.retention_code || null,
+                    retention_amount: item.retention_amount || null,
+                    retention_base: item.retention_base || null
+                }]);
+
+                if (item.combo_id) {
+                    const [comboItems] = await connection.query(
+                        'SELECT product_id, quantity FROM product_combo_items WHERE combo_id = ?',
+                        [item.combo_id]
+                    );
+                    for (const ci of comboItems) {
+                        const totalQty = ci.quantity * item.cantidad;
+                        const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
+                        if (sale.dte_type !== '04' && sale.tipo_documento !== '04') {
+                            await connection.query(
+                                'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
+                                [totalQty, effectiveProductId, sale.branch_id]
+                            );
+                            await connection.query('INSERT INTO inventory_movements SET ?', [{
+                                company_id: req.company_id,
+                                branch_id: sale.branch_id,
+                                product_id: effectiveProductId,
+                                tipo_movimiento: 'SALIDA',
+                                cantidad: totalQty,
+                                tipo_documento: `DTE-${sale.dte_type || '01'} (COMBO)`,
+                                documento_id: newSaleId,
+                                created_at: now
+                            }]);
+                        }
+                    }
+                } else if (item.product_id) {
+                    const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
+                    if (sale.dte_type !== '04' && sale.tipo_documento !== '04') {
+                        await connection.query(
+                            'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
+                            [item.cantidad, effectiveProductId, sale.branch_id]
+                        );
+                        await connection.query('INSERT INTO inventory_movements SET ?', [{
+                            company_id: req.company_id,
+                            branch_id: sale.branch_id,
+                            product_id: effectiveProductId,
+                            tipo_movimiento: 'SALIDA',
+                            cantidad: item.cantidad,
+                            tipo_documento: `DTE-${sale.dte_type || '01'}`,
+                            documento_id: newSaleId,
+                            created_at: now
+                        }]);
+                    }
+                }
+            }
+
+            // 3. Insertar pagos
+            for (const p of payments) {
+                await connection.query('INSERT INTO sales_payments SET ?', [{
+                    sale_id: newSaleId,
+                    metodo_pago: p.metodo_pago || '01',
+                    monto: p.monto,
+                    referencia: p.referencia || null
+                }]);
+            }
+
+            // 4. Insertar documentos vinculados
+            for (const d of linkedDocs) {
+                await connection.query('INSERT INTO sales_linked_documents SET ?', [{
+                    sale_id: newSaleId,
+                    doc_type: d.doc_type || d.tipo_documento || null,
+                    doc_number: d.doc_number || d.numero_documento || null,
+                    emission_date: d.emission_date || d.fecha_emision || null,
+                    generation_type: d.generation_type || 1,
+                    monto_sujeto: d.monto_sujeto || null,
+                    iva_retenido: d.iva_retenido || null,
+                    descripcion: d.descripcion || null
+                }]);
+            }
+
+            // 5. Construir payload y emitir DTE (tiempo real)
+            const dtePayload = {
+                header: {
+                    dte_type: sale.dte_type || sale.tipo_documento,
+                    customer_id: sale.customer_id,
+                    cliente_nombre: sale.cliente_nombre || null,
+                    customer_branch_id: sale.customer_branch_id || null,
+                    seller_id: sale.seller_id,
+                    pos_id: sale.pos_id,
+                    shift_id: target_shift_id,
+                    branch_id: sale.branch_id,
+                    user_id: req.user.id,
+                    condicion_operacion: sale.condicion_operacion || 1,
+                    dias_credito: diasCredito,
+                    total_gravado: sale.total_gravado || 0,
+                    total_exento: sale.total_exento || 0,
+                    total_nosujetas: sale.total_nosujetas || 0,
+                    fovial: sale.fovial || 0,
+                    total_fovial: sale.fovial || 0,
+                    cotrans: sale.cotrans || 0,
+                    total_cotrans: sale.cotrans || 0,
+                    total_iva: sale.total_iva || 0,
+                    descuento_general: sale.descuento_general || 0,
+                    total_descuento: sale.descuento_general || 0,
+                    iva_percibido: sale.iva_percibido || 0,
+                    total_percepcion: sale.iva_percibido || 0,
+                    iva_retenido: sale.iva_retenido || 0,
+                    total_retencion: sale.iva_retenido || 0,
+                    total_pagar: sale.total_pagar || 0,
+                    payment_condition: sale.payment_condition || 1,
+                    observaciones: nuevaObservacion,
+                    export_item_type: sale.export_item_type || null,
+                    fiscal_enclosure: sale.fiscal_enclosure || null,
+                    export_regime: sale.export_regime || null,
+                    dest_country_code: sale.dest_country_code || null,
+                    remission_type: sale.remission_type || null,
+                    transporter_name: sale.transporter_name || null,
+                    vehicle_plate: sale.vehicle_plate || null,
+                    incoterms: sale.incoterms || '01',
+                    desc_incoterms: sale.desc_incoterms || 'EXW- En fabrica',
+                    flete: sale.flete || 0,
+                    seguro: sale.seguro || 0,
+                    total_letras: sale.total_letras || ''
+                },
+                dias_credito: diasCredito,
+                items: items.map(item => ({
+                    product_id: item.product_id,
+                    combo_id: item.combo_id || null,
+                    codigo: item.codigo || null,
+                    descripcion: item.descripcion,
+                    nombre: item.descripcion,
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
+                    precio: item.precio_unitario,
+                    monto_descuento: item.monto_descuento || 0,
+                    descuento: item.monto_descuento || 0,
+                    venta_gravada: item.venta_gravada || 0,
+                    venta_exenta: item.venta_exenta || 0,
+                    exento: item.venta_gravada === 0 && item.venta_exenta > 0,
+                    tributos: typeof item.tributos === 'string' ? JSON.parse(item.tributos) : (item.tributos || [])
+                })),
+                payments: payments.map(p => ({
+                    codigo: p.metodo_pago || '01',
+                    monto: p.monto,
+                    referencia: p.referencia || null
+                })),
+                linkedDocuments: linkedDocs.map(d => ({
+                    doc_type: d.doc_type || d.tipo_documento || '03',
+                    generation_type: d.generation_type || 1,
+                    doc_number: d.doc_number || d.numero_documento || '',
+                    emission_date: d.emission_date || d.fecha_emision || '',
+                    montoSujeto: d.monto_sujeto || 0,
+                    ivaRetenido: d.iva_retenido || 0,
+                    descripcion: d.descripcion || ''
+                })),
+                emisor_adicional: {
+                    descActividad: sale.actividad_economica || 'Actividad no definida',
+                    codPuntoVentaMH: codPuntoVentaMH
+                }
+            };
+
+            console.log(`[SalesController] Regenerando como NUEVA VENTA #${newSaleId} a partir de venta #${id}`);
+            const dteResult = await dteService.emitDTE(company, dtePayload, newSaleId);
+
+            if (!dteResult.success || dteResult.skip) {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: dteResult.error || 'Error al emitir DTE para la nueva venta'
+                });
+            }
+
+            const dteInfo = dteResult.data;
+
+            // Actualizar cabecera de la nueva venta y vincular DTE
+            await connection.query(
+                'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
+                [dteInfo.codigo_generacion, dteInfo.numero_control, dteInfo.sello_recepcion || null, dteInfo.fh_procesamiento || null, newSaleId]
+            );
+            await connection.query(
+                'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
+                [newSaleId, dteInfo.codigo_generacion, req.company_id]
+            );
+
+            await connection.commit();
+            connection.release();
+            connection = null;
+
+            // Envío asíncrono de correo si el cliente tiene email
+            mailerService.sendDTEEmail(newSaleId, req.company_id).catch(err => {
+                console.error('[RegenerateDTE - Nueva Venta] Error enviando correo:', err.message);
+            });
+
+            return res.json({
+                success: true,
+                isNewSale: true,
+                newSaleId,
+                codigoGeneracion: dteInfo.codigo_generacion,
+                numeroControl: dteInfo.numero_control,
+                ambiente: sale.ambiente || 'test',
+                message: `Nueva venta #${newSaleId} creada y DTE emitido exitosamente`
+            });
+        }
+
+        // =====================================================================
+        // CASO A: DTE NO ACEPTADO PREVIAMENTE -> REINTENTAR EN LA MISMA VENTA
+        // =====================================================================
+        // Desvincular cualquier DTE previo en 'dtes' para esta venta (se conserva para auditoría con venta_id = NULL)
+        await connection.query(
+            'UPDATE dtes SET venta_id = NULL WHERE venta_id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+
         connection.release();
         connection = null;
 
@@ -2806,6 +3241,7 @@ const regenerateDTE = async (req, res) => {
                 branch_id: sale.branch_id,
                 user_id: req.user.id,
                 condicion_operacion: sale.condicion_operacion || 1,
+                dias_credito: diasCredito,
                 total_gravado: sale.total_gravado || 0,
                 total_exento: sale.total_exento || 0,
                 total_nosujetas: sale.total_nosujetas || 0,
@@ -2836,6 +3272,7 @@ const regenerateDTE = async (req, res) => {
                 seguro: sale.seguro || 0,
                 total_letras: sale.total_letras || ''
             },
+            dias_credito: diasCredito,
             items: items.map(item => ({
                 product_id: item.product_id,
                 combo_id: item.combo_id || null,
@@ -2873,25 +3310,19 @@ const regenerateDTE = async (req, res) => {
         };
 
         // Preservar fecha/hora original del DTE si el usuario no solicita actualizarlas
-        if (!req.body.updateDateTime && sale.codigo_generacion) {
-            const [dteRows] = await pool.query(
-                'SELECT json_original FROM dtes WHERE codigo_generacion = ? AND company_id = ?',
-                [sale.codigo_generacion, req.company_id]
-            );
-            if (dteRows.length > 0) {
-                const origJson = typeof dteRows[0].json_original === 'string'
-                    ? JSON.parse(dteRows[0].json_original) : dteRows[0].json_original;
-                if (origJson?.identificacion?.fecEmi && origJson?.identificacion?.horEmi) {
-                    dtePayload.identificacionExtra = {
-                        fecEmi: origJson.identificacion.fecEmi,
-                        horEmi: origJson.identificacion.horEmi
-                    };
-                }
+        if (!updateDateTime && activeDte?.json_original) {
+            const origJson = typeof activeDte.json_original === 'string'
+                ? JSON.parse(activeDte.json_original) : activeDte.json_original;
+            if (origJson?.identificacion?.fecEmi && origJson?.identificacion?.horEmi) {
+                dtePayload.identificacionExtra = {
+                    fecEmi: origJson.identificacion.fecEmi,
+                    horEmi: origJson.identificacion.horEmi
+                };
             }
         }
 
-        console.log(`[SalesController] Regenerando DTE para venta ${id} con ambiente ${sale.ambiente || 'test'}`);
-        const dteResult = await dteService.emitDTE(sale, dtePayload, id);
+        console.log(`[SalesController] Regenerando DTE in-situ para venta ${id} con ambiente ${sale.ambiente || 'test'}`);
+        const dteResult = await dteService.emitDTE(company, dtePayload, id);
 
         if (!dteResult.success || dteResult.skip) {
             return res.status(400).json({
@@ -2903,6 +3334,15 @@ const regenerateDTE = async (req, res) => {
         const dteInfo = dteResult.data;
 
         connection = await pool.getConnection();
+        // 2. Desvincular cualquier intento anterior y vincular exclusivamente el nuevo DTE a la venta
+        await connection.query(
+            'UPDATE dtes SET venta_id = NULL WHERE venta_id = ? AND codigo_generacion != ? AND company_id = ?',
+            [id, dteInfo.codigo_generacion, req.company_id]
+        );
+        await connection.query(
+            'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
+            [id, dteInfo.codigo_generacion, req.company_id]
+        );
         await connection.query(
             'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
             [dteInfo.codigo_generacion, dteInfo.numero_control, dteInfo.sello_recepcion || null, dteInfo.fh_procesamiento || null, id]
@@ -2912,6 +3352,7 @@ const regenerateDTE = async (req, res) => {
 
         res.json({
             success: true,
+            isNewSale: false,
             message: 'DTE regenerado exitosamente',
             codigoGeneracion: dteInfo.codigo_generacion,
             numeroControl: dteInfo.numero_control,
@@ -3178,9 +3619,13 @@ const sendPublicDTEEmail = async (req, res) => {
     try {
         const [rows] = await pool.query(
             `SELECT h.*, d.status as dte_status, d.json_original, d.sello_recepcion, d.numero_control,
-                    c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                    c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
+                    c.departamento as company_dep, c.municipio as company_mun,
                     cu.nrc as customer_nrc,
-                    b.nombre as branch_name, cat.description as tipo_documento_name
+                    b.nombre as branch_name, b.codigo_mh as branch_codigo_mh, b.es_casa_matriz, b.tipo_establecimiento as branch_tipo_est,
+                    b.telefono as branch_telefono, b.correo as branch_correo, b.logo_url as branch_logo_url,
+                    b.direccion as branch_dir, b.departamento as branch_dep, b.municipio as branch_mun, b.distrito as branch_dist,
+                    cat.description as tipo_documento_name
              FROM dtes d
              JOIN sales_headers h ON d.codigo_generacion = h.codigo_generacion
              JOIN companies c ON h.company_id = c.id
@@ -3202,6 +3647,15 @@ const sendPublicDTEEmail = async (req, res) => {
             return res.status(400).json({ message: 'El DTE no tiene JSON original' });
         }
 
+        const logoPath = await resolveRTEELogo(venta.company_id, venta.branch_id, venta.branch_logo_url, venta.company_logo_url);
+
+        const depCode = venta.branch_dep || dteJson.emisor?.direccion?.departamento || venta.company_dep;
+        const munCode = venta.branch_mun || dteJson.emisor?.direccion?.municipio || venta.company_mun;
+        const distCode = venta.branch_dist || dteJson.emisor?.direccion?.distrito;
+        const dirComplemento = venta.branch_dir || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+        const ubicacionInfo = await resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento);
+
         const dteNames = {
             '01': 'Factura', '03': 'Crédito Fiscal', '04': 'Nota de Remisión',
             '05': 'Nota de Crédito', '06': 'Nota de Débito', '07': 'Comprobante de Retención',
@@ -3213,14 +3667,22 @@ const sendPublicDTEEmail = async (req, res) => {
         const reportData = {
             emisor: {
                 nombre: venta.company_name,
+                nombre_comercial: dteJson.emisor?.nombreComercial || null,
+                sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
+                cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || null,
+                tipo_establecimiento: venta.branch_tipo_est || dteJson.emisor?.tipoEstablecimiento || null,
+                es_casa_matriz: venta.es_casa_matriz ?? 0,
                 nit: venta.company_nit,
                 nrc: venta.company_nrc,
                 descActividad: dteJson.emisor?.descActividad,
-                direccion: dteJson.emisor?.direccion,
-                telefono: dteJson.emisor?.telefono,
-                correo: dteJson.emisor?.correo,
-                departamento_nombre: 'SS',
-                municipio_nombre: 'SS'
+                direccion: dteJson.emisor?.direccion || venta.branch_dir,
+                direccion_completa: ubicacionInfo.textoCompleto,
+                telefono: dteJson.emisor?.telefono || venta.branch_telefono,
+                correo: dteJson.emisor?.correo || venta.branch_correo,
+                departamento_nombre: ubicacionInfo.departamento_nombre,
+                municipio_nombre: ubicacionInfo.municipio_nombre,
+                logoPath: logoPath
             },
             receptor: {
                 nombre: dteJson.receptor?.nombre,

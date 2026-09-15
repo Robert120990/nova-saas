@@ -242,8 +242,8 @@ const Combos = () => {
                                 <div className="text-[9px] text-slate-400 uppercase font-black tracking-widest">IVA Incluido</div>
                             </td>
                             <td className="px-6 py-4 flex gap-2">
-                                <button onClick={() => { setSelectedCombo(c); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
-                                <button onClick={() => handleDeleteCombo(c.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                <button onClick={() => { setSelectedCombo(c); setIsModalOpen(true); }} className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={18}/></button>
+                                <button onClick={() => handleDeleteCombo(c.id)} className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </td>
                         </tr>
                     )}
@@ -444,7 +444,7 @@ const Combos = () => {
                                             <button 
                                                 type="button" 
                                                 onClick={() => removeItemFromCombo(item.product_id)}
-                                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                             >
                                                 <Trash size={16} />
                                             </button>

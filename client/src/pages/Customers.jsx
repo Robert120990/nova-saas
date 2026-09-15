@@ -336,6 +336,18 @@ const Customers = () => {
             return;
         }
 
+        const correoTrimmed = (data.correo || '').trim();
+        if (correoTrimmed) {
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!emailRegex.test(correoTrimmed)) {
+                toast.error('El correo electrónico no tiene un formato válido (ejemplo: cliente@dominio.com)');
+                return;
+            }
+            data.correo = correoTrimmed;
+        } else {
+            data.correo = null;
+        }
+
         const distritoSel = distritos.find(d => d.code === data.distrito);
         if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
             toast.error('El municipio seleccionado no corresponde al distrito');
@@ -496,9 +508,9 @@ const Customers = () => {
                                 )}
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                <button onClick={() => handleOpenBranches(c)} className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Sucursales"><Building2 size={15}/></button>
-                                <button onClick={() => handleDeleteCustomer(c.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleOpenBranches(c)} className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Sucursales"><Building2 size={15}/></button>
+                                <button onClick={() => handleDeleteCustomer(c.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}
@@ -867,8 +879,8 @@ const Customers = () => {
                                             {b.telefono && <div className="text-xs text-slate-400">{b.telefono}</div>}
                                         </div>
                                         <div className="flex gap-1 ml-2 shrink-0">
-                                            <button type="button" onClick={() => handleEditBranch(b)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={14}/></button>
-                                            <button type="button" onClick={() => handleDeleteBranch(b.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
+                                            <button type="button" onClick={() => handleEditBranch(b)} className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={14}/></button>
+                                            <button type="button" onClick={() => handleDeleteBranch(b.id)} className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14}/></button>
                                         </div>
                                     </div>
                                 ))}

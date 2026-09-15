@@ -348,11 +348,24 @@ const getEmpleadoData = async (req, res) => {
 const getUltimaLiquidacion = async (req, res) => {
     try {
         const { empleado_id } = req.params;
+        // Primero buscar la última liquidación que tuvo período de indemnización registrado
         const [rows] = await pool.query(
-            `SELECT * FROM ${TABLE} WHERE empleado_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1`,
+            `SELECT * FROM ${TABLE} 
+             WHERE empleado_id = ? AND company_id = ? AND periodo_indemnizacion_hasta IS NOT NULL 
+             ORDER BY periodo_indemnizacion_hasta DESC, id DESC LIMIT 1`,
             [empleado_id, req.company_id]
         );
-        res.json(rows.length > 0 ? rows[0] : null);
+        if (rows.length > 0) {
+            return res.json(rows[0]);
+        }
+        // Si no hay con indemnización, buscar cualquier liquidación previa del empleado
+        const [fallbackRows] = await pool.query(
+            `SELECT * FROM ${TABLE} 
+             WHERE empleado_id = ? AND company_id = ? 
+             ORDER BY id DESC LIMIT 1`,
+            [empleado_id, req.company_id]
+        );
+        res.json(fallbackRows.length > 0 ? fallbackRows[0] : null);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

@@ -578,9 +578,11 @@ module.exports = {
             // 1. Obtener datos completos de la venta y DTE
             let query = `
                 SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
-                       c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                       c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
                        cu.nrc as customer_nrc,
-                       b.nombre as branch_name, cat.description as tipo_documento_name
+                       b.nombre as branch_name, b.codigo_mh as branch_codigo_mh, b.es_casa_matriz, b.tipo_establecimiento as branch_tipo_est,
+                       b.telefono as branch_telefono, b.correo as branch_correo, b.logo_url as branch_logo_url,
+                       cat.description as tipo_documento_name
                 FROM sales_headers h
                 JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
                 JOIN companies c ON h.company_id = c.id
@@ -639,21 +641,32 @@ module.exports = {
             const reportData = {
                 emisor: {
                     nombre: venta.company_name,
+                    nombre_comercial: dteJson.emisor?.nombreComercial || null,
+                    sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
+                    cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                    cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || null,
+                    tipo_establecimiento: venta.branch_tipo_est || dteJson.emisor?.tipoEstablecimiento || null,
+                    es_casa_matriz: venta.es_casa_matriz ?? 0,
                     nit: venta.company_nit,
                     nrc: venta.company_nrc,
                     descActividad: dteJson.emisor.descActividad,
                     direccion: dteJson.emisor.direccion,
-                    telefono: dteJson.emisor.telefono,
-                    correo: dteJson.emisor.correo,
-                    departamento_nombre: 'SS', 
-                    municipio_nombre: 'SS'
+                    telefono: dteJson.emisor.telefono || venta.branch_telefono,
+                    correo: dteJson.emisor.correo || venta.branch_correo,
+                    departamento_nombre: 'San Salvador', 
+                    municipio_nombre: 'San Salvador',
+                    logoPath: venta.branch_logo_url || venta.company_logo_url || null
                 },
                 receptor: {
                     nombre: dteJson.receptor.nombre,
                     nit: dteJson.receptor.nit,
                     nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                     numDocumento: dteJson.receptor.numDocumento,
-                    direccion: dteJson.receptor.direccion
+                    direccion: dteJson.receptor.direccion,
+                    codActividad: dteJson.receptor.codActividad || null,
+                    descActividad: dteJson.receptor.descActividad || null,
+                    codPais: dteJson.receptor.codPais || null,
+                    nombrePais: dteJson.receptor.nombrePais || null
                 },
                 dte: {
                     tipoDte: dteJson.identificacion.tipoDte,
@@ -752,9 +765,11 @@ module.exports = {
             // 1. Obtener datos completos de la venta y DTE
             let query = `
                 SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
-                       c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc,
+                       c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
                        cu.nrc as customer_nrc,
-                       b.id as branch_id, b.nombre as branch_name, cat.description as tipo_documento_name
+                       b.id as branch_id, b.nombre as branch_name, b.codigo_mh as branch_codigo_mh, b.es_casa_matriz, b.tipo_establecimiento as branch_tipo_est,
+                       b.telefono as branch_telefono, b.correo as branch_correo, b.logo_url as branch_logo_url,
+                       cat.description as tipo_documento_name
                 FROM sales_headers h
                 JOIN dtes d ON h.codigo_generacion = d.codigo_generacion
                 JOIN companies c ON h.company_id = c.id
@@ -800,21 +815,32 @@ module.exports = {
             const reportData = {
                 emisor: {
                     nombre: venta.company_name,
+                    nombre_comercial: dteJson.emisor?.nombreComercial || null,
+                    sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
+                    cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+                    cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || null,
+                    tipo_establecimiento: venta.branch_tipo_est || dteJson.emisor?.tipoEstablecimiento || null,
+                    es_casa_matriz: venta.es_casa_matriz ?? 0,
                     nit: venta.company_nit,
                     nrc: venta.company_nrc,
                     descActividad: dteJson.emisor.descActividad,
                     direccion: dteJson.emisor.direccion,
-                    telefono: dteJson.emisor.telefono,
-                    correo: dteJson.emisor.correo,
+                    telefono: dteJson.emisor.telefono || venta.branch_telefono,
+                    correo: dteJson.emisor.correo || venta.branch_correo,
                     departamento_nombre: 'San Salvador', 
-                    municipio_nombre: 'San Salvador'
+                    municipio_nombre: 'San Salvador',
+                    logoPath: venta.branch_logo_url || venta.company_logo_url || null
                 },
                 receptor: {
                     nombre: dteJson.receptor.nombre,
                     nit: dteJson.receptor.nit,
                     nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
                     numDocumento: dteJson.receptor.numDocumento,
-                    direccion: dteJson.receptor.direccion
+                    direccion: dteJson.receptor.direccion,
+                    codActividad: dteJson.receptor.codActividad || null,
+                    descActividad: dteJson.receptor.descActividad || null,
+                    codPais: dteJson.receptor.codPais || null,
+                    nombrePais: dteJson.receptor.nombrePais || null
                 },
                 dte: {
                     tipoDte: dteJson.identificacion.tipoDte,

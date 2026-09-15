@@ -30,7 +30,9 @@ import {
     Clock,
     AlertTriangle,
     CheckCircle2,
-    FileText
+    FileText,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
 
@@ -73,6 +75,9 @@ export default function EggCosteoPorLibra() {
         custom_monthly_volume_lbs: 100000
     });
     const [showCustomSolids, setShowCustomSolids] = useState(false);
+    // Control de acordeón / desplegable para matrices de presentación
+    const [showPresentationsMatrixCalc, setShowPresentationsMatrixCalc] = useState(false);
+    const [showPresentationsMatrixSim, setShowPresentationsMatrixSim] = useState(false);
 
     // Resultados calculados
     const [calculationResult, setCalculationResult] = useState(null);
@@ -85,6 +90,8 @@ export default function EggCosteoPorLibra() {
     // Listados complementarios
     const [cipItems, setCipItems] = useState([]);
     const [packagingItems, setPackagingItems] = useState([]);
+    const [productsLookup, setProductsLookup] = useState([]);
+    const [syncingPurchases, setSyncingPurchases] = useState(false);
     const [agreements, setAgreements] = useState([]);
     const [scenarios, setScenarios] = useState([]);
     const [configs, setConfigs] = useState({});
@@ -124,14 +131,15 @@ export default function EggCosteoPorLibra() {
 
     const loadData = async (sDate = dateRange.startDate, eDate = dateRange.endDate) => {
         try {
-            const [confRes, cipRes, packRes, agrRes, scenRes] = await Promise.all([
+            const [confRes, cipRes, packRes, agrRes, scenRes, prodRes] = await Promise.all([
                 axios.get('/api/egg-industrial/costeo-libra/config'),
                 axios.get('/api/egg-industrial/costeo-libra/cip-items'),
                 axios.get('/api/egg-industrial/costeo-libra/packaging-items'),
                 axios.get('/api/egg-industrial/costeo-libra/customer-agreements', {
                     params: { start_date: sDate || undefined, end_date: eDate || undefined }
                 }),
-                axios.get('/api/egg-industrial/costeo-libra/scenarios')
+                axios.get('/api/egg-industrial/costeo-libra/scenarios'),
+                axios.get('/api/egg-industrial/costeo-libra/products-lookup')
             ]);
             
             const confMap = {};
@@ -143,6 +151,7 @@ export default function EggCosteoPorLibra() {
             setPackagingItems(Array.isArray(packRes.data) ? packRes.data : []);
             setAgreements(Array.isArray(agrRes.data) ? agrRes.data : []);
             setScenarios(Array.isArray(scenRes.data) ? scenRes.data : []);
+            setProductsLookup(Array.isArray(prodRes?.data) ? prodRes.data : []);
 
             // Ejecutar primer cálculo pasando rango de fecha
             runCalculation(calcParams, false, sDate, eDate);
@@ -456,6 +465,108 @@ export default function EggCosteoPorLibra() {
             await loadOperationalCost(dateRange.startDate, dateRange.endDate);
         } catch (error) {
             toast.error('Error al eliminar acuerdo.');
+        }
+    };
+
+    // Sincronización con Facturas de Compras
+    const handleSyncPurchases = async () => {
+        setSyncingPurchases(true);
+        try {
+            const res = await axios.post('/api/egg-industrial/costeo-libra/sync-purchases');
+            toast.success(res.data.message || 'Costos sincronizados con facturas de compras.');
+            await loadData(dateRange.startDate, dateRange.endDate);
+        } catch (error) {
+            console.error('Error sincronizando con compras:', error);
+            toast.error(error.response?.data?.message || 'Error al sincronizar costos con compras.');
+        } finally {
+            setSyncingPurchases(false);
+        }
+    };
+
+    const handleSelectProductForCip = (productId) => {
+        const pId = parseInt(productId) || null;
+        const prod = productsLookup.find(p => p.id === pId);
+        if (prod) {
+            const costToUse = prod.latest_purchase_cost ? parseFloat(prod.latest_purchase_cost) : parseFloat(prod.costo || 0);
+            const qty = parseFloat(cipModal.data?.presentation_qty) || 1;
+            setCipModal(prev => ({
+                ...prev,
+                data: {
+                    ...prev.data,
+                    product_id: pId,
+                    item_name: prev.data?.item_name || prod.nombre,
+                    presentation_unit: prev.data?.presentation_unit || prod.unidad_medida || 'kg',
+                    presentation_cost: costToUse * qty
+                }
+            }));
+        } else {
+            setCipModal(prev => ({
+                ...prev,
+                data: {
+                    ...prev.data,
+                    product_id: null
+                }
+            }));
+        }
+    };
+
+    const handleSelectProductForPackaging = (productId) => {
+        const pId = parseInt(productId) || null;
+        const prod = productsLookup.find(p => p.id === pId);
+        if (prod) {
+            const costToUse = prod.latest_purchase_cost ? parseFloat(prod.latest_purchase_cost) : parseFloat(prod.costo || 0);
+            setPackagingModal(prev => ({
+                ...prev,
+                data: {
+                    ...prev.data,
+                    product_id: pId,
+                    item_code: prev.data?.item_code || prod.codigo,
+                    item_name: prev.data?.item_name || prod.nombre,
+                    unit_cost: costToUse
+                }
+            }));
+        } else {
+            setPackagingModal(prev => ({
+                ...prev,
+                data: {
+                    ...prev.data,
+                    product_id: null
+                }
+            }));
+        }
+    };
+
+    const handleQuickApplyPackagingCost = async (packId, newCost) => {
+        try {
+            const item = packagingItems.find(p => p.id === packId);
+            if (!item) return;
+            await axios.post('/api/egg-industrial/costeo-libra/packaging-items', {
+                ...item,
+                unit_cost: parseFloat(newCost)
+            });
+            toast.success(`Costo de ${item.item_code} actualizado a ${parseFloat(newCost).toFixed(4)} desde la factura.`);
+            await loadData(dateRange.startDate, dateRange.endDate);
+        } catch (error) {
+            console.error('Error aplicando costo de empaque:', error);
+            toast.error('Error al aplicar costo desde factura.');
+        }
+    };
+
+    const handleQuickApplyCipCost = async (cipId, unitCost) => {
+        try {
+            const item = cipItems.find(c => c.id === cipId);
+            if (!item) return;
+            const qty = parseFloat(item.presentation_qty) || 1;
+            const newPresCost = parseFloat(unitCost) * qty;
+            await axios.post('/api/egg-industrial/costeo-libra/cip-items', {
+                ...item,
+                presentation_cost: newPresCost
+            });
+            toast.success(`Costo de ${item.item_name} actualizado a ${newPresCost.toFixed(2)} desde la factura.`);
+            await loadData(dateRange.startDate, dateRange.endDate);
+        } catch (error) {
+            console.error('Error aplicando costo CIP:', error);
+            toast.error('Error al aplicar costo desde factura.');
         }
     };
 
@@ -1586,6 +1697,154 @@ export default function EggCosteoPorLibra() {
                                 })}
                             </div>
                         </div>
+
+                        {/* Matriz Comparativa por Presentación y Empaque (Desplegable para evitar saturación) */}
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
+                            <div 
+                                onClick={() => setShowPresentationsMatrixCalc(prev => !prev)}
+                                className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/70 transition-colors select-none"
+                            >
+                                <div className="flex items-start sm:items-center gap-3">
+                                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 flex-shrink-0">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                                Matriz de Costeo por Presentación y Empaque
+                                            </h3>
+                                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                                6 formatos
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            {showPresentationsMatrixCalc
+                                                ? `Costo base líquido sin empaque: ${(calculationResult?.breakdown?.base_operating_cost_per_lb || 0).toFixed(2)}/lb. Haz clic para ocultar.`
+                                                : 'Compara cómo varía el costo por libra según el empaque (Cubetas, Galones, Litros). Haz clic para desplegar.'
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 self-end sm:self-center">
+                                    <span className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg">
+                                        Activo: <strong className="text-indigo-700">{calcParams.presentation}</strong>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                                    >
+                                        <span>{showPresentationsMatrixCalc ? 'Ocultar' : 'Desplegar'}</span>
+                                        {showPresentationsMatrixCalc ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {showPresentationsMatrixCalc && (
+                                <div className="p-6 pt-0 space-y-4 border-t border-slate-100">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3">
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            Costo base operacional líquido: <strong className="text-indigo-700 font-bold"><Money value={calculationResult?.breakdown?.base_operating_cost_per_lb || 0} /> /lb</strong>. El costo de empaque modifica el costo final por libra y por envase:
+                                        </p>
+                                        <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+                                            Lote: {(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs
+                                        </span>
+                                    </div>
+
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                        <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-3.5">Presentación</th>
+                                                    <th className="py-3 px-3 text-right">Empaque / Envase</th>
+                                                    <th className="py-3 px-3 text-right">Empaque / Lb</th>
+                                                    <th className="py-3 px-3.5 text-right">Costo Total / Lb</th>
+                                                    <th className="py-3 px-3.5 text-right">Costo / Envase</th>
+                                                    <th className="py-3 px-3 text-right">Precio Sug. (20% Margen)</th>
+                                                    <th className="py-3 px-3 text-right">Rendimiento</th>
+                                                    <th className="py-3 px-3 text-center">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                                {(calculationResult?.presentations_comparison || []).map((row, idx) => {
+                                                    const isSelected = row.is_current || (calcParams.presentation || '').toLowerCase().includes(row.lbs.toString());
+                                                    const packPct = row.total_cost_per_lb > 0 ? ((row.packaging_cost_lb / row.total_cost_per_lb) * 100).toFixed(1) : 0;
+                                                    return (
+                                                        <tr key={idx} className={`transition-colors ${isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50/80'}`}>
+                                                            <td className="py-3 px-3.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                                        <Package className="w-3.5 h-3.5" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                                            <span>{row.short_name}</span>
+                                                                            {isSelected && (
+                                                                                <span className="text-[9px] font-black uppercase bg-indigo-600 text-white px-1.5 py-0.2 rounded tracking-wider">
+                                                                                    Activo
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="text-[10px] text-slate-400 font-medium">{row.lbs} Libras netas</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right font-medium text-slate-700">
+                                                                <div><Money value={row.packaging_cost_unit} /></div>
+                                                                <span className="text-[9px] text-slate-400 font-normal">
+                                                                    Env: ${(row.packaging_breakdown?.container_cost || 0).toFixed(2)} + Tap: ${(row.packaging_breakdown?.lid_cost || 0).toFixed(2)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right">
+                                                                <div className="font-bold text-blue-700"><Money value={row.packaging_cost_lb} />/lb</div>
+                                                                <span className="text-[9px] text-slate-400 font-normal">{packPct}% del costo</span>
+                                                            </td>
+                                                            <td className="py-3 px-3.5 text-right">
+                                                                <span className="font-black text-indigo-950 text-sm">
+                                                                    <Money value={row.total_cost_per_lb} />
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-normal block">/lb</span>
+                                                            </td>
+                                                            <td className="py-3 px-3.5 text-right font-black text-slate-900">
+                                                                <Money value={row.total_cost_per_unit} />
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right">
+                                                                <span className="font-black text-emerald-700">
+                                                                    <Money value={row.suggested_prices?.margin_20?.price_unit || 0} />
+                                                                </span>
+                                                                <span className="text-[9px] text-slate-500 block font-normal">
+                                                                    (<Money value={row.suggested_prices?.margin_20?.price_lb || 0} />/lb)
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right">
+                                                                <span className="font-bold text-slate-800">{row.units_in_batch?.toLocaleString()}</span>
+                                                                <span className="text-[10px] text-slate-400 block font-normal">unidades</span>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-center">
+                                                                {isSelected ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                        <span>Seleccionado</span>
+                                                                    </span>
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleParamChange('presentation', row.id)}
+                                                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 px-2.5 py-1 rounded-lg shadow-sm transition-all"
+                                                                    >
+                                                                        Seleccionar
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
@@ -1669,52 +1928,229 @@ export default function EggCosteoPorLibra() {
                         </div>
                     </div>
 
-                    {/* Matriz Comparativa de Márgenes */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-                            Tabla Comparativa de Precios Sugeridos por Margen
-                        </h3>
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                            <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                        <th className="py-3 px-4">Margen Deseado</th>
-                                        <th className="py-3 px-4 text-right">Precio Sugerido / Lb</th>
-                                        <th className="py-3 px-4 text-right">Precio / {calcParams.presentation}</th>
-                                        <th className="py-3 px-4 text-right">Ganancia / Lb</th>
-                                        <th className="py-3 px-4 text-right">Utilidad Lote ({(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                    {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                            <td className="py-3 px-4">
-                                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                                                    row.margin_target_pct >= 25
-                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                        : row.margin_target_pct >= 15
-                                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                }`}>
-                                                    {row.margin_target_pct}% Margen
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-slate-900">
-                                                <Money value={row.suggested_price_per_lb} />
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-medium text-slate-700">
-                                                <Money value={row.suggested_price_per_presentation} />
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                                                <Money value={row.gain_per_lb} />
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-indigo-700">
-                                                <Money value={row.batch_gain} />
-                                            </td>
+                    {/* Grid en 2 Columnas: Izquierda = Matriz Escalonada de Margen | Derecha = Simulación Multiformato por Presentación */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        {/* Columna Izquierda: Matriz de Precios Sugeridos por Margen */}
+                        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                            <div className="pb-3 border-b border-slate-100">
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4 text-indigo-600" />
+                                    <span>Escala de Precios por Margen</span>
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                    Presentación activa: <strong className="text-indigo-700 font-bold">{calcParams.presentation}</strong>
+                                </p>
+                            </div>
+                            <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                            <th className="py-3 px-3">Margen</th>
+                                            <th className="py-3 px-3 text-right">Precio / Lb</th>
+                                            <th className="py-3 px-3 text-right">Precio / Envase</th>
+                                            <th className="py-3 px-3 text-right">Utilidad Lote</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                        {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-3 px-3">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${
+                                                        row.margin_target_pct >= 25
+                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                            : row.margin_target_pct >= 15
+                                                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    }`}>
+                                                        {row.margin_target_pct}%
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-black text-slate-900">
+                                                    <Money value={row.suggested_price_per_lb} />
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-medium text-slate-700">
+                                                    <Money value={row.suggested_price_per_presentation} />
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-black text-indigo-700">
+                                                    <Money value={row.batch_gain} />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Columna Derecha: Simulación Multiformato por Presentación (Desplegable para evitar saturación) */}
+                        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
+                            <div 
+                                onClick={() => setShowPresentationsMatrixSim(prev => !prev)}
+                                className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/70 transition-colors select-none"
+                            >
+                                <div className="flex items-start sm:items-center gap-3">
+                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 flex-shrink-0">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                                Simulación por Presentación y Empaque
+                                            </h3>
+                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                                Multiformato
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            {showPresentationsMatrixSim
+                                                ? `Impacto del precio simulado de ${(parseFloat(calcParams.target_sale_price_per_lb) || 0).toFixed(2)}/lb en cada formato. Haz clic para ocultar.`
+                                                : 'Márgenes y utilidades por formato al precio simulado. Haz clic para desplegar.'
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 self-end sm:self-center">
+                                    <button
+                                        type="button"
+                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                                    >
+                                        <span>{showPresentationsMatrixSim ? 'Ocultar' : 'Desplegar'}</span>
+                                        {showPresentationsMatrixSim ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {showPresentationsMatrixSim && (
+                                <div className="p-6 pt-0 space-y-4 border-t border-slate-100">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3">
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            Impacto del precio simulado de <strong className="text-slate-900 font-bold"><Money value={parseFloat(calcParams.target_sale_price_per_lb) || 0} /> /lb</strong> en cada formato:
+                                        </p>
+                                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+                                            Lote: {(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs
+                                        </span>
+                                    </div>
+
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                        <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="py-3 px-3.5">Presentación</th>
+                                                    <th className="py-3 px-3 text-right">Costo / Envase</th>
+                                                    <th className="py-3 px-3 text-right">Precio Venta</th>
+                                                    <th className="py-3 px-3 text-right">Margen / Envase</th>
+                                                    <th className="py-3 px-3 text-center">Margen %</th>
+                                                    <th className="py-3 px-3.5 text-right">Utilidad Lote</th>
+                                                    <th className="py-3 px-3 text-right">Precio Sug. 20%</th>
+                                                    <th className="py-3 px-3 text-center">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                                                {(calculationResult?.presentations_comparison || []).map((row, idx) => {
+                                                    const isSelected = row.is_current || (calcParams.presentation || '').toLowerCase().includes(row.lbs.toString());
+                                                    const hasSimPrice = (parseFloat(calcParams.target_sale_price_per_lb) || 0) > 0;
+                                                    const marginPct = row.simulation?.margin_pct || 0;
+                                                    const marginPerUnit = row.simulation?.gain_per_unit || 0;
+                                                    const totalBatchGain = row.simulation?.total_batch_gain || 0;
+
+                                                    return (
+                                                        <tr key={idx} className={`transition-colors ${isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50/80'}`}>
+                                                            <td className="py-3 px-3.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                                        <Package className="w-3.5 h-3.5" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                                            <span>{row.short_name}</span>
+                                                                            {isSelected && (
+                                                                                <span className="text-[9px] font-black uppercase bg-indigo-600 text-white px-1.5 py-0.2 rounded tracking-wider">
+                                                                                    Activo
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="text-[10px] text-slate-400 font-medium">
+                                                                            Empaque: <Money value={row.packaging_cost_lb} />/lb
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right">
+                                                                <div className="font-bold text-slate-900"><Money value={row.total_cost_per_unit} /></div>
+                                                                <span className="text-[9px] text-slate-400 font-normal">(<Money value={row.total_cost_per_lb} />/lb)</span>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right font-black text-slate-900">
+                                                                {hasSimPrice ? (
+                                                                    <Money value={row.simulation?.sale_price_unit || 0} />
+                                                                ) : (
+                                                                    <span className="text-slate-400 text-[11px] font-normal italic">Sin precio</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right">
+                                                                {hasSimPrice ? (
+                                                                    <span className={`font-black ${marginPerUnit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                        {marginPerUnit >= 0 ? '+' : ''}<Money value={marginPerUnit} />
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 font-normal">-</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-3 text-center">
+                                                                {hasSimPrice ? (
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-black inline-block ${
+                                                                        marginPct >= 20
+                                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                            : marginPct >= 10
+                                                                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                    }`}>
+                                                                        {marginPct.toFixed(1)}%
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 font-normal">-</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-3.5 text-right font-black text-indigo-900">
+                                                                {hasSimPrice ? (
+                                                                    <span className={totalBatchGain >= 0 ? 'text-indigo-900' : 'text-rose-600'}>
+                                                                        <Money value={totalBatchGain} />
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 font-normal">-</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-3 text-right">
+                                                                <span className="font-bold text-emerald-700">
+                                                                    <Money value={row.suggested_prices?.margin_20?.price_unit || 0} />
+                                                                </span>
+                                                                <span className="text-[9px] text-slate-400 block font-normal">
+                                                                    (<Money value={row.suggested_prices?.margin_20?.price_lb || 0} />/lb)
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-3 text-center">
+                                                                {isSelected ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                        <span>Seleccionado</span>
+                                                                    </span>
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleParamChange('presentation', row.id)}
+                                                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 px-2.5 py-1 rounded-lg shadow-sm transition-all"
+                                                                    >
+                                                                        Seleccionar
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1980,7 +2416,36 @@ export default function EggCosteoPorLibra() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Banner de Vinculación con Compras y Facturas Ingresadas */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 shadow-inner flex-shrink-0">
+                                <ShoppingCart className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2 flex-wrap">
+                                    <span>Vinculación con Módulo de Compras & Facturación</span>
+                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                        En Tiempo Real
+                                    </span>
+                                </h4>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                    Los empaques y químicos CIP están vinculados a los productos del inventario y leen automáticamente el costo unitario de las facturas de compras ingresadas.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleSyncPurchases}
+                            disabled={syncingPurchases}
+                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all self-start sm:self-auto flex-shrink-0"
+                        >
+                            <RefreshCcw className={`w-4 h-4 ${syncingPurchases ? 'animate-spin' : ''}`} />
+                            <span>{syncingPurchases ? 'Sincronizando...' : 'Sincronizar Costos con Compras'}</span>
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                         {/* Químicos CIP */}
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -2001,10 +2466,10 @@ export default function EggCosteoPorLibra() {
                             </div>
 
                             <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs border-collapse">
+                                <table className="w-full text-left text-xs border-collapse min-w-[550px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                            <th className="py-2.5 px-3">Químico</th>
+                                            <th className="py-2.5 px-3">Químico & Compra</th>
                                             <th className="py-2.5 px-3">Presentación</th>
                                             <th className="py-2.5 px-3 text-right">Costo Pres.</th>
                                             <th className="py-2.5 px-3 text-right">Dosis Batch</th>
@@ -2018,7 +2483,38 @@ export default function EggCosteoPorLibra() {
                                             const cycleCost = unitPrice * (parseFloat(cip.dose_per_batch) || 0);
                                             return (
                                                 <tr key={cip.id} className="hover:bg-slate-50/80 transition-colors">
-                                                    <td className="py-2.5 px-3 font-bold text-slate-900">{cip.item_name}</td>
+                                                    <td className="py-2.5 px-3">
+                                                        <div className="font-bold text-slate-900">{cip.item_name}</div>
+                                                        {cip.latest_invoice_number ? (
+                                                            <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1 flex-wrap">
+                                                                <span className="inline-flex items-center gap-0.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
+                                                                    <FileText className="w-3 h-3 text-indigo-600" />
+                                                                    <span>Fac. #{cip.latest_invoice_number}</span>
+                                                                </span>
+                                                                <span>Compra: <strong className="text-emerald-700 font-bold">${parseFloat(cip.latest_purchase_cost).toFixed(2)}</strong>/ud</span>
+                                                                {cip.latest_purchase_date && <span>({new Date(cip.latest_purchase_date).toLocaleDateString()})</span>}
+                                                                {cip.latest_provider_name && <span className="text-slate-400">({cip.latest_provider_name})</span>}
+                                                                {Math.abs(parseFloat(cip.presentation_cost) - (parseFloat(cip.latest_purchase_cost) * (parseFloat(cip.presentation_qty) || 1))) > 0.01 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleQuickApplyCipCost(cip.id, cip.latest_purchase_cost)}
+                                                                        className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded"
+                                                                        title="Actualizar costo de presentación con base en la factura"
+                                                                    >
+                                                                        Aplicar Factura
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ) : cip.product_id ? (
+                                                            <span className="mt-0.5 inline-block text-[10px] text-slate-400 font-normal">
+                                                                Vinculado a {cip.product_code || 'Inventario'} (Sin compras aún)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="mt-0.5 inline-block text-[10px] text-amber-600 font-normal italic">
+                                                                Sin vincular a producto
+                                                            </span>
+                                                        )}
+                                                    </td>
                                                     <td className="py-2.5 px-3 text-slate-600">{cip.presentation_qty} {cip.presentation_unit}</td>
                                                     <td className="py-2.5 px-3 text-right font-semibold text-slate-900">
                                                         <Money value={cip.presentation_cost} />
@@ -2073,11 +2569,11 @@ export default function EggCosteoPorLibra() {
                             </div>
 
                             <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs border-collapse">
+                                <table className="w-full text-left text-xs border-collapse min-w-[550px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                             <th className="py-2.5 px-3">Código</th>
-                                            <th className="py-2.5 px-3">Descripción</th>
+                                            <th className="py-2.5 px-3">Descripción & Compra</th>
                                             <th className="py-2.5 px-3">Categoría</th>
                                             <th className="py-2.5 px-3 text-right">Costo Unit.</th>
                                             <th className="py-2.5 px-3 text-center">Acciones</th>
@@ -2087,7 +2583,38 @@ export default function EggCosteoPorLibra() {
                                         {packagingItems.map((p) => (
                                             <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">{p.item_code}</td>
-                                                <td className="py-2.5 px-3 font-medium text-slate-900">{p.item_name}</td>
+                                                <td className="py-2.5 px-3">
+                                                    <div className="font-medium text-slate-900">{p.item_name}</div>
+                                                    {p.latest_invoice_number ? (
+                                                        <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1 flex-wrap">
+                                                            <span className="inline-flex items-center gap-0.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
+                                                                <FileText className="w-3 h-3 text-indigo-600" />
+                                                                <span>Fac. #{p.latest_invoice_number}</span>
+                                                            </span>
+                                                            <span>Compra: <strong className="text-emerald-700 font-bold">${parseFloat(p.latest_purchase_cost).toFixed(4)}</strong></span>
+                                                            {p.latest_purchase_date && <span>({new Date(p.latest_purchase_date).toLocaleDateString()})</span>}
+                                                            {p.latest_provider_name && <span className="text-slate-400">({p.latest_provider_name})</span>}
+                                                            {Math.abs(parseFloat(p.unit_cost) - parseFloat(p.latest_purchase_cost)) > 0.0001 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleQuickApplyPackagingCost(p.id, p.latest_purchase_cost)}
+                                                                    className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded"
+                                                                    title="Actualizar costo de empaque al valor de la factura"
+                                                                >
+                                                                    Aplicar Factura
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ) : p.product_id ? (
+                                                        <span className="mt-0.5 inline-block text-[10px] text-slate-400 font-normal">
+                                                            Vinculado a {p.product_code || 'Inventario'} (Sin compras aún)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="mt-0.5 inline-block text-[10px] text-amber-600 font-normal italic">
+                                                            Sin vincular a producto
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="py-2.5 px-3">
                                                     <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold uppercase">
                                                         {p.category}
@@ -2681,6 +3208,39 @@ export default function EggCosteoPorLibra() {
 
                         <div className="space-y-3">
                             <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                    Vincular con Producto del Inventario / Compras
+                                </label>
+                                <select
+                                    value={cipModal.data?.product_id || ''}
+                                    onChange={(e) => handleSelectProductForCip(e.target.value)}
+                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
+                                >
+                                    <option value="">-- Sin Vincular / Ingreso Manual --</option>
+                                    {productsLookup.map(prod => (
+                                        <option key={prod.id} value={prod.id}>
+                                            [{prod.codigo}] {prod.nombre} {prod.latest_purchase_cost ? `(Fac #${prod.latest_invoice_number}: ${parseFloat(prod.latest_purchase_cost).toFixed(2)})` : `(Costo: ${parseFloat(prod.costo || 0).toFixed(2)})`}
+                                        </option>
+                                    ))}
+                                </select>
+                                {cipModal.data?.product_id && (
+                                    <div className="mt-1.5 p-2 rounded-lg bg-cyan-50 border border-cyan-200 text-[11px] text-cyan-950">
+                                        {(() => {
+                                            const prod = productsLookup.find(p => p.id === parseInt(cipModal.data?.product_id));
+                                            if (!prod) return null;
+                                            return prod.latest_invoice_number ? (
+                                                <div>
+                                                    <span className="font-bold">Factura de Compra Reciente:</span> #{prod.latest_invoice_number} ({prod.latest_purchase_date ? new Date(prod.latest_purchase_date).toLocaleDateString() : 'S/F'}) a <strong className="text-emerald-700 font-bold">${parseFloat(prod.latest_purchase_cost).toFixed(2)}</strong> / ud {prod.latest_provider_name ? `(${prod.latest_provider_name})` : ''}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-600 italic">Producto sin facturas ingresadas aún (Costo catálogo: ${parseFloat(prod.costo || 0).toFixed(2)})</span>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
                                 <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Nombre del Químico</label>
                                 <input
                                     type="text"
@@ -2782,6 +3342,39 @@ export default function EggCosteoPorLibra() {
                         </div>
 
                         <div className="space-y-3">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                                    Vincular con Producto del Inventario / Compras
+                                </label>
+                                <select
+                                    value={packagingModal.data?.product_id || ''}
+                                    onChange={(e) => handleSelectProductForPackaging(e.target.value)}
+                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                >
+                                    <option value="">-- Sin Vincular / Ingreso Manual --</option>
+                                    {productsLookup.map(prod => (
+                                        <option key={prod.id} value={prod.id}>
+                                            [{prod.codigo}] {prod.nombre} {prod.latest_purchase_cost ? `(Fac #${prod.latest_invoice_number}: ${parseFloat(prod.latest_purchase_cost).toFixed(4)})` : `(Costo: ${parseFloat(prod.costo || 0).toFixed(4)})`}
+                                        </option>
+                                    ))}
+                                </select>
+                                {packagingModal.data?.product_id && (
+                                    <div className="mt-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-950">
+                                        {(() => {
+                                            const prod = productsLookup.find(p => p.id === parseInt(packagingModal.data?.product_id));
+                                            if (!prod) return null;
+                                            return prod.latest_invoice_number ? (
+                                                <div>
+                                                    <span className="font-bold">Factura de Compra Reciente:</span> #{prod.latest_invoice_number} ({prod.latest_purchase_date ? new Date(prod.latest_purchase_date).toLocaleDateString() : 'S/F'}) a <strong className="text-emerald-700 font-bold">${parseFloat(prod.latest_purchase_cost).toFixed(4)}</strong> / ud {prod.latest_provider_name ? `(${prod.latest_provider_name})` : ''}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-600 italic">Producto sin facturas ingresadas aún (Costo catálogo: ${parseFloat(prod.costo || 0).toFixed(4)})</span>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Código del Item</label>

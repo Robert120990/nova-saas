@@ -440,7 +440,7 @@ const NotificacionesConfig = () => {
                                 </span>
                                 <button
                                   onClick={() => handleEditRule(rule)}
-                                  className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"
+                                  className="p-1.5 text-slate-600 hover:text-indigo-600 transition-colors"
                                   title="Editar regla"
                                 >
                                   <Edit3 size={14} />
@@ -456,7 +456,7 @@ const NotificacionesConfig = () => {
                                     });
                                     if (ok) deleteMutation.mutate(rule.id);
                                   }}
-                                  className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                  className="p-1.5 text-slate-600 hover:text-red-500 transition-colors"
                                   title="Eliminar regla"
                                 >
                                   <Trash2 size={14} />

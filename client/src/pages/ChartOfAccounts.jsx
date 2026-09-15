@@ -230,8 +230,8 @@ const ChartOfAccounts = () => {
                         <td className="px-6 py-1.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{a.active ? 'Activo' : 'Inactivo'}</span></td>
                         <td className="px-6 py-1.5">
                             <div className="flex gap-2">
-                                <button onClick={() => { setEditingAccount(a); setSelectedFormType(a.account_type_id); setIsAccountModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit size={14} /></button>
-                                <button onClick={async () => { const ok = await confirm({ title: 'Eliminar Cuenta', message: '¿Eliminar esta cuenta contable?', confirmLabel: 'Eliminar' }); if (ok) deleteMutation.mutate(a.id); }} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 size={14} /></button>
+                                <button onClick={() => { setEditingAccount(a); setSelectedFormType(a.account_type_id); setIsAccountModalOpen(true); }} className="p-1.5 text-slate-600 hover:text-indigo-600"><Edit size={14} /></button>
+                                <button onClick={async () => { const ok = await confirm({ title: 'Eliminar Cuenta', message: '¿Eliminar esta cuenta contable?', confirmLabel: 'Eliminar' }); if (ok) deleteMutation.mutate(a.id); }} className="p-1.5 text-slate-600 hover:text-rose-600"><Trash2 size={14} /></button>
                             </div>
                         </td>
                     </tr>

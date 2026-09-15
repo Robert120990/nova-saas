@@ -380,21 +380,21 @@ const PozoCorte = () => {
                                 <span className="text-xs font-bold font-mono text-emerald-600"><Money value={item.total_gastos} /></span>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => verCorte(item)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver corte"><Eye size={15} /></button>
+                                <button onClick={() => verCorte(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver corte"><Eye size={15} /></button>
                                 {item.estado === 'cerrado' ? (
                                     canReopen && (
-                                        <button onClick={() => handleReopen(item)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Reabrir corte"><Unlock size={15} /></button>
+                                        <button onClick={() => handleReopen(item)} className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Reabrir corte"><Unlock size={15} /></button>
                                     )
                                 ) : (
                                     <>
-                                        <button onClick={() => handleClose(item)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Cerrar corte"><Lock size={15} /></button>
-                                        <button onClick={() => editarCorte(item.id)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar corte"><Edit3 size={15} /></button>
+                                        <button onClick={() => handleClose(item)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Cerrar corte"><Lock size={15} /></button>
+                                        <button onClick={() => editarCorte(item.id)} className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar corte"><Edit3 size={15} /></button>
                                     </>
                                 )}
                                 <button
                                     onClick={() => handleDelete(item.id)}
                                     disabled={item.estado === 'cerrado'}
-                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                                     title={item.estado === 'cerrado' ? 'No se puede eliminar un corte cerrado' : 'Eliminar'}
                                 >
                                     <Trash2 size={15} />
@@ -503,7 +503,7 @@ const PozoCorte = () => {
                                             />
                                             <button
                                                 onClick={() => removeGasto(i)}
-                                                className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all self-center"
+                                                className="p-1 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all self-center"
                                                 title="Eliminar"
                                             >
                                                 <Trash2 size={14} />

@@ -124,6 +124,8 @@ const NotificacionesLista = () => {
         <Pagination
           currentPage={page}
           totalPages={data.totalPages}
+          totalItems={data.total ?? data.totalItems ?? 0}
+          itemsOnPage={data.data?.length || 0}
           onPageChange={setPage}
         />
       )}

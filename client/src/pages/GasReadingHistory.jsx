@@ -721,7 +721,7 @@ const GasReadingHistory = () => {
                                             {canReopenCloseout && (
                                                 <button
                                                     onClick={() => setReopenConfirm(c)}
-                                                    className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                    className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                                                     title="Reabrir cierre con permiso especial"
                                                 >
                                                     <LockOpen size={15} />
@@ -729,7 +729,7 @@ const GasReadingHistory = () => {
                                             )}
                                             <button
                                                 onClick={() => handleView(c)}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                 title="Ver detalle"
                                             >
                                                 <Eye size={15} />
@@ -739,14 +739,14 @@ const GasReadingHistory = () => {
                                         <>
                                             <button
                                                 onClick={() => handleEdit(c)}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                                 title="Editar cierre"
                                             >
                                                 <Pencil size={15} />
                                             </button>
                                             <button
                                                 onClick={() => setDeleteConfirm(c)}
-                                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                 title="Eliminar cierre"
                                             >
                                                 <Trash2 size={15} />
@@ -755,7 +755,7 @@ const GasReadingHistory = () => {
                                     )}
                                     <button
                                         onClick={() => handlePdf(c)}
-                                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                         title="Descargar PDF"
                                     >
                                         <Printer size={15} />
@@ -763,7 +763,7 @@ const GasReadingHistory = () => {
                                     {c.estado === 'cerrado' && (
                                         <button
                                             onClick={() => setRrsModal(c)}
-                                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                             title={c.rrs_enviado_at ? 'Reenviar a RRS' : 'Enviar a RRS'}
                                         >
                                             <Database size={15} />

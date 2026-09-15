@@ -132,8 +132,8 @@ const Categories = () => {
                             </td>
                             <td className="px-3 py-1 text-xs text-slate-500">{c.description || '-'}</td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                <button onClick={() => handleDeleteCategory(c.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                <button onClick={() => handleEdit(c)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteCategory(c.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}

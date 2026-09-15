@@ -229,8 +229,8 @@ const Providers = () => {
                                 {p.correo && <div className="text-[10px] text-slate-600 flex items-center gap-1"><Mail size={10} className="text-slate-400"/> {p.correo}</div>}
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleEdit(p)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                <button onClick={() => handleDeleteProvider(p.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                <button onClick={() => handleEdit(p)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteProvider(p.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}

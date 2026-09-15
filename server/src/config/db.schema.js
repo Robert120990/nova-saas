@@ -261,7 +261,7 @@ REGLAS DE MULTI-TENENCIA:
 
 ### purchase_headers (Cabeceras de Compras)
 - id, company_id, branch_id, provider_id, usuario_id
-- fecha DATE, numero_documento
+- fecha DATE, numero_documento, numero_control, sello_recepcion
 - tipo_documento_id VARCHAR, condicion_operacion_id VARCHAR
 - dias_credito INT, fecha_vencimiento DATE
 - total_nosujeta, total_exenta, total_gravada DECIMAL
@@ -269,10 +269,11 @@ REGLAS DE MULTI-TENENCIA:
 - monto_total DECIMAL
 - status ENUM('COMPLETADO','ANULADO')
 - period_year INT, period_month INT
-- observaciones, created_at, updated_at
+- observaciones, num_quedan, created_at, updated_at
 
 ### purchase_items (Ítems de Compras)
-- id, purchase_id, product_id
+- id, purchase_id, product_id (NULL para ítems sin código)
+- descripcion VARCHAR(255) (descripción libre o del producto)
 - cantidad DECIMAL, precio_unitario DECIMAL, total DECIMAL
 
 ---
@@ -284,7 +285,7 @@ REGLAS DE MULTI-TENENCIA:
 - fecha DATE, numero_documento
 - tipo_documento_id VARCHAR, condicion_operacion_id VARCHAR
 - total_nosujeta, total_exenta, total_gravada DECIMAL
-- iva, retencion, percepcion, fovial, cotrans DECIMAL
+- iva, retencion, percepcion, fovial, cotrans, anticipo_cuenta, monto_sujeto DECIMAL
 - monto_total DECIMAL, status ENUM('ACTIVO','ANULADO')
 - period_year INT, period_month INT
 - observaciones, created_at, updated_at
@@ -349,6 +350,14 @@ REGLAS DE MULTI-TENENCIA:
 - retry_count INT, last_error TEXT
 - fecha_generacion DATETIME, fecha_envio_hacienda DATETIME, created_at
 
+### filpro_connections (Conexión a API FilPro por empresa)
+- id, company_id, branch_id, portal_url, filpro_email, filpro_password (encrypted)
+- filpro_company_id, filpro_establishment_code, auto_sync, last_sync_date, last_sync_at, created_at, updated_at
+- UNIQUE(company_id, branch_id)
+
+### filpro_sync_logs (Auditoría de sincronización FilPro)
+- id, company_id, branch_id, sync_date, total_found, total_imported, total_skipped, total_errors, details JSON, created_at
+
 ---
 
 ## CATÁLOGOS DTE / HACIENDA
@@ -357,7 +366,7 @@ REGLAS DE MULTI-TENENCIA:
 - code, description — ('00'=Pruebas, '01'=Producción)
 
 ### cat_002_tipo_dte (Tipos de Documento)
-- code, description — '01'=Factura Consumidor Final, '03'=Crédito Fiscal, '04'=Nota Remisión, '05'=Nota Crédito, '06'=Nota Débito, '07'=Comprobante Retención, '08'=Comprobante Liquidación, '11'=Factura Exportación, '14'=Factura Sujeto Excluido
+- code, description — '01'=Factura Consumidor Final, '03'=Crédito Fiscal, '04'=Nota Remisión, '05'=Nota Crédito, '06'=Nota Débito, '07'=Comprobante Retención, '08'=Comprobante Liquidación, '09'=Documento Contable de Liquidación, '11'=Factura Exportación, '14'=Factura Sujeto Excluido, '15'=Comprobante de Donación
 
 ### cat_008_distrito (Distritos / Códigos postales)
 - code, dep_code, description — Código de distrito municipal

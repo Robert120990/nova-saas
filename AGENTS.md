@@ -19,27 +19,27 @@ This is a multi-tenant SaaS system for Salvadoran businesses with DTE (Documento
 ### Server (Main Backend)
 ```bash
 cd server
-npm install        # Install dependencies
-npm run dev        # Start with nodemon (development)
-npm start          # Start with node (production)
+pnpm install        # Install dependencies
+pnpm run dev        # Start with nodemon (development)
+pnpm start          # Start with node (production)
 ```
 
 ### Client (Frontend)
 ```bash
 cd client
-npm install        # Install dependencies
-npm run dev        # Start Vite dev server
-npm run build      # Production build
-npm run lint       # Run ESLint
-npm run preview    # Preview production build
+pnpm install        # Install dependencies
+pnpm run dev        # Start Vite dev server
+pnpm run build      # Production build
+pnpm run lint       # Run ESLint
+pnpm run preview    # Preview production build
 ```
 
 ### DTE API
 ```bash
 cd dte-api
-npm install        # Install dependencies
-npm run dev        # Start with nodemon
-npm start          # Start with node
+pnpm install        # Install dependencies
+pnpm run dev        # Start with nodemon
+pnpm start          # Start with node
 ```
 
 ### Database Migrations
@@ -131,6 +131,15 @@ TODO nuevo reporte en PDF debe implementar el estándar contable unificado usand
 - Exportación Excel: Todo endpoint debe soportar `?format=excel` antes de la generación PDF usando `excelService.createExcelBuffer` y `excelService.sendExcelResponse`.
 - Frontend: Usar `<ReportLayout>` (`client/src/components/ui/ReportLayout.jsx`) con `onExportExcel`. `<ReportLayout>` integra obligatoriamente el botón "Expandir" en la cabecera/título y el visor `<PdfViewerModal>` estilo planillas (`max-w-6xl h-[92vh]`), garantizando que todo reporte convencional cuente con vista modal interactiva sin código repetitivo.
 
+### Claves de Permiso Únicas en el Menú y Roles (menu_items & permission_key) — OBLIGATORIO
+La matriz de asignación de permisos para los roles (`Roles.jsx`) se construye dinámicamente desde `menu_items` deduplicando por `permission_key`:
+- **NUNCA REUTILIZAR CLAVES DE PERMISO**: Cada nueva opción de menú, módulo secundario o reporte DEBE tener su propio `permission_key` único en la tabla `menu_items`. Reutilizar una clave ya existente enmascara las demás opciones en Roles haciéndolas invisibles y no configurables.
+- **Nomenclatura Obligatoria**:
+  - Módulos/Pantallas operativas: `manage_<modulo>_<accion_o_pantalla>` (ej: `manage_rh_acciones_personal`, `manage_accounting_correlativos`).
+  - Reportes/Libros: `view_<modulo>_<reporte>_report` o `view_<modulo>_<reporte>` (ej: `view_rh_isss_report`, `view_purchase_checks_report`, `view_inventory_valuation_report`).
+  - Visibilidad general/Módulos: `view_<modulo>`.
+- **Migraciones con Herencia**: Al agregar un nuevo ítem en `menu_items` mediante migración, se debe actualizar la tabla `roles` para añadir la nueva clave a los roles administrativos (`SuperAdmin`, `Admin`) y a los roles que ya tengan acceso al módulo padre, evitando que los usuarios pierdan el acceso de forma imprevista.
+
 ## Environment Configuration
 
 ### Main Server (`.env`)
@@ -153,6 +162,10 @@ TODO nuevo reporte en PDF debe implementar el estándar contable unificado usand
 
 ## Git Workflow & Commit Rules — OBLIGATORIO
 
+- **Autorización Expresa Obligatoria del Usuario — NUNCA SUBIR AUTOMÁTICAMENTE**:
+  - Queda ESTRICTAMENTE PROHIBIDO ejecutar `git commit` o `git push` de forma automática o por iniciativa propia del agente.
+  - Todos los cambios deben permanecer exclusivamente en el entorno local del usuario para su revisión y prueba.
+  - ÚNICAMENTE se debe realizar commit o push cuando el usuario dé la instrucción expresa y directa (por ejemplo: "sube los cambios", "haz commit y push", etc.).
 - **Idioma de los Commits**:
   - TODOS los mensajes de commit DEBEN redactarse en **español** (por ejemplo: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...` con descripción clara en español).
   - Queda estrictamente prohibido redactar mensajes de commit en inglés.

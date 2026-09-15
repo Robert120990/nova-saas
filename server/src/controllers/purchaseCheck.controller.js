@@ -204,7 +204,7 @@ const resolveRrsNumCheque = async (check, companyId) => {
     const [rows] = await rrs.query(
         `SELECT num_cheque FROM solicitud_chq_contado
          WHERE llave IN (?, ?) AND num_cheque != ' ' AND num_cheque IS NOT NULL
-         ORDER BY id DESC LIMIT 1`,
+         ORDER BY corr DESC LIMIT 1`,
         [`${rrsIdEmpresa}-${check.id}`, String(check.id)]
     );
 
@@ -262,9 +262,10 @@ const deliverCheck = async (req, res) => {
             UPDATE purchase_checks SET
                 status = 'ENTREGADO',
                 fecha_entrega = ?,
-                documento = ?
+                documento = ?,
+                rrs_num_cheque = ?
             WHERE id = ? AND company_id = ?
-        `, [fecha_entrega, documento || null, id, companyId]);
+        `, [fecha_entrega, documento || null, numCheque, id, companyId]);
 
         res.json({ message: 'Cheque marcado como entregado con éxito' });
     } catch (error) {
@@ -746,7 +747,7 @@ const revertCheck = async (req, res) => {
         );
 
         await pool.query(
-            "UPDATE purchase_checks SET status = 'PENDIENTE' WHERE id = ? AND company_id = ?",
+            "UPDATE purchase_checks SET status = 'PENDIENTE', rrs_num_cheque = NULL WHERE id = ? AND company_id = ?",
             [id, companyId]
         );
 

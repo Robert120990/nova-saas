@@ -34,9 +34,9 @@ git fetch origin main >> "$LOG_FILE" 2>&1
 git reset --hard origin/main >> "$LOG_FILE" 2>&1
 
 # 2. Actualizar dependencias backend si fuera necesario
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [NPM] Actualizando dependencias backend..." >> "$LOG_FILE"
-cd "$APP_DIR/server" && npm install --omit=dev --prefer-offline >> "$LOG_FILE" 2>&1 || true
-cd "$APP_DIR/dte-api" && npm install --omit=dev --prefer-offline >> "$LOG_FILE" 2>&1 || true
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [PNPM] Actualizando dependencias backend..." >> "$LOG_FILE"
+cd "$APP_DIR/server" && pnpm install --prod --prefer-offline >> "$LOG_FILE" 2>&1 || true
+cd "$APP_DIR/dte-api" && pnpm install --prod --prefer-offline >> "$LOG_FILE" 2>&1 || true
 
 # 3. Ejecutar migraciones de base de datos
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DB] Ejecutando migraciones de base de datos..." >> "$LOG_FILE"
@@ -53,8 +53,8 @@ node -r dotenv/config run_migration_v14_expense_fields.js dotenv_config_path=../
 # 4. Compilar frontend de producción
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [BUILD] Compilando frontend cliente Vite..." >> "$LOG_FILE"
 cd "$APP_DIR/client"
-npm install --prefer-offline >> "$LOG_FILE" 2>&1 || true
-npm run build >> "$LOG_FILE" 2>&1
+pnpm install --prefer-offline >> "$LOG_FILE" 2>&1 || true
+pnpm run build >> "$LOG_FILE" 2>&1
 
 # 5. Reiniciar servicios en PM2
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [PM2] Reiniciando servicios..." >> "$LOG_FILE"

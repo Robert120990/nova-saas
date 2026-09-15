@@ -1807,7 +1807,7 @@ export default function GasOrders() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleRemoveCheque(idx)}
-                                                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                                                        className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
                                                                         title="Eliminar cheque"
                                                                     >
                                                                         <Trash2 className="w-3.5 h-3.5" />

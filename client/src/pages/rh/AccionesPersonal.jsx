@@ -280,21 +280,21 @@ const AccionesPersonal = () => {
                                     <button
                                         onClick={() => handlePrintPDF(item)}
                                         disabled={loadingPdfId === item.id}
-                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                                        className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
                                         title="Imprimir Documento Oficial (PDF)"
                                     >
                                         {loadingPdfId === item.id ? <Loader2 size={16} className="animate-spin text-indigo-600" /> : <FileText size={16} />}
                                     </button>
                                     <button
                                         onClick={() => handleOpenEdit(item)}
-                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                         title="Editar"
                                     >
                                         <Edit size={16} />
                                     </button>
                                     <button
                                         onClick={() => handleDelete(item)}
-                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                         title="Eliminar"
                                     >
                                         <Trash2 size={16} />

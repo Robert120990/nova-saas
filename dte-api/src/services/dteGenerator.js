@@ -24,39 +24,55 @@ const pool = require('../../config/db');
  */
 async function resolveCountryCode(rawInput) {
     if (!rawInput) {
-        // Sin entrada: devolver el primer código disponible
-        const [rows] = await pool.query('SELECT code, description FROM cat_020_pais LIMIT 1');
-        if (rows.length > 0) return { code: rows[0].code, name: rows[0].description };
-        return { code: '9320', name: 'ESTADOS UNIDOS' };
+        return { code: 'US', name: 'Estados Unidos' };
     }
 
     const input = String(rawInput).trim();
+    const upper = input.toUpperCase();
 
-    // 1. Coincidencia exacta por code
-    const [byCode] = await pool.query('SELECT code, description FROM cat_020_pais WHERE code = ?', [input]);
+    // Map common aliases to 2-letter ISO code
+    const aliases = {
+        'USA': 'US',
+        'EEUU': 'US',
+        'EE UU': 'US',
+        'ESTADOS UNIDOS': 'US',
+        'EL SALVADOR': 'SV',
+        'GUATEMALA': 'GT',
+        'HONDURAS': 'HN',
+        'NICARAGUA': 'NI',
+        'COSTA RICA': 'CR',
+        'PANAMA': 'PA',
+        'PANAMÁ': 'PA',
+        'MEXICO': 'MX',
+        'MÉXICO': 'MX'
+    };
+
+    const targetCode = aliases[upper] || upper;
+
+    // 1. Coincidencia exacta por code (ej. 'US', 'GT', etc.)
+    const [byCode] = await pool.query('SELECT code, description FROM cat_020_pais WHERE code = ?', [targetCode]);
     if (byCode.length > 0) return { code: byCode[0].code, name: byCode[0].description };
 
-    // 2. Coincidencia por descripción (case-insensitive)
-    const [byDesc] = await pool.query(
-        'SELECT code, description FROM cat_020_pais WHERE LOWER(description) LIKE ?',
-        [`%${input.toLowerCase()}%`]
+    // 2. Coincidencia por descripción exacta
+    const [byExactDesc] = await pool.query(
+        'SELECT code, description FROM cat_020_pais WHERE UPPER(description) = ?',
+        [upper]
     );
-    if (byDesc.length > 0) {
-        console.warn(`[DTE-API] País "${input}" resuelto como "${byDesc[0].code}" (${byDesc[0].description})`);
-        return { code: byDesc[0].code, name: byDesc[0].description };
+    if (byExactDesc.length > 0) return { code: byExactDesc[0].code, name: byExactDesc[0].description };
+
+    // 3. Coincidencia por descripción parcial (solo si input tiene más de 3 letras)
+    if (input.length > 3) {
+        const [byDesc] = await pool.query(
+            'SELECT code, description FROM cat_020_pais WHERE LOWER(description) LIKE ?',
+            [`%${input.toLowerCase()}%`]
+        );
+        if (byDesc.length > 0) {
+            return { code: byDesc[0].code, name: byDesc[0].description };
+        }
     }
 
-    // 3. Fallback: primer código MH (4 dígitos) de la tabla
-    const [first] = await pool.query(
-        "SELECT code, description FROM cat_020_pais WHERE code REGEXP '^[0-9]{4}$' LIMIT 1"
-    );
-    if (first.length > 0) {
-        console.warn(`[DTE-API] País "${input}" no encontrado en cat_020_pais, usando fallback "${first[0].code}"`);
-        return { code: first[0].code, name: first[0].description };
-    }
-
-    console.warn(`[DTE-API] Sin códigos MH de 4 dígitos en cat_020_pais, usando fallback absoluto "9320"`);
-    return { code: '9320', name: 'ESTADOS UNIDOS' };
+    // 4. Fallback: Estados Unidos
+    return { code: 'US', name: 'Estados Unidos' };
 }
 
 /**
@@ -77,6 +93,70 @@ async function resolveActividadEconomica(codigoActividad) {
         console.warn('[DTE-Generator] Error resolviendo actividad económica:', err.message);
         return null;
     }
+}
+
+let cat008Cache = null;
+let cat008CacheTime = 0;
+async function getCat008Distritos() {
+    const now = Date.now();
+    if (!cat008Cache || (now - cat008CacheTime) > 300000) {
+        try {
+            const [rows] = await pool.query('SELECT code, dep_code, muni_code, description FROM cat_008_distrito');
+            cat008Cache = rows || [];
+            cat008CacheTime = now;
+        } catch (e) {
+            console.warn('[DTE-API] Error cargando cat_008_distrito:', e.message);
+            cat008Cache = [];
+        }
+    }
+    return cat008Cache;
+}
+
+/**
+ * Valida y asegura que la combinación de departamento, municipio y distrito
+ * sea 100% válida en el catálogo oficial CAT-008, evitando rechazos de Hacienda.
+ */
+async function validateAndFixReceptorAddress(depto, muni, dist, complemento = '') {
+    const distritos = await getCat008Distritos();
+    let rawDepto = String(depto || '06').replace(/\D/g, '').slice(-2).padStart(2, '0');
+    if (rawDepto === '00' || parseInt(rawDepto) > 14) rawDepto = '06';
+
+    let rawMuni = String(muni || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
+    let rawDist = String(dist || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
+
+    // 1. Terna exacta válida
+    const exact = distritos.find(d => d.dep_code === rawDepto && d.muni_code === rawMuni && d.code === rawDist);
+    if (exact) return { departamento: rawDepto, municipio: rawMuni, distrito: rawDist };
+
+    // 2. Si el distrito coincide con algún distrito de ese depto, usar su muni_code real
+    const distInDep = distritos.find(d => d.dep_code === rawDepto && d.code === rawDist);
+    if (distInDep) {
+        return { departamento: rawDepto, municipio: distInDep.muni_code, distrito: distInDep.code };
+    }
+
+    // 3. Si la dirección menciona algún distrito de ese depto
+    const dir = String(complemento || '').toLowerCase();
+    const depDistricts = distritos.filter(d => d.dep_code === rawDepto);
+    for (const d of depDistricts) {
+        if (d.description.length >= 4 && dir.includes(d.description.toLowerCase())) {
+            return { departamento: rawDepto, municipio: d.muni_code, distrito: d.code };
+        }
+    }
+
+    // 4. Si el municipio tiene distritos válidos
+    const muniDistricts = distritos.filter(d => d.dep_code === rawDepto && d.muni_code === rawMuni);
+    if (muniDistricts.length > 0) {
+        const cabecera = muniDistricts.find(d => d.code === '14' || d.description.includes('SAN SALVADOR') || d.description.includes('SANTA TECLA') || d.description.includes('SANTA ANA') || d.description.includes('SAN MIGUEL') || d.description.includes('AHUACHAP') || d.description.includes('SONSONATE'));
+        return { departamento: rawDepto, municipio: rawMuni, distrito: (cabecera || muniDistricts[0]).code };
+    }
+
+    // 5. Fallback a San Salvador Centro
+    if (rawDepto === '06') {
+        return { departamento: '06', municipio: '23', distrito: '14' };
+    }
+
+    const firstOfDep = depDistricts[0] || { muni_code: '01', code: '01' };
+    return { departamento: rawDepto, municipio: firstOfDep.muni_code, distrito: firstOfDep.code };
 }
 
 // CR (07): totales específicos para comprobante de retención
@@ -164,12 +244,6 @@ async function generateDTE(payload) {
         identificacion.motivoContin = activeContingency.motivo || 'Contingencia';
     }
 
-    // FEX usa "motivoContigencia", los demás usan "motivoContin"
-    if (tipoDte === '11') {
-        identificacion.motivoContigencia = identificacion.motivoContin;
-        delete identificacion.motivoContin;
-    }
-
     // NC (05): fusion requerida por schema v4
     if (tipoDte === '05') {
         identificacion.fusion = null;
@@ -222,9 +296,9 @@ async function generateDTE(payload) {
     if (tipoDte === '11') {
         const expData = payload.exportacion || {};
         emisor.tipoItemExpor = expData.tipoItemExpor || 3;
-        emisor.recintoFiscal = expData.recintoFiscal || null;
+        emisor.recintoFiscal = (expData.recintoFiscal && String(expData.recintoFiscal).length === 2) ? String(expData.recintoFiscal) : null;
         emisor.tipoRegimen = expData.tipoRegimen || null;
-        emisor.regimen = expData.regimen || null;
+        emisor.regimen = expData.regimen ? String(expData.regimen).substring(0, 13) : null;
     }
 
     // 4. Items (Cuerpo Documento)
@@ -329,8 +403,13 @@ async function generateDTE(payload) {
             : ".";
 
         let itemFinalTributos;
-        if (tipoDte === '04' || tipoDte === '11') {
+        if (tipoDte === '04') {
             itemFinalTributos = null;
+        } else if (tipoDte === '11') {
+            // FEX: Hacienda exige declarar el tributo C3 (IVA exportaciones 0%)
+            itemFinalTributos = (itemTributos && itemTributos.length > 0 && !itemTributos.includes('20'))
+                ? itemTributos
+                : ['C3'];
         } else if (tipoDte === '03' || tipoDte === '05') {
             itemFinalTributos = itemTributos;
         } else {
@@ -355,10 +434,7 @@ async function generateDTE(payload) {
         };
 
         if (tipoDte === '11') {
-            // FEX: solo estos campos van en el cuerpo (según JSON aceptado por Hacienda)
-            delete baseItem.tipoItem;
-            delete baseItem.numeroDocumento;
-            delete baseItem.codTributo;
+            // FEX v3 exige tipoItem, numeroDocumento y codTributo. VentaNoSuj y VentaExenta no van en el schema
             delete baseItem.ventaNoSuj;
             delete baseItem.ventaExenta;
             baseItem.noGravado = 0;
@@ -568,28 +644,66 @@ async function generateDTE(payload) {
             delete base.condicionOperacion;
             base.totalLetras = getAmountInWords(totals.totalPagar);
         } else if (type === '11') {
-            // FEX: estructura real de resumen aceptada por Hacienda
-            delete base.totalNoSuj;
-            delete base.totalExenta;
-            delete base.subTotalVentas;
-            delete base.descuNoSuj;
-            delete base.descuExenta;
-            delete base.descuGravada;
-            delete base.subTotal;
-            delete base.ivaRete;
-            delete base.reteRenta;
-            // Campos que sí van en FEX
-            base.descuento = round(base.totalDescu || 0);
-            base.totalNoGravado = 0;
-            base.totalNoOnerosas = 0;
-            base.condicionOperacion = parseInt(payload.condicionOperacion || 1);
-            base.pagos = pagos;
-            base.codIncoterms = (payload.exportacion && payload.exportacion.incoterms) || '01';
-            base.descIncoterms = (payload.exportacion && payload.exportacion.descIncoterms) || 'EXW- En fabrica';
-            base.flete = round((payload.exportacion && payload.exportacion.flete) || 0);
-            base.seguro = round((payload.exportacion && payload.exportacion.seguro) || 0);
-            base.observaciones = sanitizeText((payload.exportacion && payload.exportacion.observaciones) || 'Ninguna').substring(0, 3000);
-            base.numPagoElectronico = null;
+            // FEX: estructura requerida por fe-fex-v3.json
+            const finalPagos = (pagos && pagos.length > 0) ? (() => {
+                if (pagos.length === 1) {
+                    pagos[0].montoPago = totals.totalPagar;
+                } else if (pagos.length > 1) {
+                    let currentSum = 0;
+                    for (let i = 0; i < pagos.length - 1; i++) {
+                        currentSum = round(currentSum + pagos[i].montoPago);
+                    }
+                    pagos[pagos.length - 1].montoPago = round(totals.totalPagar - currentSum);
+                }
+                return pagos;
+            })() : null;
+
+            return {
+                totalGravada: round(totals.totalGravada || totals.totalVentaGravada || totals.totalPagar),
+                descuGravada: round(payload.descuGravada || totals.totalDescu || 0),
+                porcentajeDescuento: round(payload.porcentajeDescuento || 0),
+                totalDescu: round(totals.totalDescu || 0),
+                seguro: round((payload.exportacion && payload.exportacion.seguro) || 0),
+                flete: round((payload.exportacion && payload.exportacion.flete) || 0),
+                montoTotalOperacion: round(totals.totalPagar),
+                totalNoGravado: 0,
+                totalNoOnerosas: 0,
+                totalPagar: round(totals.totalPagar),
+                totalLetras: getAmountInWords(totals.totalPagar),
+                tributos: (() => {
+                    const fexTaxes = (resumenTaxes && resumenTaxes.length > 0) ? resumenTaxes.map(t => ({
+                        codigo: t.codigo,
+                        descripcion: t.descripcion || `Impuesto ${t.codigo}`,
+                        valor: round(parseFloat(t.valor) || 0)
+                    })) : [];
+                    // En FEX, Hacienda exige declarar el tributo C3 (IVA exportaciones 0%) en el resumen si los ítems lo tienen
+                    if (!fexTaxes.some(t => t.codigo === 'C3')) {
+                        fexTaxes.push({
+                            codigo: 'C3',
+                            descripcion: 'Impuesto al Valor Agregado (exportaciones) 0%',
+                            valor: 0
+                        });
+                    }
+                    return fexTaxes.length > 0 ? fexTaxes : null;
+                })(),
+                saldoFavor: 0,
+                condicionOperacion: parseInt(payload.condicionOperacion || 1),
+                pagos: finalPagos,
+                codIncoterms: (() => {
+                    const exp = payload.exportacion || {};
+                    if (parseInt(exp.tipoItemExpor) === 2) return null; // Servicios no llevan incoterms
+                    if (exp.incoterms !== undefined) return exp.incoterms;
+                    return '01';
+                })(),
+                descIncoterms: (() => {
+                    const exp = payload.exportacion || {};
+                    if (parseInt(exp.tipoItemExpor) === 2) return null; // Servicios no llevan incoterms
+                    if (exp.descIncoterms !== undefined) return exp.descIncoterms;
+                    return 'EXW-En fabrica';
+                })(),
+                numPagoElectronico: null,
+                observaciones: sanitizeText((payload.exportacion && payload.exportacion.observaciones) || 'Ninguna').substring(0, 3000)
+            };
         } else if (type === '07') {
             // CR: estructura del schema v2
             return {
@@ -619,37 +733,40 @@ async function generateDTE(payload) {
         '37': '37'
     };
 
-    let rawDepto = String(receptor.direccion?.departamento || '06').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    let rawMuni = String(receptor.direccion?.municipio || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    
-    // Solo asegurar que no sean '00'
-    if (rawDepto === '00' || parseInt(rawDepto) > 14) rawDepto = '06';
-    if (rawMuni === '00') rawMuni = '01';
-
-    let rawDistrito = null;
-    if (receptor.direccion && receptor.direccion.distrito && !/^\d+$/.test(receptor.direccion.distrito)) {
-        throw new Error(`El cliente "${receptor.nombre || 'Consumidor Final'}" tiene un distrito inválido: "${receptor.direccion.distrito}". Debe ser un código numérico del catálogo CAT-008 (ej. 13 para San Martín).`);
+    let finalDireccion = null;
+    if (receptor.direccion) {
+        const fixedAddr = await validateAndFixReceptorAddress(
+            receptor.direccion.departamento,
+            receptor.direccion.municipio,
+            receptor.direccion.distrito,
+            receptor.direccion.complemento
+        );
+        finalDireccion = {
+            departamento: fixedAddr.departamento,
+            municipio: fixedAddr.municipio,
+            distrito: fixedAddr.distrito,
+            complemento: sanitizeText(receptor.direccion.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
+        };
     }
-    rawDistrito = String(receptor.direccion?.distrito || '01').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    if (rawDistrito === '00') rawDistrito = '01';
 
     let cleanCodActividad = receptor.codActividad ? String(receptor.codActividad).trim() : '';
     if (cleanCodActividad && cleanCodActividad.length === 4 && /^\d+$/.test(cleanCodActividad)) {
         cleanCodActividad = cleanCodActividad.padStart(5, '0');
     }
 
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    let safeReceptorCorreo = (receptor.correo && String(receptor.correo).trim()) || null;
+    if (safeReceptorCorreo && !emailRegex.test(safeReceptorCorreo)) {
+        safeReceptorCorreo = null;
+    }
+
     let finalReceptor = {
         nombre: sanitizeText(receptor.nombre || 'Consumidor Final').substring(0, 250),
         codActividad: cleanCodActividad || '10005',
         descActividad: sanitizeText(receptor.descActividad || 'Otros'),
-        direccion: receptor.direccion ? {
-            departamento: rawDepto,
-            municipio: rawMuni,
-            distrito: rawDistrito,
-            complemento: sanitizeText(receptor.direccion.complemento || 'Direccion de entrega').substring(0, 200).padEnd(5, '.')
-        } : null,
+        direccion: finalDireccion,
         telefono: cleanNumbers(receptor.telefono || '00000000').substring(0, 30),
-        correo: receptor.correo || 'receptor@example.com'
+        correo: safeReceptorCorreo
     };
 
     if (tipoDte === '07') {
@@ -677,7 +794,7 @@ async function generateDTE(payload) {
         const countryResolved = await resolveCountryCode(rawCountryCode);
         finalReceptor.codPais = countryResolved.code;
         finalReceptor.nombrePais = receptor.pais_name || (countryResolved.code + ' ' + countryResolved.name).trim();
-        finalReceptor.complemento = sanitizeText(receptor.direccion?.complemento || 'Direccion de entrega').padEnd(5, '.').substring(0, 300);
+        finalReceptor.complemento = sanitizeText(receptor.direccion?.complemento || 'Direccion de entrega').padEnd(5, '.').substring(0, 200);
         finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
     }
 

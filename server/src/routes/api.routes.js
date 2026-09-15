@@ -3,6 +3,8 @@ const router = express.Router();
 const { verifyToken, checkPermission } = require('../middlewares/auth');
 const tenantMiddleware = require('../middlewares/tenant');
 const upload = require('../config/upload');
+const multer = require('multer');
+const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // Import Controllers
 const companyController = require('../controllers/company.controller');
@@ -19,6 +21,7 @@ const providerController = require('../controllers/provider.controller');
 const catalogController = require('../controllers/catalog.controller');
 const smtpController = require('../controllers/smtp.controller');
 const settingsController = require('../controllers/settings.controller');
+const systemMetricsController = require('../controllers/systemMetrics.controller');
 const aiRoutes = require('./ai.routes');
 const inventoryController = require('../controllers/inventory.controller');
 const inventoryAdjustmentController = require('../controllers/inventoryAdjustment.controller');
@@ -83,8 +86,10 @@ const gasTrupputController = require('../controllers/gasTrupput.controller');
 const gasOrderController = require('../controllers/gasOrder.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
+const gasCouponLiquidationController = require('../controllers/gasCouponLiquidation.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
 const pozoController = require('../controllers/pozo.controller');
+const filproController = require('../controllers/filpro.controller');
 
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
@@ -101,6 +106,10 @@ router.post('/internal/dte/notify-accepted', salesController.notifyDTEAccepted);
 // Public scan routes (no auth required - accessed via QR token)
 router.get('/inventory/scan/:token', inventoryScanController.getScanSession);
 router.post('/inventory/scan/:token/submit', inventoryScanController.submitScan);
+
+// Public mobile DTE scan routes (accessed via QR scan from phone)
+router.get('/public/scan-session/:sessionId', purchaseController.getScanSessionStatus);
+router.post('/public/scan-session/:sessionId/upload', memoryUpload.single('file'), purchaseController.uploadMobileScan);
 
 // Routes
 router.use(verifyToken);
@@ -153,6 +162,10 @@ router.post('/users/sessions/:id/terminate', userController.terminateSession);
 
 // Changelog (global, no tenant scope)
 router.get('/changelog', changelogController.getChangelog);
+
+// System Metrics (Monitor del Servidor - global, no tenant scope)
+router.get('/system/metrics', verifyToken, systemMetricsController.getSystemMetrics);
+router.post('/system/trigger-deploy', verifyToken, systemMetricsController.triggerDeploy);
 
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
@@ -223,6 +236,8 @@ router.delete('/categories/:id', categoryController.deleteCategory);
 
 // Products
 router.get('/products', productController.getProducts);
+router.get('/products/price-analysis', productController.getPriceAnalysis);
+router.post('/products/update-branch-price', productController.updateProductBranchPrice);
 router.get('/products/fuel', productController.getFuelProducts);
 router.patch('/products/fuel/prices', productController.updateFuelPrices);
 router.get('/products/lookup/:code', productController.lookupProduct);
@@ -266,6 +281,7 @@ router.get('/inventory/kardex-report', inventoryController.getKardexReport);
 router.get('/inventory/valuation-report', inventoryController.getInventoryValuationReport);
 router.get('/inventory/turnover-report', inventoryController.getInventoryTurnoverReport);
 router.get('/inventory/transfers', inventoryController.getTransfers);
+router.get('/inventory/transfers/reports/pdf', inventoryController.getTransfersReportPDF);
 router.get('/inventory/transfers/:id', inventoryController.getTransferDetail);
 router.post('/inventory/transfers', inventoryController.createTransfer);
 router.delete('/inventory/transfers/:id', inventoryController.deleteTransfer);
@@ -276,6 +292,7 @@ router.post('/inventory/motivos', inventoryAdjustmentController.createMotivo);
 router.put('/inventory/motivos/:id', inventoryAdjustmentController.updateMotivo);
 router.delete('/inventory/motivos/:id', inventoryAdjustmentController.deleteMotivo);
 router.get('/inventory/adjustments', inventoryAdjustmentController.getAdjustments);
+router.get('/inventory/adjustments/reports/pdf', inventoryAdjustmentController.getAdjustmentsReportPDF);
 router.post('/inventory/adjustments', inventoryAdjustmentController.createAdjustment);
 router.get('/inventory/adjustments/:id', inventoryAdjustmentController.getAdjustmentById);
 router.put('/inventory/adjustments/:id', inventoryAdjustmentController.updateAdjustment);
@@ -284,6 +301,9 @@ router.post('/inventory/adjustments/:id/void', inventoryAdjustmentController.voi
 // Purchases
 router.get('/purchases', purchaseController.getPurchases);
 router.post('/purchases', purchaseController.createPurchase);
+router.post('/purchases/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
+router.post('/purchases/scan-session', purchaseController.createScanSession);
+router.get('/purchases/scan-session/:sessionId', purchaseController.getScanSessionStatus);
 router.get('/purchases/reports/pdf', purchaseController.getPurchaseReportPDF);
 router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
 
@@ -325,6 +345,7 @@ router.get('/expenses', expenseController.getExpenses);
 router.get('/expenses/types', expenseController.getExpenseTypes);
 router.get('/expenses/reports/pdf', expenseController.getExpenseReportPDF);
 router.post('/expenses', expenseController.createExpense);
+router.post('/expenses/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
 router.get('/expenses/:id', expenseController.getExpenseById);
 router.put('/expenses/:id', expenseController.updateExpense);
 router.post('/expenses/:id/void', expenseController.voidExpense);
@@ -374,7 +395,7 @@ router.get('/sales/dte-stats', salesController.getDteStats);
 router.get('/sales/:id', salesController.getSaleById);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
-router.post('/sales/:id/regenerate-dte', salesController.regenerateDTE);
+router.post('/sales/:id/regenerate-dte', checkPermission('regenerate_dte'), salesController.regenerateDTE);
 router.put('/sales/:id/edit-dte-items', salesController.editDTEItems);
 
 // Contingency (proxy to dte-api)
@@ -406,6 +427,10 @@ router.delete('/shifts/:id', checkPermission('manage_shifts_edit'), shiftControl
 // Dashboard
 router.get('/dashboard/general-stats', dashboardController.getStats);
 router.get('/dashboard/category-sales', dashboardController.getCategorySales);
+router.get('/dashboard/pista-stats', dashboardController.getPistaStats);
+router.get('/dashboard/tienda-stats', dashboardController.getTiendaStats);
+router.get('/dashboard/andelsa-stats', dashboardController.getAndelsaStats);
+router.get('/dashboard/server-stats', dashboardController.getServerStats);
 
 // Product Combos
 router.get('/combos', comboController.getCombos);
@@ -774,6 +799,11 @@ router.get('/gas-station/reports/fuel-inventory/pdf', gasReporteController.getFu
 // Gas Station - Reporte Galonaje Vendido
 router.get('/gas-station/reports/galonaje-vendido/pdf', gasReporteController.getGalonajeVendidoPDF);
 router.get('/gas-station/reports/fuel-sales-summary/pdf', gasReporteController.getFuelSalesSummaryPDF);
+router.get('/gas-station/reports/lubricants-sold/pdf', gasReporteController.getLubricantsSoldPDF);
+router.get('/gas-station/reports/complementarias/data', gasReporteController.getComplementariasReportData);
+router.get('/gas-station/reports/complementarias/pdf', gasReporteController.getComplementariasReportPDF);
+router.get('/gas-station/reports/ventas-analytics/data', gasReporteController.getVentasLecturasAnalyticsData);
+router.get('/gas-station/reports/ventas-analytics/pdf', gasReporteController.getVentasLecturasAnalyticsPDF);
 
 // Gas Station - Remesa Deliveries
 router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);
@@ -785,6 +815,16 @@ router.put('/gas-station/remesa-deliveries/:id/entregar', gasRemesaDeliveryContr
 router.put('/gas-station/remesa-deliveries/:id/revertir-entregado', gasRemesaDeliveryController.revertirEntregado);
 router.get('/gas-station/remesa-deliveries/:id/pdf', gasRemesaDeliveryController.getDeliveryPdf);
 router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
+
+// Gas Station - Coupon Liquidations (Sistema vs Físicos)
+router.get('/gas-station/coupon-liquidations/pending-cupones', gasCouponLiquidationController.getPendingCupones);
+router.get('/gas-station/coupon-liquidations', gasCouponLiquidationController.getLiquidaciones);
+router.post('/gas-station/coupon-liquidations', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.createLiquidacion);
+router.get('/gas-station/coupon-liquidations/:id', gasCouponLiquidationController.getLiquidacionById);
+router.put('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.updateLiquidacion);
+router.delete('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.deleteLiquidacion);
+router.get('/gas-station/coupon-liquidations/:id/pdf', gasCouponLiquidationController.exportPDF);
+router.get('/gas-station/coupon-liquidations/:id/excel', gasCouponLiquidationController.exportExcel);
 
 // Control de Pozo - Servicios
 router.get('/pozo/servicios', pozoController.getServicios);
@@ -928,6 +968,8 @@ router.get('/rh/acciones-personal/:id/pdf', rhAccionPersonalController.exportPDF
 // RRHH - Planilla de Vacaciones
 router.get('/rh/planilla-vacaciones/calcular', rhPlanillaVacacionesController.calcular);
 router.get('/rh/planilla-vacaciones/empleado/:id', rhPlanillaVacacionesController.getEmpleadoData);
+router.get('/rh/planilla-vacaciones/ultima/:empleado_id', rhPlanillaVacacionesController.getUltimaVacacion);
+router.get('/rh/planilla-vacaciones/elegibles', rhPlanillaVacacionesController.getElegibles);
 router.get('/rh/planilla-vacaciones', rhPlanillaVacacionesController.getPlanillas);
 router.post('/rh/planilla-vacaciones', rhPlanillaVacacionesController.createPlanilla);
 router.get('/rh/planilla-vacaciones/:id/pdf', rhPlanillaVacacionesController.exportPDF);
@@ -968,8 +1010,10 @@ router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.
 
 // RRHH - Planillas Quincenales
 router.get('/rh/planillas/cuentas-activas', rhPlanillaController.getCuentasActivas);
+router.get('/rh/planillas/abiertas', rhPlanillaController.getPlanillasAbiertas);
 router.post('/rh/planillas/calcular', rhPlanillaController.calcular);
 router.post('/rh/planillas/generar', rhPlanillaController.generarPlanilla);
+router.post('/rh/planillas/sincronizar', rhPlanillaController.sincronizarPlanilla);
 router.get('/rh/planillas/grupos', rhPlanillaController.getGruposPlanilla);
 router.get('/rh/planillas/recibos-masivos', rhPlanillaController.exportRecibosMasivos);
 router.post('/rh/planillas/cerrar-periodo', rhPlanillaController.cerrarPeriodo);
@@ -1003,6 +1047,21 @@ router.get('/rh/reportes/control-vacaciones', rhReportesController.getControlVac
 router.get('/rh/reportes/rotacion-personal', rhReportesController.getRotacionPersonalReport);
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
+
+// FilPro DTE Integration
+router.get('/filpro/config', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getConnection);
+router.post('/filpro/config', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.saveConnection);
+router.post('/filpro/test', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.testConnection);
+router.post('/filpro/preview-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.previewDay);
+router.post('/filpro/sync-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.syncDay);
+router.post('/filpro/sync-day-stream', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.syncDayStream);
+router.get('/filpro/logs', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getLogs);
+router.get('/filpro/dte-detail/:uuid', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getDteDetail);
+router.get('/filpro/mappings', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getMappings);
+router.post('/filpro/mappings', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.saveMapping);
+router.delete('/filpro/mappings/:id', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.deleteMapping);
+router.post('/filpro/revert-dte', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDte);
+router.post('/filpro/revert-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDay);
 
 // Notifications
 router.use('/notifications', notificationRoutes);

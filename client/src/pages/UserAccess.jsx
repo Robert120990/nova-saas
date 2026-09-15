@@ -658,7 +658,7 @@ const UserAccess = () => {
                                             <div className="flex items-center justify-end gap-1.5">
                                                 <button 
                                                     onClick={() => openEditModal(acc)}
-                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                    className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                     title="Editar Acceso"
                                                 >
                                                     <Edit size={16} />

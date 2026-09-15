@@ -81,13 +81,28 @@ const createMenuItem = async (req, res) => {
     try {
         let permKey = permission_key;
         if (!permKey && label) {
-            permKey = label
+            let baseKey = label
                 .toLowerCase()
                 .replace(/[^a-z0-9áéíóúñü\s]/g, '')
                 .replace(/[áéíóúñü]/g, c => ({ á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ñ: 'n', ü: 'u' })[c] || c)
                 .replace(/\s+/g, '_')
                 .replace(/_+/g, '_')
                 .replace(/^_|_$/g, '');
+
+            permKey = baseKey;
+            let counter = 1;
+            while (true) {
+                const [exists] = await pool.query('SELECT id FROM menu_items WHERE permission_key = ? LIMIT 1', [permKey]);
+                if (exists.length === 0) break;
+                permKey = `${baseKey}_${counter++}`;
+            }
+        } else if (permKey) {
+            const [existing] = await pool.query('SELECT id, label FROM menu_items WHERE permission_key = ? LIMIT 1', [permKey]);
+            if (existing.length > 0) {
+                return res.status(400).json({ 
+                    message: `La clave de permiso "${permKey}" ya está en uso por "${existing[0].label}". Cada opción de menú debe tener una clave de permiso única.` 
+                });
+            }
         }
 
         const [result] = await pool.query(
@@ -107,6 +122,15 @@ const updateMenuItem = async (req, res) => {
     const { id } = req.params;
     const { label, path, icon, parent_id, permission_key, extra_permissions, sort_order, is_active, hide_in_menu } = req.body;
     try {
+        if (permission_key) {
+            const [existing] = await pool.query('SELECT id, label FROM menu_items WHERE permission_key = ? AND id != ? LIMIT 1', [permission_key, id]);
+            if (existing.length > 0) {
+                return res.status(400).json({ 
+                    message: `La clave de permiso "${permission_key}" ya está en uso por "${existing[0].label}". Cada opción de menú debe tener una clave de permiso única.` 
+                });
+            }
+        }
+
         await pool.query(
             `UPDATE menu_items SET label = ?, path = ?, icon = ?, parent_id = ?, permission_key = ?, extra_permissions = ?, sort_order = ?, is_active = ?, hide_in_menu = ? WHERE id = ?`,
             [label, path || null, icon || null, parent_id || null, permission_key || null, extra_permissions ? JSON.stringify(extra_permissions) : null, sort_order || 0, is_active !== false, hide_in_menu || false, id]

@@ -1153,7 +1153,7 @@ const EggTraceability = () => {
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeleteParam(param.id)}
-                                                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                                    className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                                     title="Eliminar parámetro"
                                                                 >
                                                                     <Trash2 size={14} />

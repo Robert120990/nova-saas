@@ -10,7 +10,7 @@ const getRoles = async (req, res) => {
 };
 
 const createRole = async (req, res) => {
-    const { name, permissions } = req.body;
+    const { name, permissions, default_dashboard } = req.body;
     try {
         const perms = typeof permissions === 'string' ? JSON.parse(permissions) : permissions;
         if (!Array.isArray(perms)) {
@@ -19,11 +19,14 @@ const createRole = async (req, res) => {
         if (new Set(perms).size !== perms.length) {
             return res.status(400).json({ message: 'No se permiten IDs de permiso duplicados' });
         }
+        const validDashboards = ['general', 'pista', 'tienda', 'andelsa', 'server'];
+        const dash = validDashboards.includes(default_dashboard) ? default_dashboard : 'general';
+
         const [result] = await pool.query(
-            'INSERT INTO roles (name, permissions) VALUES (?, ?)',
-            [name, JSON.stringify(perms)]
+            'INSERT INTO roles (name, permissions, default_dashboard) VALUES (?, ?, ?)',
+            [name, JSON.stringify(perms), dash]
         );
-        res.status(201).json({ id: result.insertId, name, permissions: perms });
+        res.status(201).json({ id: result.insertId, name, permissions: perms, default_dashboard: dash });
     } catch (error) {
         res.status(500).json({ message: 'Error al crear rol' });
     }
@@ -31,7 +34,7 @@ const createRole = async (req, res) => {
 
 const updateRole = async (req, res) => {
     const { id } = req.params;
-    const { name, permissions } = req.body;
+    const { name, permissions, default_dashboard } = req.body;
     try {
         const perms = typeof permissions === 'string' ? JSON.parse(permissions) : permissions;
         if (!Array.isArray(perms)) {
@@ -40,9 +43,12 @@ const updateRole = async (req, res) => {
         if (new Set(perms).size !== perms.length) {
             return res.status(400).json({ message: 'No se permiten IDs de permiso duplicados' });
         }
+        const validDashboards = ['general', 'pista', 'tienda', 'andelsa', 'server'];
+        const dash = validDashboards.includes(default_dashboard) ? default_dashboard : 'general';
+
         await pool.query(
-            'UPDATE roles SET name = ?, permissions = ? WHERE id = ?',
-            [name, JSON.stringify(perms), id]
+            'UPDATE roles SET name = ?, permissions = ?, default_dashboard = ? WHERE id = ?',
+            [name, JSON.stringify(perms), dash, id]
         );
         res.json({ message: 'Rol actualizado' });
     } catch (error) {

@@ -94,3 +94,12 @@ if (req.query.format === 'excel') {
 - Toda pantalla de reporte en React (`client/src/pages/`) debe utilizar el componente `<ReportLayout>` (`client/src/components/ui/ReportLayout.jsx`).
 - Debe incluir siempre la prop `onExportExcel`.
 - Todos los montos monetarios en pantalla deben usar `<Money>` de `components/ui/Money.jsx` (respetando el permiso `view_amounts`).
+
+---
+
+## 5. Clave de Permiso en Menú (`permission_key`) — OBLIGATORIO
+
+- Todo reporte registrado en `menu_items` DEBE tener un `permission_key` único (formato `view_<modulo>_<nombre_reporte>_report`).
+- Queda estrictamente prohibido reutilizar la clave de una pantalla operativa (como `manage_...`) para un reporte.
+- La ruta debe incluir `/reportes/` o la clave terminar en `_report` para que el panel de Roles le asigne automáticamente el badge azul `[REPORTE]`.
+

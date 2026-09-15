@@ -184,7 +184,7 @@ async function buildComprasPreview(companyId, date, detailCredit, settings) {
     let contadoNeto = 0; let retenciones = 0;
     const totales = { gravada: 0, exenta: 0, iva: 0, fovial: 0, cotrans: 0 };
     headers.forEach(p => {
-        const sign = p.tipo_documento_id === '06' ? -1 : 1;
+        const sign = (p.tipo_documento_id === '05' || p.tipo_documento_id === '06') ? -1 : 1;
         totales.gravada += sign * parseFloat(p.total_gravada);
         totales.exenta += sign * (parseFloat(p.total_exenta) + parseFloat(p.total_nosujeta));
         totales.iva += sign * (parseFloat(p.iva) + parseFloat(p.percepcion));

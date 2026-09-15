@@ -247,7 +247,7 @@ export default function SignaturePadModal({ isOpen, onClose, onSave, initialSign
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="Ej: (503) 7069-5335"
+                                        placeholder="Ej: (503) 7060-5040"
                                         value={phone}
                                         onChange={(e) => setPhone(e.target.value)}
                                         className="w-full text-[13px] font-medium px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"

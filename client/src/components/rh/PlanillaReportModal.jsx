@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { FileText, Download, Printer, ExternalLink, X, Loader2, RefreshCw, ReceiptText } from 'lucide-react';
 import { toast } from 'sonner';
+import { extractPdfPageCount } from '../../utils/pdfPagination';
+import PdfPageNavigator from '../ui/PdfPageNavigator';
 
 const MONTH_NAMES = [
     '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -12,6 +14,8 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
     const [pdfUrl, setPdfUrl] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
     const iframeRef = useRef(null);
 
     const anio = periodo?.anio || periodo?.periodo_año || periodo?.año;
@@ -45,9 +49,24 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
             } else if (isRecibos) {
                 endpoint = '/api/rh/planillas/recibos-masivos';
                 params = { anio, mes, quincena };
+                if (periodo?.branch_ids && periodo.branch_ids.length > 0) {
+                    params.branch_ids = Array.isArray(periodo.branch_ids) ? periodo.branch_ids.join(',') : periodo.branch_ids;
+                }
+                if (periodo?.departamento_ids && periodo.departamento_ids.length > 0) {
+                    params.departamento_ids = Array.isArray(periodo.departamento_ids) ? periodo.departamento_ids.join(',') : periodo.departamento_ids;
+                }
             } else {
                 endpoint = '/api/rh/planillas/reporte-pdf';
                 params = { anio, mes, quincena };
+                if (periodo?.branch_ids && periodo.branch_ids.length > 0) {
+                    params.branch_ids = Array.isArray(periodo.branch_ids) ? periodo.branch_ids.join(',') : periodo.branch_ids;
+                }
+                if (periodo?.departamento_ids && periodo.departamento_ids.length > 0) {
+                    params.departamento_ids = Array.isArray(periodo.departamento_ids) ? periodo.departamento_ids.join(',') : periodo.departamento_ids;
+                }
+                if (periodo?.formato) {
+                    params.formato = periodo.formato;
+                }
             }
 
             const res = await axios.get(endpoint, {
@@ -86,7 +105,47 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         return () => {
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         };
-    }, [isOpen, anio, mes, quincena, tipo, departamento_id]);
+    }, [isOpen, anio, mes, quincena, tipo, departamento_id, periodo?.branch_ids, periodo?.departamento_ids, periodo?.formato]);
+
+    // Extraer cantidad total de páginas cuando cambia pdfUrl
+    useEffect(() => {
+        let isCancelled = false;
+        if (pdfUrl) {
+            setCurrentPage(1);
+            extractPdfPageCount(pdfUrl).then((count) => {
+                if (!isCancelled) {
+                    setTotalPages(count);
+                }
+            });
+        } else {
+            setCurrentPage(1);
+            setTotalPages(1);
+        }
+        return () => {
+            isCancelled = true;
+        };
+    }, [pdfUrl]);
+
+    // Navegación por teclado (Flechas Izquierda/Derecha, RePág/AvPág)
+    useEffect(() => {
+        if (!isOpen || !pdfUrl || totalPages <= 1) return;
+
+        const handleKeyboardNav = (e) => {
+            const tag = e.target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+
+            if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                e.preventDefault();
+                setCurrentPage((p) => Math.max(1, p - 1));
+            } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+                e.preventDefault();
+                setCurrentPage((p) => Math.min(totalPages, p + 1));
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyboardNav);
+        return () => window.removeEventListener('keydown', handleKeyboardNav);
+    }, [isOpen, pdfUrl, totalPages]);
 
     // Close on ESC
     useEffect(() => {
@@ -94,11 +153,13 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 onClose();
             }
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [isOpen, onClose]);
 
     const handleDownload = () => {
@@ -165,19 +226,34 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                             <p className="text-xs text-slate-500 font-medium truncate">
                                 {isAguinaldo
                                     ? `Período: ${mesLabel} ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
-                                    : `Período: ${mesLabel} ${anio} • ${quincenaLabel}`}
+                                    : `Período: ${mesLabel} ${anio} • ${quincenaLabel}${
+                                        periodo?.departamento_ids && periodo.departamento_ids.length > 1
+                                            ? ` • ${periodo.departamento_ids.length} Deptos. (Páginas separadas)`
+                                            : (periodo?.departamento_ids && periodo.departamento_ids.length === 1 ? ' • 1 Depto.' : '')
+                                    }`}
                             </p>
                         </div>
                     </div>
 
+                    {/* Center / Pagination controls */}
+                    {pdfUrl && !isLoading && (
+                        <div className="flex items-center justify-center">
+                            <PdfPageNavigator
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={setCurrentPage}
+                            />
+                        </div>
+                    )}
+
                     {/* Action buttons */}
                     <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                        {pdfUrl && (
+                        {pdfUrl && !isLoading && (
                             <>
                                 <button
                                     type="button"
                                     onClick={handleDownload}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 rounded-xl font-bold text-xs transition-colors border border-slate-200 shadow-sm"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 rounded-xl font-bold text-xs transition-colors border border-slate-200 shadow-sm cursor-pointer"
                                     title="Descargar archivo PDF"
                                 >
                                     <Download size={14} />
@@ -186,7 +262,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                                 <button
                                     type="button"
                                     onClick={handlePrint}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors border border-slate-200 shadow-sm"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors border border-slate-200 shadow-sm cursor-pointer"
                                     title="Imprimir documento"
                                 >
                                     <Printer size={14} />
@@ -195,7 +271,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                                 <button
                                     type="button"
                                     onClick={() => window.open(pdfUrl, '_blank')}
-                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
+                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer"
                                     title="Abrir en pestaña nueva"
                                 >
                                     <ExternalLink size={18} />
@@ -205,7 +281,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors ml-1"
+                            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors ml-1 cursor-pointer"
                             title="Cerrar vista previa"
                         >
                             <X size={20} />
@@ -239,7 +315,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                             <button
                                 type="button"
                                 onClick={fetchReport}
-                                className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-all"
+                                className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-all cursor-pointer"
                             >
                                 <RefreshCw size={14} />
                                 <span>Reintentar</span>
@@ -248,7 +324,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                     ) : pdfUrl ? (
                         <iframe
                             ref={iframeRef}
-                            src={`${pdfUrl}#view=FitH`}
+                            src={`${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`}
                             className="w-full flex-1 border-0 bg-slate-100"
                             title={isAguinaldo
                                 ? (isRecibos ? `Recibos Aguinaldos ${anio} ${mes}` : `Planilla Aguinaldos ${anio} ${mes}`)
@@ -259,7 +335,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
 
                 {/* Footer */}
                 <div className="px-6 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
-                    <span className="font-medium text-slate-400">
+                    <span className="font-medium text-slate-400 truncate mr-2">
                         {isAguinaldo
                             ? (isRecibos
                                 ? 'Boletas oficiales de aguinaldo • Formato individual para firma y entrega'
@@ -268,7 +344,14 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                                 ? 'Boletas oficiales de pago quincenal • Formato individual para firma y entrega'
                                 : 'Formato contable estándar oficial • Presentación apaisada (Carta) sin firmas')}
                     </span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0">
+                        {totalPages > 1 && (
+                            <span className="hidden md:inline text-slate-400">
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono font-bold text-[10px] text-slate-600 shadow-sm mr-1">←</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono font-bold text-[10px] text-slate-600 shadow-sm mr-1">→</kbd>
+                                para cambiar página
+                            </span>
+                        )}
                         <span className="hidden sm:inline text-slate-400">
                             <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono font-bold text-[10px] text-slate-600 shadow-sm mr-1">ESC</kbd>
                             para salir
@@ -276,7 +359,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 font-bold transition-colors shadow-sm"
+                            className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 font-bold transition-colors shadow-sm cursor-pointer"
                         >
                             Cerrar
                         </button>

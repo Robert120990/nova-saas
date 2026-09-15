@@ -22,7 +22,7 @@ const getAvatarColor = (id = 0) => {
     return colors[id % colors.length];
 };
 
-const EmployeeSearchModal = ({ isOpen, onClose, onSelect }) => {
+const EmployeeSearchModal = ({ isOpen, onClose, onSelect, showSalary = true }) => {
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [selectedDepto, setSelectedDepto] = useState('todos');
@@ -277,11 +277,19 @@ const EmployeeSearchModal = ({ isOpen, onClose, onSelect }) => {
                                                 <span className="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 rounded">
                                                     {emp.codigo}
                                                 </span>
-                                                <div className="text-right">
-                                                    <span className="text-xs font-black text-slate-800">
-                                                        <Money value={emp.sueldo_base || 0} />
-                                                    </span>
-                                                </div>
+                                                {showSalary ? (
+                                                    <div className="text-right">
+                                                        <span className="text-xs font-black text-slate-800">
+                                                            <Money value={emp.sueldo_base || 0} />
+                                                        </span>
+                                                    </div>
+                                                ) : emp.sucursal_nombre ? (
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200/70 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                                                            {emp.sucursal_nombre}
+                                                        </span>
+                                                    </div>
+                                                ) : null}
                                             </div>
 
                                             <div className="text-xs font-bold text-slate-900 truncate mt-0.5 group-hover:text-indigo-600 transition-colors">

@@ -246,9 +246,11 @@ const EstadoBadge = ({ estado }) => {
                         <label className={labelCls}>Tipo de DTE</label>
                         <select value={tipoDte} onChange={(e) => { setTipoDte(e.target.value); setPage(1); }} className={inputCls}>
                             <option value="">Todos</option>
-                            {tipoDocs.map(t => (
-                                <option key={t.code} value={t.code}>{t.description?.toUpperCase()}</option>
-                            ))}
+                            {tipoDocs
+                                .filter(t => ['01', '03', '04', '05', '07', '11'].includes(t.code))
+                                .map(t => (
+                                    <option key={t.code} value={t.code}>{t.description?.toUpperCase()}</option>
+                                ))}
                         </select>
                     </div>
                     <div className="space-y-1">

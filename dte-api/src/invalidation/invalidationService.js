@@ -104,6 +104,9 @@ async function invalidateDTE(payload, companyId, user) {
         if (!codEstableMH) {
             codEstableMH = branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null;
             if (!codEstableMH) {
+                codEstableMH = emisorOrig.codEstable ? String(emisorOrig.codEstable).padStart(4, '0').substring(0, 4) : null;
+            }
+            if (!codEstableMH) {
                 throw new Error('El DTE original no tiene código de establecimiento MH y la sucursal no tiene código MH configurado.');
             }
         }
@@ -114,6 +117,9 @@ async function invalidateDTE(payload, companyId, user) {
         codPuntoVentaMH = emisorOrig.codPuntoVentaMH;
         if (!codPuntoVentaMH) {
             codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
+            if (!codPuntoVentaMH) {
+                codPuntoVentaMH = emisorOrig.codPuntoVenta ? String(emisorOrig.codPuntoVenta).padStart(4, '0').substring(0, 4) : null;
+            }
             if (!codPuntoVentaMH) {
                 throw new Error('El DTE original no tiene código de punto de venta MH y el punto de venta no tiene código configurado.');
             }

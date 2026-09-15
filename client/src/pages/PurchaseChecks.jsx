@@ -543,7 +543,7 @@ const PurchaseChecks = () => {
                     </div>
                     <button
                         onClick={() => { setConfigBranchId(branchFilter || user?.branch_id || ''); setShowConfigModal(true); }}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
                         title="Configuración RRS"
                     >
                         <Settings size={18} />
@@ -580,7 +580,7 @@ const PurchaseChecks = () => {
                             </td>
                             <td className="px-5 py-3">
                                 <span className="text-[9px] font-black text-indigo-600 font-mono tracking-tight">
-                                    {c.status === 'SOLICITADO' ? (rrsNumChequeMap[c.id] || c.rrs_num_cheque || '—') : '—'}
+                                    {rrsNumChequeMap[c.id] || c.rrs_num_cheque || '—'}
                                 </span>
                             </td>
                             <td className="px-5 py-3 text-[9px] font-bold text-slate-400">
@@ -595,7 +595,7 @@ const PurchaseChecks = () => {
                                         <>
                                             <button
                                                 onClick={() => openEditForm(c.id)}
-                                                className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                 title="Editar"
                                             >
                                                 <Edit size={14} />
@@ -603,14 +603,14 @@ const PurchaseChecks = () => {
                                             <button
                                                 onClick={() => handleRequest(c.id)}
                                                 disabled={requestMutation.isPending}
-                                                className="p-1.5 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all disabled:opacity-40"
+                                                className="p-1.5 text-slate-600 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all disabled:opacity-40"
                                                 title="Solicitar a RRS"
                                             >
                                                 <Send size={14} />
                                             </button>
                                             <button
                                                 onClick={() => handleDelete(c.id)}
-                                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                 title="Eliminar"
                                             >
                                                 <Trash2 size={14} />
@@ -622,7 +622,7 @@ const PurchaseChecks = () => {
                                             <button
                                                 onClick={() => openDeliverModal(c.id)}
                                                 disabled={!hasNumCheque}
-                                                className="p-1.5 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                                 title={hasNumCheque ? 'Entregar' : 'Esperando generación de cheque en RRS'}
                                             >
                                                 <Handshake size={14} />
@@ -630,7 +630,7 @@ const PurchaseChecks = () => {
                                             <button
                                                 onClick={() => handleRevert(c.id)}
                                                 disabled={revertMutation.isPending}
-                                                className="p-1.5 text-slate-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
+                                                className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
                                                 title="Revertir"
                                             >
                                                 <Undo2 size={14} />
@@ -733,6 +733,26 @@ const PurchaseChecks = () => {
                 maxWidth="max-w-md"
             >
                 <div className="space-y-5">
+                    {deliverId && (() => {
+                        const targetCheck = checks.find(c => c.id === deliverId);
+                        const numChq = rrsNumChequeMap[deliverId] || targetCheck?.rrs_num_cheque;
+                        return (
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                                <div>
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Proveedor</span>
+                                    <span className="text-xs font-bold text-slate-800 uppercase truncate max-w-[200px] block">
+                                        {targetCheck?.provider_nombre || '—'}
+                                    </span>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 block">N. Cheque</span>
+                                    <span className="text-xs font-black text-indigo-600 font-mono">
+                                        {numChq || '—'}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <div>
                         <label className={`${labelCls} block mb-1`}>Fecha de Entrega</label>
                         <input type="date" value={deliverFecha} onChange={(e) => setDeliverFecha(e.target.value)} className={inputCls} />

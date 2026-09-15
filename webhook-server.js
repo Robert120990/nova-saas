@@ -61,41 +61,33 @@ function run(cmd, cwd = PROJECT_DIR) {
   }
 }
 
-function npmInstall(dir) {
-  run('npm install --prefer-offline', dir);
+function pnpmInstall(dir, prodOnly = false) {
+  const cmd = prodOnly ? 'pnpm install --prod --prefer-offline' : 'pnpm install --prefer-offline';
+  run(cmd, dir);
 }
 
-function npmRunBuild(dir, envVars = {}) {
-  const env = getEnv();
-  Object.assign(env, envVars);
-  console.log(`[webhook] Building client with VITE_API_URL=${env.VITE_API_URL}...`);
-  const out = execSync('npm run build', { cwd: dir, timeout: 180000, encoding: 'utf8', env });
-  console.log(out);
-}
-
-function deploy() {
+function deploy(force = false) {
   console.log('[webhook] Starting auto-deploy...');
 
   run('git fetch origin');
   const status = run('git status -b');
 
-  if (status.includes(`origin/${BRANCH}`) && !status.includes('up to date')) {
-    // Descarta cambios locales en archivos trackeados (ej: package-lock.json
-    // modificado por npm install) para no bloquear el pull
+  if (force || (status.includes(`origin/${BRANCH}`) && !status.includes('up to date'))) {
+    // Descarta cambios locales en archivos trackeados y fuerza sincronización limpia
     run('git checkout -- .');
-    run(`git pull origin ${BRANCH} --ff-only`);
+    run(`git reset --hard origin/${BRANCH}`);
 
     console.log('[webhook] Installing server dependencies...');
-    npmInstall(path.join(PROJECT_DIR, 'server'));
+    pnpmInstall(path.join(PROJECT_DIR, 'server'), true);
 
     console.log('[webhook] Installing dte-api dependencies...');
-    npmInstall(path.join(PROJECT_DIR, 'dte-api'));
+    pnpmInstall(path.join(PROJECT_DIR, 'dte-api'), true);
 
     console.log('[webhook] Installing & building client...');
     // Unset NODE_ENV so devDependencies (vite, etc.) are installed
     const envWithoutProd = { ...getEnv() };
     delete envWithoutProd.NODE_ENV;
-    execSync('npm install --include=dev --prefer-offline', {
+    execSync('pnpm install --prefer-offline', {
       cwd: path.join(PROJECT_DIR, 'client'),
       timeout: 180000,
       encoding: 'utf8',
@@ -106,7 +98,7 @@ function deploy() {
     const VITE_API_URL = process.env.VITE_API_URL || '';
     const buildEnv = { ...envWithoutProd, VITE_API_URL };
     console.log(`[webhook] Building client with VITE_API_URL=${VITE_API_URL || '(same origin)'}...`);
-    execSync('npm run build', {
+    execSync('pnpm run build', {
       cwd: path.join(PROJECT_DIR, 'client'),
       timeout: 180000,
       encoding: 'utf8',
@@ -165,7 +157,22 @@ const server = http.createServer((req, res) => {
     });
   } else if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      branch: BRANCH,
+      port: PORT,
+      uptime_seconds: Math.floor(process.uptime()),
+    }));
+  } else if (req.method === 'POST' && req.url === '/deploy') {
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Despliegue iniciado en segundo plano' }));
+    setImmediate(() => {
+      try {
+        deploy(true);
+      } catch (e) {
+        console.error('[webhook] Manual deploy failed:', e.message);
+      }
+    });
   } else {
     res.writeHead(404);
     res.end('Not found');

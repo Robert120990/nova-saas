@@ -440,12 +440,12 @@ const GasRemesaDeliveries = () => {
                                 )}
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleViewDetail(item.id)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle"><Eye size={15} /></button>
-                                <button onClick={() => handlePrintPdf(item.id)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Imprimir PDF"><Printer size={15} /></button>
+                                <button onClick={() => handleViewDetail(item.id)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle"><Eye size={15} /></button>
+                                <button onClick={() => handlePrintPdf(item.id)} className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Imprimir PDF"><Printer size={15} /></button>
                                 {!item.entregado && (
                                     <>
-                                        <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
-                                        <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
+                                        <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
+                                        <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
                                         <button onClick={() => handleMarkEntregado(item.id)} className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors" title="Marcar entregada"><CheckCircle size={15} /></button>
                                     </>
                                 )}
@@ -554,7 +554,7 @@ const GasRemesaDeliveries = () => {
                                         <td className="px-3 py-2 text-slate-600">{r.despachador_descripcion || '—'}</td>
                                         <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600"><Money value={r.monto} /></td>
                                         <td className="px-3 py-2 text-center">
-                                            <button onClick={() => handleRemoveRemesa(r.id)} className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><X size={14} /></button>
+                                            <button onClick={() => handleRemoveRemesa(r.id)} className="p-1 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><X size={14} /></button>
                                         </td>
                                     </tr>
                                 ))}
@@ -604,7 +604,7 @@ const GasRemesaDeliveries = () => {
                                     />
                                     <button
                                         onClick={() => removeExtraRow(i)}
-                                        className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all self-center"
+                                        className="p-1 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all self-center"
                                         title="Eliminar"
                                     >
                                         <Trash2 size={14} />

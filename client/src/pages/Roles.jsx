@@ -16,7 +16,7 @@ import { useMenuPermissions } from "../hooks/useMenuItems";
 const Roles = () => {
     const queryClient = useQueryClient();
     const [selectedRole, setSelectedRole] = useState(null);
-    const [formData, setFormData] = useState({ name: "", description: "", permissions: [] });
+    const [formData, setFormData] = useState({ name: "", description: "", permissions: [], default_dashboard: "general" });
     const [isDeleting, setIsDeleting] = useState(null);
 
     const permissionGroups = useMenuPermissions();
@@ -50,9 +50,10 @@ const Roles = () => {
                 name: selectedRole.name,
                 description: selectedRole.description || "",
                 permissions: parsePermissions(selectedRole.permissions),
+                default_dashboard: selectedRole.default_dashboard || "general",
             });
         } else {
-            setFormData({ name: "", description: "", permissions: [] });
+            setFormData({ name: "", description: "", permissions: [], default_dashboard: "general" });
         }
     }, [selectedRole]);
 
@@ -164,9 +165,16 @@ const Roles = () => {
                             >
                                 <div className="flex justify-between items-start">
                                     <div className="flex-1 min-w-0">
-                                        <p className={`font-bold transition-colors ${isActive ? "text-indigo-400" : "text-white group-hover:text-indigo-300"}`}>
-                                            {role.name}
-                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <p className={`font-bold transition-colors ${isActive ? "text-indigo-400" : "text-white group-hover:text-indigo-300"}`}>
+                                                {role.name}
+                                            </p>
+                                            {role.default_dashboard && role.default_dashboard !== 'general' && (
+                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">
+                                                    {role.default_dashboard}
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-[11px] text-slate-500 mt-1 font-medium">
                                             {rolePerms.length} módulos accesibles
                                         </p>
@@ -210,13 +218,13 @@ const Roles = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-400 px-1">Nombre del Rol</label>
                                 <input 
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm font-medium"
                                     placeholder="Ej: Administrador..."
                                 />
                             </div>
@@ -225,9 +233,23 @@ const Roles = () => {
                                 <input 
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm font-medium"
                                     placeholder="Detalles sobre el alcance..."
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-400 px-1">Dashboard por Defecto</label>
+                                <select
+                                    value={formData.default_dashboard || 'general'}
+                                    onChange={(e) => setFormData({ ...formData, default_dashboard: e.target.value })}
+                                    className="w-full bg-[#1e293b]/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm font-medium"
+                                >
+                                    <option value="general" className="bg-[#0f172a] text-white">📊 General / Comercial</option>
+                                    <option value="pista" className="bg-[#0f172a] text-white">⛽ Gasolinera / Pista</option>
+                                    <option value="tienda" className="bg-[#0f172a] text-white">🏪 Tienda de Conveniencia</option>
+                                    <option value="andelsa" className="bg-[#0f172a] text-white">🥚 Planta Andelsa</option>
+                                    <option value="server" className="bg-[#0f172a] text-white">🖥️ Monitor del Servidor</option>
+                                </select>
                             </div>
                         </div>
 
@@ -238,6 +260,20 @@ const Roles = () => {
                                     <p className="text-[11px] text-slate-500 mt-1">
                                         Este panel se adapta en tiempo real a las opciones agregadas al sistema. Selecciona o deshabilita en qué menús tendrá visión y acceso este rol:
                                     </p>
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="inline-flex items-center text-[9px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                Reporte
+                                            </span>
+                                            <span className="text-[11px] text-slate-400">Libros e informes</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="inline-flex items-center text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                Especial
+                                            </span>
+                                            <span className="text-[11px] text-slate-400">Acciones críticas o permisos operativos</span>
+                                        </div>
+                                    </div>
                                 </div>
                                 <button 
                                     type="button"
@@ -265,23 +301,35 @@ const Roles = () => {
                                              {group.permissions.map(perm => (
                                                 <label 
                                                     key={`${group.id}-${perm.id}`} 
-                                                    className="flex items-center gap-3 cursor-pointer group/item select-none"
+                                                    className="flex items-center justify-between gap-3 cursor-pointer group/item select-none py-0.5"
                                                 >
-                                                    <div 
-                                                        onClick={() => handleTogglePermission(perm.id)}
-                                                        className={`transition-all duration-200 ${formData.permissions.includes(perm.id) ? "text-indigo-500" : "text-slate-700 group-hover/item:text-slate-500"}`}
-                                                    >
-                                                        {formData.permissions.includes(perm.id) ? (
-                                                            <div className="w-5 h-5 border border-indigo-500 rounded bg-indigo-500/10 flex items-center justify-center">
-                                                                <CheckCircle2 size={14} className="text-indigo-500" />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="w-5 h-5 border border-slate-700 rounded bg-transparent" />
-                                                        )}
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div 
+                                                            onClick={() => handleTogglePermission(perm.id)}
+                                                            className={`shrink-0 transition-all duration-200 ${formData.permissions.includes(perm.id) ? "text-indigo-500" : "text-slate-700 group-hover/item:text-slate-500"}`}
+                                                        >
+                                                            {formData.permissions.includes(perm.id) ? (
+                                                                <div className="w-5 h-5 border border-indigo-500 rounded bg-indigo-500/10 flex items-center justify-center">
+                                                                    <CheckCircle2 size={14} className="text-indigo-500" />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-5 h-5 border border-slate-700 rounded bg-transparent" />
+                                                            )}
+                                                        </div>
+                                                        <span className={`text-[13px] font-medium transition-colors ${formData.permissions.includes(perm.id) ? "text-slate-200" : "text-slate-500 group-hover/item:text-slate-400"}`}>
+                                                            {perm.label}
+                                                        </span>
                                                     </div>
-                                                    <span className={`text-[13px] font-medium transition-colors ${formData.permissions.includes(perm.id) ? "text-slate-200" : "text-slate-500 group-hover/item:text-slate-400"}`}>
-                                                        {perm.label}
-                                                    </span>
+                                                    {perm.isReport && (
+                                                        <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 uppercase tracking-wider">
+                                                            Reporte
+                                                        </span>
+                                                    )}
+                                                    {perm.isSpecial && (
+                                                        <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
+                                                            Especial
+                                                        </span>
+                                                    )}
                                                 </label>
                                             ))}
                                         </div>

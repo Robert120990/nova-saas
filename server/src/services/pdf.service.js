@@ -2124,416 +2124,16 @@ const generateProviderPendingDocumentsDetailedPDF = async (data) => {
     return await getBuffer();
 };
 
+const { generateRTEEModern } = require('./pdf.modern_rtee');
+
 /**
  * Generates a PDF buffer for the DTE Representation (RTEE)
+ * Formato oficial estándar definitivo Nova SaaS.
  */
 const generateRTEE = (data) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const doc = new PDFDocument({ margin: 30, size: 'LETTER', bufferPages: true });
-            const buffers = [];
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => resolve(Buffer.concat(buffers)));
-            doc.on('error', (err) => reject(err));
-
-            const { emisor, receptor, dte, venta, items } = data;
-            const startX = 30;
-            const pageWidth = doc.page.width - 60;
-
-            // --- Header: Logo & Emisor & DTE Info ---
-            let headerY = 30;
-            
-            // 1. Logo (si existe)
-            if (emisor.logoPath) {
-                doc.image(emisor.logoPath, startX, headerY, { width: 100 });
-                headerY = 30; // Mantener alineación
-            }
-
-            // 2. Emisor Info (Desplazado si hay logo)
-            const emisorX = emisor.logoPath ? 140 : startX;
-            doc.fontSize(14).font('Helvetica-Bold').text(emisor.nombre.toUpperCase(), emisorX, headerY, { width: 200 });
-            doc.fontSize(8).font('Helvetica').text(emisor.descActividad, emisorX, doc.y + 2, { width: 200 });
-            
-            const emisorDireccionComp = emisor.direccion?.complemento || emisor.direccion || '';
-            const emisorMun = emisor.municipio_nombre || emisor.direccion?.municipio_nombre || 'San Salvador';
-            const emisorDep = emisor.departamento_nombre || emisor.direccion?.departamento_nombre || 'San Salvador';
-            
-            doc.text(`${emisorDireccionComp}, ${emisorMun}, ${emisorDep}`, emisorX, doc.y + 2, { width: 220 });
-            doc.text(`NIT: ${emisor.nit} | NRC: ${emisor.nrc}`, emisorX, doc.y + 2);
-            doc.text(`Tel: ${emisor.telefono || 'N/A'} | Email: ${emisor.correo || 'N/A'}`, emisorX, doc.y + 2);
-
-            // 3. DTE Box (Right) - Diseño más robusto
-            const dteBoxX = 350;
-            const dteBoxY = 25;
-            doc.rect(dteBoxX, dteBoxY, 230, 115).stroke();
-            
-            // Etiqueta de Ambiente (PRUEBAS / PRODUCCIÓN)
-            const isProd = dte.ambiente === '01';
-            doc.rect(dteBoxX, dteBoxY, 230, 20).fill(isProd ? '#1e40af' : '#991b1b');
-            doc.fillColor('white').fontSize(10).font('Helvetica-Bold').text(isProd ? 'MODO: PRODUCCIÓN' : 'MODO: PRUEBAS', dteBoxX, dteBoxY + 5, { align: 'center', width: 230 });
-            doc.fillColor('black');
-
-            doc.fontSize(9).font('Helvetica-Bold').text('DOCUMENTO TRIBUTARIO ELECTRÓNICO', dteBoxX, dteBoxY + 25, { align: 'center', width: 230 });
-            doc.fontSize(11).text(dte.tipoDteNombre.toUpperCase(), dteBoxX, dteBoxY + 38, { align: 'center', width: 230 });
-            
-            doc.fontSize(7).font('Helvetica-Bold').text('Código Generación:', dteBoxX + 10, dteBoxY + 55);
-            doc.font('Helvetica').text(dte.codigoGeneracion, dteBoxX + 10, dteBoxY + 63);
-            
-            doc.font('Helvetica-Bold').text('Número de Control:', dteBoxX + 10, dteBoxY + 75);
-            doc.font('Helvetica').text(dte.numeroControl, dteBoxX + 10, dteBoxY + 83);
-
-            doc.font('Helvetica-Bold').text('Sello de Recepción:', dteBoxX + 10, dteBoxY + 95);
-            doc.font('Helvetica').text(dte.selloRecepcion || 'PENDIENTE DE AUTORIZACIÓN', dteBoxX + 10, dteBoxY + 103, { width: 210 });
-
-            doc.moveDown(3);
-
-            // --- Información Técnica Adicional ---
-            const techY = Math.max(doc.y, 145);
-            doc.fontSize(7).font('Helvetica-Bold');
-            doc.text(`Modelo de Emisión: ${dte.tipoModelo === 1 ? 'Previo' : 'Diferido'}`, startX, techY);
-            doc.text(`Tipo de Transmisión: ${dte.tipoOperacion === 1 ? 'Normal' : 'Contingencia'}`, startX + 150, techY);
-            doc.text(`Moneda: USD`, startX + 300, techY);
-
-            // --- Receptor Section ---
-            const receptorY = techY + 15;
-
-            doc.fontSize(8.5).font('Helvetica');
-            const nomH = doc.heightOfString(`Nombre: ${receptor.nombre || ''}`, { width: 330 });
-            let contentH = 18 + nomH + 2 + 12; // Encabezado + Nombre + Documento
-            
-            if (dte.tipoDte === '03') {
-                const actH = doc.heightOfString(`Actividad: ${receptor.descActividad || receptor.codActividad || 'N/A'}`, { width: 330 });
-                contentH += 12 + actH + 2; // NRC + Actividad
-            } else if (dte.tipoDte === '07') {
-                contentH += 12; // NRC
-            } else if (dte.tipoDte === '11') {
-                contentH += 12; // País
-            }
-            
-            const dirH = doc.heightOfString(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, { width: 330 });
-            contentH += dirH + 8; // Dirección + margen inferior
-
-            const minBoxH = (dte.tipoDte === '03') ? 77 : (dte.tipoDte === '07' || dte.tipoDte === '11') ? 65 : 55;
-            const receptorBoxHeight = Math.max(minBoxH, Math.ceil(contentH));
-
-            doc.rect(startX, receptorY, pageWidth, receptorBoxHeight).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').text('DATOS DEL RECEPTOR', startX + 10, receptorY + 5);
-            doc.fontSize(8.5).font('Helvetica');
-
-            let ry = receptorY + 18;
-            doc.text(`Nombre: ${receptor.nombre || ''}`, startX + 10, ry, { width: 330 });
-            ry += nomH + 2;
-            
-            let docIdentLabel = 'Documento:';
-            if (dte.tipoDte === '03' && receptor.nit) docIdentLabel = 'NIT:';
-            doc.text(`${docIdentLabel} ${receptor.nit || receptor.numDocumento || 'Consumidor Final'}`, startX + 10, ry);
-            ry += 12;
-            
-            if (dte.tipoDte === '03') {
-                doc.text(`NRC: ${receptor.nrc || '—'}`, startX + 10, ry);
-                ry += 12;
-                const actText = `Actividad: ${receptor.descActividad || receptor.codActividad || 'N/A'}`;
-                const actH = doc.heightOfString(actText, { width: 330 });
-                doc.text(actText, startX + 10, ry, { width: 330 });
-                ry += actH + 2;
-            } else if (dte.tipoDte === '07') {
-                doc.text(`NRC: ${receptor.nrc || '—'}`, startX + 10, ry);
-                ry += 12;
-            } else if (dte.tipoDte === '11') {
-                doc.text(`País: ${receptor.nombrePais || receptor.codPais || 'N/A'}`, startX + 10, ry);
-                ry += 12;
-            }
-
-            doc.text(`Dirección: ${receptor.direccion?.complemento || 'Ciudad'}`, startX + 10, ry, { width: 330 });
-
-            doc.text(`Fecha Emisión: ${venta.fecha_emision} ${venta.hora_emision || ''}`, startX + 350, receptorY + 18);
-            doc.text(`Condición: ${venta.condicion_operacion === 1 ? 'Contado' : 'Crédito'}`, startX + 350, receptorY + 30);
-
-            doc.moveDown(2);
-
-            if (dte.tipoDte === '07') {
-                // --- CR: tabla de documentos referenciados ---
-                const dteTypeLabels = {
-                    '01': 'Factura',
-                    '03': 'Crédito Fiscal',
-                    '04': 'Nota Remisión',
-                    '05': 'Nota Crédito',
-                    '06': 'Nota Débito',
-                    '07': 'C. Retención',
-                    '11': 'Factura Expo.',
-                    '14': 'Sujeto Excluido',
-                    '15': 'C. Donación'
-                };
-
-                const tableTop = receptorY + receptorBoxHeight + 10;
-                doc.fontSize(8).font('Helvetica-Bold');
-                doc.rect(startX, tableTop, pageWidth, 20).fill('#f3f4f6').stroke('#000');
-                doc.fillColor('black');
-                doc.text('#', startX + 5, tableTop + 6);
-                doc.text('DOCUMENTO REFERENCIADO', startX + 22, tableTop + 6);
-                doc.text('FECHA DOC.', startX + 145, tableTop + 6);
-                doc.text('DESCRIPCIÓN', startX + 205, tableTop + 6);
-                doc.text('GRAVADO', startX + 385, tableTop + 6, { align: 'right', width: 65 });
-                doc.text('RETENCIÓN', startX + 480, tableTop + 6, { align: 'right', width: 67 });
-
-                let sumSujeto = 0;
-                let sumRetenido = 0;
-
-                doc.font('Helvetica').fontSize(8);
-                let crY = tableTop + 25;
-                items.forEach((item, idx) => {
-                    const rawTipo = String(item.tipoDte || '').trim();
-                    const tipoLabel = dteTypeLabels[rawTipo] || (rawTipo.length === 2 ? `DTE ${rawTipo}` : (rawTipo || 'Documento'));
-                    const docNum = item.numeroDocumento || item.numDocumento || item.docNumber || item.doc_number || '';
-                    const docRef = docNum ? `${tipoLabel} - ${docNum}` : tipoLabel;
-
-                    let fechaDoc = '—';
-                    const rawFecha = item.fechaEmision || item.emissionDate || item.emission_date || item.fecEmi;
-                    if (rawFecha) {
-                        fechaDoc = reportPdfHelper.formatDate(rawFecha);
-                    }
-
-                    const montoGravado = parseFloat(item.montoSujetoGrav || item.totalItem || item.montoSujeto || 0);
-                    const montoRetenido = parseFloat(item.ivaRetenido || 0);
-                    sumSujeto += montoGravado;
-                    sumRetenido += montoRetenido;
-
-                    const descH = doc.heightOfString(item.descripcion || '', { width: 175 });
-                    const refH = doc.heightOfString(docRef, { width: 120 });
-                    const rowH = Math.max(descH, refH, 14) + 6;
-
-                    if (crY + rowH > 680) {
-                        doc.addPage();
-                        crY = 50;
-                    }
-
-                    doc.text(String(idx + 1), startX + 5, crY);
-                    doc.text(docRef, startX + 22, crY, { width: 120 });
-                    doc.text(fechaDoc, startX + 145, crY, { width: 55 });
-                    doc.text(item.descripcion || '', startX + 205, crY, { width: 175 });
-                    doc.text(`$${montoGravado.toFixed(2)}`, startX + 385, crY, { align: 'right', width: 65 });
-                    doc.text(`$${montoRetenido.toFixed(2)}`, startX + 480, crY, { align: 'right', width: 67 });
-                    crY += rowH;
-                });
-
-                let footerY = Math.max(crY + 20, 580);
-                if (crY + 100 > 720) {
-                    doc.addPage();
-                    footerY = 50;
-                }
-
-                const qrUrl = `https://admin.factura.gob.sv/consultaPublica?ambiente=${dte.ambiente}&codGen=${dte.codigoGeneracion}&fechaEmi=${venta.fecha_emision}`;
-                const qrImage = await QRCode.toDataURL(qrUrl);
-                doc.image(qrImage, startX, footerY - 10, { width: 80 });
-
-                const totalSujetoFinal = parseFloat(venta.totalSujetoRetencion || venta.total_gravado || 0) || sumSujeto;
-                const totalRetenidoFinal = parseFloat(venta.totalIVAretenido || venta.totalIvaRetenido || venta.total_retencion || venta.total_iva || 0) || sumRetenido;
-                const totalPagarFinal = (parseFloat(venta.total_pagar) > 0) ? parseFloat(venta.total_pagar) : totalRetenidoFinal;
-
-                let cy = footerY;
-                doc.fontSize(8).font('Helvetica-Bold');
-                doc.text('TOTAL SUJETO A RETENCIÓN:', 340, cy);
-                doc.text(`$${totalSujetoFinal.toFixed(2)}`, 505, cy, { align: 'right', width: 72 });
-                cy += 14;
-                doc.text('TOTAL IVA RETENIDO (1%):', 340, cy);
-                doc.text(`$${totalRetenidoFinal.toFixed(2)}`, 505, cy, { align: 'right', width: 72 });
-                cy += 14;
-                doc.font('Helvetica-Bold').text('TOTAL A PAGAR:', 340, cy);
-                doc.text(`$${totalPagarFinal.toFixed(2)}`, 505, cy, { align: 'right', width: 72 });
-
-                const totalLetrasFinal = (venta.total_letras && venta.total_letras !== 'S/N' && venta.total_letras.trim() !== '')
-                    ? venta.total_letras
-                    : `${numberToWords(totalPagarFinal)} DÓLARES`;
-
-                doc.fontSize(8).font('Helvetica-Bold').text('SON:', startX + 95, footerY + 50);
-                doc.font('Helvetica').text(totalLetrasFinal, startX + 95, footerY + 62, { width: 235 });
-            }
-
-            if (dte.tipoDte !== '07') {
-            const tableTop = receptorY + receptorBoxHeight + 10;
-            doc.fontSize(8).font('Helvetica-Bold');
-            doc.rect(startX, tableTop, pageWidth, 20).fill('#f3f4f6').stroke('#000');
-            doc.fillColor('black');
-            doc.text('CANT', startX + 5, tableTop + 6);
-            doc.text('DESCRIPCIÓN', startX + 45, tableTop + 6);
-            doc.text('PRECIO U.', startX + 350, tableTop + 6, { align: 'right', width: 60 });
-            doc.text('DESC.', startX + 420, tableTop + 6, { align: 'right', width: 60 });
-            doc.text('SUBTOTAL', startX + 500, tableTop + 6, { align: 'right', width: 70 });
-
-            const esConsumidorFinal = dte.tipoDte === '01' || dte.tipoDte === 1 || String(dte.tipoDteNombre || '').toUpperCase().includes('CONSUMIDOR FINAL') || String(dte.tipoDteNombre || '').toUpperCase() === 'FACTURA';
-            const fovialVenta = parseFloat(venta.fovial) || 0;
-            const cotransVenta = parseFloat(venta.cotrans) || 0;
-            const tieneImpuestosCombustible = (fovialVenta > 0 || cotransVenta > 0);
-
-            const isFuelItem = (it) => {
-                if (it.esCombustible || it.es_combustible) return true;
-                if (it.uniMedida === 55) return true;
-                if (Array.isArray(it.tributos) && it.tributos.some(t => (t && (t.codigo === 'D1' || t.codigo === 'C8' || t === 'D1' || t === 'C8')))) return true;
-                const desc = String(it.descripcion || '').toUpperCase();
-                return /(DIESEL|REGULAR|SUPER|GASOLINA|V-POWER|ION\s*DIESEL)/.test(desc);
-            };
-
-            doc.font('Helvetica').fontSize(8);
-            let currentY = tableTop + 25;
-            items.forEach(item => {
-                const itemHeight = doc.heightOfString(item.descripcion, { width: 300 }) + 5;
-                if (currentY + itemHeight > 680) {
-                    doc.addPage();
-                    currentY = 50;
-                }
-                
-                // Formatear cantidad con hasta 4 decimales para combustibles
-                const formattedQty = Number(item.cantidad) % 1 === 0 ? 
-                    item.cantidad.toString() : 
-                    Number(item.cantidad).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-                
-                let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
-                let displayTotalItem = parseFloat(item.totalItem) || 0;
-
-                // En Factura Consumidor Final (DTE 01) con combustible, los impuestos específicos (FOVIAL $0.20 y COTRANS $0.10)
-                // se desglosan en el resumen y por tanto el precio unitario y subtotal del ítem deben mostrarse netos de dichos impuestos.
-                if (esConsumidorFinal && tieneImpuestosCombustible && isFuelItem(item)) {
-                    const cant = parseFloat(item.cantidad) || 0;
-                    const fovialItem = Math.round(cant * 0.20 * 100) / 100;
-                    const cotransItem = Math.round(cant * 0.10 * 100) / 100;
-                    const fuelTaxes = fovialItem + cotransItem;
-
-                    if (displayUnitPrice > 0.30) {
-                        displayUnitPrice = Math.max(0, displayUnitPrice - 0.30);
-                    }
-                    displayTotalItem = Math.max(0, Math.round((displayTotalItem - fuelTaxes) * 100) / 100);
-                }
-
-                doc.text(formattedQty, startX + 5, currentY);
-                doc.text(item.descripcion, startX + 45, currentY, { width: 300 });
-                doc.text(`$${displayUnitPrice.toFixed(4)}`, startX + 350, currentY, { align: 'right', width: 60 });
-                doc.text(`$${parseFloat(item.montoDescuento || 0).toFixed(2)}`, startX + 420, currentY, { align: 'right', width: 60 });
-                doc.text(`$${displayTotalItem.toFixed(2)}`, startX + 500, currentY, { align: 'right', width: 70 });
-                currentY += Math.max(itemHeight, 15);
-            });
-
-            // --- Resumen y QR ---
-            const footerY = Math.max(currentY + 20, 580);
-            
-            // QR Code
-            const qrUrl = `https://admin.factura.gob.sv/consultaPublica?ambiente=${dte.ambiente}&codGen=${dte.codigoGeneracion}&fechaEmi=${venta.fecha_emision}`;
-            const qrImage = await QRCode.toDataURL(qrUrl);
-            doc.image(qrImage, startX, footerY, { width: 90 });
-            doc.fontSize(6).text('Representación Gráfica de DTE. Valide escaneando el código QR o en el sitio oficial de Hacienda.', startX, footerY + 95, { width: 90, align: 'center' });
-
-            // Totales
-            const totalsX = 350;
-            let currentTotalY = footerY;
-            doc.fontSize(8).font('Helvetica-Bold');
-            
-            const addTotalLine = (label, value, isBold = false, rawText = null) => {
-                doc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').text(label, totalsX, currentTotalY);
-                if (rawText !== null) {
-                    doc.text(rawText, startX + 500, currentTotalY, { align: 'right', width: 70 });
-                } else {
-                    doc.text(`$${parseFloat(value).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });
-                }
-                currentTotalY += 12;
-            };
-
-            let gravadasDisplay = parseFloat(venta.total_gravado) || 0;
-            let sumaOperacionesDisplay = gravadasDisplay;
-
-            if (esConsumidorFinal && tieneImpuestosCombustible) {
-                // En Factura Consumidor Final, el total_gravado de Hacienda incluye FOVIAL y COTRANS.
-                // Para que el resumen cuadre con los tributos específicos desglosados (y coincida con la tabla de ítems):
-                // Ventas Gravadas = Total Pagar - FOVIAL - COTRANS - Exentas - No Sujetas.
-                const totalPagarNum = parseFloat(venta.total_pagar) || 0;
-                const totalExentoNum = parseFloat(venta.total_exento) || 0;
-                const totalNoSujNum = parseFloat(venta.total_nosujetas) || 0;
-                gravadasDisplay = Math.max(0, Math.round((totalPagarNum - fovialVenta - cotransVenta - totalExentoNum - totalNoSujNum) * 100) / 100);
-                const descNum = parseFloat(venta.total_descuento) || 0;
-                sumaOperacionesDisplay = Math.round((gravadasDisplay + descNum) * 100) / 100;
-            }
-
-            addTotalLine('SUMA DE OPERACIONES:', sumaOperacionesDisplay, true);
-            addTotalLine('(-) DESCUENTOS:', venta.total_descuento);
-            addTotalLine('VENTAS GRAVADAS:', gravadasDisplay, true);
-            
-            // Para DTE de Consumidor Final ('01'), el IVA ya está incorporado en las ventas gravadas y no se traslada en el resumen.
-            // Se muestra '$ -' tal como en el formato de referencia oficial.
-            if (esConsumidorFinal) {
-                addTotalLine('TOTAL IVA (13%):', 0, false, '$ -');
-            } else {
-                addTotalLine('TOTAL IVA (13%):', venta.total_iva, true);
-            }
-
-            // Tributos adicionales (Retención 1%, FOVIAL, COTRAN, etc.)
-            const processedCodes = new Set();
-            if (venta.tributos && venta.tributos.length > 0) {
-                venta.tributos.forEach(tri => {
-                    // Filtrar el IVA ya mostrado (código 20)
-                    if (tri.codigo !== '20') {
-                        let desc = tri.descripcion || tri.codigo;
-                        if (desc.toUpperCase().includes('FEFE')) desc = 'FOVIAL';
-                        addTotalLine(`${desc.toUpperCase()}:`, tri.valor);
-                        processedCodes.add(tri.codigo);
-                    }
-                });
-            }
-            
-            // Fallback para FOVIAL y COTRAN si no fueron procesados arriba pero tienen valor
-            // Códigos usados por el sistema: D1 (FOVIAL), C8 (COTRANS). Catálogo MH: C3 (FOVIAL), C1 (COTRANS)
-            if (!processedCodes.has('D1') && !processedCodes.has('C3') && !processedCodes.has('01') && fovialVenta > 0) {
-                addTotalLine('TOTAL FOVIAL ($0.20):', fovialVenta);
-            }
-            if (!processedCodes.has('C8') && !processedCodes.has('C1') && !processedCodes.has('02') && cotransVenta > 0) {
-                addTotalLine('TOTAL COTRAN ($0.10):', cotransVenta);
-            }
-
-            // Retención y percepción de IVA (solo si aplica)
-            const retencionIVA = parseFloat(venta.total_retencion) || 0;
-            const percepcionIVA = parseFloat(venta.total_percepcion) || 0;
-            if (retencionIVA > 0) addTotalLine('(-) RETENCIÓN IVA (1%):', retencionIVA);
-            if (percepcionIVA > 0) addTotalLine('(+) PERCEPCIÓN IVA (1%):', percepcionIVA);
-
-            currentTotalY += 5;
-            doc.fontSize(11).font('Helvetica-Bold').text('TOTAL A PAGAR:', totalsX, currentTotalY);
-            doc.text(`$${parseFloat(venta.total_pagar).toFixed(2)}`, startX + 500, currentTotalY, { align: 'right', width: 70 });
-
-            // Monto en Letras
-            doc.fontSize(8).font('Helvetica-Bold').text('SON:', startX + 110, footerY);
-            doc.font('Helvetica').text(venta.total_letras || 'S/N', startX + 110, footerY + 12, { width: 230 });
-            } // Fin standard (tipoDte !== '07')
-
-            // --- Marca de Agua "ANULADO" ---
-            console.log('[generateRTEE DEBUG] data.isVoided:', data.isVoided);
-            if (data.isVoided) {
-                const totalPages = doc.bufferedPageRange().count;
-                for (let i = 0; i < totalPages; i++) {
-                    doc.switchToPage(i);
-                    const cx = doc.page.width / 2;
-                    const cy = doc.page.height / 2;
-
-                    doc.save();
-
-                    // Resetear transformaciones y estilos
-                    doc.translate(cx, cy);
-                    doc.rotate(-45);
-
-                    doc.fillColor('red').fillOpacity(0.25);
-                    doc.fontSize(100).font('Helvetica-Bold');
-                    const textWidth = doc.widthOfString('ANULADO');
-                    doc.text('ANULADO', -textWidth / 2, -50);
-
-                    doc.restore();
-
-                    // Resetear estado para no afectar contenido posterior
-                    doc.fillColor('black').fillOpacity(1);
-                }
-            }
-
-            doc.end();
-        } catch (err) {
-            reject(err);
-        }
-    });
+    return generateRTEEModern(data);
 };
+
 
 const generateVacacionPDF = (data) => {
     return new Promise((resolve, reject) => {
@@ -5087,6 +4687,638 @@ const generateFuelSalesSummaryPDF = async (data) => {
     return await getBuffer();
 };
 
+const generateLubricantsSoldPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const title = 'REPORTE DE LUBRICANTES VENDIDOS';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
+
+    const startX = 30;
+    const pageW = 732;
+
+    const colX = {
+        fecha: 30,
+        turno: 90,
+        sucursal: 130,
+        codigo: 215,
+        descripcion: 270,
+        inicial: 452,
+        recarga: 502,
+        final: 552,
+        ventas: 602,
+        precio: 652,
+        total: 702
+    };
+
+    const colW = {
+        fecha: 60,
+        turno: 40,
+        sucursal: 85,
+        codigo: 55,
+        descripcion: 182,
+        inicial: 50,
+        recarga: 50,
+        final: 50,
+        ventas: 50,
+        precio: 50,
+        total: 60
+    };
+
+    const fmtQty = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const drawTableHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', colX.fecha, y + 3, { width: colW.fecha, align: 'center', lineBreak: false });
+        doc.text('TURNO', colX.turno, y + 3, { width: colW.turno, align: 'center', lineBreak: false });
+        doc.text('SUCURSAL', colX.sucursal, y + 3, { width: colW.sucursal, lineBreak: false });
+        doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo, lineBreak: false });
+        doc.text('DESCRIPCIÓN', colX.descripcion, y + 3, { width: colW.descripcion, lineBreak: false });
+        doc.text('INICIAL', colX.inicial, y + 3, { width: colW.inicial - 2, align: 'right', lineBreak: false });
+        doc.text('RECARGA', colX.recarga, y + 3, { width: colW.recarga - 2, align: 'right', lineBreak: false });
+        doc.text('FINAL', colX.final, y + 3, { width: colW.final - 2, align: 'right', lineBreak: false });
+        doc.text('VENDIDOS', colX.ventas, y + 3, { width: colW.ventas - 2, align: 'right', lineBreak: false });
+        doc.text('PRECIO', colX.precio, y + 3, { width: colW.precio - 2, align: 'right', lineBreak: false });
+        doc.text('TOTAL $', colX.total, y + 3, { width: colW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    currentY = drawTableHeader(currentY);
+
+    const grouped = data.grouped || {};
+    const allEntries = Object.entries(grouped);
+    let grandUnits = 0;
+    let grandTotal = 0;
+    let totalItemsCount = 0;
+
+    for (let di = 0; di < allEntries.length; di++) {
+        const [fecha, items] = allEntries[di];
+        let dayUnits = 0;
+        let dayTotal = 0;
+
+        for (let i = 0; i < items.length; i++) {
+            const r = items[i];
+            if (currentY > 510) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                currentY = drawTableHeader(currentY);
+            }
+
+            if (i % 2 === 1) {
+                doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+            }
+
+            const u = parseFloat(r.ventas || 0);
+            const tot = parseFloat(r.total || 0);
+            dayUnits += u;
+            dayTotal += tot;
+            totalItemsCount++;
+
+            doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+            doc.text(reportPdfHelper.formatDate(r.fecha_turno || fecha), colX.fecha, currentY + 1, { width: colW.fecha, align: 'center' });
+            doc.text(`T-${r.numero_turno}`, colX.turno, currentY + 1, { width: colW.turno, align: 'center' });
+            
+            const suc = reportPdfHelper.fitText(doc, r.branch_name || 'Sin Sucursal', colW.sucursal - 4);
+            doc.text(suc, colX.sucursal, currentY + 1, { width: colW.sucursal, lineBreak: false });
+
+            doc.text(r.producto_codigo || '', colX.codigo, currentY + 1, { width: colW.codigo, lineBreak: false });
+            
+            const desc = reportPdfHelper.fitText(doc, r.producto_descripcion || '', colW.descripcion - 4);
+            doc.text(desc, colX.descripcion, currentY + 1, { width: colW.descripcion, lineBreak: false });
+
+            doc.text(fmtQty(r.lectura_inicial), colX.inicial, currentY + 1, { width: colW.inicial - 2, align: 'right' });
+            doc.text(fmtQty(r.recarga), colX.recarga, currentY + 1, { width: colW.recarga - 2, align: 'right' });
+            doc.text(fmtQty(r.lectura_final), colX.final, currentY + 1, { width: colW.final - 2, align: 'right' });
+
+            doc.font('Helvetica-Bold').text(fmtQty(u), colX.ventas, currentY + 1, { width: colW.ventas - 2, align: 'right' });
+            doc.font('Helvetica').text(reportPdfHelper.fmt(r.precio), colX.precio, currentY + 1, { width: colW.precio - 2, align: 'right' });
+            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(tot), colX.total, currentY + 1, { width: colW.total - 2, align: 'right' });
+
+            currentY += 12;
+        }
+
+        grandUnits += dayUnits;
+        grandTotal += dayTotal;
+
+        // Subtotal diario
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#334155');
+        doc.text(`SUBTOTAL DIARIO (${reportPdfHelper.formatDate(fecha)}):`, colX.fecha + 2, currentY + 2, { width: 350 });
+        doc.text(fmtQty(dayUnits), colX.ventas, currentY + 2, { width: colW.ventas - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(dayTotal), colX.total, currentY + 2, { width: colW.total - 2, align: 'right' });
+        doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+
+        currentY += 16;
+    }
+
+    if (currentY > 500) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    // Gran Total
+    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    currentY += 2;
+    doc.rect(startX, currentY - 1, pageW, 15).fill('#f1f5f9');
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('TOTAL GENERAL LUBRICANTES VENDIDOS:', colX.fecha + 2, currentY + 3, { width: 350 });
+    doc.text(fmtQty(grandUnits), colX.ventas, currentY + 3, { width: colW.ventas - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(grandTotal), colX.total, currentY + 3, { width: colW.total - 2, align: 'right' });
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 14).lineTo(startX + pageW, currentY + 14).stroke();
+    currentY += 24;
+
+    // === CUADRO RESUMEN DE VENTAS POR PRODUCTO ===
+    const summaryList = data.summaryList || [];
+    const summaryTableHeight = 16 + 14 + (summaryList.length * 12) + 20;
+    if (currentY + Math.min(summaryTableHeight, 150) > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('CUADRO RESUMEN DE VENTAS POR PRODUCTO', startX, currentY, { width: pageW, align: 'center', lineBreak: false });
+    currentY += 14;
+
+    const sumColX = {
+        codigo: 30,
+        descripcion: 100,
+        unidades: 372,
+        precio: 462,
+        monto: 557,
+        porcentaje: 652
+    };
+    const sumColW = {
+        codigo: 70,
+        descripcion: 272,
+        unidades: 90,
+        precio: 95,
+        monto: 95,
+        porcentaje: 110
+    };
+
+    const drawSummaryHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, y, pageW, 14).stroke();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CÓDIGO', sumColX.codigo, y + 3, { width: sumColW.codigo, align: 'center', lineBreak: false });
+        doc.text('DESCRIPCIÓN DEL PRODUCTO', sumColX.descripcion, y + 3, { width: sumColW.descripcion, lineBreak: false });
+        doc.text('UNIDADES VENDIDAS', sumColX.unidades, y + 3, { width: sumColW.unidades - 4, align: 'right', lineBreak: false });
+        doc.text('PRECIO PROMEDIO', sumColX.precio, y + 3, { width: sumColW.precio - 4, align: 'right', lineBreak: false });
+        doc.text('MONTO TOTAL', sumColX.monto, y + 3, { width: sumColW.monto - 4, align: 'right', lineBreak: false });
+        doc.text('% PARTICIPACIÓN', sumColX.porcentaje, y + 3, { width: sumColW.porcentaje - 4, align: 'right', lineBreak: false });
+        return y + 14;
+    };
+
+    currentY = drawSummaryHeader(currentY);
+
+    summaryList.forEach((s, idx) => {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawSummaryHeader(currentY);
+        }
+
+        if (idx % 2 === 1) doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).rect(startX, currentY, pageW, 12).stroke();
+        doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+        doc.text(s.codigo || '', sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center', lineBreak: false });
+        
+        const desc = reportPdfHelper.fitText(doc, s.descripcion || '', sumColW.descripcion - 4);
+        doc.text(desc, sumColX.descripcion, currentY + 2, { width: sumColW.descripcion, lineBreak: false });
+
+        doc.text(fmtQty(s.unidades), sumColX.unidades, currentY + 2, { width: sumColW.unidades - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.precio_promedio), sumColX.precio, currentY + 2, { width: sumColW.precio - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.total), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right', lineBreak: false });
+        doc.text(`${(s.porcentaje || 0).toFixed(2)}%`, sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right', lineBreak: false });
+        currentY += 12;
+    });
+
+    // Summary Total Row
+    if (summaryList.length > 0) {
+        doc.rect(startX, currentY - 1, pageW, 14).fill('#f1f5f9');
+        doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX, currentY - 1, pageW, 14).stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL:', sumColX.codigo, currentY + 2, { width: sumColW.codigo, align: 'center', lineBreak: false });
+        doc.text(fmtQty(grandUnits), sumColX.unidades, currentY + 2, { width: sumColW.unidades - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotal), sumColX.monto, currentY + 2, { width: sumColW.monto - 4, align: 'right', lineBreak: false });
+        doc.text('100.00%', sumColX.porcentaje, currentY + 2, { width: sumColW.porcentaje - 4, align: 'right', lineBreak: false });
+        currentY += 20;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsCount, 'Operaciones');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
+const generateComplementariasPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const isDetailed = data.include_details !== false && data.modalidad !== 'resumido';
+    const title = isDetailed 
+        ? 'REPORTE DETALLADO DE COMPLEMENTARIAS EMITIDAS'
+        : 'REPORTE RESUMIDO DE COMPLEMENTARIAS EMITIDAS';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}${data.turno && data.turno !== 'all' ? `    |    TURNO: ${data.turno}` : ''}`;
+
+    const startX = 30;
+    const pageW = 732;
+
+    const fmtQty = (v, dec = 2) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+
+    const groupedByDay = data.groupedByDay || [];
+    const grandTotals = data.grandTotals || { dtes_count: 0, galones: 0, gravado: 0, iva: 0, fovial: 0, cotrans: 0, total: 0 };
+    const summaryByProduct = data.summaryByProduct || [];
+
+    const summaryByDay = data.summaryByDay || (data.groupedByDay || []).map(day => {
+        const shifts = day.shifts || [];
+        const branchNames = [...new Set(shifts.map(s => s.branch_name).filter(Boolean))].join(', ');
+        const turnosArr = [...new Set(shifts.map(s => s.turno))].sort((a, b) => a - b);
+        const turnosStr = turnosArr.length > 0 ? (turnosArr.length === 1 ? `Turno ${turnosArr[0]}` : `Turnos ${turnosArr.join(', ')}`) : 'Turno 1';
+
+        return {
+            fecha: day.fecha,
+            sucursal: branchNames || 'Sin Sucursal',
+            turnos: turnosStr,
+            totals: day.totals,
+            products: Object.values(day.products || {})
+        };
+    });
+
+    // --- Column configurations ---
+
+    // 1. Day Consolidated Summary Table Columns (width sum = 732, startX = 30 to 762)
+    const dayColX = {
+        fecha: 30,
+        sucursal: 98,
+        turnos: 248,
+        dtes: 314,
+        galones: 370,
+        gravado: 446,
+        iva: 522,
+        fovial: 586,
+        cotrans: 644,
+        total: 700
+    };
+    const dayColW = {
+        fecha: 66,
+        sucursal: 148,
+        turnos: 64,
+        dtes: 54,
+        galones: 74,
+        gravado: 74,
+        iva: 62,
+        fovial: 56,
+        cotrans: 54,
+        total: 62
+    };
+
+    const drawDaySummaryHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('FECHA', dayColX.fecha, y + 3, { width: dayColW.fecha, align: 'center', lineBreak: false });
+        doc.text('SUCURSAL', dayColX.sucursal, y + 3, { width: dayColW.sucursal, lineBreak: false });
+        doc.text('TURNOS', dayColX.turnos, y + 3, { width: dayColW.turnos, align: 'center', lineBreak: false });
+        doc.text('CANT. DTES', dayColX.dtes, y + 3, { width: dayColW.dtes - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL GALONES', dayColX.galones, y + 3, { width: dayColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text('VENTA GRAVADA', dayColX.gravado, y + 3, { width: dayColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text('IVA 13%', dayColX.iva, y + 3, { width: dayColW.iva - 4, align: 'right', lineBreak: false });
+        doc.text('FOVIAL', dayColX.fovial, y + 3, { width: dayColW.fovial - 4, align: 'right', lineBreak: false });
+        doc.text('COTRANS', dayColX.cotrans, y + 3, { width: dayColW.cotrans - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL ($)', dayColX.total, y + 3, { width: dayColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
+
+    // 2. DTE Detail Table Columns (width sum = 732: 36 + 114 + 138 + 94 + 50 + 58 + 52 + 50 + 50 + 72 = 714, comfortably within 732)
+    const detColX = {
+        hora: 30,
+        numero_control: 68,
+        codigo_generacion: 184,
+        producto: 324,
+        galones: 420,
+        gravado: 472,
+        iva: 532,
+        fovial: 586,
+        cotrans: 638,
+        total: 690
+    };
+    const detColW = {
+        hora: 36,
+        numero_control: 114,
+        codigo_generacion: 138,
+        producto: 94,
+        galones: 50,
+        gravado: 58,
+        iva: 52,
+        fovial: 50,
+        cotrans: 50,
+        total: 72
+    };
+
+    const drawDetailTableHeader = (y) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('HORA', detColX.hora, y + 3, { width: detColW.hora, align: 'center', lineBreak: false });
+        doc.text('N° CONTROL DTE', detColX.numero_control, y + 3, { width: detColW.numero_control, lineBreak: false });
+        doc.text('CÓDIGO GENERACIÓN', detColX.codigo_generacion, y + 3, { width: detColW.codigo_generacion, lineBreak: false });
+        doc.text('COMBUSTIBLE', detColX.producto, y + 3, { width: detColW.producto, lineBreak: false });
+        doc.text('GALONES', detColX.galones, y + 3, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+        doc.text('GRAVADO', detColX.gravado, y + 3, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+        doc.text('IVA 13%', detColX.iva, y + 3, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+        doc.text('FOVIAL', detColX.fovial, y + 3, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+        doc.text('COTRANS', detColX.cotrans, y + 3, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+        doc.text('TOTAL ($)', detColX.total, y + 3, { width: detColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        return y + 15;
+    };
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    const drawDaySummaryTable = () => {
+        if (currentY > 440) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('RESUMEN CONSOLIDADO POR DÍA', startX, currentY, { width: pageW, align: 'center', lineBreak: false });
+        currentY += 14;
+        currentY = drawDaySummaryHeader(currentY);
+
+        let rowCount = 0;
+        for (let di = 0; di < summaryByDay.length; di++) {
+            const d = summaryByDay[di];
+            if (currentY > 505) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                currentY = drawDaySummaryHeader(currentY);
+            }
+
+            if (rowCount % 2 === 1) doc.rect(startX, currentY - 1, pageW, 12).fill('#f8fafc');
+            rowCount++;
+
+            doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+            doc.text(reportPdfHelper.formatDate(d.fecha), dayColX.fecha, currentY + 1, { width: dayColW.fecha, align: 'center', lineBreak: false });
+            const suc = reportPdfHelper.fitText(doc, d.sucursal || 'Sin Sucursal', dayColW.sucursal - 4);
+            doc.text(suc, dayColX.sucursal, currentY + 1, { width: dayColW.sucursal, lineBreak: false });
+            doc.text(d.turnos || '', dayColX.turnos, currentY + 1, { width: dayColW.turnos, align: 'center', lineBreak: false });
+            doc.text(String(d.totals.dtes_count || 0), dayColX.dtes, currentY + 1, { width: dayColW.dtes - 4, align: 'right', lineBreak: false });
+            doc.text(fmtQty(d.totals.galones, 2), dayColX.galones, currentY + 1, { width: dayColW.galones - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.gravado), dayColX.gravado, currentY + 1, { width: dayColW.gravado - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.iva), dayColX.iva, currentY + 1, { width: dayColW.iva - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.fovial), dayColX.fovial, currentY + 1, { width: dayColW.fovial - 4, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(d.totals.cotrans), dayColX.cotrans, currentY + 1, { width: dayColW.cotrans - 4, align: 'right', lineBreak: false });
+            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(d.totals.total), dayColX.total, currentY + 1, { width: dayColW.total - 2, align: 'right', lineBreak: false });
+            currentY += 12;
+        }
+
+        if (currentY > 500) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawDaySummaryHeader(currentY);
+        }
+
+        doc.strokeColor('#94a3b8').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 2;
+        doc.rect(startX, currentY - 1, pageW, 14).fill('#e2e8f0');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL GENERAL COMPLEMENTARIAS EMITIDAS:', dayColX.fecha + 2, currentY + 3, { width: dayColW.fecha + dayColW.sucursal + dayColW.turnos - 4, lineBreak: false });
+        doc.text(String(grandTotals.dtes_count || 0), dayColX.dtes, currentY + 3, { width: dayColW.dtes - 4, align: 'right', lineBreak: false });
+        doc.text(fmtQty(grandTotals.galones, 2), dayColX.galones, currentY + 3, { width: dayColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.gravado), dayColX.gravado, currentY + 3, { width: dayColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.iva), dayColX.iva, currentY + 3, { width: dayColW.iva - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.fovial), dayColX.fovial, currentY + 3, { width: dayColW.fovial - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.cotrans), dayColX.cotrans, currentY + 3, { width: dayColW.cotrans - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.total), dayColX.total, currentY + 3, { width: dayColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#64748b').lineWidth(0.8).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+        currentY += 22;
+    };
+
+    if (isDetailed) {
+        // === RENDER DETAILED REPORT (BY DAY -> BY SHIFT -> INDIVIDUAL DTES) ===
+        for (let di = 0; di < groupedByDay.length; di++) {
+            const dayGroup = groupedByDay[di];
+            const shifts = dayGroup.shifts || [];
+
+            for (let si = 0; si < shifts.length; si++) {
+                const s = shifts[si];
+                const dtes = s.dtes || [];
+
+                if (currentY > 470) {
+                    doc.addPage();
+                    currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                }
+
+                // Shift Banner Header
+                doc.rect(startX, currentY, pageW, 15).fill('#e0e7ff');
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#3730a3');
+                doc.text(
+                    `FECHA TURNO: ${reportPdfHelper.formatDate(dayGroup.fecha)}   •   TURNO: ${s.turno}   •   SUCURSAL: ${s.branch_name.toUpperCase()}   •   CANTIDAD DTES: ${s.totals.dtes_count}`,
+                    startX + 8,
+                    currentY + 3.5,
+                    { width: pageW - 16, lineBreak: false }
+                );
+                currentY += 16;
+                currentY = drawDetailTableHeader(currentY);
+
+                // DTE Rows
+                for (let dti = 0; dti < dtes.length; dti++) {
+                    const dte = dtes[dti];
+                    if (currentY > 505) {
+                        doc.addPage();
+                        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                        doc.rect(startX, currentY, pageW, 14).fill('#e0e7ff');
+                        doc.fontSize(7).font('Helvetica-Bold').fillColor('#3730a3');
+                        doc.text(
+                            `FECHA: ${reportPdfHelper.formatDate(dayGroup.fecha)} • TURNO ${s.turno} • ${s.branch_name.toUpperCase()} (Continuación)`,
+                            startX + 8,
+                            currentY + 3,
+                            { width: pageW - 16, lineBreak: false }
+                        );
+                        currentY += 15;
+                        currentY = drawDetailTableHeader(currentY);
+                    }
+
+                    if (dti % 2 === 1) {
+                        doc.rect(startX, currentY - 1, pageW, 13).fill('#f8fafc');
+                    }
+
+                    const fuelDesc = dte.items.map(it => it.producto).join(', ') || 'Combustible';
+                    const totalGln = dte.items.reduce((acc, it) => acc + (it.galones || 0), 0);
+
+                    doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+                    doc.text(dte.hora_emision || '', detColX.hora, currentY + 2, { width: detColW.hora, align: 'center', lineBreak: false });
+                    
+                    doc.font('Helvetica-Bold').fontSize(6).text(dte.numero_control || '', detColX.numero_control, currentY + 2, { width: detColW.numero_control - 2, lineBreak: false });
+                    
+                    doc.font('Helvetica').fontSize(5.5).text(dte.codigo_generacion || '', detColX.codigo_generacion, currentY + 2.5, { width: detColW.codigo_generacion - 2, lineBreak: false });
+                    
+                    const fittedFuel = reportPdfHelper.fitText(doc, fuelDesc, detColW.producto - 4);
+                    doc.font('Helvetica').fontSize(6.5).text(fittedFuel, detColX.producto, currentY + 2, { width: detColW.producto, lineBreak: false });
+
+                    doc.text(fmtQty(totalGln, 2), detColX.galones, currentY + 2, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.total_gravado), detColX.gravado, currentY + 2, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.total_iva), detColX.iva, currentY + 2, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.fovial), detColX.fovial, currentY + 2, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+                    doc.text(reportPdfHelper.fmt(dte.cotrans), detColX.cotrans, currentY + 2, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+                    doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(dte.total_pagar), detColX.total, currentY + 2, { width: detColW.total - 2, align: 'right', lineBreak: false });
+
+                    currentY += 13;
+                }
+
+                // Subtotal Turno Row
+                if (currentY > 505) {
+                    doc.addPage();
+                    currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                }
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+                doc.rect(startX, currentY, pageW, 13).fill('#f1f5f9');
+                doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#334155');
+                doc.text(`TOTAL TURNO ${s.turno} (${s.totals.dtes_count} DTEs):`, detColX.hora + 2, currentY + 2.5, { width: 380, lineBreak: false });
+                doc.text(fmtQty(s.totals.galones, 2), detColX.galones, currentY + 2.5, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.gravado), detColX.gravado, currentY + 2.5, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.iva), detColX.iva, currentY + 2.5, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.fovial), detColX.fovial, currentY + 2.5, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.cotrans), detColX.cotrans, currentY + 2.5, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+                doc.text(reportPdfHelper.fmt(s.totals.total), detColX.total, currentY + 2.5, { width: detColW.total - 2, align: 'right', lineBreak: false });
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+                currentY += 17;
+            }
+
+            // Subtotal Diario Row
+            if (currentY > 505) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            }
+            doc.strokeColor('#94a3b8').lineWidth(0.6).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+            doc.rect(startX, currentY, pageW, 14).fill('#e2e8f0');
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text(`SUBTOTAL DÍA (${reportPdfHelper.formatDate(dayGroup.fecha)}) (${dayGroup.totals.dtes_count} DTEs):`, detColX.hora + 2, currentY + 3, { width: 380, lineBreak: false });
+            doc.text(fmtQty(dayGroup.totals.galones, 2), detColX.galones, currentY + 3, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.gravado), detColX.gravado, currentY + 3, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.iva), detColX.iva, currentY + 3, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.fovial), detColX.fovial, currentY + 3, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.cotrans), detColX.cotrans, currentY + 3, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+            doc.text(reportPdfHelper.fmt(dayGroup.totals.total), detColX.total, currentY + 3, { width: detColW.total - 2, align: 'right', lineBreak: false });
+            doc.strokeColor('#94a3b8').lineWidth(0.6).moveTo(startX, currentY + 14).lineTo(startX + pageW, currentY + 14).stroke();
+            currentY += 19;
+        }
+
+        // Gran Total General
+        if (currentY > 495) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+        doc.strokeColor('#0f172a').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 2;
+        doc.rect(startX, currentY - 1, pageW, 16).fill('#cbd5e1');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(`TOTAL GENERAL COMPLEMENTARIAS (${grandTotals.dtes_count} DTEs):`, detColX.hora + 2, currentY + 3.5, { width: 380, lineBreak: false });
+        doc.text(fmtQty(grandTotals.galones, 2), detColX.galones, currentY + 3.5, { width: detColW.galones - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.gravado), detColX.gravado, currentY + 3.5, { width: detColW.gravado - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.iva), detColX.iva, currentY + 3.5, { width: detColW.iva - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.fovial), detColX.fovial, currentY + 3.5, { width: detColW.fovial - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.cotrans), detColX.cotrans, currentY + 3.5, { width: detColW.cotrans - 2, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.total), detColX.total, currentY + 3.5, { width: detColW.total - 2, align: 'right', lineBreak: false });
+        doc.strokeColor('#0f172a').lineWidth(0.8).moveTo(startX, currentY + 15).lineTo(startX + pageW, currentY + 15).stroke();
+        currentY += 25;
+
+        // Cuadro Resumen Consolidado por Día
+        drawDaySummaryTable();
+    } else {
+        // === RENDER SUMMARY-ONLY REPORT ===
+        drawDaySummaryTable();
+    }
+
+    // === CUADRO RESUMEN CONSOLIDADO POR COMBUSTIBLE ===
+    const summaryTableHeight = 16 + 14 + (summaryByProduct.length * 12) + 20;
+    if (currentY + Math.min(summaryTableHeight, 140) > 510) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text('CUADRO RESUMEN CONSOLIDADO POR COMBUSTIBLE', startX, currentY, { width: pageW, align: 'center', lineBreak: false });
+    currentY += 14;
+
+    const fuelColX = {
+        producto: 60,
+        galones: 280,
+        gravado: 400,
+        total: 520,
+        porcentaje: 630
+    };
+    const fuelColW = {
+        producto: 210,
+        galones: 110,
+        gravado: 110,
+        total: 100,
+        porcentaje: 70
+    };
+
+    const drawFuelHeader = (y) => {
+        doc.rect(startX + 30, y, pageW - 60, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('COMBUSTIBLE', fuelColX.producto, y + 3, { width: fuelColW.producto, lineBreak: false });
+        doc.text('TOTAL GALONES', fuelColX.galones, y + 3, { width: fuelColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text('VENTA GRAVADA', fuelColX.gravado, y + 3, { width: fuelColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text('TOTAL FACTURADO', fuelColX.total, y + 3, { width: fuelColW.total - 4, align: 'right', lineBreak: false });
+        doc.text('% VOLUMEN', fuelColX.porcentaje, y + 3, { width: fuelColW.porcentaje - 4, align: 'right', lineBreak: false });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX + 30, y + 14).lineTo(startX + pageW - 30, y + 14).stroke();
+        return y + 15;
+    };
+
+    currentY = drawFuelHeader(currentY);
+
+    summaryByProduct.forEach((s, idx) => {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawFuelHeader(currentY);
+        }
+
+        if (idx % 2 === 1) doc.rect(startX + 30, currentY - 1, pageW - 60, 12).fill('#f8fafc');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).rect(startX + 30, currentY - 1, pageW - 60, 12).stroke();
+        doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+        doc.text(s.producto || '', fuelColX.producto, currentY + 2, { width: fuelColW.producto, lineBreak: false });
+        doc.text(fmtQty(s.galones, 2), fuelColX.galones, currentY + 2, { width: fuelColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.gravado || s.total), fuelColX.gravado, currentY + 2, { width: fuelColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(s.total), fuelColX.total, currentY + 2, { width: fuelColW.total - 4, align: 'right', lineBreak: false });
+        doc.text(`${(s.porcentaje || 0).toFixed(2)}%`, fuelColX.porcentaje, currentY + 2, { width: fuelColW.porcentaje - 4, align: 'right', lineBreak: false });
+        currentY += 12;
+    });
+
+    if (summaryByProduct.length > 0) {
+        doc.rect(startX + 30, currentY - 1, pageW - 60, 14).fill('#f1f5f9');
+        doc.strokeColor('#94a3b8').lineWidth(0.5).rect(startX + 30, currentY - 1, pageW - 60, 14).stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTAL:', fuelColX.producto, currentY + 2, { width: fuelColW.producto, lineBreak: false });
+        doc.text(fmtQty(grandTotals.galones, 2), fuelColX.galones, currentY + 2, { width: fuelColW.galones - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.gravado), fuelColX.gravado, currentY + 2, { width: fuelColW.gravado - 4, align: 'right', lineBreak: false });
+        doc.text(reportPdfHelper.fmt(grandTotals.total), fuelColX.total, currentY + 2, { width: fuelColW.total - 4, align: 'right', lineBreak: false });
+        doc.text('100.00%', fuelColX.porcentaje, currentY + 2, { width: fuelColW.porcentaje - 4, align: 'right', lineBreak: false });
+        currentY += 20;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, grandTotals.dtes_count, 'Complementarias');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
 const generatePlanillaPDF = (data) => {
     return new Promise((resolve, reject) => {
         try {
@@ -5148,7 +5380,14 @@ const generatePlanillaPDF = (data) => {
             doc.moveTo(M, ry).lineTo(M + pageW, ry).stroke('#e5e7eb');
             ry += 4;
 
-            const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            // Agrupar TODAS las horas extras (por descripción) en una sola fila
+            const rawPercepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            const esHoraExtra = (d) => (d.descripcion || '').toUpperCase().includes('HORA');
+            const horasExtras = rawPercepciones.filter(esHoraExtra);
+            const otrasPercepciones = rawPercepciones.filter(d => !esHoraExtra(d));
+            const percepciones = horasExtras.length > 0
+                ? [...otrasPercepciones, { codigo: 'HE', descripcion: 'HORAS EXTRAS', valor_ingresado: horasExtras.reduce((s, d) => s + parseFloat(d.valor_ingresado || 0), 0) }]
+                : otrasPercepciones;
             const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
 
             doc.font('Helvetica').fontSize(8);
@@ -5250,7 +5489,14 @@ const generatePlanillaReciboPDF = (data) => {
             const responsable = data.responsable_nombre || 'RECURSOS HUMANOS';
             const fmt = (d) => d ? new Date(d).toLocaleDateString('es-SV') : 'N/A';
 
-            const percepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            // Agrupar TODAS las horas extras (por descripción) en una sola fila
+            const rawPercepciones = (data.detalles || []).filter(d => d.operacion === 'sumar');
+            const esHoraExtra = (d) => (d.descripcion || '').toUpperCase().includes('HORA');
+            const horasExtras = rawPercepciones.filter(esHoraExtra);
+            const otrasPercepciones = rawPercepciones.filter(d => !esHoraExtra(d));
+            const percepciones = horasExtras.length > 0
+                ? [...otrasPercepciones, { codigo: 'HE', descripcion: 'HORAS EXTRAS', valor_ingresado: horasExtras.reduce((s, d) => s + parseFloat(d.valor_ingresado || 0), 0) }]
+                : otrasPercepciones;
             const deducciones = (data.detalles || []).filter(d => d.operacion === 'restar');
 
             const drawCopy = (yStart, label) => {
@@ -5993,6 +6239,334 @@ const generateStoreProfitabilityPDF = async (data) => {
     return await getBuffer();
 };
 
+const generateVentasLecturasAnalyticsPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+
+    const title = 'ANÁLISIS DE VENTAS, PROYECCIÓN Y COMPARATIVO (SEGÚN LECTURAS)';
+    const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
+    const compText = data.compare_mode === 'prev_month' ? 'MISMO PERÍODO MES ANTERIOR' : 'PERÍODO INMEDIATO ANTERIOR';
+    const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}    |    COMPARACIÓN: ${compText}`;
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    const startX = 30;
+    const pageW = 732;
+    const fmtQty = (v, dec = 2) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    const fmtPct = (v) => `${v >= 0 ? '+' : ''}${Number(v || 0).toFixed(1)}%`;
+
+    const summary = data.summary || {};
+    const curTot = summary.current_totals || {};
+    const prevTot = summary.prev_totals || {};
+    const variations = summary.variations || {};
+    const projection = data.projection || {};
+    const fuelComparison = data.fuel_comparison || [];
+    const weeklyPatterns = data.weekly_patterns || [];
+    const dailySeries = data.daily_series || [];
+
+    const drawTableHeader = (y, cols) => {
+        doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 14).lineTo(startX + pageW, y + 14).stroke();
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+        for (const col of cols) {
+            doc.text(col.title, col.x, y + 3.5, { width: col.w, align: col.align || 'left' });
+        }
+        return y + 15;
+    };
+
+    const drawSectionTitle = (y, titleText) => {
+        if (y > 510) {
+            doc.addPage();
+            y = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+        doc.fillColor('#1e293b').font('Helvetica-Bold').fontSize(8);
+        doc.text(titleText, startX, y, { width: pageW });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, y + 11).lineTo(startX + pageW, y + 11).stroke();
+        return y + 15;
+    };
+
+    // 1. Resumen Ejecutivo y Proyección de Fin de Mes
+    currentY += 4;
+    currentY = drawSectionTitle(currentY, '1. RESUMEN EJECUTIVO Y PROYECCIÓN DE CIERRE DE MES');
+
+    const colWBox = 358;
+    const boxH = 68;
+
+    doc.rect(startX, currentY, colWBox, boxH).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7).text('COMPARATIVO DE VENTAS DEL PERÍODO', startX + 8, currentY + 6);
+
+    const b1Y = currentY + 18;
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b');
+    doc.text('Concepto', startX + 8, b1Y, { width: 90 });
+    doc.text('Período Actual', startX + 100, b1Y, { width: 75, align: 'right' });
+    doc.text('Período Anterior', startX + 180, b1Y, { width: 75, align: 'right' });
+    doc.text('Diferencia / Variación', startX + 260, b1Y, { width: 88, align: 'right' });
+
+    const drawKpiRow = (label, curVal, prevVal, diffVal, pctVal, isMoney, yRow) => {
+        doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
+        doc.text(label, startX + 8, yRow, { width: 90 });
+        doc.text(isMoney ? reportPdfHelper.fmt(curVal) : fmtQty(curVal), startX + 100, yRow, { width: 75, align: 'right' });
+        doc.text(isMoney ? reportPdfHelper.fmt(prevVal) : fmtQty(prevVal), startX + 180, yRow, { width: 75, align: 'right' });
+        const diffStr = `${isMoney ? reportPdfHelper.fmt(diffVal) : fmtQty(diffVal)} (${fmtPct(pctVal)})`;
+        doc.font('Helvetica-Bold').fillColor(diffVal >= 0 ? '#166534' : '#991b1b');
+        doc.text(diffStr, startX + 260, yRow, { width: 88, align: 'right' });
+    };
+
+    drawKpiRow('Galones Despachados:', curTot.galones, prevTot.galones, variations.diff_galones, variations.pct_galones, false, b1Y + 11);
+    drawKpiRow('Venta Total ($):', curTot.monto, prevTot.monto, variations.diff_monto, variations.pct_monto, true, b1Y + 22);
+    drawKpiRow('Precio Prom. Ponderado:', curTot.precio_promedio, prevTot.precio_promedio, variations.diff_precio, variations.pct_precio, true, b1Y + 33);
+    drawKpiRow('Ritmo Promedio Diario:', curTot.prom_diario_galones, prevTot.prom_diario_galones, (curTot.prom_diario_galones || 0) - (prevTot.prom_diario_galones || 0), prevTot.prom_diario_galones > 0 ? (((curTot.prom_diario_galones || 0) - prevTot.prom_diario_galones) / prevTot.prom_diario_galones) * 100 : 0, false, b1Y + 44);
+
+    const box2X = startX + colWBox + 16;
+    doc.rect(box2X, currentY, colWBox, boxH).fillAndStroke('#f8fafc', '#e2e8f0');
+    doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7).text(`PROYECCIÓN AL CIERRE DE MES (${(projection.month_name || '').toUpperCase()})`, box2X + 8, currentY + 6);
+
+    const b2Y = currentY + 18;
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b');
+    doc.text('Días Transcurridos:', box2X + 8, b2Y, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#0f172a').text(`${projection.days_elapsed || 0} de ${projection.month_days || 0} días (${projection.progress_pct || 0}% avance)`, box2X + 110, b2Y, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Días Restantes en Mes:', box2X + 8, b2Y + 11, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#0f172a').text(`${projection.days_remaining || 0} días`, box2X + 110, b2Y + 11, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Ritmo Actual Diario:', box2X + 8, b2Y + 22, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#0f172a').text(`${fmtQty(projection.daily_rate_galones)} gln/día   |   ${reportPdfHelper.fmt(projection.daily_rate_monto)} /día`, box2X + 110, b2Y + 22, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Galones Proyectados:', box2X + 8, b2Y + 33, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#1d4ed8').text(`${fmtQty(projection.projected_galones)} Galones`, box2X + 110, b2Y + 33, { width: 235, align: 'left' });
+
+    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b').text('Venta Proyectada ($):', box2X + 8, b2Y + 44, { width: 100 });
+    doc.font('Helvetica-Bold').fillColor('#166534').text(`${reportPdfHelper.fmt(projection.projected_monto)}`, box2X + 110, b2Y + 44, { width: 235, align: 'left' });
+
+    currentY += boxH + 12;
+
+    // 2. Tabla Comparativa por Combustible
+    currentY = drawSectionTitle(currentY, '2. COMPARATIVO DETALLADO POR TIPO DE COMBUSTIBLE');
+
+    const curStart = summary.period?.start_date || data.start_date || '';
+    const curEnd = summary.period?.end_date || data.end_date || '';
+    const prevStart = summary.prev_period?.start_date || '';
+    const prevEnd = summary.prev_period?.end_date || '';
+    doc.font('Helvetica-Oblique').fontSize(6).fillColor('#64748b').text(`Comparativa: Período Consultado (${curStart} al ${curEnd}) vs Período Anterior (${prevStart} al ${prevEnd}). Refleja variación comercial de ventas, no contadores físicos.`, startX + 4, currentY, { width: pageW });
+    currentY += 10;
+
+    const fuelCols = [
+        { title: 'PRODUCTO / COMBUSTIBLE', x: startX + 4, w: 136 },
+        { title: 'VOL. ACTUAL', x: startX + 142, w: 58, align: 'right' },
+        { title: 'VOL. ANT.', x: startX + 202, w: 58, align: 'right' },
+        { title: 'DIF. GLN', x: startX + 262, w: 50, align: 'right' },
+        { title: '% CREC.', x: startX + 314, w: 42, align: 'right' },
+        { title: 'VENTA ACT.', x: startX + 358, w: 64, align: 'right' },
+        { title: 'VENTA ANT.', x: startX + 424, w: 64, align: 'right' },
+        { title: 'DIF. VTA.', x: startX + 490, w: 56, align: 'right' },
+        { title: '% CREC.', x: startX + 548, w: 42, align: 'right' },
+        { title: 'PR. ACT.', x: startX + 592, w: 44, align: 'right' },
+        { title: 'PR. ANT.', x: startX + 638, w: 44, align: 'right' },
+        { title: '% CUOTA', x: startX + 684, w: 44, align: 'right' }
+    ];
+
+    currentY = drawTableHeader(currentY, fuelCols);
+
+    for (const f of fuelComparison) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, fuelCols);
+        }
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(f.producto, fuelCols[0].x, currentY + 2, { width: fuelCols[0].w });
+        doc.text(fmtQty(f.current_galones), fuelCols[1].x, currentY + 2, { width: fuelCols[1].w, align: 'right' });
+        doc.text(fmtQty(f.prev_galones), fuelCols[2].x, currentY + 2, { width: fuelCols[2].w, align: 'right' });
+        
+        doc.font('Helvetica-Bold').fillColor(f.diff_galones >= 0 ? '#166534' : '#991b1b');
+        doc.text(fmtQty(f.diff_galones), fuelCols[3].x, currentY + 2, { width: fuelCols[3].w, align: 'right' });
+        doc.text(fmtPct(f.pct_galones), fuelCols[4].x, currentY + 2, { width: fuelCols[4].w, align: 'right' });
+
+        doc.font('Helvetica').fillColor('#1e293b');
+        doc.text(reportPdfHelper.fmt(f.current_monto), fuelCols[5].x, currentY + 2, { width: fuelCols[5].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(f.prev_monto), fuelCols[6].x, currentY + 2, { width: fuelCols[6].w, align: 'right' });
+
+        doc.font('Helvetica-Bold').fillColor(f.diff_monto >= 0 ? '#166534' : '#991b1b');
+        doc.text(reportPdfHelper.fmt(f.diff_monto), fuelCols[7].x, currentY + 2, { width: fuelCols[7].w, align: 'right' });
+        doc.text(fmtPct(f.pct_monto), fuelCols[8].x, currentY + 2, { width: fuelCols[8].w, align: 'right' });
+
+        doc.font('Helvetica').fillColor('#475569');
+        doc.text(reportPdfHelper.fmt(f.current_precio_prom), fuelCols[9].x, currentY + 2, { width: fuelCols[9].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(f.prev_precio_prom), fuelCols[10].x, currentY + 2, { width: fuelCols[10].w, align: 'right' });
+        doc.text(`${Number(f.share_volume_pct || 0).toFixed(1)}%`, fuelCols[11].x, currentY + 2, { width: fuelCols[11].w, align: 'right' });
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    // Totals row for fuels
+    doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    doc.text('TOTALES CONSOLIDADOS:', fuelCols[0].x, currentY + 3, { width: fuelCols[0].w });
+    doc.text(fmtQty(curTot.galones), fuelCols[1].x, currentY + 3, { width: fuelCols[1].w, align: 'right' });
+    doc.text(fmtQty(prevTot.galones), fuelCols[2].x, currentY + 3, { width: fuelCols[2].w, align: 'right' });
+    doc.fillColor(variations.diff_galones >= 0 ? '#166534' : '#991b1b').text(fmtQty(variations.diff_galones), fuelCols[3].x, currentY + 3, { width: fuelCols[3].w, align: 'right' });
+    doc.text(fmtPct(variations.pct_galones), fuelCols[4].x, currentY + 3, { width: fuelCols[4].w, align: 'right' });
+    doc.fillColor('#0f172a').text(reportPdfHelper.fmt(curTot.monto), fuelCols[5].x, currentY + 3, { width: fuelCols[5].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(prevTot.monto), fuelCols[6].x, currentY + 3, { width: fuelCols[6].w, align: 'right' });
+    doc.fillColor(variations.diff_monto >= 0 ? '#166534' : '#991b1b').text(reportPdfHelper.fmt(variations.diff_monto), fuelCols[7].x, currentY + 3, { width: fuelCols[7].w, align: 'right' });
+    doc.text(fmtPct(variations.pct_monto), fuelCols[8].x, currentY + 3, { width: fuelCols[8].w, align: 'right' });
+    doc.fillColor('#0f172a').text(reportPdfHelper.fmt(curTot.precio_promedio), fuelCols[9].x, currentY + 3, { width: fuelCols[9].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(prevTot.precio_promedio), fuelCols[10].x, currentY + 3, { width: fuelCols[10].w, align: 'right' });
+    doc.text('100.0%', fuelCols[11].x, currentY + 3, { width: fuelCols[11].w, align: 'right' });
+
+    currentY += 20;
+
+    // 3. Proyección al Cierre de Mes por Tipo de Combustible
+    currentY = drawSectionTitle(currentY, `3. PROYECCIÓN ESTIMADA AL CIERRE DE MES POR TIPO DE COMBUSTIBLE (${(projection.month_name || '').toUpperCase()})`);
+
+    const projFuelCols = [
+        { title: 'PRODUCTO / COMBUSTIBLE', x: startX + 4, w: 156 },
+        { title: 'GALONES ACTUALES', x: startX + 162, w: 90, align: 'right' },
+        { title: 'RITMO (GLN/DÍA)', x: startX + 254, w: 85, align: 'right' },
+        { title: 'PROYECTADO (GLN)', x: startX + 341, w: 95, align: 'right' },
+        { title: 'VENTA ACTUAL ($)', x: startX + 438, w: 95, align: 'right' },
+        { title: 'RITMO ($/DÍA)', x: startX + 535, w: 95, align: 'right' },
+        { title: 'PROYECTADO ($)', x: startX + 632, w: 96, align: 'right' }
+    ];
+
+    currentY = drawTableHeader(currentY, projFuelCols);
+
+    const byProductList = projection.by_product || [];
+    for (const p of byProductList) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, projFuelCols);
+        }
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(p.producto, projFuelCols[0].x, currentY + 2, { width: projFuelCols[0].w });
+        doc.text(fmtQty(p.current_galones), projFuelCols[1].x, currentY + 2, { width: projFuelCols[1].w, align: 'right' });
+        doc.text(fmtQty(p.daily_rate_galones), projFuelCols[2].x, currentY + 2, { width: projFuelCols[2].w, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor('#1d4ed8').text(fmtQty(p.projected_galones), projFuelCols[3].x, currentY + 2, { width: projFuelCols[3].w, align: 'right' });
+
+        doc.font('Helvetica').fillColor('#1e293b').text(reportPdfHelper.fmt(p.current_monto), projFuelCols[4].x, currentY + 2, { width: projFuelCols[4].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(p.daily_rate_monto), projFuelCols[5].x, currentY + 2, { width: projFuelCols[5].w, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor('#166534').text(reportPdfHelper.fmt(p.projected_monto), projFuelCols[6].x, currentY + 2, { width: projFuelCols[6].w, align: 'right' });
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    // Totales de la proyección por combustible
+    doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    doc.text('TOTAL PROYECTADO:', projFuelCols[0].x, currentY + 3, { width: projFuelCols[0].w });
+    doc.text(fmtQty(projection.current_galones), projFuelCols[1].x, currentY + 3, { width: projFuelCols[1].w, align: 'right' });
+    doc.text(fmtQty(projection.daily_rate_galones), projFuelCols[2].x, currentY + 3, { width: projFuelCols[2].w, align: 'right' });
+    doc.fillColor('#1d4ed8').text(fmtQty(projection.projected_galones), projFuelCols[3].x, currentY + 3, { width: projFuelCols[3].w, align: 'right' });
+    doc.fillColor('#0f172a').text(reportPdfHelper.fmt(projection.current_monto), projFuelCols[4].x, currentY + 3, { width: projFuelCols[4].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(projection.daily_rate_monto), projFuelCols[5].x, currentY + 3, { width: projFuelCols[5].w, align: 'right' });
+    doc.fillColor('#166534').text(reportPdfHelper.fmt(projection.projected_monto), projFuelCols[6].x, currentY + 3, { width: projFuelCols[6].w, align: 'right' });
+
+    currentY += 20;
+
+    // 4. Patrón de Demanda Semanal
+    currentY = drawSectionTitle(currentY, '4. PATRÓN DE DEMANDA SEMANAL (LUNES A DOMINGO)');
+
+    const weeklyCols = [
+        { title: 'DÍA DE LA SEMANA', x: startX + 6, w: 120 },
+        { title: 'DÍAS REGISTRADOS', x: startX + 130, w: 80, align: 'center' },
+        { title: 'GALONES TOTALES', x: startX + 214, w: 100, align: 'right' },
+        { title: 'PROM. DIARIO GALONES', x: startX + 318, w: 110, align: 'right' },
+        { title: 'VENTAS TOTALES ($)', x: startX + 432, w: 110, align: 'right' },
+        { title: 'PROM. DIARIO VENTAS ($)', x: startX + 546, w: 110, align: 'right' },
+        { title: 'ESTADO / PICO', x: startX + 660, w: 66, align: 'center' }
+    ];
+
+    currentY = drawTableHeader(currentY, weeklyCols);
+
+    for (const w of weeklyPatterns) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, weeklyCols);
+        }
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(w.name, weeklyCols[0].x, currentY + 2, { width: weeklyCols[0].w });
+        doc.text(String(w.dias_ocurrencia || 0), weeklyCols[1].x, currentY + 2, { width: weeklyCols[1].w, align: 'center' });
+        doc.text(fmtQty(w.galones_total), weeklyCols[2].x, currentY + 2, { width: weeklyCols[2].w, align: 'right' });
+        doc.font('Helvetica-Bold').text(fmtQty(w.galones_promedio), weeklyCols[3].x, currentY + 2, { width: weeklyCols[3].w, align: 'right' });
+        doc.font('Helvetica').text(reportPdfHelper.fmt(w.monto_total), weeklyCols[4].x, currentY + 2, { width: weeklyCols[4].w, align: 'right' });
+        doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(w.monto_promedio), weeklyCols[5].x, currentY + 2, { width: weeklyCols[5].w, align: 'right' });
+
+        if (w.is_peak_galones || w.is_peak_monto) {
+            doc.font('Helvetica-Bold').fillColor('#b45309').text('★ DÍA PICO', weeklyCols[6].x, currentY + 2, { width: weeklyCols[6].w, align: 'center' });
+        } else {
+            doc.font('Helvetica').fillColor('#94a3b8').text('Normal', weeklyCols[6].x, currentY + 2, { width: weeklyCols[6].w, align: 'center' });
+        }
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    currentY += 15;
+
+    // 5. Desglose Diario de Ventas
+    currentY = drawSectionTitle(currentY, '5. DESGLOSE DIARIO DE VENTAS SEGÚN LECTURAS');
+
+    const dailyCols = [
+        { title: 'FECHA', x: startX + 6, w: 68 },
+        { title: 'DÍA', x: startX + 78, w: 70 },
+        { title: 'TOTAL GALONES', x: startX + 152, w: 90, align: 'right' },
+        { title: 'VENTA TOTAL ($)', x: startX + 246, w: 94, align: 'right' },
+        { title: 'PRECIO PROM ($/gln)', x: startX + 344, w: 84, align: 'right' },
+        { title: 'COMBUSTIBLES DESPACHADOS (GALONES)', x: startX + 434, w: 292, align: 'left' }
+    ];
+
+    currentY = drawTableHeader(currentY, dailyCols);
+
+    for (const d of dailySeries) {
+        if (currentY > 510) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY, dailyCols);
+        }
+
+        const fuelDetailStr = Object.entries(d.fuels || {})
+            .map(([prod, inf]) => `${prod}: ${fmtQty(inf.galones)} gln`)
+            .join(' | ');
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        doc.text(reportPdfHelper.formatDate(d.fecha), dailyCols[0].x, currentY + 2, { width: dailyCols[0].w });
+        doc.text(d.dia_semana, dailyCols[1].x, currentY + 2, { width: dailyCols[1].w });
+        doc.font('Helvetica-Bold').text(fmtQty(d.total_galones), dailyCols[2].x, currentY + 2, { width: dailyCols[2].w, align: 'right' });
+        doc.text(reportPdfHelper.fmt(d.total_monto), dailyCols[3].x, currentY + 2, { width: dailyCols[3].w, align: 'right' });
+        doc.font('Helvetica').fillColor('#475569').text(reportPdfHelper.fmt(d.precio_promedio), dailyCols[4].x, currentY + 2, { width: dailyCols[4].w, align: 'right' });
+        doc.fontSize(6).fillColor('#64748b').text(reportPdfHelper.fitText(doc, fuelDetailStr, dailyCols[5].w), dailyCols[5].x, currentY + 2, { width: dailyCols[5].w });
+
+        doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 11).lineTo(startX + pageW, currentY + 11).stroke();
+        currentY += 12;
+    }
+
+    // Totals row for daily
+    doc.rect(startX, currentY, pageW, 13).fill('#f8fafc');
+    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+    doc.text('TOTAL PERÍODO:', dailyCols[0].x, currentY + 3, { width: 140 });
+    doc.text(fmtQty(curTot.galones), dailyCols[2].x, currentY + 3, { width: dailyCols[2].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(curTot.monto), dailyCols[3].x, currentY + 3, { width: dailyCols[3].w, align: 'right' });
+    doc.text(reportPdfHelper.fmt(curTot.precio_promedio), dailyCols[4].x, currentY + 3, { width: dailyCols[4].w, align: 'right' });
+
+    currentY += 20;
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, dailySeries.length, 'Días de Venta');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
+
 module.exports = {
     generateTransferPDF, 
       generateStatementPDF, 
@@ -6028,7 +6602,11 @@ module.exports = {
     generateFuelInventoryPDF,
     generateGalonajeVendidoPDF,
     generateFuelSalesSummaryPDF,
+    generateLubricantsSoldPDF,
+    generateComplementariasPDF,
+    generateVentasLecturasAnalyticsPDF,
     generatePlanillaPDF,
     generatePlanillaReciboPDF,
     generateArqueosReportPDF
 };
+

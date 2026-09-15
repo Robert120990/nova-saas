@@ -86,6 +86,8 @@ router.get('/costeo-libra/cip-items', eggCosteoController.getCipItems);
 router.post('/costeo-libra/cip-items', eggCosteoController.saveCipItem);
 router.delete('/costeo-libra/cip-items/:id', eggCosteoController.deleteCipItem);
 
+router.get('/costeo-libra/products-lookup', eggCosteoController.getCostingProductsLookup);
+router.post('/costeo-libra/sync-purchases', eggCosteoController.syncPurchasesWithInvoices);
 router.get('/costeo-libra/packaging-items', eggCosteoController.getPackagingItems);
 router.get('/costeo-libra/packaging', eggCosteoController.getPackagingItems);
 router.post('/costeo-libra/packaging-items', eggCosteoController.savePackagingItem);

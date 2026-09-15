@@ -113,6 +113,23 @@ const createCustomer = async (req, res) => {
         }
     }
 
+    if (data.correo !== undefined) {
+        if (data.correo) {
+            const correoTrimmed = String(data.correo).trim();
+            if (correoTrimmed) {
+                const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                if (!emailRegex.test(correoTrimmed)) {
+                    return res.status(400).json({ message: 'El correo electrónico no tiene un formato válido (ejemplo: cliente@dominio.com)' });
+                }
+                data.correo = correoTrimmed;
+            } else {
+                data.correo = null;
+            }
+        } else {
+            data.correo = null;
+        }
+    }
+
     if (data.codigo_actividad) {
         const actStr = String(data.codigo_actividad).trim();
         if (actStr.length === 4 && /^\d+$/.test(actStr)) {
@@ -147,6 +164,23 @@ const updateCustomer = async (req, res) => {
         const duiRegex = /^\d{8}-\d{1}$/;
         if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
             return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
+        }
+    }
+
+    if (data.correo !== undefined) {
+        if (data.correo) {
+            const correoTrimmed = String(data.correo).trim();
+            if (correoTrimmed) {
+                const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                if (!emailRegex.test(correoTrimmed)) {
+                    return res.status(400).json({ message: 'El correo electrónico no tiene un formato válido (ejemplo: cliente@dominio.com)' });
+                }
+                data.correo = correoTrimmed;
+            } else {
+                data.correo = null;
+            }
+        } else {
+            data.correo = null;
         }
     }
 

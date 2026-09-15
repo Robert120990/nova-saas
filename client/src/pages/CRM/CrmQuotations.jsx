@@ -569,7 +569,7 @@ export default function CrmQuotations() {
                                                                 deleteMutation.mutate(q.id);
                                                             }
                                                         }}
-                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                         title="Eliminar"
                                                     >
                                                         <Trash2 className="w-4 h-4" />

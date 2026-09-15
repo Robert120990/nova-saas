@@ -337,9 +337,9 @@ const PozoDespachos = () => {
                                 <span className="text-xs font-bold font-mono text-emerald-600"><Money value={item.monto_total} /></span>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleViewDetail(item.id)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle"><Eye size={15} /></button>
-                                <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
-                                <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
+                                <button onClick={() => handleViewDetail(item.id)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle"><Eye size={15} /></button>
+                                <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
+                                <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
                             </td>
                         </tr>
                     )}
@@ -461,8 +461,8 @@ const PozoDespachos = () => {
                                                 <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600"><Money value={subtotal} /></td>
                                                 <td className="px-3 py-2">
                                                     <div className="flex items-center justify-center gap-1">
-                                                        <button onClick={() => openEditServicio(i)} className="p-1 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all" title="Editar"><Edit3 size={14} /></button>
-                                                        <button onClick={() => removeServicioRow(i)} className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><X size={14} /></button>
+                                                        <button onClick={() => openEditServicio(i)} className="p-1 text-slate-600 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all" title="Editar"><Edit3 size={14} /></button>
+                                                        <button onClick={() => removeServicioRow(i)} className="p-1 text-slate-600 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><X size={14} /></button>
                                                     </div>
                                                 </td>
                                             </tr>

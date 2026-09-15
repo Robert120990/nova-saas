@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    ChevronDown, BarChart3
+    ChevronDown, BarChart3, Filter, RotateCcw, X
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import SaleDetailModal from '../components/sales/SaleDetailModal';
@@ -56,10 +56,28 @@ const SalesHistory = () => {
     const isSuperAdmin = currentUser?.role === 'SuperAdmin' || 
                          currentUser?.role?.toLowerCase() === 'superadmin' || 
                          currentUser?.role_name === 'SuperAdmin';
+    const userPermissions = (() => {
+        const raw = currentUser?.permissions;
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    })();
+    const canRegenerateDTE = isSuperAdmin || userPermissions.includes('regenerate_dte');
 
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(15);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [tipoDocumento, setTipoDocumento] = useState('');
+    const [status, setStatus] = useState('');
     const [selectedSaleId, setSelectedSaleId] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
@@ -74,10 +92,13 @@ const SalesHistory = () => {
         numDocSolicita: ''
     });
     const [isRetransmitModalOpen, setIsRetransmitModalOpen] = useState(false);
-const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
-const [regenerateSaleId, setRegenerateSaleId] = useState(null);
-const [regenerateLoading, setRegenerateLoading] = useState(false);
-const [updateDateTime, setUpdateDateTime] = useState(false);
+    const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+    const [regenerateSale, setRegenerateSale] = useState(null);
+    const [regenerateLoading, setRegenerateLoading] = useState(false);
+    const [updateDateTime, setUpdateDateTime] = useState(false);
+    const [openShifts, setOpenShifts] = useState([]);
+    const [targetShiftId, setTargetShiftId] = useState('');
+    const [loadingShifts, setLoadingShifts] = useState(false);
     const [retransmitForm, setRetransmitForm] = useState({
         nombre: '',
         nit: '',
@@ -91,12 +112,133 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
     const [isDteStatsOpen, setIsDteStatsOpen] = useState(false);
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
-    const limit = 10;
 
-    const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading } = useQuery({
-        queryKey: ['sales-history', search, page],
-        queryFn: async () => (await axios.get('/api/sales', { params: { search, page, limit } })).data
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearch(search);
+            setPage(1);
+        }, 350);
+        return () => clearTimeout(handler);
+    }, [search]);
+
+    const { data: tipoDocs = [] } = useQuery({
+        queryKey: ['catalog', '002'],
+        queryFn: async () => (await axios.get('/api/catalogs/cat_002_tipo_dte')).data
     });
+
+    const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading, isFetching } = useQuery({
+        queryKey: ['sales-history', debouncedSearch, page, limit, startDate, endDate, tipoDocumento, status],
+        queryFn: async () => {
+            const params = {
+                page,
+                limit,
+                search: debouncedSearch.trim() || undefined,
+                start_date: startDate || undefined,
+                end_date: endDate || undefined,
+                tipo_documento: tipoDocumento || undefined,
+                status: status || undefined
+            };
+            return (await axios.get('/api/sales', { params })).data;
+        },
+        keepPreviousData: true
+    });
+
+    const getTodayStr = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getYesterdayStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getStartOfWeekStr = () => {
+        const d = new Date();
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff));
+        const year = monday.getFullYear();
+        const month = String(monday.getMonth() + 1).padStart(2, '0');
+        const date = String(monday.getDate()).padStart(2, '0');
+        return `${year}-${month}-${date}`;
+    };
+
+    const getStartOfMonthStr = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        return `${year}-${month}-01`;
+    };
+
+    const handlePresetDate = (preset) => {
+        const today = getTodayStr();
+        if (preset === 'today') {
+            setStartDate(today);
+            setEndDate(today);
+        } else if (preset === 'yesterday') {
+            const yest = getYesterdayStr();
+            setStartDate(yest);
+            setEndDate(yest);
+        } else if (preset === 'this_week') {
+            setStartDate(getStartOfWeekStr());
+            setEndDate(today);
+        } else if (preset === 'this_month') {
+            setStartDate(getStartOfMonthStr());
+            setEndDate(today);
+        } else if (preset === 'all') {
+            setStartDate('');
+            setEndDate('');
+        }
+        setPage(1);
+    };
+
+    const activeFiltersCount = useMemo(() => {
+        let count = 0;
+        if (search.trim()) count++;
+        if (startDate) count++;
+        if (endDate) count++;
+        if (tipoDocumento) count++;
+        if (status) count++;
+        return count;
+    }, [search, startDate, endDate, tipoDocumento, status]);
+
+    const handleClearFilters = () => {
+        setSearch('');
+        setDebouncedSearch('');
+        setStartDate('');
+        setEndDate('');
+        setTipoDocumento('');
+        setStatus('');
+        setPage(1);
+    };
+
+    const documentTypes = useMemo(() => {
+        const allowedSalesCodes = ['01', '03', '04', '05', '07', '11'];
+        if (tipoDocs && tipoDocs.length > 0) {
+            return tipoDocs
+                .filter(t => allowedSalesCodes.includes(t.code))
+                .map(t => ({
+                    code: t.code,
+                    name: t.description ? t.description.toUpperCase() : t.code
+                }));
+        }
+        return [
+            { code: '01', name: 'FACTURA' },
+            { code: '03', name: 'COMPROBANTE DE CRÉDITO FISCAL' },
+            { code: '04', name: 'NOTA DE REMISIÓN' },
+            { code: '05', name: 'NOTA DE CRÉDITO' },
+            { code: '07', name: 'COMPROBANTE DE RETENCIÓN' },
+            { code: '11', name: 'FACTURA DE EXPORTACIÓN' }
+        ];
+    }, [tipoDocs]);
 
     const handleViewSale = (id) => {
         setViewType('detalle');
@@ -280,19 +422,77 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
         ));
     };
 
-    const handleRegenerateDTE = (sale) => {
-        const today = new Date().toISOString().slice(0, 10);
-        const origDate = sale.fecha_emision?.slice(0, 10);
-        setUpdateDateTime(origDate !== today);
-        setRegenerateSaleId(sale.id);
-        setIsRegenerateModalOpen(true);
+    const handleRegenerateDTE = async (sale) => {
+        setRegenerateSale(sale);
+        const isAccepted = sale.dte_status === 'ACCEPTED' || Boolean(sale.sello_recepcion);
+
+        if (isAccepted) {
+            setUpdateDateTime(true);
+            setLoadingShifts(true);
+            setOpenShifts([]);
+            setTargetShiftId('');
+            setIsRegenerateModalOpen(true);
+            try {
+                const res = await axios.get('/api/shifts', {
+                    params: {
+                        status: 'open',
+                        branch_id: sale.branch_id,
+                        limit: 50
+                    }
+                });
+                const shifts = res.data?.data || [];
+                setOpenShifts(shifts);
+                if (shifts.length === 1) {
+                    setTargetShiftId(String(shifts[0].id));
+                } else if (shifts.length > 1) {
+                    const myShift = shifts.find(s => s.seller_id === currentUser?.seller_id) || shifts[0];
+                    setTargetShiftId(myShift ? String(myShift.id) : '');
+                } else {
+                    setTargetShiftId('');
+                }
+            } catch (err) {
+                console.error('Error al consultar turnos abiertos:', err);
+                setOpenShifts([]);
+                setTargetShiftId('');
+            } finally {
+                setLoadingShifts(false);
+            }
+        } else {
+            const today = new Date().toISOString().slice(0, 10);
+            const origDate = sale.fecha_emision?.slice(0, 10);
+            setUpdateDateTime(origDate !== today);
+            setOpenShifts([]);
+            setTargetShiftId('');
+            setIsRegenerateModalOpen(true);
+        }
     };
 
     const handleRegenerateConfirm = async () => {
+        if (!regenerateSale) return;
+        const isAccepted = regenerateSale.dte_status === 'ACCEPTED' || Boolean(regenerateSale.sello_recepcion);
+
+        if (isAccepted) {
+            if (openShifts.length === 0) {
+                toast.error('No hay ningún turno abierto en la sucursal. Debe abrir un turno antes de proceder.');
+                return;
+            }
+            if (!targetShiftId) {
+                toast.error('Debe seleccionar el turno de caja al cual se ingresará la nueva venta.');
+                return;
+            }
+        }
+
         setRegenerateLoading(true);
         try {
-            const res = await axios.post(`/api/sales/${regenerateSaleId}/regenerate-dte`, { updateDateTime });
-            toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
+            const res = await axios.post(`/api/sales/${regenerateSale.id}/regenerate-dte`, { 
+                updateDateTime,
+                target_shift_id: targetShiftId || null
+            });
+            if (res.data.isNewSale) {
+                toast.success(`Nueva venta #${res.data.newSaleId} creada y DTE emitido exitosamente`);
+            } else {
+                toast.success(`DTE regenerado exitosamente — Ambiente: ${res.data.ambiente === 'produccion' ? 'Producción' : 'Pruebas'}`);
+            }
             setIsRegenerateModalOpen(false);
             queryClient.invalidateQueries(['sales-history']);
         } catch (error) {
@@ -522,16 +722,180 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                 </div>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
-                <div className="relative max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por nro. control o cliente..."
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+                {/* Header de Filtros y Botones Rápidos de Fecha */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1.5 text-slate-700">
+                            <Filter size={15} className="text-indigo-600" />
+                            <span className="text-xs font-black uppercase tracking-wider">Filtros de Búsqueda</span>
+                        </div>
+                        {activeFiltersCount > 0 && (
+                            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-full border border-indigo-200">
+                                {activeFiltersCount} {activeFiltersCount === 1 ? 'filtro activo' : 'filtros activos'}
+                            </span>
+                        )}
+                        {isFetching && (
+                            <span className="text-[10px] text-slate-400 font-bold animate-pulse flex items-center gap-1">
+                                <RefreshCcw size={10} className="animate-spin" /> Actualizando...
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Rango Rápido:</span>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('today')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getTodayStr() && endDate === getTodayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Hoy
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('yesterday')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getYesterdayStr() && endDate === getYesterdayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Ayer
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('this_week')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getStartOfWeekStr() && endDate === getTodayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Esta Semana
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePresetDate('this_month')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                startDate === getStartOfMonthStr() && endDate === getTodayStr()
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            Este Mes
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTipoDocumento(prev => prev === 'COMPLEMENTARIA' ? '' : 'COMPLEMENTARIA');
+                                setPage(1);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                tipoDocumento === 'COMPLEMENTARIA'
+                                    ? 'bg-purple-600 text-white shadow-sm'
+                                    : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/80'
+                            }`}
+                            title="Filtrar solo DTEs emitidos como Complementarias de Cierre de Turno"
+                        >
+                            <span>⚡ Complementarias</span>
+                        </button>
+                        {activeFiltersCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleClearFilters}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 transition-all ml-1 cursor-pointer"
+                                title="Restablecer todos los filtros"
+                            >
+                                <RotateCcw size={12} />
+                                <span>Limpiar Filtros</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Grid de Controles de Filtro */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+                    {/* Búsqueda por texto */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Buscar</label>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <input 
+                                type="text" 
+                                placeholder="Cliente, control, cód..."
+                                className="w-full pl-8 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 placeholder:text-slate-400"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                            {search && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearch('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition-all cursor-pointer"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Fecha Desde */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Fecha Desde</label>
+                        <input 
+                            type="date" 
+                            value={startDate}
+                            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700"
+                        />
+                    </div>
+
+                    {/* Fecha Hasta */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Fecha Hasta</label>
+                        <input 
+                            type="date" 
+                            value={endDate}
+                            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700"
+                        />
+                    </div>
+
+                    {/* Tipo de Documento */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Tipo Documento</label>
+                        <select
+                            value={tipoDocumento}
+                            onChange={(e) => { setTipoDocumento(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 cursor-pointer truncate"
+                        >
+                            <option value="">Todos los tipos</option>
+                            <option value="COMPLEMENTARIA">⚡ COMPLEMENTARIA (CIERRE DE TURNO)</option>
+                            {documentTypes.map(t => (
+                                <option key={t.code} value={t.code}>{t.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Estado MH / DTE */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Estado MH / DTE</label>
+                        <select
+                            value={status}
+                            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+                            className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-700 cursor-pointer"
+                        >
+                            <option value="">Todos los estados</option>
+                            <option value="ACCEPTED">✅ Aceptado</option>
+                            <option value="REJECTED">❌ Rechazado</option>
+                            <option value="INVALIDADO">🚫 Anulado / Invalidado</option>
+                            <option value="PENDING">⏳ Pendiente</option>
+                        </select>
+                    </div>
                 </div>
 
                 <Table 
@@ -565,6 +929,14 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                  <div className="flex flex-col leading-[1.1]">
                                      <div className="flex items-center gap-1.5 mb-0.5">
                                          <span className="font-bold text-slate-900 text-[10px] truncate leading-none">{sale.tipo_documento_name}</span>
+                                         {sale.observaciones && String(sale.observaciones).toLowerCase().includes('complementaria') && (
+                                             <span 
+                                                 className="text-[7px] px-1 py-px bg-purple-50 text-purple-700 border border-purple-200/80 rounded font-black uppercase tracking-wider leading-none cursor-help"
+                                                 title={sale.observaciones}
+                                             >
+                                                 Complementaria
+                                             </span>
+                                         )}
                                          {sale.codigo_generacion && (
                                              sale.dte_ambiente === '01' ? (
                                                  <span className="text-[7px] px-1 py-px bg-emerald-50 text-emerald-600 rounded font-black uppercase tracking-wider leading-none">Prod</span>
@@ -684,7 +1056,7 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                                                         </button>
                                                     )}
 
-                                                    {sale.codigo_generacion && (
+                                                    {sale.codigo_generacion && canRegenerateDTE && (
                                                         <button onClick={() => { handleRegenerateDTE(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
                                                             <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
                                                             <span className="text-xs font-bold text-slate-600">Regenerar DTE</span>
@@ -736,8 +1108,10 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                     totalPages={salesData.totalPages}
                     totalItems={salesData.totalItems}
                     onPageChange={setPage}
-                    itemsOnPage={salesData.data.length}
+                    itemsOnPage={salesData.data?.length || 0}
                     isLoading={isLoading}
+                    limit={limit}
+                    onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
                 />
             </div>
 
@@ -872,39 +1246,140 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
             <Modal
                 isOpen={isRegenerateModalOpen}
                 onClose={() => setIsRegenerateModalOpen(false)}
-                title="Regenerar DTE"
+                title={regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) 
+                    ? "Regenerar DTE — Emisión de Nueva Venta" 
+                    : "Regenerar DTE"}
                 maxWidth="max-w-lg"
             >
-                <div className="space-y-6">
-                    <div className="flex items-center gap-3 p-4 bg-indigo-50 text-indigo-800 rounded-3xl border border-indigo-100 text-xs">
-                        <RefreshCcw size={20} className="shrink-0" />
-                        <div>
-                            <p className="font-black uppercase tracking-widest mb-1">Confirmar Regeneración</p>
-                            <p className="font-medium text-Spanish">Se creará un nuevo DTE con nuevos códigos de Hacienda (codigoGeneracion y numeroControl). El DTE anterior quedará intacto.</p>
+                <div className="space-y-5">
+                    {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) ? (
+                        <div className="flex items-start gap-3 p-4 bg-indigo-50/80 text-indigo-950 rounded-3xl border border-indigo-100 text-xs">
+                            <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shrink-0 mt-0.5 shadow-sm shadow-indigo-200">
+                                <RefreshCcw size={18} />
+                            </div>
+                            <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="font-black uppercase tracking-wider text-indigo-950 text-[11px]">
+                                        DTE Original Aceptado por Hacienda
+                                    </p>
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[9px] font-bold">Aceptado</span>
+                                </div>
+                                <p className="text-slate-600 text-[11px] leading-relaxed">
+                                    Esta venta ya cuenta con un DTE validado con N° Control <span className="font-mono font-bold text-indigo-700">{regenerateSale.numero_control || '---'}</span>.
+                                </p>
+                                <div className="pt-2 border-t border-indigo-100/70 text-[11px] text-slate-700 space-y-1">
+                                    <p className="font-bold text-indigo-900 uppercase text-[9.5px] tracking-wider">
+                                        Acciones que se ejecutarán en el sistema:
+                                    </p>
+                                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+                                        <li>Se creará un <b>nuevo registro de venta</b> duplicando los productos y valores de la operación.</li>
+                                        <li>Se <b>descontará nuevamente el inventario</b> y se generarán los movimientos de salida en Kardex.</li>
+                                        <li>Se emitirá un <b>nuevo DTE en tiempo real</b> ante Hacienda con fecha y hora actual.</li>
+                                        <li>La nueva venta se imputará al <b>turno de caja</b> seleccionado.</li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-
-                    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
-                        <div>
-                            <p className="text-xs font-bold text-slate-700">Actualizar fecha y hora</p>
-                            <p className="text-[10px] text-slate-400">
-                                {updateDateTime
-                                    ? 'Se usará la fecha y hora actual (hoy difiere del DTE original)'
-                                    : 'Se preservará la fecha y hora original del DTE'}
-                            </p>
+                    ) : (
+                        <div className="flex items-center gap-3 p-4 bg-amber-50 text-amber-800 rounded-3xl border border-amber-100 text-xs">
+                            <RefreshCcw size={20} className="shrink-0 text-amber-600" />
+                            <div>
+                                <p className="font-black uppercase tracking-widest mb-1 text-amber-900">Confirmar Regeneración</p>
+                                <p className="font-medium text-Spanish text-amber-800">
+                                    El DTE previo no fue aceptado por Hacienda. Se generará un nuevo número de control y código de generación sobre la misma venta, conservando el registro contable y de inventario existente.
+                                </p>
+                            </div>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={updateDateTime}
-                                onChange={(e) => setUpdateDateTime(e.target.checked)}
-                                className="sr-only peer"
-                            />
-                            <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
-                        </label>
-                    </div>
+                    )}
 
-                    <div className="flex items-center justify-end gap-3 pt-6">
+                    {/* Fecha y hora */}
+                    {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) ? (
+                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
+                            <div>
+                                <div className="flex items-center gap-1.5">
+                                    <p className="text-xs font-bold text-slate-800">Actualizar fecha y hora actual</p>
+                                    <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 rounded">Obligatorio MH</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500">
+                                    Se usará la fecha y hora actual del sistema en tiempo real para la nueva emisión legal.
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center opacity-80 cursor-not-allowed">
+                                <input
+                                    type="checkbox"
+                                    checked={true}
+                                    disabled={true}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-indigo-600 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-[18px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                            </label>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200">
+                            <div>
+                                <p className="text-xs font-bold text-slate-700">Actualizar fecha y hora</p>
+                                <p className="text-[10px] text-slate-400">
+                                    {updateDateTime
+                                        ? 'Se usará la fecha y hora actual (hoy difiere del DTE original)'
+                                        : 'Se preservará la fecha y hora original del DTE'}
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={updateDateTime}
+                                    onChange={(e) => setUpdateDateTime(e.target.checked)}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                            </label>
+                        </div>
+                    )}
+
+                    {/* Selector de Turno si ya está aceptado */}
+                    {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) && (
+                        <div className="space-y-2">
+                            <label className="block text-[11px] font-black uppercase tracking-widest text-slate-600">
+                                Turno de Caja para la Nueva Venta <span className="text-rose-500">*</span>
+                            </label>
+                            {loadingShifts ? (
+                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500">
+                                    <div className="w-4 h-4 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+                                    <span>Consultando turnos abiertos de la sucursal...</span>
+                                </div>
+                            ) : openShifts.length > 0 ? (
+                                <div className="space-y-1.5">
+                                    <select
+                                        value={targetShiftId}
+                                        onChange={(e) => setTargetShiftId(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all cursor-pointer"
+                                    >
+                                        <option value="">-- Seleccione el turno destino --</option>
+                                        {openShifts.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                Turno #{s.shift_number || s.id} — {s.pos_name || 'POS'} — {s.seller_name || 'Cajero'} ({s.status === 'open' ? 'Abierto' : s.status})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-slate-400 pl-1">
+                                        La nueva venta sumará a las ventas en efectivo/tarjeta del turno seleccionado.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                        <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                                        <span>No hay ningún turno abierto en esta sucursal</span>
+                                    </div>
+                                    <p className="text-[11px] text-rose-700 leading-relaxed">
+                                        Para poder registrar y emitir esta nueva venta en el sistema, <b>debe abrir un turno de caja</b> previamente en la sucursal <b>{regenerateSale.branch_name || 'actual'}</b>.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                         <button 
                             type="button"
                             onClick={() => setIsRegenerateModalOpen(false)}
@@ -916,15 +1391,25 @@ const [updateDateTime, setUpdateDateTime] = useState(false);
                         <button 
                             type="button"
                             onClick={handleRegenerateConfirm}
-                            className="px-8 py-2.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50"
-                            disabled={regenerateLoading}
+                            className="px-8 py-2.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                            disabled={
+                                regenerateLoading || 
+                                loadingShifts || 
+                                Boolean(
+                                    regenerateSale && 
+                                    (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion) && 
+                                    (!targetShiftId || openShifts.length === 0)
+                                )
+                            }
                         >
                             {regenerateLoading ? (
                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <RefreshCcw size={16} />
                             )}
-                            Confirmar
+                            {regenerateSale && (regenerateSale.dte_status === 'ACCEPTED' || regenerateSale.sello_recepcion)
+                                ? 'Crear Nueva Venta y Emitir DTE'
+                                : 'Confirmar Regeneración'}
                         </button>
                     </div>
                 </div>
