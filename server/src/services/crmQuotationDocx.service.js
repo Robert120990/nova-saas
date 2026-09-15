@@ -135,9 +135,9 @@ async function generateQuotationDocx(quotation) {
                         children: [new Paragraph({ children: [new TextRun({ text: item.presentation || 'Cubeta 30 LBS', size: 17, color: '334155' })], alignment: AlignmentType.CENTER })]
                     }),
                     new TableCell({
-                        width: { size: 8, type: WidthType.PERCENTAGE },
+                        width: { size: 10, type: WidthType.PERCENTAGE },
                         shading: { type: ShadingType.CLEAR, fill },
-                        children: [new Paragraph({ children: [new TextRun({ text: parseFloat(item.quantity || 1).toFixed(0), size: 17, bold: true })], alignment: AlignmentType.RIGHT })]
+                        children: [new Paragraph({ children: [new TextRun({ text: `${parseFloat(item.quantity || 1)} ${item.unit_measure || ''}`.trim(), size: 17, bold: true })], alignment: AlignmentType.RIGHT })]
                     }),
                     new TableCell({
                         width: { size: 10, type: WidthType.PERCENTAGE },
@@ -366,55 +366,19 @@ async function generateQuotationDocx(quotation) {
                                                 ],
                                                 spacing: { after: 60 }
                                             }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: '• POLÍTICA DE ENVASES RETORNABLES: ', bold: true, size: 16, color: 'B91C1C' }),
-                                                    new TextRun({
-                                                        text: 'Las cubetas plásticas (30 LBS / 32 LBS) son propiedad de ANDELSA y son ',
-                                                        size: 16,
-                                                        color: '1E293B'
-                                                    }),
-                                                    new TextRun({ text: 'ESTRICTAMENTE RETORNABLES', bold: true, size: 16, color: 'B91C1C' }),
-                                                    new TextRun({
-                                                        text: ' (deben devolverse limpias y en perfecto estado en cada entrega subsiguiente). Los demás envases (galones, medios galones, litros y bolsas liner) son descartables de un solo uso y no aplican para retorno.',
-                                                        size: 16,
-                                                        color: '1E293B'
-                                                    })
-                                                ],
-                                                spacing: { after: 50 }
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: '• CALIDAD CERTIFICADA: ', bold: true, size: 16, color: '0F172A' }),
-                                                    new TextRun({
-                                                        text: 'Garantía de inocuidad física, química y microbiológica certificada con análisis de lote en cada despacho (certificación HACCP).',
-                                                        size: 16,
-                                                        color: '334155'
-                                                    })
-                                                ],
-                                                spacing: { after: 50 }
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: '• VIGENCIA DE LA OFERTA: ', bold: true, size: 16, color: '0F172A' }),
-                                                    new TextRun({
-                                                        text: `Precios y condiciones garantizadas por ${quotation.validity_days || 30} días a partir de su emisión (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`,
-                                                        size: 16,
-                                                        color: '334155'
-                                                    })
-                                                ],
-                                                spacing: { after: 50 }
-                                            }),
-                                            new Paragraph({
-                                                children: [
-                                                    new TextRun({ text: '• CONDICIONES DE PAGO Y ENTREGA: ', bold: true, size: 16, color: '0F172A' }),
-                                                    new TextRun({
-                                                        text: `${quotation.payment_terms || 'Contado'}. Modalidad de entrega: ${quotation.delivery_time || 'Según programación acordada'}.`,
-                                                        size: 16,
-                                                        color: '334155'
-                                                    })
+                                            ...((quotation.our_commitments && quotation.our_commitments.trim())
+                                                ? quotation.our_commitments.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+                                                : [
+                                                    `• VIGENCIA DE LA OFERTA: Precios y condiciones garantizadas por ${quotation.validity_days || 30} días (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`,
+                                                    `• CONDICIONES DE PAGO Y ENTREGA: ${quotation.payment_terms || 'Contado'}. Entrega: ${quotation.delivery_time || 'Según programación'}.`,
+                                                    '• CALIDAD CERTIFICADA: Garantía de inocuidad y control de calidad en cada despacho.'
                                                 ]
-                                            })
+                                            ).map(line => new Paragraph({
+                                                children: [
+                                                    new TextRun({ text: line, size: 16, color: '1E293B' })
+                                                ],
+                                                spacing: { after: 40 }
+                                            }))
                                         ]
                                     })
                                 ]

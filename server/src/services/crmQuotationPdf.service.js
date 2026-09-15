@@ -120,12 +120,12 @@ function generateQuotationPdf(quotation, items = []) {
             curY += 15;
 
             // 5. TABLA DE PRODUCTOS
-            const colProductW = 160;
-            const colPresW = 110;
-            const colQtyW = 45;
+            const colProductW = 150;
+            const colPresW = 100;
+            const colQtyW = 55;
             const colPriceW = 85;
-            const colTotalW = 65;
-            const colNotesW = 67;
+            const colTotalW = 70;
+            const colNotesW = 72;
 
             // Header de la tabla
             const tableHeaderHeight = 18;
@@ -175,9 +175,10 @@ function generateQuotationPdf(quotation, items = []) {
                 doc.text(item.presentation || 'Estándar', rx + 4, curY + 6, { width: colPresW - 6, ellipsis: true });
                 rx += colPresW;
 
-                doc.fontSize(8).font('Helvetica').fillColor('#0f172a');
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
                 const qtyVal = parseFloat(item.quantity) || 1;
-                doc.text(qtyVal.toString(), rx + 2, curY + 6, { width: colQtyW - 4, align: 'center' });
+                const unitStr = item.unit_measure ? ` ${item.unit_measure}` : '';
+                doc.text(`${qtyVal}${unitStr}`, rx + 2, curY + 6, { width: colQtyW - 4, align: 'center' });
                 rx += colQtyW;
 
                 const priceVal = parseFloat(item.unit_price) || 0;
@@ -218,50 +219,38 @@ function generateQuotationPdf(quotation, items = []) {
             doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a');
             doc.text('TOTAL COTIZADO:', totalsX + 5, curY + 4, { width: 95, align: 'left' });
             doc.text(formatMoney(quotation.total), totalsX + 90, curY + 4, { width: 85, align: 'right' });
-            curY += 24;
+            curY += 22;
 
-            // 6. COMPROMISOS Y CONDICIONES (Recuadro Oficial)
-            const boxPadding = 8;
+            // 6. COMPROMISOS Y CONDICIONES (Recuadro Oficial Dinámico)
+            const boxPadding = 7;
             const commitmentsY = curY;
+            const defaultCommitmentLines = [
+                `• Vigencia de la Oferta: Válida por ${quotation.validity_days || 30} días a partir de su emisión (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`,
+                `• Condiciones de Pago y Entrega: ${quotation.payment_terms || 'Contado'}. Entrega: ${quotation.delivery_time || 'Según programación'}.`,
+                '• Calidad Certificada: Se entrega Certificado de Calidad e inocuidad física, química y microbiológica en cada entrega.'
+            ];
 
-            doc.rect(contentLeft, commitmentsY, contentWidth, 90).fill('#f8fafc');
-            doc.rect(contentLeft, commitmentsY, contentWidth, 90).strokeColor('#cbd5e1').lineWidth(0.75).stroke();
+            const linesToRender = (quotation.our_commitments && quotation.our_commitments.trim())
+                ? quotation.our_commitments.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+                : defaultCommitmentLines;
+
+            // Medir altura requerida de texto
+            const approxBoxHeight = Math.max(78, (linesToRender.length * 15) + (boxPadding * 2) + 12);
+
+            doc.rect(contentLeft, commitmentsY, contentWidth, approxBoxHeight).fill('#f8fafc');
+            doc.rect(contentLeft, commitmentsY, contentWidth, approxBoxHeight).strokeColor('#cbd5e1').lineWidth(0.75).stroke();
 
             doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('NUESTROS COMPROMISOS Y CONDICIONES COMERCIALES:', contentLeft + boxPadding, commitmentsY + boxPadding);
 
-            let commY = commitmentsY + boxPadding + 14;
-            doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+            let commY = commitmentsY + boxPadding + 13;
+            linesToRender.forEach((line) => {
+                doc.fontSize(7).font('Helvetica').fillColor('#334155');
+                doc.text(line, contentLeft + boxPadding, commY, { width: contentWidth - (boxPadding * 2), lineGap: 1.2 });
+                commY = doc.y + 2.5;
+            });
 
-            // Regla de retorno de envases (Requerimiento explícito)
-            doc.font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('• Política de Envases: ', contentLeft + boxPadding, commY, { continued: true });
-            doc.font('Helvetica').fillColor('#334155');
-            doc.text('Las cubetas plásticas (30 LBS / 32 LBS) son propiedad de ANDELSA y son ', { continued: true });
-            doc.font('Helvetica-Bold').fillColor('#b91c1c');
-            doc.text('RETORNABLES', { continued: true });
-            doc.font('Helvetica').fillColor('#334155');
-            doc.text(' (deben devolverse limpias y en buen estado en cada despacho). Los demás envases (galones, medios galones, litros, bolsas) son descartables de un solo uso y no aplican para retorno.');
-            commY = doc.y + 3;
-
-            doc.font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('• Calidad Certificada: ', contentLeft + boxPadding, commY, { continued: true });
-            doc.font('Helvetica').fillColor('#334155');
-            doc.text('Se emite Certificado de Calidad e inocuidad física, química y microbiológica en cada entrega.');
-            commY = doc.y + 3;
-
-            doc.font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('• Vigencia de la Oferta: ', contentLeft + boxPadding, commY, { continued: true });
-            doc.font('Helvetica').fillColor('#334155');
-            doc.text(`Oferta válida por ${quotation.validity_days || 30} días a partir de su emisión (Vencimiento: ${formatDateShort(quotation.expiration_date)}).`);
-            commY = doc.y + 3;
-
-            doc.font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('• Condiciones de Pago y Entrega: ', contentLeft + boxPadding, commY, { continued: true });
-            doc.font('Helvetica').fillColor('#334155');
-            doc.text(`${quotation.payment_terms || 'Contado'}. Entrega: ${quotation.delivery_time || 'Según programación'}.`);
-
-            curY = commitmentsY + 98;
+            curY = commitmentsY + approxBoxHeight + 8;
 
             // 7. DESPEDIDA Y SECCIÓN DE FIRMA ELECTRÓNICA
             doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');

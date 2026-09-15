@@ -13,30 +13,272 @@ import {
     Calendar,
     Phone,
     CheckCircle2,
-    FileDown
+    FileDown,
+    Search,
+    Check,
+    Scale
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import SignaturePadModal from './SignaturePadModal';
 import QuickCustomerModal from './QuickCustomerModal';
 
+// Lista de productos predefinidos y frecuentes para carga rápida
 const PRESET_PRODUCTS = [
-    { name: 'HUEVO ENTERO PASTEURIZADO', defaultCostPerLb: 1.05, defaultPricePerLb: 1.30 },
-    { name: 'HUEVO ENTERO PLUS', defaultCostPerLb: 1.08, defaultPricePerLb: 1.35 },
-    { name: 'CLARA DE HUEVO PASTEURIZADA', defaultCostPerLb: 1.25, defaultPricePerLb: 1.60 },
-    { name: 'CLARA FORMULA PANADERIA', defaultCostPerLb: 1.30, defaultPricePerLb: 1.67 },
-    { name: 'YEMA AZUCARADA', defaultCostPerLb: 1.40, defaultPricePerLb: 1.85 },
-    { name: 'YEMA SALADA', defaultCostPerLb: 1.35, defaultPricePerLb: 1.80 }
+    // 🥚 HUEVO EN CÁSCARA (BLANCO) POR TALLA
+    { 
+        group: '🥚 Huevo Blanco en Cáscara (por Talla)',
+        name: 'HUEVO BLANCO EN CÁSCARA - EXTRA GRANDE', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 36.00, 
+        defaultPrice: 42.00 
+    },
+    { 
+        group: '🥚 Huevo Blanco en Cáscara (por Talla)',
+        name: 'HUEVO BLANCO EN CÁSCARA - GRANDE', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 33.00, 
+        defaultPrice: 38.00 
+    },
+    { 
+        group: '🥚 Huevo Blanco en Cáscara (por Talla)',
+        name: 'HUEVO BLANCO EN CÁSCARA - MEDIANO', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 29.00, 
+        defaultPrice: 34.00 
+    },
+    { 
+        group: '🥚 Huevo Blanco en Cáscara (por Talla)',
+        name: 'HUEVO BLANCO EN CÁSCARA - PEQUEÑO', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 25.00, 
+        defaultPrice: 30.00 
+    },
+    // 🥚 HUEVO EN CÁSCARA (MARRÓN / COLOR) POR TALLA
+    { 
+        group: '🥚 Huevo Marrón en Cáscara (por Talla)',
+        name: 'HUEVO MARRÓN EN CÁSCARA - EXTRA GRANDE', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 37.00, 
+        defaultPrice: 43.00 
+    },
+    { 
+        group: '🥚 Huevo Marrón en Cáscara (por Talla)',
+        name: 'HUEVO MARRÓN EN CÁSCARA - GRANDE', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 34.00, 
+        defaultPrice: 39.00 
+    },
+    { 
+        group: '🥚 Huevo Marrón en Cáscara (por Talla)',
+        name: 'HUEVO MARRÓN EN CÁSCARA - MEDIANO', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 30.00, 
+        defaultPrice: 35.00 
+    },
+    { 
+        group: '🥚 Huevo Marrón en Cáscara (por Talla)',
+        name: 'HUEVO MARRÓN EN CÁSCARA - PEQUEÑO', 
+        unit_measure: 'CAJA',
+        presentation: 'CAJA (360 unidades / 12 cartones)',
+        defaultCost: 26.00, 
+        defaultPrice: 31.00 
+    },
+    // 📦 CARTONES DE HUEVO (30 UNIDADES)
+    { 
+        group: '📦 Cartones de Huevo (30 Unidades)',
+        name: 'HUEVO BLANCO CARTÓN (30 UDS) - GRANDE', 
+        unit_measure: 'CARTON',
+        presentation: 'CARTON (30 unidades)',
+        defaultCost: 2.80, 
+        defaultPrice: 3.30 
+    },
+    { 
+        group: '📦 Cartones de Huevo (30 Unidades)',
+        name: 'HUEVO MARRÓN CARTÓN (30 UDS) - GRANDE', 
+        unit_measure: 'CARTON',
+        presentation: 'CARTON (30 unidades)',
+        defaultCost: 2.90, 
+        defaultPrice: 3.40 
+    },
+    // 🥛 OVOPRODUCTOS PASTEURIZADOS (LÍQUIDOS - COTIZADOS POR LB O KG)
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por LB)',
+        name: 'HUEVO ENTERO PASTEURIZADO', 
+        unit_measure: 'LB',
+        presentation: 'CUBETA (30 libras)',
+        defaultCost: 1.05, 
+        defaultPrice: 1.30 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por KG)',
+        name: 'HUEVO ENTERO PASTEURIZADO (KG)', 
+        unit_measure: 'KG',
+        presentation: 'A GRANEL (Kilogramos)',
+        defaultCost: 2.31, 
+        defaultPrice: 2.86 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por LB)',
+        name: 'HUEVO ENTERO PLUS', 
+        unit_measure: 'LB',
+        presentation: 'CUBETA (30 libras)',
+        defaultCost: 1.08, 
+        defaultPrice: 1.35 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por LB)',
+        name: 'CLARA DE HUEVO PASTEURIZADA', 
+        unit_measure: 'LB',
+        presentation: 'CUBETA (32 libras)',
+        defaultCost: 1.25, 
+        defaultPrice: 1.60 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por KG)',
+        name: 'CLARA DE HUEVO PASTEURIZADA (KG)', 
+        unit_measure: 'KG',
+        presentation: 'A GRANEL (Kilogramos)',
+        defaultCost: 2.75, 
+        defaultPrice: 3.52 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por LB)',
+        name: 'CLARA FORMULA PANADERIA', 
+        unit_measure: 'LB',
+        presentation: 'CUBETA (32 libras)',
+        defaultCost: 1.30, 
+        defaultPrice: 1.67 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por LB)',
+        name: 'YEMA AZUCARADA', 
+        unit_measure: 'LB',
+        presentation: 'CUBETA (30 libras)',
+        defaultCost: 1.40, 
+        defaultPrice: 1.85 
+    },
+    { 
+        group: '🥛 Ovoproductos Pasteurizados (por LB)',
+        name: 'YEMA SALADA', 
+        unit_measure: 'LB',
+        presentation: 'CUBETA (30 libras)',
+        defaultCost: 1.35, 
+        defaultPrice: 1.80 
+    }
 ];
 
+// Opciones de presentación física y empaque
 const PRESENTATION_OPTIONS = [
-    { label: 'CUBETA (30 libras)', weightLbs: 30, isReturnable: true },
-    { label: 'CUBETA (32 libras)', weightLbs: 32, isReturnable: true },
-    { label: 'GALON (8 libras)', weightLbs: 8, isReturnable: false },
-    { label: 'MEDIO GALON (4 libras)', weightLbs: 4, isReturnable: false },
-    { label: 'LITRO (2 libras)', weightLbs: 2, isReturnable: false },
-    { label: 'A GRANEL (libras)', weightLbs: 1, isReturnable: false }
+    // Cáscara
+    { label: 'CAJA (360 unidades / 12 cartones)', isReturnable: false },
+    { label: 'CARTON (30 unidades)', isReturnable: false },
+    { label: 'MEDIO CARTON (15 unidades)', isReturnable: false },
+    { label: 'EMPAQUE / BLISTER (12 unidades)', isReturnable: false },
+    { label: 'EMPAQUE / BLISTER (6 unidades)', isReturnable: false },
+    { label: 'UNIDAD INDIVIDUAL', isReturnable: false },
+    // Ovoproductos Líquidos
+    { label: 'CUBETA (30 libras)', isReturnable: true },
+    { label: 'CUBETA (32 libras)', isReturnable: true },
+    { label: 'GALON (8 libras)', isReturnable: false },
+    { label: 'MEDIO GALON (4 libras)', isReturnable: false },
+    { label: 'LITRO (2 libras)', isReturnable: false },
+    { label: 'A GRANEL (Libras)', isReturnable: false },
+    { label: 'A GRANEL (Kilogramos)', isReturnable: false },
+    { label: 'PERSONALIZADA / OTRA', isReturnable: false }
 ];
+
+// Unidades de medida disponibles para la cotización
+const UNIT_MEASURE_OPTIONS = [
+    { value: 'CAJA', label: 'CAJA (360 uds)' },
+    { value: 'CARTON', label: 'CARTÓN (30 uds)' },
+    { value: 'UNIDAD', label: 'UNIDAD' },
+    { value: 'DOCENA', label: 'DOCENA (12 uds)' },
+    { value: 'LB', label: 'LB (Libras)' },
+    { value: 'KG', label: 'KG (Kilogramos)' },
+    { value: 'CUBETA', label: 'CUBETA' },
+    { value: 'GALON', label: 'GALÓN' },
+    { value: 'LITRO', label: 'LITRO' }
+];
+
+// Plantillas oficiales de compromisos y garantías comerciales
+const COMMITMENT_TEMPLATES = {
+    shell: 
+        '1. ESPECIFICACIÓN Y CALIDAD: Huevo fresco en cáscara clasificado comercialmente por talla y color. Selección de primera calidad e inocuidad garantizada.\n' +
+        '2. EMPAQUE Y MANEJO: Despachado en cajas estándar de 360 unidades (12 cartones de 30 unidades) o cartones protectores. Los empaques son descartables y no aplican para retorno.\n' +
+        '3. VIGENCIA: Oferta válida por {validity_days} días a partir de su emisión según disponibilidad de postura.\n' +
+        '4. CONDICIONES: Precios más IVA. Pago: {payment_terms}. Entrega: {delivery_time}.',
+    liquid: 
+        '1. POLÍTICA DE ENVASES: Las cubetas plásticas (30 LBS / 32 LBS) son propiedad de ANDELSA y son RETORNABLES (deben devolverse limpias y completas en cada entrega). Los demás envases (galones, medios galones, litros, bolsas) son descartables de un solo uso y no aplican para retorno.\n' +
+        '2. CALIDAD CERTIFICADA: Se entrega Certificado de Calidad e Inocuidad con cada despacho bajo estándar HACCP.\n' +
+        '3. VIGENCIA: Oferta válida por {validity_days} días a partir de su emisión.\n' +
+        '4. CONDICIONES: Precios más IVA. Pago: {payment_terms}. Entrega: {delivery_time}.',
+    mixed:
+        '1. POLÍTICA DE ENVASES Y EMPAQUE: Las cubetas plásticas de ovoproductos son RETORNABLES y deben devolverse en cada despacho. El huevo en cáscara se entrega en cajas o cartones comerciales garantizados.\n' +
+        '2. CALIDAD E INOCUIDAD: Productos procesados y clasificados bajo altos estándares de inocuidad y certificación HACCP con trazabilidad de lote.\n' +
+        '3. VIGENCIA: Oferta válida por {validity_days} días a partir de su emisión.\n' +
+        '4. CONDICIONES: Precios más IVA. Pago: {payment_terms}. Entrega: {delivery_time}.'
+};
+
+// Resolver precio unitario real desde catálogo
+function resolveCatalogProductPrice(prod) {
+    const direct = parseFloat(prod.precio_unitario);
+    if (!isNaN(direct) && direct > 0) return direct;
+    if (prod.branchPrices && typeof prod.branchPrices === 'object') {
+        const prices = Object.values(prod.branchPrices)
+            .map(v => parseFloat(v))
+            .filter(v => !isNaN(v) && v > 0);
+        if (prices.length > 0) return prices[0];
+    }
+    return 0;
+}
+
+// Resolver unidad de medida por defecto desde catálogo
+function resolveCatalogUnitMeasure(prod) {
+    const um = String(prod.unidad_medida || '').trim();
+    const nameLower = (prod.nombre || '').toLowerCase();
+    
+    if (nameLower.includes('caja')) return 'CAJA';
+    if (nameLower.includes('carton') || nameLower.includes('cartón')) return 'CARTON';
+    if (nameLower.includes('cubeta')) return 'CUBETA';
+    if (nameLower.includes('galon') || nameLower.includes('galón')) return 'GALON';
+    if (nameLower.includes('litro') || nameLower.includes('ltr')) return 'LITRO';
+    if (nameLower.includes(' kg') || nameLower.includes('kilo')) return 'KG';
+    if (nameLower.includes(' lb') || nameLower.includes('libra')) return 'LB';
+
+    if (um === '34') return 'LB';
+    if (um === '22') return 'KG';
+    if (um === '59') return 'UNIDAD';
+    if (um === '40') return 'GALON';
+    if (um === '41') return 'LITRO';
+    return 'CAJA';
+}
+
+// Resolver presentación adecuada sugerida
+function resolveCatalogPresentation(prod, unitMeasure) {
+    const nameLower = (prod.nombre || '').toLowerCase();
+    if (nameLower.includes('caja')) return 'CAJA (360 unidades / 12 cartones)';
+    if (nameLower.includes('carton') || nameLower.includes('cartón')) return 'CARTON (30 unidades)';
+    if (nameLower.includes('32') && nameLower.includes('cubeta')) return 'CUBETA (32 libras)';
+    if (nameLower.includes('30') && nameLower.includes('cubeta')) return 'CUBETA (30 libras)';
+    if (nameLower.includes('cubeta')) return 'CUBETA (30 libras)';
+    if (nameLower.includes('8') && (nameLower.includes('galon') || nameLower.includes('galón'))) return 'GALON (8 libras)';
+    if (nameLower.includes('4') && (nameLower.includes('galon') || nameLower.includes('galón'))) return 'MEDIO GALON (4 libras)';
+    if (nameLower.includes('litro') || nameLower.includes('2 lb')) return 'LITRO (2 libras)';
+    if (unitMeasure === 'CAJA') return 'CAJA (360 unidades / 12 cartones)';
+    if (unitMeasure === 'CARTON') return 'CARTON (30 unidades)';
+    if (unitMeasure === 'KG') return 'A GRANEL (Kilogramos)';
+    if (unitMeasure === 'LB') return 'A GRANEL (Libras)';
+    if (unitMeasure === 'UNIDAD') return 'UNIDAD INDIVIDUAL';
+    return 'CAJA (360 unidades / 12 cartones)';
+}
 
 export default function QuotationModal({ isOpen, onClose, onSaved, quotationId = null }) {
     const [_loading, setLoading] = useState(false);
@@ -50,8 +292,11 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
     const [customers, setCustomers] = useState([]);
     const [customerSearch, setCustomerSearch] = useState('');
 
-    // Listado de productos del catálogo
+    // Listado de productos del catálogo del sistema
     const [catalogProducts, setCatalogProducts] = useState([]);
+
+    // Índice de fila que tiene el menú de autocompletado de catálogo abierto
+    const [activeCatalogDropdownIdx, setActiveCatalogDropdownIdx] = useState(null);
 
     // Firma del usuario logueado
     const [savedUserSig, setSavedUserSig] = useState(null);
@@ -93,8 +338,8 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
             setCustomers(res.data?.data || res.data || []);
         }).catch(err => console.error('Error cargando clientes:', err));
 
-        // Cargar productos catálogo
-        axios.get('/api/products?limit=100').then(res => {
+        // Cargar catálogo de productos amplio (hasta 500 registros)
+        axios.get('/api/products?limit=500').then(res => {
             setCatalogProducts(res.data?.data || res.data || []);
         }).catch(err => console.error('Error cargando catálogo:', err));
 
@@ -132,19 +377,19 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                 toast.error('No se pudo cargar la cotización.');
             }).finally(() => setLoading(false));
         } else {
-            // Nueva cotización con 1 ítem inicial predeterminado
+            // Nueva cotización con 1 ítem inicial predeterminado de Huevo en Cáscara
             const initialItem = {
                 product_id: null,
                 product_code: '',
-                product_name: PRESET_PRODUCTS[0].name,
-                presentation: PRESENTATION_OPTIONS[0].label,
+                product_name: PRESET_PRODUCTS[1].name,
+                presentation: PRESET_PRODUCTS[1].presentation,
                 quantity: 1,
-                unit_measure: 'LB',
-                current_cost: PRESET_PRODUCTS[0].defaultCostPerLb,
-                unit_price: PRESET_PRODUCTS[0].defaultPricePerLb,
-                suggested_price: 1.50,
+                unit_measure: PRESET_PRODUCTS[1].unit_measure,
+                current_cost: PRESET_PRODUCTS[1].defaultCost,
+                unit_price: PRESET_PRODUCTS[1].defaultPrice,
+                suggested_price: PRESET_PRODUCTS[1].defaultPrice * 1.1,
                 discount_amount: 0,
-                notes: 'Certificado de calidad incluido'
+                notes: 'Selección y calidad garantizada'
             };
 
             const today = new Date();
@@ -165,7 +410,10 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                 expiration_date: exp.toISOString().split('T')[0],
                 payment_terms: 'Contado',
                 delivery_time: 'Entrega inmediata / según programación',
-                our_commitments: '1. POLÍTICA DE ENVASES: Las cubetas plásticas (30 LBS / 32 LBS) son propiedad de ANDELSA y son RETORNABLES (deben devolverse limpias y completas en cada entrega). Los demás envases (galones, medios galones, litros, bolsas) son descartables de un solo uso y no aplican para retorno.\n2. CALIDAD CERTIFICADA: Se entrega Certificado de Calidad e Inocuidad con cada despacho bajo estándar HACCP.\n3. VIGENCIA: Oferta válida por 30 días a partir de su emisión.\n4. CONDICIONES: Precios más IVA. Pago: Contado. Entrega: Según programación semanal.',
+                our_commitments: COMMITMENT_TEMPLATES.shell
+                    .replace('{validity_days}', '30')
+                    .replace('{payment_terms}', 'Contado')
+                    .replace('{delivery_time}', 'Según programación semanal'),
                 notes: '',
                 delicate_reason: '',
                 signature_data: null,
@@ -189,18 +437,34 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
 
     if (!isOpen) return null;
 
+    // Aplicar plantilla de compromisos
+    const applyCommitmentTemplate = (templateKey) => {
+        const tpl = COMMITMENT_TEMPLATES[templateKey];
+        if (!tpl) return;
+        const days = formData.validity_days || 30;
+        const terms = formData.payment_terms || 'Contado';
+        const delivery = formData.delivery_time || 'Según programación semanal';
+        const text = tpl
+            .replace('{validity_days}', String(days))
+            .replace('{payment_terms}', terms)
+            .replace('{delivery_time}', delivery);
+        setFormData(prev => ({ ...prev, our_commitments: text }));
+        toast.success('Plantilla de compromisos aplicada.');
+    };
+
     // Manejador para agregar ítem
     const addItem = () => {
+        const preset = PRESET_PRODUCTS[1]; // Huevo Blanco Grande por defecto
         const newItem = {
             product_id: null,
             product_code: '',
-            product_name: PRESET_PRODUCTS[1].name,
-            presentation: PRESENTATION_OPTIONS[0].label,
+            product_name: preset.name,
+            presentation: preset.presentation,
             quantity: 1,
-            unit_measure: 'LB',
-            current_cost: PRESET_PRODUCTS[1].defaultCostPerLb,
-            unit_price: PRESET_PRODUCTS[1].defaultPricePerLb,
-            suggested_price: 1.60,
+            unit_measure: preset.unit_measure,
+            current_cost: preset.defaultCost,
+            unit_price: preset.defaultPrice,
+            suggested_price: preset.defaultPrice * 1.1,
             discount_amount: 0,
             notes: ''
         };
@@ -212,29 +476,72 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
         const updated = [...formData.items];
         updated[index] = { ...updated[index], [field]: value };
 
-        // Si se selecciona un producto predefinido
-        if (field === 'preset_product') {
-            const found = PRESET_PRODUCTS.find(p => p.name === value);
-            if (found) {
-                updated[index].product_name = found.name;
-                updated[index].current_cost = found.defaultCostPerLb;
-                updated[index].unit_price = found.defaultPricePerLb;
-            }
-        }
-
-        // Si se selecciona un producto del catálogo
-        if (field === 'catalog_product') {
-            const prod = catalogProducts.find(p => String(p.id) === String(value));
-            if (prod) {
-                updated[index].product_id = prod.id;
-                updated[index].product_code = prod.codigo || '';
-                updated[index].product_name = prod.nombre;
-                updated[index].current_cost = parseFloat(prod.costo) || 0;
-                updated[index].unit_price = parseFloat(prod.precio_unitario) || 0;
+        // Si el usuario edita el nombre de producto, abrir autocompletado si hay texto
+        if (field === 'product_name') {
+            if (value && value.trim().length > 0) {
+                setActiveCatalogDropdownIdx(index);
+            } else {
+                setActiveCatalogDropdownIdx(null);
             }
         }
 
         setFormData(prev => ({ ...prev, items: updated }));
+    };
+
+    // Seleccionar producto desde sugerencias predefinidas
+    const handleSelectPreset = (index, presetName) => {
+        const found = PRESET_PRODUCTS.find(p => p.name === presetName);
+        if (!found) return;
+
+        const updated = [...formData.items];
+        updated[index] = {
+            ...updated[index],
+            product_id: null,
+            product_code: '',
+            product_name: found.name,
+            unit_measure: found.unit_measure,
+            presentation: found.presentation,
+            current_cost: found.defaultCost,
+            unit_price: found.defaultPrice
+        };
+        setFormData(prev => ({ ...prev, items: updated }));
+        setActiveCatalogDropdownIdx(null);
+        toast.info(`Cargado: ${found.name}`);
+    };
+
+    // Seleccionar producto real desde el catálogo de la empresa
+    const handleSelectCatalogProduct = (index, prod) => {
+        const price = resolveCatalogProductPrice(prod);
+        const cost = parseFloat(prod.costo) || 0;
+        const unit = resolveCatalogUnitMeasure(prod);
+        const presentation = resolveCatalogPresentation(prod, unit);
+
+        const updated = [...formData.items];
+        updated[index] = {
+            ...updated[index],
+            product_id: prod.id,
+            product_code: prod.codigo || '',
+            product_name: prod.nombre,
+            unit_measure: unit,
+            presentation: presentation,
+            current_cost: cost,
+            unit_price: price > 0 ? price : (cost > 0 ? Number((cost * 1.25).toFixed(2)) : 0)
+        };
+        setFormData(prev => ({ ...prev, items: updated }));
+        setActiveCatalogDropdownIdx(null);
+        toast.success(`Producto vinculado: ${prod.nombre} (${prod.codigo || 'Sin código'})`);
+    };
+
+    // Desvincular producto del catálogo (volver a modo manual/libre)
+    const handleUnlinkCatalogProduct = (index) => {
+        const updated = [...formData.items];
+        updated[index] = {
+            ...updated[index],
+            product_id: null,
+            product_code: ''
+        };
+        setFormData(prev => ({ ...prev, items: updated }));
+        toast.info('Producto desvinculado del catálogo (modo manual)');
     };
 
     // Eliminar ítem
@@ -605,40 +912,43 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                             </div>
 
                             {/* Tabla Detallada de Ítems */}
+                            {/* Tabla Detallada de Ítems */}
                             <div>
-                                <div className="flex items-center justify-between mb-2.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
                                     <div>
-                                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                                            Productos y Precios Cotizados
+                                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Scale className="w-4 h-4 text-indigo-600" />
+                                            Productos, Presentaciones y Precios Cotizados
                                         </h3>
                                         <p className="text-xs text-slate-500">
-                                            Verifica el costo actual y el margen obtenido en cada línea
+                                            Busca en el catálogo del sistema, elige predefinidos por talla o ingresa productos a la medida
                                         </p>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={addItem}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors self-start sm:self-auto shadow-sm"
                                     >
                                         <Plus className="w-4 h-4" />
                                         Agregar Producto
                                     </button>
                                 </div>
 
-                                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                                    <div className="overflow-x-auto">
+                                <div className="border border-slate-200 rounded-xl shadow-sm bg-white">
+                                    <div className="overflow-x-auto overflow-y-visible">
                                         <table className="w-full text-left border-collapse text-xs">
                                             <thead>
                                                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                                                    <th className="py-2.5 px-3">Producto</th>
-                                                    <th className="py-2.5 px-3">Presentación</th>
+                                                    <th className="py-2.5 px-3 min-w-[240px]">Producto / Búsqueda Catálogo</th>
+                                                    <th className="py-2.5 px-3 min-w-[170px]">Presentación</th>
+                                                    <th className="py-2.5 px-3 w-28 text-center">Unidad</th>
                                                     <th className="py-2.5 px-3 text-center w-20">Cant.</th>
                                                     <th className="py-2.5 px-3 text-right w-24">Costo ($)</th>
                                                     <th className="py-2.5 px-3 text-right w-28">Precio ($)</th>
-                                                    <th className="py-2.5 px-3 text-center w-28">Margen (%)</th>
-                                                    <th className="py-2.5 px-3 text-right w-28">Subtotal ($)</th>
-                                                    <th className="py-2.5 px-3 w-40">Detalle / Notas</th>
-                                                    <th className="py-2.5 px-3 text-center w-12"></th>
+                                                    <th className="py-2.5 px-3 text-center w-24">Margen (%)</th>
+                                                    <th className="py-2.5 px-3 text-right w-24">Subtotal ($)</th>
+                                                    <th className="py-2.5 px-3 min-w-[130px]">Detalle / Notas</th>
+                                                    <th className="py-2.5 px-3 text-center w-10"></th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
@@ -650,6 +960,23 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                     const qty = parseFloat(item.quantity) || 1;
                                                     const sub = (qty * price) - (parseFloat(item.discount_amount) || 0);
 
+                                                    // Filtro de catálogo en tiempo real para esta fila
+                                                    const query = (item.product_name || '').trim().toLowerCase();
+                                                    const matchingCatalog = query.length >= 1
+                                                        ? catalogProducts.filter(p => 
+                                                            (p.nombre && p.nombre.toLowerCase().includes(query)) ||
+                                                            (p.codigo && p.codigo.toLowerCase().includes(query))
+                                                        ).slice(0, 8)
+                                                        : [];
+
+                                                    // Agrupar predefinidos para el selector rápido
+                                                    const presetGroups = PRESET_PRODUCTS.reduce((acc, p) => {
+                                                        const g = p.group || 'Otros';
+                                                        if (!acc[g]) acc[g] = [];
+                                                        acc[g].push(p);
+                                                        return acc;
+                                                    }, {});
+
                                                     return (
                                                         <tr
                                                             key={idx}
@@ -657,87 +984,203 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                                 isLineDelicate ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50/70'
                                                             }`}
                                                         >
-                                                            {/* Nombre de Producto */}
-                                                            <td className="py-2 px-3">
-                                                                <input
-                                                                    type="text"
-                                                                    required
-                                                                    placeholder="Nombre de producto"
-                                                                    value={item.product_name}
-                                                                    onChange={(e) => updateItem(idx, 'product_name', e.target.value)}
-                                                                    className="w-full text-xs font-bold text-slate-800 bg-transparent border-b border-transparent focus:border-indigo-500 outline-none"
-                                                                />
-                                                                <div className="flex items-center gap-2 mt-1">
-                                                                    <select
-                                                                        onChange={(e) => updateItem(idx, 'preset_product', e.target.value)}
-                                                                        className="text-[10px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 outline-none border border-slate-200"
-                                                                        defaultValue=""
-                                                                    >
-                                                                        <option value="" disabled>Predefinidos ANDELSA...</option>
-                                                                        {PRESET_PRODUCTS.map(p => (
-                                                                            <option key={p.name} value={p.name}>{p.name}</option>
-                                                                        ))}
-                                                                    </select>
+                                                            {/* Nombre de Producto y Selector Catálogo */}
+                                                            <td className="py-2.5 px-3 relative">
+                                                                <div className="relative">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <input
+                                                                            type="text"
+                                                                            required
+                                                                            placeholder="Buscar en catálogo o escribir nombre..."
+                                                                            value={item.product_name}
+                                                                            onFocus={() => {
+                                                                                if (query.length >= 1) setActiveCatalogDropdownIdx(idx);
+                                                                            }}
+                                                                            onChange={(e) => updateItem(idx, 'product_name', e.target.value)}
+                                                                            className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                                                                        />
+                                                                    </div>
+
+                                                                    {/* Menú flotante de resultados del catálogo */}
+                                                                    {activeCatalogDropdownIdx === idx && matchingCatalog.length > 0 && (
+                                                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-50 divide-y divide-slate-100">
+                                                                            <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                                                                <span className="flex items-center gap-1">
+                                                                                    <Search className="w-3 h-3 text-indigo-500" />
+                                                                                    Resultados en Catálogo ({matchingCatalog.length})
+                                                                                </span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setActiveCatalogDropdownIdx(null)}
+                                                                                    className="text-slate-400 hover:text-slate-600"
+                                                                                >
+                                                                                    Cerrar
+                                                                                </button>
+                                                                            </div>
+                                                                            {matchingCatalog.map((prod) => {
+                                                                                const catPrice = resolveCatalogProductPrice(prod);
+                                                                                const catCost = parseFloat(prod.costo) || 0;
+                                                                                const catUnit = resolveCatalogUnitMeasure(prod);
+
+                                                                                return (
+                                                                                    <div
+                                                                                        key={prod.id}
+                                                                                        onClick={() => handleSelectCatalogProduct(idx, prod)}
+                                                                                        className="p-2 hover:bg-indigo-50/80 cursor-pointer transition-colors"
+                                                                                    >
+                                                                                        <div className="flex items-center justify-between gap-2">
+                                                                                            <span className="text-xs font-bold text-slate-800 line-clamp-1">
+                                                                                                {prod.nombre}
+                                                                                            </span>
+                                                                                            {prod.codigo && (
+                                                                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                                                                                                    {prod.codigo}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
+                                                                                            <span>Costo: <strong className="text-slate-700">${catCost.toFixed(2)}</strong></span>
+                                                                                            <span>Precio: <strong className="text-indigo-600">${catPrice.toFixed(2)}</strong></span>
+                                                                                            <span className="px-1 rounded bg-indigo-50 text-indigo-700 font-semibold">{catUnit}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Badges y selector de predefinidos debajo del input */}
+                                                                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                                                    {item.product_code || item.product_id ? (
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                                                            <Check className="w-3 h-3 text-emerald-600" />
+                                                                            Catálogo: {item.product_code || `ID-${item.product_id}`}
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleUnlinkCatalogProduct(idx)}
+                                                                                title="Desvincular (modo libre)"
+                                                                                className="text-slate-400 hover:text-red-500 ml-0.5 font-bold"
+                                                                            >
+                                                                                ×
+                                                                            </button>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] font-medium text-slate-400">
+                                                                            Modo libre / personalizado
+                                                                        </span>
+                                                                    )}
+
+                                                                    <div className="relative inline-block">
+                                                                        <select
+                                                                            onChange={(e) => {
+                                                                                if (e.target.value) handleSelectPreset(idx, e.target.value);
+                                                                            }}
+                                                                            className="text-[10px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 rounded-md px-2 py-0.5 outline-none border border-indigo-200 cursor-pointer transition-colors"
+                                                                            defaultValue=""
+                                                                        >
+                                                                            <option value="" disabled>⚡ Sugerencias Rápidas...</option>
+                                                                            {Object.entries(presetGroups).map(([grp, itemsList]) => (
+                                                                                <optgroup key={grp} label={grp}>
+                                                                                    {itemsList.map(p => (
+                                                                                        <option key={p.name} value={p.name}>{p.name}</option>
+                                                                                    ))}
+                                                                                </optgroup>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
                                                                 </div>
                                                             </td>
 
                                                             {/* Presentación */}
-                                                            <td className="py-2 px-3">
+                                                            <td className="py-2.5 px-3">
                                                                 <select
                                                                     value={item.presentation}
                                                                     onChange={(e) => updateItem(idx, 'presentation', e.target.value)}
-                                                                    className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-500"
+                                                                    className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
                                                                 >
                                                                     {PRESENTATION_OPTIONS.map(p => (
                                                                         <option key={p.label} value={p.label}>
-                                                                            {p.label} {p.isReturnable ? '♻️ Retornable' : '🗑️ Desechable'}
+                                                                            {p.label} {p.isReturnable ? '♻️ Retornable' : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+
+                                                                {/* Si es personalizada, permitir escribir el texto */}
+                                                                {item.presentation === 'PERSONALIZADA / OTRA' && (
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Especificar presentación..."
+                                                                        value={item.custom_presentation || ''}
+                                                                        onChange={(e) => updateItem(idx, 'custom_presentation', e.target.value)}
+                                                                        className="w-full text-[11px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1 mt-1 outline-none focus:border-indigo-500"
+                                                                    />
+                                                                )}
+                                                            </td>
+
+                                                            {/* Unidad de Medida (LB / KG / CAJA / CARTÓN / ETC) */}
+                                                            <td className="py-2.5 px-3 text-center">
+                                                                <select
+                                                                    value={item.unit_measure || 'CAJA'}
+                                                                    onChange={(e) => updateItem(idx, 'unit_measure', e.target.value)}
+                                                                    className="w-full text-xs font-bold text-indigo-700 bg-indigo-50/50 border border-indigo-200 rounded-lg px-2 py-1.5 text-center outline-none focus:border-indigo-500"
+                                                                >
+                                                                    {UNIT_MEASURE_OPTIONS.map(u => (
+                                                                        <option key={u.value} value={u.value}>
+                                                                            {u.label}
                                                                         </option>
                                                                     ))}
                                                                 </select>
                                                             </td>
 
                                                             {/* Cantidad */}
-                                                            <td className="py-2 px-3">
+                                                            <td className="py-2.5 px-3">
                                                                 <input
                                                                     type="number"
-                                                                    min="1"
+                                                                    min="0.01"
                                                                     step="any"
                                                                     value={item.quantity}
                                                                     onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                                                                    className="w-full text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-1.5 py-1 outline-none focus:border-indigo-500"
+                                                                    className="w-full text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-1.5 py-1.5 outline-none focus:border-indigo-500"
                                                                 />
                                                             </td>
 
                                                             {/* Costo Actual ($) */}
-                                                            <td className="py-2 px-3">
+                                                            <td className="py-2.5 px-3">
                                                                 <input
                                                                     type="number"
                                                                     step="0.01"
                                                                     placeholder="0.00"
                                                                     value={item.current_cost}
                                                                     onChange={(e) => updateItem(idx, 'current_cost', e.target.value)}
-                                                                    className="w-full text-right text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-500"
+                                                                    className="w-full text-right text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
                                                                 />
+                                                                <span className="block text-[9px] text-right text-slate-400 font-semibold mt-0.5">
+                                                                    ${item.current_cost || 0} / {item.unit_measure || 'u'}
+                                                                </span>
                                                             </td>
 
                                                             {/* Precio Unitario ($) */}
-                                                            <td className="py-2 px-3">
+                                                            <td className="py-2.5 px-3">
                                                                 <input
                                                                     type="number"
                                                                     step="0.01"
                                                                     placeholder="0.00"
                                                                     value={item.unit_price}
                                                                     onChange={(e) => updateItem(idx, 'unit_price', e.target.value)}
-                                                                    className={`w-full text-right text-xs font-bold rounded-lg px-2 py-1 outline-none border ${
+                                                                    className={`w-full text-right text-xs font-bold rounded-lg px-2 py-1.5 outline-none border ${
                                                                         isLineDelicate
                                                                             ? 'border-red-400 bg-red-50 text-red-700'
                                                                             : 'border-slate-200 bg-white text-slate-800 focus:border-indigo-500'
                                                                     }`}
                                                                 />
+                                                                <span className="block text-[9px] text-right font-semibold mt-0.5 text-slate-500">
+                                                                    ${item.unit_price || 0} / {item.unit_measure || 'u'}
+                                                                </span>
                                                             </td>
 
                                                             {/* Margen Calculado (%) con badge */}
-                                                            <td className="py-2 px-3 text-center">
+                                                            <td className="py-2.5 px-3 text-center">
                                                                 <div className="flex flex-col items-center">
                                                                     <span className={`text-xs font-black ${
                                                                         margin <= 0
@@ -765,27 +1208,28 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                             </td>
 
                                                             {/* Subtotal Línea ($) */}
-                                                            <td className="py-2 px-3 text-right text-xs font-bold text-slate-800">
+                                                            <td className="py-2.5 px-3 text-right text-xs font-bold text-slate-800">
                                                                 ${sub.toFixed(2)}
                                                             </td>
 
                                                             {/* Notas o Descuento */}
-                                                            <td className="py-2 px-3">
+                                                            <td className="py-2.5 px-3">
                                                                 <input
                                                                     type="text"
-                                                                    placeholder="Ej: Descuento $0.05 por publicidad"
+                                                                    placeholder="Ej: Calidad seleccionada"
                                                                     value={item.notes}
                                                                     onChange={(e) => updateItem(idx, 'notes', e.target.value)}
-                                                                    className="w-full text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-500"
+                                                                    className="w-full text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
                                                                 />
                                                             </td>
 
                                                             {/* Botón eliminar */}
-                                                            <td className="py-2 px-3 text-center">
+                                                            <td className="py-2.5 px-3 text-center">
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => removeItem(idx)}
-                                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                    title="Eliminar producto"
                                                                 >
                                                                     <Trash2 className="w-4 h-4" />
                                                                 </button>
@@ -804,20 +1248,47 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     {/* PESTAÑA 2: COMPROMISOS Y ENVASES */}
                     {activeTab === 'commitments' && (
                         <div className="space-y-4">
-                            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
-                                <h4 className="text-xs font-bold text-amber-900 uppercase flex items-center gap-1.5">
-                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                    Nuestros Compromisos y Condiciones (Incluidas en el PDF Oficial)
-                                </h4>
-                                <p className="text-xs text-amber-800">
-                                    Este texto se imprime en el recuadro oficial de la cotización. Asegura la mención expresa de que las
-                                    <strong> cubetas plásticas son retornables</strong> y los demás envases no aplican para retorno.
+                            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <h4 className="text-xs font-bold text-amber-900 uppercase flex items-center gap-1.5">
+                                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                        Nuestros Compromisos y Condiciones (Impresos en PDF y Word)
+                                    </h4>
+                                    <span className="text-[11px] font-semibold text-amber-800">
+                                        Cargar plantilla sugerida:
+                                    </span>
+                                </div>
+                                <p className="text-xs text-amber-800 leading-relaxed">
+                                    Elige la plantilla que corresponda al tipo de producto cotizado o redacta libremente las cláusulas legales, vigencia y políticas de despacho.
                                 </p>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyCommitmentTemplate('shell')}
+                                        className="px-3 py-1.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-all shadow-sm flex items-center gap-1"
+                                    >
+                                        🥚 Huevo en Cáscara (Tallas / Cajas)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyCommitmentTemplate('liquid')}
+                                        className="px-3 py-1.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-all shadow-sm flex items-center gap-1"
+                                    >
+                                        🥛 Ovoproductos (Cubetas Retornables / HACCP)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyCommitmentTemplate('mixed')}
+                                        className="px-3 py-1.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-all shadow-sm flex items-center gap-1"
+                                    >
+                                        📋 Plantilla Mixta
+                                    </button>
+                                </div>
                             </div>
 
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-                                    Cláusulas de Compromiso y Garantía
+                                    Cláusulas de Compromiso y Garantía Comercial
                                 </label>
                                 <textarea
                                     rows="8"
