@@ -14,7 +14,7 @@ import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
 const roCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[13px] font-medium text-slate-700";
-const sectionCls = "bg-white rounded-xl border border-slate-200 p-4 space-y-3";
+const _sectionCls = "bg-white rounded-xl border border-slate-200 p-4 space-y-3";
 
 const yearNow = new Date().getFullYear();
 const monthNow = new Date().getMonth() + 1;

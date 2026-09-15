@@ -11,7 +11,7 @@ const Pagination = ({
     isLoading,
     limit = 15,
     onLimitChange,
-    compact = false
+    _compact = false
 }) => {
     const cur = Number(currentPage ?? page) || 1;
     const count = totalItems !== undefined && totalItems !== null 

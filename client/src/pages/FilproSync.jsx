@@ -213,7 +213,7 @@ const FilproSync = () => {
     });
 
     // Mutation: Sync Day
-    const syncDayMutation = useMutation({
+    const _syncDayMutation = useMutation({
         mutationFn: (syncPayload) => axios.post('/api/filpro/sync-day', syncPayload),
         onSuccess: (res) => {
             const { totalImported, totalSkipped, totalErrors } = res.data;

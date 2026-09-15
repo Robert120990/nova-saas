@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -18,13 +18,9 @@ import {
     ShieldAlert,
     Sparkles,
     Layers,
-    ChevronDown,
-    ChevronUp,
     Trash2,
     Check,
-    Camera,
-    Barcode,
-    QrCode
+    Camera
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 
@@ -370,7 +366,7 @@ const EggProduction = () => {
     // Resultado del escaneo de QR / Código de barras de tarima
     const handleScanTarimaResult = (scannedData) => {
         if (!scannedData) return;
-        const { lotCode, tarimaNumber, palletId, rawText } = scannedData;
+        const { lotCode, tarimaNumber, _palletId, rawText } = scannedData;
 
         // 1. Buscar lote en rawMaterials
         const lot = rawMaterials.find(m => 

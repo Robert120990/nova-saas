@@ -609,7 +609,7 @@ const ProductionCalendar = () => {
     };
 
     // Start Batch in Plant
-    const handleStartBatchInPlant = async (id, lotCode) => {
+    const _handleStartBatchInPlant = async (id, lotCode) => {
         if (!window.confirm(`¿Desea iniciar la ejecución real del lote ${lotCode} en planta de producción?`)) return;
         try {
             await axios.post(`/api/egg-industrial/calendar/${id}/start-batch`);

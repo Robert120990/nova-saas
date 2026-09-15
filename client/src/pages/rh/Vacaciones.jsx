@@ -6,13 +6,13 @@ import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Search, Users, Umbrella, Loader2, User, Calendar, ShieldCheck, CheckCircle2, AlertCircle, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Users, Umbrella, Loader2, User, ShieldCheck, CheckCircle2, AlertCircle, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import Money, { MoneyInput } from '../../components/ui/Money';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 
 const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[13px] font-medium";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
-const roCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[13px] font-medium text-slate-700";
+const _roCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[13px] font-medium text-slate-700";
 
 const yearNow = new Date().getFullYear();
 const monthNow = new Date().getMonth() + 1;

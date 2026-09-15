@@ -6,8 +6,7 @@ import Money from '../ui/Money';
 import { toast } from 'sonner';
 import { 
     Search, Store, Tag, Users, TrendingUp, AlertTriangle, 
-    CheckCircle2, AlertCircle, HelpCircle, ArrowUpRight, 
-    Percent, Download, RefreshCw, Check
+    CheckCircle2, HelpCircle, ArrowUpRight, Download, RefreshCw, Check
 } from 'lucide-react';
 
 const PRESET_MARGINS = [15, 20, 25, 30, 35, 40, 50];
