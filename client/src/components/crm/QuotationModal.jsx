@@ -649,12 +649,80 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
         }
     };
 
+    const handleDownloadDocx = async () => {
+        if (!quotationId) return;
+        const toastId = toast.loading('Generando documento Word...');
+        try {
+            const res = await axios.get(`/api/crm/quotations/${quotationId}/docx`, { responseType: 'blob' });
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Cotizacion_${formData.quote_number || quotationId}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success('Documento Word descargado.', { id: toastId });
+        } catch (e) {
+            toast.error('Error al descargar Word.', { id: toastId });
+        }
+    };
+
+    if (!isOpen) return null;
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-3 md:p-6 overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl my-auto overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/70 backdrop-blur-sm p-0 sm:p-4 md:p-6 overflow-hidden sm:overflow-y-auto">
+            <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 w-full max-w-5xl h-[100dvh] sm:h-auto sm:max-h-[92vh] my-0 sm:my-auto overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
                 
-                {/* Cabecera del Modal */}
-                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                {/* Barra superior compacta exclusiva de móvil (~44px) */}
+                <div className="sm:hidden px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors shrink-0"
+                            aria-label="Cerrar"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                        <div className="min-w-0">
+                            <h2 className="text-xs font-bold text-slate-800 truncate">
+                                {quotationId ? `Editar ${formData.quote_number || ''}` : 'Nueva Cotización'}
+                            </h2>
+                            <div className="text-[10px] text-indigo-700 font-extrabold flex items-center gap-1">
+                                <span>Total: ${total.toFixed(2)}</span>
+                                <span className={`text-[9px] px-1 rounded ${
+                                    overallMarginPct <= 0
+                                        ? 'bg-red-100 text-red-700'
+                                        : overallMarginPct < 15
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-emerald-100 text-emerald-700'
+                                }`}>
+                                    {overallMarginPct.toFixed(0)}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={saving}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white rounded-lg shadow-sm transition-all ${
+                                isDelicate
+                                    ? 'bg-amber-600 hover:bg-amber-700'
+                                    : 'bg-indigo-600 hover:bg-indigo-700'
+                            } disabled:opacity-50`}
+                        >
+                            <Save className="w-3.5 h-3.5" />
+                            <span>{saving ? '...' : 'Guardar'}</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Cabecera del Modal (Desktop) */}
+                <div className="hidden sm:flex px-6 py-4 bg-slate-50 border-b border-slate-200 items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shadow-sm">
                             <FileText className="w-6 h-6" />
@@ -691,12 +759,12 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     </button>
                 </div>
 
-                {/* Barra de Pestañas */}
-                <div className="px-6 border-b border-slate-200 bg-white flex gap-6 text-sm font-semibold">
+                {/* Barra de Pestañas (Compacta, con scroll horizontal fluido sin partir renglones) */}
+                <div className="px-3 sm:px-6 border-b border-slate-200 bg-white flex gap-2 sm:gap-6 text-xs sm:text-sm font-semibold shrink-0 overflow-x-auto no-scrollbar whitespace-nowrap">
                     <button
                         type="button"
                         onClick={() => setActiveTab('items')}
-                        className={`py-3 border-b-2 transition-all ${
+                        className={`py-2.5 sm:py-3 border-b-2 transition-all shrink-0 ${
                             activeTab === 'items'
                                 ? 'border-indigo-600 text-indigo-600'
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -707,7 +775,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     <button
                         type="button"
                         onClick={() => setActiveTab('commitments')}
-                        className={`py-3 border-b-2 transition-all flex items-center gap-1.5 ${
+                        className={`py-2.5 sm:py-3 border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
                             activeTab === 'commitments'
                                 ? 'border-indigo-600 text-indigo-600'
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -718,7 +786,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     <button
                         type="button"
                         onClick={() => setActiveTab('signature')}
-                        className={`py-3 border-b-2 transition-all flex items-center gap-1.5 ${
+                        className={`py-2.5 sm:py-3 border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
                             activeTab === 'signature'
                                 ? 'border-indigo-600 text-indigo-600'
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -731,8 +799,31 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     </button>
                 </div>
 
-                {/* Contenido scrolleable */}
-                <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                {/* Contenido scrolleable con altura completa disponible */}
+                <div className="p-3 sm:p-6 overflow-y-auto flex-1 space-y-4 sm:space-y-6">
+
+                    {/* Enunciado informativo en móvil (se desplaza con el scroll para no asfixiar el espacio de trabajo) */}
+                    <div className="sm:hidden p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-800">
+                                {quotationId ? `Cotización ${formData.quote_number || ''}` : 'Nueva Propuesta Comercial'}
+                            </span>
+                            {isDelicate ? (
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                                    <ShieldAlert className="w-3 h-3" />
+                                    DELICADA
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    MARGEN SEGURO
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                            Formato Oficial Eggcelent / ANDELSA • Validación de costos y compromisos retornables
+                        </p>
+                    </div>
 
                     {/* ALERTA VISUAL SI LA COTIZACIÓN ES DELICADA */}
                     {isDelicate && (
@@ -767,10 +858,10 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     {activeTab === 'items' && (
                         <div className="space-y-6">
                             {/* Bloque Superior: Cliente y Vigencia */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                 
                                 {/* Selector / Búsqueda de Cliente */}
-                                <div className="md:col-span-2">
+                                <div className="col-span-1 sm:col-span-2 md:col-span-2">
                                     <div className="flex items-center justify-between mb-1">
                                         <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1">
                                             <Building2 className="w-3.5 h-3.5" />
@@ -936,7 +1027,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
 
                                 <div className="border border-slate-200 rounded-xl shadow-sm bg-white">
                                     <div className="overflow-x-auto overflow-y-visible">
-                                        <table className="w-full text-left border-collapse text-xs">
+                                        <table className="w-full text-left border-collapse text-xs table-cards">
                                             <thead>
                                                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                                                     <th className="py-2.5 px-3 min-w-[240px]">Producto / Búsqueda Catálogo</th>
@@ -985,141 +1076,145 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                             }`}
                                                         >
                                                             {/* Nombre de Producto y Selector Catálogo */}
-                                                            <td className="py-2.5 px-3 relative">
-                                                                <div className="relative">
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <input
-                                                                            type="text"
-                                                                            required
-                                                                            placeholder="Buscar en catálogo o escribir nombre..."
-                                                                            value={item.product_name}
-                                                                            onFocus={() => {
-                                                                                if (query.length >= 1) setActiveCatalogDropdownIdx(idx);
-                                                                            }}
-                                                                            onChange={(e) => updateItem(idx, 'product_name', e.target.value)}
-                                                                            className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
-                                                                        />
+                                                            <td className="py-2.5 px-3 relative" data-label="Producto">
+                                                                <div className="w-full space-y-1.5">
+                                                                    <div className="relative">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <input
+                                                                                type="text"
+                                                                                required
+                                                                                placeholder="Buscar en catálogo o escribir nombre..."
+                                                                                value={item.product_name}
+                                                                                onFocus={() => {
+                                                                                    if (query.length >= 1) setActiveCatalogDropdownIdx(idx);
+                                                                                }}
+                                                                                onChange={(e) => updateItem(idx, 'product_name', e.target.value)}
+                                                                                className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                                                                            />
+                                                                        </div>
+
+                                                                        {/* Menú flotante de resultados del catálogo */}
+                                                                        {activeCatalogDropdownIdx === idx && matchingCatalog.length > 0 && (
+                                                                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-50 divide-y divide-slate-100">
+                                                                                <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                                                                    <span className="flex items-center gap-1">
+                                                                                        <Search className="w-3 h-3 text-indigo-500" />
+                                                                                        Resultados en Catálogo ({matchingCatalog.length})
+                                                                                    </span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setActiveCatalogDropdownIdx(null)}
+                                                                                        className="text-slate-400 hover:text-slate-600"
+                                                                                    >
+                                                                                        Cerrar
+                                                                                    </button>
+                                                                                </div>
+                                                                                {matchingCatalog.map((prod) => {
+                                                                                    const catPrice = resolveCatalogProductPrice(prod);
+                                                                                    const catCost = parseFloat(prod.costo) || 0;
+                                                                                    const catUnit = resolveCatalogUnitMeasure(prod);
+
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={prod.id}
+                                                                                            onClick={() => handleSelectCatalogProduct(idx, prod)}
+                                                                                            className="p-2 hover:bg-indigo-50/80 cursor-pointer transition-colors"
+                                                                                        >
+                                                                                            <div className="flex items-center justify-between gap-2">
+                                                                                                <span className="text-xs font-bold text-slate-800 line-clamp-1">
+                                                                                                    {prod.nombre}
+                                                                                                </span>
+                                                                                                {prod.codigo && (
+                                                                                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                                                                                                        {prod.codigo}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
+                                                                                                <span>Costo: <strong className="text-slate-700">${catCost.toFixed(2)}</strong></span>
+                                                                                                <span>Precio: <strong className="text-indigo-600">${catPrice.toFixed(2)}</strong></span>
+                                                                                                <span className="px-1 rounded bg-indigo-50 text-indigo-700 font-semibold">{catUnit}</span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
 
-                                                                    {/* Menú flotante de resultados del catálogo */}
-                                                                    {activeCatalogDropdownIdx === idx && matchingCatalog.length > 0 && (
-                                                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-50 divide-y divide-slate-100">
-                                                                            <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase flex items-center justify-between">
-                                                                                <span className="flex items-center gap-1">
-                                                                                    <Search className="w-3 h-3 text-indigo-500" />
-                                                                                    Resultados en Catálogo ({matchingCatalog.length})
-                                                                                </span>
+                                                                    {/* Badges y selector de predefinidos debajo del input */}
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        {item.product_code || item.product_id ? (
+                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                                                                <Check className="w-3 h-3 text-emerald-600" />
+                                                                                Catálogo: {item.product_code || `ID-${item.product_id}`}
                                                                                 <button
                                                                                     type="button"
-                                                                                    onClick={() => setActiveCatalogDropdownIdx(null)}
-                                                                                    className="text-slate-400 hover:text-slate-600"
+                                                                                    onClick={() => handleUnlinkCatalogProduct(idx)}
+                                                                                    title="Desvincular (modo libre)"
+                                                                                    className="text-slate-400 hover:text-red-500 ml-0.5 font-bold"
                                                                                 >
-                                                                                    Cerrar
+                                                                                    ×
                                                                                 </button>
-                                                                            </div>
-                                                                            {matchingCatalog.map((prod) => {
-                                                                                const catPrice = resolveCatalogProductPrice(prod);
-                                                                                const catCost = parseFloat(prod.costo) || 0;
-                                                                                const catUnit = resolveCatalogUnitMeasure(prod);
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-[10px] font-medium text-slate-400">
+                                                                                Modo libre / personalizado
+                                                                            </span>
+                                                                        )}
 
-                                                                                return (
-                                                                                    <div
-                                                                                        key={prod.id}
-                                                                                        onClick={() => handleSelectCatalogProduct(idx, prod)}
-                                                                                        className="p-2 hover:bg-indigo-50/80 cursor-pointer transition-colors"
-                                                                                    >
-                                                                                        <div className="flex items-center justify-between gap-2">
-                                                                                            <span className="text-xs font-bold text-slate-800 line-clamp-1">
-                                                                                                {prod.nombre}
-                                                                                            </span>
-                                                                                            {prod.codigo && (
-                                                                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                                                                                                    {prod.codigo}
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                        <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
-                                                                                            <span>Costo: <strong className="text-slate-700">${catCost.toFixed(2)}</strong></span>
-                                                                                            <span>Precio: <strong className="text-indigo-600">${catPrice.toFixed(2)}</strong></span>
-                                                                                            <span className="px-1 rounded bg-indigo-50 text-indigo-700 font-semibold">{catUnit}</span>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                {/* Badges y selector de predefinidos debajo del input */}
-                                                                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                                                    {item.product_code || item.product_id ? (
-                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                                                            <Check className="w-3 h-3 text-emerald-600" />
-                                                                            Catálogo: {item.product_code || `ID-${item.product_id}`}
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleUnlinkCatalogProduct(idx)}
-                                                                                title="Desvincular (modo libre)"
-                                                                                className="text-slate-400 hover:text-red-500 ml-0.5 font-bold"
+                                                                        <div className="relative inline-block">
+                                                                            <select
+                                                                                onChange={(e) => {
+                                                                                    if (e.target.value) handleSelectPreset(idx, e.target.value);
+                                                                                }}
+                                                                                className="text-[10px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 rounded-md px-2 py-0.5 outline-none border border-indigo-200 cursor-pointer transition-colors"
+                                                                                defaultValue=""
                                                                             >
-                                                                                ×
-                                                                            </button>
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-[10px] font-medium text-slate-400">
-                                                                            Modo libre / personalizado
-                                                                        </span>
-                                                                    )}
-
-                                                                    <div className="relative inline-block">
-                                                                        <select
-                                                                            onChange={(e) => {
-                                                                                if (e.target.value) handleSelectPreset(idx, e.target.value);
-                                                                            }}
-                                                                            className="text-[10px] font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 rounded-md px-2 py-0.5 outline-none border border-indigo-200 cursor-pointer transition-colors"
-                                                                            defaultValue=""
-                                                                        >
-                                                                            <option value="" disabled>⚡ Sugerencias Rápidas...</option>
-                                                                            {Object.entries(presetGroups).map(([grp, itemsList]) => (
-                                                                                <optgroup key={grp} label={grp}>
-                                                                                    {itemsList.map(p => (
-                                                                                        <option key={p.name} value={p.name}>{p.name}</option>
-                                                                                    ))}
-                                                                                </optgroup>
-                                                                            ))}
-                                                                        </select>
+                                                                                <option value="" disabled>⚡ Sugerencias Rápidas...</option>
+                                                                                {Object.entries(presetGroups).map(([grp, itemsList]) => (
+                                                                                    <optgroup key={grp} label={grp}>
+                                                                                        {itemsList.map(p => (
+                                                                                            <option key={p.name} value={p.name}>{p.name}</option>
+                                                                                        ))}
+                                                                                    </optgroup>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </td>
 
                                                             {/* Presentación */}
-                                                            <td className="py-2.5 px-3">
-                                                                <select
-                                                                    value={item.presentation}
-                                                                    onChange={(e) => updateItem(idx, 'presentation', e.target.value)}
-                                                                    className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
-                                                                >
-                                                                    {PRESENTATION_OPTIONS.map(p => (
-                                                                        <option key={p.label} value={p.label}>
-                                                                            {p.label} {p.isReturnable ? '♻️ Retornable' : ''}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
+                                                            <td className="py-2.5 px-3" data-label="Presentación">
+                                                                <div className="w-full">
+                                                                    <select
+                                                                        value={item.presentation}
+                                                                        onChange={(e) => updateItem(idx, 'presentation', e.target.value)}
+                                                                        className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
+                                                                    >
+                                                                        {PRESENTATION_OPTIONS.map(p => (
+                                                                            <option key={p.label} value={p.label}>
+                                                                                {p.label} {p.isReturnable ? '♻️ Retornable' : ''}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
 
-                                                                {/* Si es personalizada, permitir escribir el texto */}
-                                                                {item.presentation === 'PERSONALIZADA / OTRA' && (
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Especificar presentación..."
-                                                                        value={item.custom_presentation || ''}
-                                                                        onChange={(e) => updateItem(idx, 'custom_presentation', e.target.value)}
-                                                                        className="w-full text-[11px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1 mt-1 outline-none focus:border-indigo-500"
-                                                                    />
-                                                                )}
+                                                                    {/* Si es personalizada, permitir escribir el texto */}
+                                                                    {item.presentation === 'PERSONALIZADA / OTRA' && (
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Especificar presentación..."
+                                                                            value={item.custom_presentation || ''}
+                                                                            onChange={(e) => updateItem(idx, 'custom_presentation', e.target.value)}
+                                                                            className="w-full text-[11px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1 mt-1 outline-none focus:border-indigo-500"
+                                                                        />
+                                                                    )}
+                                                                </div>
                                                             </td>
 
                                                             {/* Unidad de Medida (LB / KG / CAJA / CARTÓN / ETC) */}
-                                                            <td className="py-2.5 px-3 text-center">
+                                                            <td className="py-2.5 px-3 text-center" data-label="Unidad">
                                                                 <select
                                                                     value={item.unit_measure || 'CAJA'}
                                                                     onChange={(e) => updateItem(idx, 'unit_measure', e.target.value)}
@@ -1134,7 +1229,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                             </td>
 
                                                             {/* Cantidad */}
-                                                            <td className="py-2.5 px-3">
+                                                            <td className="py-2.5 px-3" data-label="Cantidad">
                                                                 <input
                                                                     type="number"
                                                                     min="0.01"
@@ -1146,41 +1241,45 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                             </td>
 
                                                             {/* Costo Actual ($) */}
-                                                            <td className="py-2.5 px-3">
-                                                                <input
-                                                                    type="number"
-                                                                    step="0.01"
-                                                                    placeholder="0.00"
-                                                                    value={item.current_cost}
-                                                                    onChange={(e) => updateItem(idx, 'current_cost', e.target.value)}
-                                                                    className="w-full text-right text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
-                                                                />
-                                                                <span className="block text-[9px] text-right text-slate-400 font-semibold mt-0.5">
-                                                                    ${item.current_cost || 0} / {item.unit_measure || 'u'}
-                                                                </span>
+                                                            <td className="py-2.5 px-3" data-label="Costo ($)">
+                                                                <div className="w-full text-right">
+                                                                    <input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        placeholder="0.00"
+                                                                        value={item.current_cost}
+                                                                        onChange={(e) => updateItem(idx, 'current_cost', e.target.value)}
+                                                                        className="w-full text-right text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500"
+                                                                    />
+                                                                    <span className="block text-[9px] text-right text-slate-400 font-semibold mt-0.5">
+                                                                        ${item.current_cost || 0} / {item.unit_measure || 'u'}
+                                                                    </span>
+                                                                </div>
                                                             </td>
 
                                                             {/* Precio Unitario ($) */}
-                                                            <td className="py-2.5 px-3">
-                                                                <input
-                                                                    type="number"
-                                                                    step="0.01"
-                                                                    placeholder="0.00"
-                                                                    value={item.unit_price}
-                                                                    onChange={(e) => updateItem(idx, 'unit_price', e.target.value)}
-                                                                    className={`w-full text-right text-xs font-bold rounded-lg px-2 py-1.5 outline-none border ${
-                                                                        isLineDelicate
-                                                                            ? 'border-red-400 bg-red-50 text-red-700'
-                                                                            : 'border-slate-200 bg-white text-slate-800 focus:border-indigo-500'
-                                                                    }`}
-                                                                />
-                                                                <span className="block text-[9px] text-right font-semibold mt-0.5 text-slate-500">
-                                                                    ${item.unit_price || 0} / {item.unit_measure || 'u'}
-                                                                </span>
+                                                            <td className="py-2.5 px-3" data-label="Precio ($)">
+                                                                <div className="w-full text-right">
+                                                                    <input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        placeholder="0.00"
+                                                                        value={item.unit_price}
+                                                                        onChange={(e) => updateItem(idx, 'unit_price', e.target.value)}
+                                                                        className={`w-full text-right text-xs font-bold rounded-lg px-2 py-1.5 outline-none border ${
+                                                                            isLineDelicate
+                                                                                ? 'border-red-400 bg-red-50 text-red-700'
+                                                                                : 'border-slate-200 bg-white text-slate-800 focus:border-indigo-500'
+                                                                        }`}
+                                                                    />
+                                                                    <span className="block text-[9px] text-right font-semibold mt-0.5 text-slate-500">
+                                                                        ${item.unit_price || 0} / {item.unit_measure || 'u'}
+                                                                    </span>
+                                                                </div>
                                                             </td>
 
                                                             {/* Margen Calculado (%) con badge */}
-                                                            <td className="py-2.5 px-3 text-center">
+                                                            <td className="py-2.5 px-3 text-center" data-label="Margen (%)">
                                                                 <div className="flex flex-col items-center">
                                                                     <span className={`text-xs font-black ${
                                                                         margin <= 0
@@ -1208,12 +1307,12 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                             </td>
 
                                                             {/* Subtotal Línea ($) */}
-                                                            <td className="py-2.5 px-3 text-right text-xs font-bold text-slate-800">
+                                                            <td className="py-2.5 px-3 text-right text-xs font-bold text-slate-800" data-label="Subtotal ($)">
                                                                 ${sub.toFixed(2)}
                                                             </td>
 
                                                             {/* Notas o Descuento */}
-                                                            <td className="py-2.5 px-3">
+                                                            <td className="py-2.5 px-3" data-label="Notas">
                                                                 <input
                                                                     type="text"
                                                                     placeholder="Ej: Calidad seleccionada"
@@ -1224,14 +1323,15 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                                             </td>
 
                                                             {/* Botón eliminar */}
-                                                            <td className="py-2.5 px-3 text-center">
+                                                            <td className="py-2.5 px-3 text-center" data-label="Acción">
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => removeItem(idx)}
-                                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-1 mx-auto"
                                                                     title="Eliminar producto"
                                                                 >
-                                                                    <Trash2 className="w-4 h-4" />
+                                                                    <Trash2 className="w-4 h-4 text-red-500 sm:text-slate-400" />
+                                                                    <span className="sm:hidden text-xs text-red-600 font-bold">Quitar</span>
                                                                 </button>
                                                             </td>
                                                         </tr>
@@ -1424,10 +1524,76 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                             </div>
                         </div>
                     )}
+                    {/* Resumen de Totales y Botones en Móvil (dentro del scroll, al pie del formulario para no bloquear la pantalla) */}
+                    <div className="sm:hidden mt-6 pt-4 border-t border-slate-200 space-y-4">
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-500 font-medium">Subtotal:</span>
+                                <span className="font-bold text-slate-800">${subtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-500 font-medium">IVA (13%):</span>
+                                <span className="font-bold text-slate-800">${taxAmount.toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
+                                <span className="text-slate-700 font-bold">Total Cotizado:</span>
+                                <span className="text-base font-black text-indigo-700">${total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
+                                <span className="text-slate-500 font-medium">Margen General:</span>
+                                <span className={`text-xs font-black ${
+                                    overallMarginPct <= 0
+                                        ? 'text-red-600'
+                                        : overallMarginPct < 15
+                                        ? 'text-amber-600'
+                                        : 'text-emerald-600'
+                                }`}>
+                                    {overallMarginPct.toFixed(1)}%
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Botones de acción en móvil */}
+                        <div className="space-y-2">
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={saving}
+                                className={`w-full flex items-center justify-center gap-2 py-3 px-4 text-xs font-bold text-white rounded-xl shadow-md transition-all ${
+                                    isDelicate
+                                        ? 'bg-amber-600 hover:bg-amber-700'
+                                        : 'bg-indigo-600 hover:bg-indigo-700'
+                                } disabled:opacity-50`}
+                            >
+                                <Save className="w-4 h-4" />
+                                {saving ? 'Guardando...' : quotationId ? 'Actualizar Cotización' : 'Guardar Cotización'}
+                            </button>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                {quotationId && (
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadDocx}
+                                        className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-colors"
+                                    >
+                                        <FileDown className="w-3.5 h-3.5" />
+                                        <span>Word (.docx)</span>
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className={`flex items-center justify-center py-2.5 px-3 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors ${!quotationId ? 'col-span-2' : ''}`}
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Pie del Modal con Resumen de Totales y Guardar */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+                {/* Pie del Modal con Resumen de Totales y Guardar (Solo Desktop, fijo abajo) */}
+                <div className="hidden sm:flex px-6 py-4 bg-slate-50 border-t border-slate-200 flex-row items-center justify-between gap-4 shrink-0">
                     {/* Resumen Financiero */}
                     <div className="flex flex-wrap items-center gap-6 text-xs">
                         <div>
@@ -1457,28 +1623,11 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                     </div>
 
                     {/* Botones */}
-                    <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
+                    <div className="flex items-center gap-2.5 justify-end">
                         {quotationId && (
                             <button
                                 type="button"
-                                onClick={async () => {
-                                    const toastId = toast.loading('Generando documento Word...');
-                                    try {
-                                        const res = await axios.get(`/api/crm/quotations/${quotationId}/docx`, { responseType: 'blob' });
-                                        const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-                                        const url = window.URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `Cotizacion_${formData.quote_number || quotationId}.docx`;
-                                        document.body.appendChild(a);
-                                        a.click();
-                                        document.body.removeChild(a);
-                                        window.URL.revokeObjectURL(url);
-                                        toast.success('Documento Word descargado.', { id: toastId });
-                                    } catch (e) {
-                                        toast.error('Error al descargar Word.', { id: toastId });
-                                    }
-                                }}
+                                onClick={handleDownloadDocx}
                                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-colors"
                                 title="Descargar versión editable en Word"
                             >
