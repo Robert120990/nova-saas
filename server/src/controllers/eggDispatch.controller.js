@@ -585,7 +585,10 @@ const saveDispatchRoute = async (req, res) => {
         let resolvedDriverPhone = driver_phone || null;
         if (driver_id) {
             const [uRows] = await connection.query(
-                'SELECT id, nombre, telefono FROM users WHERE id = ? AND company_id = ?',
+                `SELECT u.id, u.nombre, u.telefono 
+                 FROM users u 
+                 INNER JOIN usuario_empresa ue ON u.id = ue.usuario_id 
+                 WHERE u.id = ? AND ue.empresa_id = ?`,
                 [driver_id, company_id]
             );
             if (uRows.length > 0) {
