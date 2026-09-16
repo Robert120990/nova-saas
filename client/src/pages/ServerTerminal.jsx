@@ -175,6 +175,57 @@ export default function ServerTerminal() {
             ? `${sysData?.currentUser || 'root'}@${sysData?.hostname || 'servidor'}:${currentCwd || '~'}$ ` 
             : `${sshConfig.username || 'root'}@${sshConfig.host || 'remote'}:${sshCwd || '~'}# `;
 
+        // Guía si el usuario escribe "ssh ..." dentro de la terminal SSH
+        if (mode === 'ssh' && (targetCmd.startsWith('ssh ') || targetCmd === 'ssh')) {
+            setIsExecuting(false);
+            setOutputHistory(prev => [
+                ...prev,
+                {
+                    id: entryId,
+                    type: 'command',
+                    prompt: activePrompt,
+                    cmd: targetCmd,
+                    timestamp: new Date().toLocaleTimeString(),
+                    mode: mode
+                },
+                {
+                    id: entryId + '-ssh-hint',
+                    type: 'output',
+                    text: `💡 Ya estás en la sesión SSH hacia ${sshConfig.username}@${sshConfig.host}.\nNo necesitas escribir "ssh", escribe directamente el comando que deseas ejecutar en el servidor remoto (ejemplos: ls -la, pm2 status, pwd, df -h, etc.).`,
+                    exitCode: 0,
+                    success: true,
+                    timestamp: new Date().toLocaleTimeString()
+                }
+            ]);
+            return;
+        }
+
+        // Validación amigable si falta contraseña en modo SSH
+        if (mode === 'ssh' && !sshConfig.password && !sshConfig.privateKey) {
+            setIsExecuting(false);
+            setOutputHistory(prev => [
+                ...prev,
+                {
+                    id: entryId,
+                    type: 'command',
+                    prompt: activePrompt,
+                    cmd: targetCmd,
+                    timestamp: new Date().toLocaleTimeString(),
+                    mode: mode
+                },
+                {
+                    id: entryId + '-auth-err',
+                    type: 'output',
+                    text: `⚠️ Falta autenticación SSH:\nPor favor escribe la contraseña en el campo "Contraseña SSH" de la barra superior para conectarte a ${sshConfig.username}@${sshConfig.host}.\n\n💡 Tip: Si solo deseas correr comandos en este servidor sin ingresar contraseña, usa la pestaña "Servidor Local (Host Node.js)".`,
+                    exitCode: 1,
+                    success: false,
+                    timestamp: new Date().toLocaleTimeString()
+                }
+            ]);
+            toast.warning('Ingrese la contraseña SSH en la barra superior');
+            return;
+        }
+
         // Registrar comando en pantalla
         setOutputHistory(prev => [
             ...prev,
