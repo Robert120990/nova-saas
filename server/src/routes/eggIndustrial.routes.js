@@ -6,6 +6,7 @@ const eggController = require('../controllers/eggIndustrial.controller');
 router.get('/raw-materials', eggController.getRawMaterials);
 router.post('/raw-materials', eggController.createRawMaterial);
 router.put('/raw-materials/:id', eggController.updateRawMaterial);
+router.put('/raw-materials/:id/quality-classification', eggController.saveQualityClassification);
 router.put('/raw-materials/:id/void', eggController.voidRawMaterial);
 
 // 2. CIP (Clean In Place)

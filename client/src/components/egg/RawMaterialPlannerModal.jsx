@@ -24,7 +24,10 @@ import {
     Trash2,
     Building2,
     TrendingUp,
-    BarChart3
+    BarChart3,
+    ShoppingCart,
+    Lightbulb,
+    Zap
 } from 'lucide-react';
 
 const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) => {
@@ -119,6 +122,52 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
             }
             return { ...p, [field]: value };
         }));
+    };
+
+    const applySuggestedOrder = (type) => {
+        const salesDemand = plannerData?.sales_demand_suggestion || {};
+        const eggBal = plannerData?.raw_egg_balance || {};
+        const histComp = plannerData?.historical_comparison || {};
+
+        let targetBoxes = 0;
+        let label = '';
+        if (type === 'sales') {
+            targetBoxes = salesDemand.suggested_boxes_to_order || salesDemand.suggested_boxes_from_sales || 0;
+            label = 'según promedio de ventas comerciales';
+        } else if (type === 'schedule') {
+            targetBoxes = salesDemand.suggested_boxes_from_schedule || eggBal.boxes_to_purchase || 0;
+            label = 'según plan de producción agendado';
+        } else if (type === 'history') {
+            targetBoxes = salesDemand.suggested_boxes_from_history || Math.max(0, (histComp.average_monthly_boxes || 0) - (eggBal.current_stock_boxes || 0));
+            label = 'según histórico multianual';
+        }
+
+        if (targetBoxes <= 0) {
+            toast.info(`No se requiere compra adicional ${label}. El stock actual en bodega (${(eggBal.current_stock_boxes || 0).toLocaleString()} cajas) cubre la necesidad estimada.`);
+            return;
+        }
+
+        if (!providerAllocations || providerAllocations.length === 0) {
+            toast.warning('Debe haber al menos un proveedor configurado en la lista.');
+            return;
+        }
+
+        const updated = providerAllocations.map(p => ({ ...p, shipments_count: 0 }));
+        let allocated = 0;
+        let iter = 0;
+        const maxIter = 100;
+
+        while (allocated < targetBoxes && iter < maxIter) {
+            const currentProv = updated[iter % updated.length];
+            const cap = parseInt(currentProv.container_capacity, 10) || 600;
+            currentProv.shipments_count += 1;
+            allocated += cap;
+            iter++;
+        }
+
+        setProviderAllocations(updated);
+        const totalShipments = updated.reduce((sum, p) => sum + (parseInt(p.shipments_count, 10) || 0), 0);
+        toast.success(`Sugerencia aplicada: ${allocated.toLocaleString()} cajas distribuidas en ${totalShipments} contenedor(es) ${label}.`);
     };
 
     const buildMrpPdfDoc = () => {
@@ -381,6 +430,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
     const isDeficit = (eggBal.net_balance_boxes || 0) < 0;
 
     const histComp = plannerData?.historical_comparison || {};
+    const salesDemand = plannerData?.sales_demand_suggestion || {};
     const totalAllocatedBoxes = providerAllocations.reduce((acc, p) => acc + (parseInt(p.container_capacity) || 0) * (parseInt(p.shipments_count) || 0), 0);
     const targetDemandBoxes = eggBal.boxes_to_purchase > 0 ? eggBal.boxes_to_purchase : (eggBal.total_boxes_needed || 0);
     const coveragePercent = targetDemandBoxes > 0 ? Math.min(200, Math.round((totalAllocatedBoxes / targetDemandBoxes) * 100)) : 100;
@@ -704,7 +754,132 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                     </div>
                                 </div>
 
-                                {/* SECCIÓN 2: ASIGNACIÓN DE CONTENEDORES POR PROVEEDOR (CAPACIDADES VARIABLES: 900 vs 600) */}
+                                {/* SECCIÓN 2: SUGERENCIA INTELIGENTE DE PEDIDO SEGÚN VENTAS, PLANIFICACIÓN E HISTÓRICO */}
+                                <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-md border border-indigo-500/20 space-y-4">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-500/20 pb-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-400/30">
+                                                <Sparkles size={20} className="animate-pulse text-amber-300" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-white">
+                                                    Sugerencia Inteligente de Pedido de Materia Prima
+                                                </h3>
+                                                <p className="text-[11px] text-slate-300 font-medium">
+                                                    Calcula y distribuye automáticamente los contenedores entre tus proveedores según la fuente que elijas
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-xl text-[11px] font-semibold text-indigo-200 border border-white/10 self-start sm:self-auto">
+                                            <Lightbulb size={13} className="text-amber-300 shrink-0" />
+                                            <span>Aplica automáticamente a los contenedores:</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {/* Opción A: Según Ventas Comerciales (Últimos 6 Meses) */}
+                                        <div className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all">
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                                                        <ShoppingCart size={13} /> Según Ventas Reales
+                                                    </span>
+                                                    <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold border border-amber-400/30">
+                                                        Demanda Comercial
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-baseline gap-1.5">
+                                                    <span className="text-xl font-black text-white">
+                                                        {(salesDemand.suggested_boxes_to_order || salesDemand.suggested_boxes_from_sales || 0).toLocaleString()}
+                                                    </span>
+                                                    <span className="text-xs text-slate-300 font-semibold">cajas sugeridas</span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-300 space-y-0.5">
+                                                    <p>• Promedio mensual: <strong className="text-white">{(salesDemand.monthly_sales_avg_boxes || 0).toLocaleString()} cjs</strong> (~{(salesDemand.monthly_sales_avg_lbs || 0).toLocaleString()} Lbs)</p>
+                                                    <p>• Stock actual bodega: <strong className="text-emerald-300">{(eggBal.current_stock_boxes || 0).toLocaleString()} cjs</strong></p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => applySuggestedOrder('sales')}
+                                                className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-95"
+                                                title="Distribuir automáticamente las cajas calculadas por promedio de ventas en los contenedores de los proveedores"
+                                            >
+                                                <Zap size={14} />
+                                                <span>Sugerir según Ventas</span>
+                                            </button>
+                                        </div>
+
+                                        {/* Opción B: Según Plan de Producción del Mes */}
+                                        <div className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all">
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
+                                                        <Boxes size={13} /> Según Plan de Lotes
+                                                    </span>
+                                                    <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-bold border border-indigo-400/30">
+                                                        {plannerData?.scheduled_productions_count || 0} Lotes
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-baseline gap-1.5">
+                                                    <span className="text-xl font-black text-white">
+                                                        {(salesDemand.suggested_boxes_from_schedule || eggBal.boxes_to_purchase || 0).toLocaleString()}
+                                                    </span>
+                                                    <span className="text-xs text-slate-300 font-semibold">cajas sugeridas</span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-300 space-y-0.5">
+                                                    <p>• Demanda programada: <strong className="text-white">{(eggBal.total_boxes_needed || 0).toLocaleString()} cjs</strong></p>
+                                                    <p>• Balance con stock: <strong className={isDeficit ? 'text-amber-300' : 'text-emerald-300'}>{(eggBal.net_balance_boxes || 0).toLocaleString()} cjs</strong></p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => applySuggestedOrder('schedule')}
+                                                className="w-full py-2 px-3 bg-indigo-500 hover:bg-indigo-400 text-white font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-95"
+                                                title="Distribuir automáticamente las cajas requeridas para cubrir las producciones programadas en los contenedores"
+                                            >
+                                                <Zap size={14} />
+                                                <span>Sugerir según Plan</span>
+                                            </button>
+                                        </div>
+
+                                        {/* Opción C: Según Historial Multianual */}
+                                        <div className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all">
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                                                        <History size={13} /> Según Histórico {monthNames[month - 1]}
+                                                    </span>
+                                                    <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold border border-emerald-400/30">
+                                                        Años Previos
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-baseline gap-1.5">
+                                                    <span className="text-xl font-black text-white">
+                                                        {(salesDemand.suggested_boxes_from_history || Math.max(0, (histComp.average_monthly_boxes || 0) - (eggBal.current_stock_boxes || 0))).toLocaleString()}
+                                                    </span>
+                                                    <span className="text-xs text-slate-300 font-semibold">cajas sugeridas</span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-300 space-y-0.5">
+                                                    <p>• Promedio histórico: <strong className="text-white">{(histComp.average_monthly_boxes || 0).toLocaleString()} cjs</strong></p>
+                                                    <p>• Descontando stock: <strong className="text-slate-300">{(eggBal.current_stock_boxes || 0).toLocaleString()} cjs en bodega</strong></p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => applySuggestedOrder('history')}
+                                                className="w-full py-2 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 active:scale-95"
+                                                title="Distribuir automáticamente las cajas según el consumo multianual histórico de este mes"
+                                            >
+                                                <Zap size={14} />
+                                                <span>Sugerir según Histórico</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* SECCIÓN 3: ASIGNACIÓN DE CONTENEDORES POR PROVEEDOR (CAPACIDADES VARIABLES: 900 vs 600) */}
                                 <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                                         <div className="flex items-center gap-2">
@@ -721,14 +896,36 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             </div>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={addProviderAllocation}
-                                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 transition-colors flex items-center gap-1.5 shadow-2xs self-start sm:self-auto"
-                                        >
-                                            <Plus size={14} />
-                                            <span>Agregar Proveedor</span>
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                                            <div className="hidden lg:flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-xl text-[10px] font-bold text-slate-600">
+                                                <span>Sugerir:</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applySuggestedOrder('sales')}
+                                                    className="px-2 py-0.5 bg-white hover:bg-amber-50 hover:text-amber-800 rounded-lg border border-slate-200 transition-colors"
+                                                    title="Sugerir según Promedio de Ventas"
+                                                >
+                                                    🛒 Ventas ({(salesDemand.suggested_boxes_to_order || salesDemand.suggested_boxes_from_sales || 0).toLocaleString()} cjs)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applySuggestedOrder('schedule')}
+                                                    className="px-2 py-0.5 bg-white hover:bg-indigo-50 hover:text-indigo-800 rounded-lg border border-slate-200 transition-colors"
+                                                    title="Sugerir según Plan de Lotes"
+                                                >
+                                                    📦 Plan ({(salesDemand.suggested_boxes_from_schedule || eggBal.boxes_to_purchase || 0).toLocaleString()} cjs)
+                                                </button>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={addProviderAllocation}
+                                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 transition-colors flex items-center gap-1.5 shadow-2xs"
+                                            >
+                                                <Plus size={14} />
+                                                <span>Agregar Proveedor</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Lista de Proveedores Asignados */}

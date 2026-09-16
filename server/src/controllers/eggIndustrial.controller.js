@@ -106,6 +106,25 @@ const ensureEggSchema = async () => {
             await pool.query("ALTER TABLE egg_packaging_records ADD COLUMN product_type VARCHAR(100) NULL AFTER batch_id, ADD COLUMN presentation VARCHAR(100) NULL AFTER product_type");
         }
 
+        // Columnas de clasificación de calidad en egg_raw_materials
+        const [qualityCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_raw_materials' AND COLUMN_NAME = 'egg_classification'"
+        );
+        if (qualityCols.length === 0) {
+            await pool.query(`
+                ALTER TABLE egg_raw_materials 
+                ADD COLUMN egg_classification VARCHAR(50) DEFAULT 'Grado A' AFTER egg_size,
+                ADD COLUMN quality_inspector_name VARCHAR(150) NULL AFTER operator_name,
+                ADD COLUMN quality_status VARCHAR(50) DEFAULT 'pendiente' AFTER quality_inspector_name,
+                ADD COLUMN quality_date DATETIME NULL AFTER quality_status,
+                ADD COLUMN quality_notes TEXT NULL AFTER quality_date,
+                ADD COLUMN quality_defect_broken_pct DECIMAL(5,2) DEFAULT 0.00 AFTER quality_notes,
+                ADD COLUMN quality_defect_dirty_pct DECIMAL(5,2) DEFAULT 0.00 AFTER quality_defect_broken_pct,
+                ADD COLUMN quality_brix DECIMAL(5,2) NULL AFTER quality_defect_dirty_pct
+            `);
+            console.log("[EggIndustrial] Auto-migrated quality classification columns in egg_raw_materials.");
+        }
+
         schemaEnsured = true;
     } catch (err) {
         console.warn("[EggIndustrial] ensureEggSchema notice:", err.message);
@@ -384,6 +403,88 @@ const voidRawMaterial = async (req, res) => {
 
         res.json({ id, status: 'anulado' });
     } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 1.1 Clasificación y Dictamen de Calidad de Lote de Materia Prima (Personal de Calidad LAB-004)
+const saveQualityClassification = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            egg_classification,
+            egg_size,
+            quality_inspector_name,
+            quality_status,
+            quality_notes,
+            quality_defect_broken_pct,
+            quality_defect_dirty_pct,
+            quality_brix
+        } = req.body;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Recepción no encontrada.' });
+        }
+
+        const inspector = quality_inspector_name || req.user?.nombre || 'Inspector de Calidad';
+        const qStatus = quality_status || 'aprobado_calidad';
+        const now = new Date();
+
+        await pool.query(
+            `UPDATE egg_raw_materials SET 
+                egg_classification = ?,
+                egg_size = COALESCE(?, egg_size),
+                quality_inspector_name = ?,
+                quality_status = ?,
+                quality_date = ?,
+                quality_notes = ?,
+                quality_defect_broken_pct = ?,
+                quality_defect_dirty_pct = ?,
+                quality_brix = ?
+             WHERE id = ? AND company_id = ?`,
+            [
+                egg_classification || 'Grado A',
+                egg_size || null,
+                inspector,
+                qStatus,
+                now,
+                quality_notes || null,
+                parseFloat(quality_defect_broken_pct) || 0,
+                parseFloat(quality_defect_dirty_pct) || 0,
+                quality_brix ? parseFloat(quality_brix) : null,
+                id,
+                req.company_id
+            ]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'raw_material.quality_classified', 'info', ?, ?, ?)`,
+            [
+                req.company_id,
+                `Evaluación de calidad y clasificación registrada para lote ${existing[0].provider_lot || id}: ${egg_classification || 'Grado A'} (${qStatus}).`,
+                JSON.stringify({ raw_material_id: parseInt(id), egg_classification, quality_status: qStatus }),
+                inspector
+            ]
+        );
+
+        res.json({
+            success: true,
+            message: 'Clasificación de calidad guardada exitosamente.',
+            data: {
+                id,
+                egg_classification,
+                quality_inspector_name: inspector,
+                quality_status: qStatus,
+                quality_date: now
+            }
+        });
+    } catch (error) {
+        console.error('Error al guardar clasificación de calidad:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -3584,54 +3685,6 @@ const getRawMaterialPlanning = async (req, res) => {
             console.warn('Aviso: no se pudieron cargar proveedores específicos en MRP:', provErr.message);
         }
 
-        // 3.1 Histórico de recepciones y consumos (mismo mes en años anteriores y meses recientes)
-        let sameMonthPriorYears = [];
-        let recentPriorMonths = [];
-        try {
-            const [smRows] = await pool.query(
-                `SELECT YEAR(fecha) as year, MONTH(fecha) as month, 
-                        COALESCE(SUM(total_boxes), 0) as total_boxes, 
-                        COALESCE(SUM(weight_lbs), 0) as total_weight_lbs,
-                        COUNT(id) as count_receptions
-                 FROM egg_raw_materials 
-                 WHERE company_id = ? AND MONTH(fecha) = ? AND YEAR(fecha) < ? AND status != 'anulado'
-                 GROUP BY YEAR(fecha), MONTH(fecha)
-                 ORDER BY year DESC
-                 LIMIT 3`,
-                [company_id, targetMonth, targetYear]
-            );
-            sameMonthPriorYears = smRows;
-
-            const [pmRows] = await pool.query(
-                `SELECT YEAR(fecha) as year, MONTH(fecha) as month, 
-                        COALESCE(SUM(total_boxes), 0) as total_boxes, 
-                        COALESCE(SUM(weight_lbs), 0) as total_weight_lbs,
-                        COUNT(id) as count_receptions
-                 FROM egg_raw_materials 
-                 WHERE company_id = ? 
-                   AND (
-                       (YEAR(fecha) = ? AND MONTH(fecha) < ?)
-                       OR (YEAR(fecha) = ? - 1 AND MONTH(fecha) > ? + 9)
-                   )
-                   AND status != 'anulado'
-                 GROUP BY YEAR(fecha), MONTH(fecha)
-                 ORDER BY year DESC, month DESC
-                 LIMIT 4`,
-                [company_id, targetYear, targetMonth, targetYear, targetMonth]
-            );
-            recentPriorMonths = pmRows;
-        } catch (histErr) {
-            console.warn('Aviso: error obteniendo datos históricos de materia prima:', histErr.message);
-        }
-
-        const allHist = [...sameMonthPriorYears, ...recentPriorMonths];
-        const histAvgBoxes = allHist.length > 0 
-            ? Math.round(allHist.reduce((s, h) => s + parseFloat(h.total_boxes || 0), 0) / allHist.length)
-            : Math.round(totalRawEggBoxesNeeded || 1500);
-        const histAvgLbs = allHist.length > 0
-            ? Math.round(allHist.reduce((s, h) => s + parseFloat(h.total_weight_lbs || 0), 0) / allHist.length)
-            : Math.round(histAvgBoxes * 36.1);
-
         // 3.1 Obtener pedidos de clientes del CRM para ovoproductos en el mes
         let customerOrders = [];
         try {
@@ -3647,7 +3700,35 @@ const getRawMaterialPlanning = async (req, res) => {
             console.warn('Aviso: error consultando pedidos de ovoproductos en MRP:', coErr.message);
         }
 
-        // 4. Calcular consumos consolidados
+        // 3.2 Obtener ventas reales de ovoproductos de los últimos meses (para sugerir pedidos basados en ventas)
+        let salesRows = [];
+        let salesMonthlyAvgLbs = 0;
+        let salesMonthlyAvgBoxes = 0;
+        try {
+            const [sRows] = await pool.query(
+                `SELECT p.nombre as product_name, SUM(si.cantidad) as total_lbs, COUNT(DISTINCT sh.id) as trans_count,
+                        COUNT(DISTINCT DATE_FORMAT(sh.fecha_emision, '%Y-%m')) as months_count
+                 FROM sales_items si
+                 JOIN sales_headers sh ON si.sale_id = sh.id
+                 JOIN products p ON si.product_id = p.id
+                 WHERE sh.company_id = ? AND sh.estado != 'ANULADO'
+                   AND sh.fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                   AND (p.nombre LIKE '%huevo%' OR p.nombre LIKE '%clara%' OR p.nombre LIKE '%yema%')
+                 GROUP BY p.nombre`,
+                [company_id]
+            );
+            salesRows = sRows;
+            if (salesRows.length > 0) {
+                const totalLbs = salesRows.reduce((acc, r) => acc + (parseFloat(r.total_lbs) || 0), 0);
+                const maxMonths = Math.max(1, Math.max(...salesRows.map(r => r.months_count || 1)));
+                salesMonthlyAvgLbs = Math.round(totalLbs / maxMonths);
+                salesMonthlyAvgBoxes = Math.round(salesMonthlyAvgLbs / 36.1);
+            }
+        } catch (salesErr) {
+            console.warn('Aviso: error consultando ventas de ovoproductos en MRP:', salesErr.message);
+        }
+
+        // 4. Calcular consumos consolidados de producciones y órdenes
         let totalLiquidLbsNeeded = 0;
         let totalRawEggBoxesNeeded = 0;
         let totalWaterH2oLbs = 0;
@@ -3709,9 +3790,65 @@ const getRawMaterialPlanning = async (req, res) => {
             totalBuckets30Lb = Math.ceil(54000 / 30); // ~1800 cubetas
         }
 
+        // 5. Histórico de recepciones y consumos (mismo mes en años anteriores y meses recientes)
+        let sameMonthPriorYears = [];
+        let recentPriorMonths = [];
+        try {
+            const [smRows] = await pool.query(
+                `SELECT YEAR(fecha) as year, MONTH(fecha) as month, 
+                        COALESCE(SUM(total_boxes), 0) as total_boxes, 
+                        COALESCE(SUM(weight_lbs), 0) as total_weight_lbs,
+                        COUNT(id) as count_receptions
+                 FROM egg_raw_materials 
+                 WHERE company_id = ? AND MONTH(fecha) = ? AND YEAR(fecha) < ? AND status != 'anulado'
+                 GROUP BY YEAR(fecha), MONTH(fecha)
+                 ORDER BY year DESC
+                 LIMIT 3`,
+                [company_id, targetMonth, targetYear]
+            );
+            sameMonthPriorYears = smRows;
+
+            const [pmRows] = await pool.query(
+                `SELECT YEAR(fecha) as year, MONTH(fecha) as month, 
+                        COALESCE(SUM(total_boxes), 0) as total_boxes, 
+                        COALESCE(SUM(weight_lbs), 0) as total_weight_lbs,
+                        COUNT(id) as count_receptions
+                 FROM egg_raw_materials 
+                 WHERE company_id = ? 
+                   AND (
+                       (YEAR(fecha) = ? AND MONTH(fecha) < ?)
+                       OR (YEAR(fecha) = ? - 1 AND MONTH(fecha) > ? + 9)
+                   )
+                   AND status != 'anulado'
+                 GROUP BY YEAR(fecha), MONTH(fecha)
+                 ORDER BY year DESC, month DESC
+                 LIMIT 4`,
+                [company_id, targetYear, targetMonth, targetYear, targetMonth]
+            );
+            recentPriorMonths = pmRows;
+        } catch (histErr) {
+            console.warn('Aviso: error obteniendo datos históricos de materia prima:', histErr.message);
+        }
+
+        const allHist = [...sameMonthPriorYears, ...recentPriorMonths];
+        const histAvgBoxes = allHist.length > 0 
+            ? Math.round(allHist.reduce((s, h) => s + parseFloat(h.total_boxes || 0), 0) / allHist.length)
+            : Math.round(totalRawEggBoxesNeeded || 1500);
+        const histAvgLbs = allHist.length > 0
+            ? Math.round(allHist.reduce((s, h) => s + parseFloat(h.total_weight_lbs || 0), 0) / allHist.length)
+            : Math.round(histAvgBoxes * 36.1);
+
         const netBalanceBoxes = currentStockBoxes - totalRawEggBoxesNeeded;
         const netBalanceLbs = currentStockLbs - totalLiquidLbsNeeded;
         const boxesToPurchase = Math.max(0, -netBalanceBoxes);
+
+        // Sugerencia de pedidos calculada según los 3 métodos:
+        // A. Según Ventas Reales (Promedio de ventas descontando inventario disponible)
+        const suggestedBoxesFromSales = Math.max(0, salesMonthlyAvgBoxes - currentStockBoxes);
+        // B. Según Plan de Producción / Pedidos
+        const suggestedBoxesFromSchedule = boxesToPurchase;
+        // C. Según Histórico Multianual
+        const suggestedBoxesFromHistory = Math.max(0, histAvgBoxes - currentStockBoxes);
 
         // Cronograma semanal de camiones sugerido (para evitar saturar cámaras de frío)
         // Capacidad típica de camión refrigerado: 350 a 500 cajas
@@ -3755,6 +3892,16 @@ const getRawMaterialPlanning = async (req, res) => {
                 status: netBalanceBoxes >= 0 ? 'suficiente' : 'deficit_critico',
                 boxes_to_purchase: boxesToPurchase,
                 estimated_purchase_cost_usd: boxesToPurchase * 38.00 // ~$38/caja costo estándar
+            },
+            sales_demand_suggestion: {
+                monthly_sales_avg_lbs: salesMonthlyAvgLbs,
+                monthly_sales_avg_boxes: salesMonthlyAvgBoxes,
+                current_stock_boxes: currentStockBoxes,
+                suggested_boxes_to_order: suggestedBoxesFromSales > 0 ? suggestedBoxesFromSales : (salesMonthlyAvgBoxes || totalRawEggBoxesNeeded),
+                suggested_boxes_from_sales: suggestedBoxesFromSales > 0 ? suggestedBoxesFromSales : (salesMonthlyAvgBoxes || totalRawEggBoxesNeeded),
+                suggested_boxes_from_schedule: suggestedBoxesFromSchedule > 0 ? suggestedBoxesFromSchedule : totalRawEggBoxesNeeded,
+                suggested_boxes_from_history: suggestedBoxesFromHistory > 0 ? suggestedBoxesFromHistory : histAvgBoxes,
+                sales_breakdown: salesRows
             },
             ingredients_balance: {
                 purified_water: {
@@ -4079,6 +4226,7 @@ module.exports = {
     createRawMaterial,
     updateRawMaterial,
     voidRawMaterial,
+    saveQualityClassification,
     getCipLogs,
     createCipLog,
     getProductionBatches,
