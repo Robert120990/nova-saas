@@ -98,6 +98,14 @@ const ensureEggSchema = async () => {
             await pool.query("ALTER TABLE batch_raw_materials ADD COLUMN boxes_count INT DEFAULT 0 AFTER tarimas_json");
         }
 
+        // Columnas en egg_packaging_records para soportar empaque multiproducto y presentación independiente
+        const [pkgCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_packaging_records' AND COLUMN_NAME = 'product_type'"
+        );
+        if (pkgCols.length === 0) {
+            await pool.query("ALTER TABLE egg_packaging_records ADD COLUMN product_type VARCHAR(100) NULL AFTER batch_id, ADD COLUMN presentation VARCHAR(100) NULL AFTER product_type");
+        }
+
         schemaEnsured = true;
     } catch (err) {
         console.warn("[EggIndustrial] ensureEggSchema notice:", err.message);
@@ -913,7 +921,10 @@ const createHoldingTemperature = async (req, res) => {
 const getPackagingRecords = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT pr.*, b.product_type, b.batch_uuid, b.presentation
+            `SELECT pr.*, 
+                    COALESCE(pr.product_type, b.product_type) as product_type, 
+                    COALESCE(pr.presentation, b.presentation) as presentation, 
+                    b.batch_uuid
              FROM egg_packaging_records pr
              LEFT JOIN egg_production_batches b ON pr.batch_id = b.id
              WHERE pr.company_id = ? 
@@ -931,7 +942,8 @@ const createPackagingRecord = async (req, res) => {
         const { 
             batch_id, units_packaged, weight_per_unit_lbs, operator_name,
             warehouse_zone = 'COOLER', product_state = 'liquido',
-            label_type = 'etiqueta_4x2', customer_destination = null
+            label_type = 'etiqueta_4x2', customer_destination = null,
+            product_type: customProductType, presentation: customPresentation
         } = req.body;
         const company_id = req.company_id;
 
@@ -947,15 +959,37 @@ const createPackagingRecord = async (req, res) => {
             });
         }
 
-        const total_batch_weight_lbs = units_packaged * weight_per_unit_lbs;
-        const cleanProduct = batch.product_type.replace(' ', '-').toUpperCase();
+        const resolvedProduct = (customProductType || batch.product_type || 'Huevo Entero Pasteurizado').trim();
+        const resolvedPresentation = (customPresentation || batch.presentation || 'cubeta 30LB').trim();
+        const total_batch_weight_lbs = parseFloat(units_packaged) * parseFloat(weight_per_unit_lbs);
+        const cleanProduct = resolvedProduct.replace(/\s+/g, '-').toUpperCase();
         
-        // Generar lote visible: si tiene batch_code_display usarlo, de lo contrario formato fecha
+        // Correlativo de envasado para este lote
+        const [pkgSeqRows] = await pool.query(
+            'SELECT COUNT(*) as cnt FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
+            [batch_id, company_id]
+        );
+        const pkgSeq = (pkgSeqRows[0]?.cnt || 0) + 1;
+
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const lot_code = batch.batch_code_display ? `LOT-${batch.batch_code_display.replace(/\s+/g, '')}` : `LOT-${dateStr}-${cleanProduct}-${batch_id}`;
+        const baseLotCode = batch.batch_code_display 
+            ? `LOT-${batch.batch_code_display.replace(/\s+/g, '')}` 
+            : `LOT-${dateStr}-${cleanProduct}-${batch_id}`;
+
+        // Garantizar unicidad de lot_code evitando colisiones
+        let lot_code = pkgSeq > 1 ? `${baseLotCode}-${String(pkgSeq).padStart(2, '0')}` : baseLotCode;
+        let suffixNum = pkgSeq > 1 ? pkgSeq : 1;
+        let attempts = 0;
+        while (attempts < 50) {
+            const [dup] = await pool.query('SELECT id FROM egg_packaging_records WHERE lot_code = ?', [lot_code]);
+            if (dup.length === 0) break;
+            suffixNum++;
+            lot_code = `${baseLotCode}-${String(suffixNum).padStart(2, '0')}`;
+            attempts++;
+        }
         
         // Código de barras simulado (UPC-A de 12 dígitos)
-        const barcode = `741258${String(batch_id).padStart(6, '0')}`;
+        const barcode = `741258${String(batch_id).padStart(4, '0')}${String(suffixNum).padStart(2, '0')}`;
 
         // Vida útil según estado: Congelado a -18°C = 365 días (1 año), Líquido refrigerado 2° a 4°C = 28 días
         const shelfLifeDays = product_state === 'congelado' ? 365 : 28;
@@ -964,8 +998,8 @@ const createPackagingRecord = async (req, res) => {
         const qr_code_payload = JSON.stringify({
             lot_code,
             batch_display: batch.batch_code_display || lot_code,
-            product: batch.product_type,
-            presentation: batch.presentation,
+            product: resolvedProduct,
+            presentation: resolvedPresentation,
             units: units_packaged,
             weight_lbs: total_batch_weight_lbs,
             warehouse_zone,
@@ -975,16 +1009,16 @@ const createPackagingRecord = async (req, res) => {
             operator: operator_name
         });
 
-        // Insertar registro
+        // Insertar registro con product_type y presentation independientes
         const [result] = await pool.query(
             `INSERT INTO egg_packaging_records (
-                company_id, batch_id, units_packaged, warehouse_zone, product_state, 
+                company_id, batch_id, product_type, presentation, units_packaged, warehouse_zone, product_state, 
                 weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type, 
                 customer_destination, qr_code_payload, expiry_date, operator_name
             ) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?)`,
             [
-                company_id, batch_id, units_packaged, warehouse_zone, product_state,
+                company_id, batch_id, resolvedProduct, resolvedPresentation, units_packaged, warehouse_zone, product_state,
                 weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type,
                 customer_destination, qr_code_payload, shelfLifeDays, operator_name
             ]
@@ -1012,6 +1046,8 @@ const createPackagingRecord = async (req, res) => {
         res.status(201).json({ 
             id: result.insertId, 
             lot_code, 
+            product_type: resolvedProduct,
+            presentation: resolvedPresentation,
             barcode, 
             warehouse_zone, 
             product_state, 
@@ -2724,11 +2760,17 @@ const deleteScheduledProduction = async (req, res) => {
             return res.status(404).json({ message: 'Producción no encontrada.' });
         }
 
-        if (existing[0].status === 'en_proceso' || existing[0].status === 'completado') {
+        if (existing[0].status === 'completado') {
             return res.status(400).json({
-                message: `No se puede eliminar una producción en estado "${existing[0].status}". Si ya se inició en planta, cancélela o márquela adecuadamente.`
+                message: `No se puede eliminar una producción completada/finalizada en planta con trazabilidad cerrada.`
             });
         }
+
+        // Si tiene corrida vinculada en producción, desvincularla para no dejar huérfana la FK
+        await pool.query(
+            'UPDATE egg_production_batches SET scheduled_production_id = NULL WHERE scheduled_production_id = ? AND company_id = ?',
+            [id, company_id]
+        );
 
         await pool.query(
             'DELETE FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
@@ -3522,19 +3564,73 @@ const getRawMaterialPlanning = async (req, res) => {
         const currentStockLbs = parseFloat(rmRows[0]?.total_stock_lbs || 0);
         const currentStockBoxes = parseInt(rmRows[0]?.total_boxes || 0);
 
-        // 3. Obtener lista de proveedores principales para recomendaciones (defensivo sin campo contacto)
+        // 3. Obtener lista de proveedores activos
         let providers = [];
+        let allProviders = [];
         try {
             const [provRows] = await pool.query(
                 `SELECT id, nombre, nombre_comercial, telefono, correo FROM providers 
-                 WHERE company_id = ? AND (nombre LIKE '%avicol%' OR nombre LIKE '%granja%' OR nombre LIKE '%huevo%' OR nombre LIKE '%agro%')
-                 LIMIT 5`,
+                 WHERE company_id = ? AND status = 'activo'
+                 ORDER BY nombre ASC`,
                 [company_id]
             );
-            providers = provRows;
+            allProviders = provRows;
+            providers = provRows.filter(p => {
+                const n = (p.nombre || '').toLowerCase();
+                return n.includes('avicol') || n.includes('granja') || n.includes('huevo') || n.includes('agro') || n.includes('el salvador') || n.includes('guatemala');
+            });
+            if (providers.length === 0) providers = allProviders.slice(0, 5);
         } catch (provErr) {
             console.warn('Aviso: no se pudieron cargar proveedores específicos en MRP:', provErr.message);
         }
+
+        // 3.1 Histórico de recepciones y consumos (mismo mes en años anteriores y meses recientes)
+        let sameMonthPriorYears = [];
+        let recentPriorMonths = [];
+        try {
+            const [smRows] = await pool.query(
+                `SELECT YEAR(fecha) as year, MONTH(fecha) as month, 
+                        COALESCE(SUM(total_boxes), 0) as total_boxes, 
+                        COALESCE(SUM(weight_lbs), 0) as total_weight_lbs,
+                        COUNT(id) as count_receptions
+                 FROM egg_raw_materials 
+                 WHERE company_id = ? AND MONTH(fecha) = ? AND YEAR(fecha) < ? AND status != 'anulado'
+                 GROUP BY YEAR(fecha), MONTH(fecha)
+                 ORDER BY year DESC
+                 LIMIT 3`,
+                [company_id, targetMonth, targetYear]
+            );
+            sameMonthPriorYears = smRows;
+
+            const [pmRows] = await pool.query(
+                `SELECT YEAR(fecha) as year, MONTH(fecha) as month, 
+                        COALESCE(SUM(total_boxes), 0) as total_boxes, 
+                        COALESCE(SUM(weight_lbs), 0) as total_weight_lbs,
+                        COUNT(id) as count_receptions
+                 FROM egg_raw_materials 
+                 WHERE company_id = ? 
+                   AND (
+                       (YEAR(fecha) = ? AND MONTH(fecha) < ?)
+                       OR (YEAR(fecha) = ? - 1 AND MONTH(fecha) > ? + 9)
+                   )
+                   AND status != 'anulado'
+                 GROUP BY YEAR(fecha), MONTH(fecha)
+                 ORDER BY year DESC, month DESC
+                 LIMIT 4`,
+                [company_id, targetYear, targetMonth, targetYear, targetMonth]
+            );
+            recentPriorMonths = pmRows;
+        } catch (histErr) {
+            console.warn('Aviso: error obteniendo datos históricos de materia prima:', histErr.message);
+        }
+
+        const allHist = [...sameMonthPriorYears, ...recentPriorMonths];
+        const histAvgBoxes = allHist.length > 0 
+            ? Math.round(allHist.reduce((s, h) => s + parseFloat(h.total_boxes || 0), 0) / allHist.length)
+            : Math.round(totalRawEggBoxesNeeded || 1500);
+        const histAvgLbs = allHist.length > 0
+            ? Math.round(allHist.reduce((s, h) => s + parseFloat(h.total_weight_lbs || 0), 0) / allHist.length)
+            : Math.round(histAvgBoxes * 36.1);
 
         // 3.1 Obtener pedidos de clientes del CRM para ovoproductos en el mes
         let customerOrders = [];
@@ -3698,6 +3794,14 @@ const getRawMaterialPlanning = async (req, res) => {
                 food_grade_liners: Math.ceil(totalBuckets30Lb * 1.02), // 2% margen
                 julian_traceability_labels: Math.ceil(totalBuckets30Lb * 1.05) // 5% margen
             },
+            historical_comparison: {
+                same_month_prior_years: sameMonthPriorYears,
+                recent_prior_months: recentPriorMonths,
+                average_monthly_boxes: histAvgBoxes,
+                average_monthly_lbs: histAvgLbs,
+                data_points_count: allHist.length
+            },
+            providers_catalog: allProviders,
             trucks_schedule: trucksSchedule
         });
     } catch (error) {

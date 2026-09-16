@@ -36,6 +36,7 @@ const EggProduction = () => {
 
     // Modal de escáner con cámara para tarimas QR / Código de barras
     const [scannerModalOpen, setScannerModalOpen] = useState(false);
+    const [tarimaPickerModal, setTarimaPickerModal] = useState({ isOpen: false, lot: null, availableTarimas: [] });
 
     // Lists
     const [batches, setBatches] = useState([]);
@@ -366,7 +367,7 @@ const EggProduction = () => {
     // Resultado del escaneo de QR / Código de barras de tarima
     const handleScanTarimaResult = (scannedData) => {
         if (!scannedData) return;
-        const { lotCode, tarimaNumber, _palletId, rawText } = scannedData;
+        const { lotCode, tarimaNumber, _palletId, rawText, loadAll } = scannedData;
 
         // 1. Buscar lote en rawMaterials
         const lot = rawMaterials.find(m => 
@@ -384,7 +385,7 @@ const EggProduction = () => {
             return;
         }
 
-        // 2. Buscar tarima en el lote
+        // 2. Buscar tarimas en el lote
         let availableTarimas = lot.tarimas_available || [];
         if (availableTarimas.length === 0 && lot.tarimas_json) {
             try {
@@ -392,25 +393,7 @@ const EggProduction = () => {
             } catch (e) {}
         }
 
-        let targetTarima = null;
-        if (tarimaNumber) {
-            targetTarima = availableTarimas.find(t => parseInt(t.tarima_number) === parseInt(tarimaNumber));
-        }
-        if (!targetTarima && availableTarimas.length > 0) {
-            targetTarima = availableTarimas.find(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
-        }
-
-        if (!targetTarima) {
-            toast.error(`Tarima #${tarimaNumber || '1'} no disponible o no encontrada en el lote ${lot.provider_lot}.`);
-            return;
-        }
-
-        if (targetTarima.is_depleted || (targetTarima.available_boxes <= 0 && targetTarima.available_lbs <= 0.01)) {
-            toast.error(`La Tarima #${targetTarima.tarima_number} del lote ${lot.provider_lot} ya fue 100% consumida.`);
-            return;
-        }
-
-        // 3. Agregar o ubicar la fila del lote en el formulario
+        // 3. Ubicar o crear la fila del lote en el formulario
         let updatedRms = [...batchForm.raw_materials];
         let rmIdx = updatedRms.findIndex(r => String(r.raw_material_id) === String(lot.id));
 
@@ -423,6 +406,44 @@ const EggProduction = () => {
             };
             updatedRms.push(newRm);
             rmIdx = updatedRms.length - 1;
+        }
+
+        // Si se solicitó cargar todas las tarimas con saldo
+        if (loadAll) {
+            handleLoadAllAvailableTarimas(rmIdx, availableTarimas);
+            setScannerModalOpen(false);
+            return;
+        }
+
+        const nonDepleted = (availableTarimas || []).filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
+
+        // Si no se especificó un número de tarima y hay más de 1 tarima disponible, abrir selector
+        if (!tarimaNumber && nonDepleted.length > 1) {
+            setTarimaPickerModal({
+                isOpen: true,
+                lot,
+                availableTarimas: nonDepleted
+            });
+            setScannerModalOpen(false);
+            return;
+        }
+
+        let targetTarima = null;
+        if (tarimaNumber) {
+            targetTarima = availableTarimas.find(t => parseInt(t.tarima_number) === parseInt(tarimaNumber));
+        }
+        if (!targetTarima && nonDepleted.length > 0) {
+            targetTarima = nonDepleted[0];
+        }
+
+        if (!targetTarima) {
+            toast.error(`Tarima #${tarimaNumber || '1'} no disponible o no encontrada en el lote ${lot.provider_lot}.`);
+            return;
+        }
+
+        if (targetTarima.is_depleted || (targetTarima.available_boxes <= 0 && targetTarima.available_lbs <= 0.01)) {
+            toast.error(`La Tarima #${targetTarima.tarima_number} del lote ${lot.provider_lot} ya fue 100% consumida.`);
+            return;
         }
 
         const currentRm = updatedRms[rmIdx];
@@ -1828,7 +1849,100 @@ const EggProduction = () => {
                     isOpen={scannerModalOpen}
                     onClose={() => setScannerModalOpen(false)}
                     onScanTarima={handleScanTarimaResult}
+                    rawMaterials={rawMaterials}
                 />
+            )}
+
+            {/* Modal Selector de Tarima Específica del Lote */}
+            {tarimaPickerModal.isOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-lg w-full space-y-4 text-slate-900">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100">
+                                    <Layers size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                        Seleccionar Tarima del Lote
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        {tarimaPickerModal.lot?.provider_lot} - {tarimaPickerModal.lot?.provider_name || 'Proveedor'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setTarimaPickerModal({ isOpen: false, lot: null, availableTarimas: [] })}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-600 font-medium">
+                            Este lote tiene múltiples tarimas disponibles en bodega. Selecciona la tarima que vas a ingresar a esta corrida de producción:
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto p-1">
+                            {tarimaPickerModal.availableTarimas.map((t) => {
+                                const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
+                                const availLbs = t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0;
+                                return (
+                                    <button
+                                        key={t.tarima_number}
+                                        type="button"
+                                        onClick={() => {
+                                            const lotObj = tarimaPickerModal.lot;
+                                            setTarimaPickerModal({ isOpen: false, lot: null, availableTarimas: [] });
+                                            handleScanTarimaResult({
+                                                lotCode: lotObj.provider_lot,
+                                                tarimaNumber: t.tarima_number
+                                            });
+                                        }}
+                                        className="p-3.5 bg-white hover:bg-indigo-50 border-2 border-slate-200 hover:border-indigo-500 rounded-xl text-left transition-all group shadow-xs"
+                                    >
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="font-bold text-xs text-indigo-700 group-hover:text-indigo-900">
+                                                Tarima #{t.tarima_number}
+                                            </span>
+                                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
+                                                {availBoxes} cjs
+                                            </span>
+                                        </div>
+                                        <div className="text-xs font-black text-slate-800">
+                                            {parseFloat(availLbs).toFixed(1)} Lbs
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const lotObj = tarimaPickerModal.lot;
+                                    setTarimaPickerModal({ isOpen: false, lot: null, availableTarimas: [] });
+                                    handleScanTarimaResult({
+                                        lotCode: lotObj.provider_lot,
+                                        loadAll: true
+                                    });
+                                }}
+                                className="w-full sm:w-auto px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-200 transition-colors shadow-xs"
+                            >
+                                Cargar Todas las Tarimas ({tarimaPickerModal.availableTarimas.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTarimaPickerModal({ isOpen: false, lot: null, availableTarimas: [] })}
+                                className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -1563,9 +1563,9 @@ const ProductionCalendar = () => {
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeleteProduction(prod.id, prod.lot_code)}
-                                                            disabled={isBatchRunning}
+                                                            disabled={prod.status === 'completado'}
                                                             className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 transition-colors disabled:opacity-30"
-                                                            title="Eliminar"
+                                                            title={prod.status === 'completado' ? 'Producción completada (no eliminable)' : 'Eliminar producción'}
                                                         >
                                                             <Trash2 className="w-4 h-4" />
                                                         </button>
@@ -2007,7 +2007,7 @@ const ProductionCalendar = () => {
 
                     {/* Botones de Acción */}
                     <div className="flex items-center justify-between gap-2.5 pt-4 border-t border-slate-100">
-                        <div>
+                        <div className="flex items-center gap-2">
                             {formData.id && formData.status !== 'completado' && formData.status !== 'cancelado' && (
                                 <button
                                     type="button"
@@ -2025,6 +2025,20 @@ const ProductionCalendar = () => {
                                 >
                                     <Play className="w-3.5 h-3.5 fill-white" />
                                     <span>Llevar a Producción</span>
+                                </button>
+                            )}
+                            {formData.id && formData.status !== 'completado' && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsFormModalOpen(false);
+                                        handleDeleteProduction(formData.id, formData.lot_code);
+                                    }}
+                                    className="px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition-all"
+                                    title="Eliminar esta producción programada"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Eliminar</span>
                                 </button>
                             )}
                         </div>

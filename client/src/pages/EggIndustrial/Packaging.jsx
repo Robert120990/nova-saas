@@ -64,6 +64,7 @@ const EggPackaging = () => {
     // Form states
     const [packagingForm, setPackagingForm] = useState({
         batch_id: '',
+        product_type: 'huevo entero',
         units_packaged: '',
         presentation: 'cubeta 30LB',
         weight_per_unit_lbs: '30.00',
@@ -124,22 +125,33 @@ const EggPackaging = () => {
             return toast.error('BLOQUEO DE INOCUIDAD: No se puede envasar un lote bloqueado por HACCP.');
         }
 
+        const units = parseInt(packagingForm.units_packaged);
+        const unitWeight = parseFloat(packagingForm.weight_per_unit_lbs) || 0;
+        const totalWeight = units * unitWeight;
+        const availableLbs = Math.max(0, parseFloat(selectedBatchObj?.yield_liquid_lbs || 0) - parseFloat(selectedBatchObj?.packaged_weight_lbs || 0));
+
+        if (availableLbs > 0 && totalWeight > availableLbs + 0.1) {
+            toast.warning(`Atención: El peso total (${totalWeight.toFixed(1)} Lbs) excede el disponible del lote (${availableLbs.toFixed(1)} Lbs).`);
+        }
+
         setIsSubmitting(true);
         try {
-            await axios.post('/api/egg-industrial/packaging', {
+            const res = await axios.post('/api/egg-industrial/packaging', {
                 batch_id: parseInt(packagingForm.batch_id),
-                units_packaged: parseInt(packagingForm.units_packaged),
+                product_type: packagingForm.product_type,
+                units_packaged: units,
                 presentation: packagingForm.presentation,
-                weight_per_unit_lbs: parseFloat(packagingForm.weight_per_unit_lbs),
+                weight_per_unit_lbs: unitWeight,
                 product_state: packagingForm.product_state,
                 warehouse_zone: packagingForm.warehouse_zone,
                 shelf_life_days: packagingForm.product_state === 'congelado' ? 365 : 28,
                 operator_name: packagingForm.operator_name
             });
-            toast.success('Registro de empaque envasado con éxito.');
+            toast.success(`Registro de empaque envasado con éxito (${res.data.lot_code || ''}).`);
             setIsNewPackagingModalOpen(false);
             setPackagingForm({
                 batch_id: '',
+                product_type: 'huevo entero',
                 units_packaged: '',
                 presentation: 'cubeta 30LB',
                 weight_per_unit_lbs: '30.00',
@@ -567,11 +579,20 @@ const EggPackaging = () => {
                                 onChange={(e) => {
                                     const bid = e.target.value;
                                     const batch = batches.find(b => b.id === parseInt(bid));
-                                    const cfg = productConfig.find(c => c.product_type === batch?.product_type);
+                                    const pType = (batch?.product_type || 'huevo entero').toLowerCase();
+                                    let pres = (batch?.presentation || 'cubeta 30LB');
+                                    let defaultW = '30.00';
+                                    if (pres.includes('32')) { pres = 'cubeta 32LB'; defaultW = '32.00'; }
+                                    else if (pres.toLowerCase().includes('galón') || pres.includes('8LB')) { pres = 'galón 8LB'; defaultW = '8.00'; }
+                                    else if (pres.includes('4LB') || pres.toLowerCase().includes('medio')) { pres = 'medio galón 4LB'; defaultW = '4.00'; }
+                                    else if (pres.includes('2LB') || pres.toLowerCase().includes('litro')) { pres = 'litro 2LB'; defaultW = '2.00'; }
+
                                     setPackagingForm({ 
                                         ...packagingForm, 
                                         batch_id: bid, 
-                                        weight_per_unit_lbs: cfg ? String(cfg.weight_per_unit_lbs) : '30.00' 
+                                        product_type: pType,
+                                        presentation: pres,
+                                        weight_per_unit_lbs: defaultW
                                     });
                                 }}
                                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -599,70 +620,113 @@ const EggPackaging = () => {
 
                         {packagingForm.batch_id && (() => {
                             const b = batches.find(x => x.id === parseInt(packagingForm.batch_id));
-                            if (b) return (
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-3 gap-3 text-center">
-                                    <div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Rendimiento Lote</span>
-                                        <span className="text-sm font-bold text-teal-700">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
+                            if (b) {
+                                const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0));
+                                const currentProd = (parseFloat(packagingForm.units_packaged || 0) * parseFloat(packagingForm.weight_per_unit_lbs || 0));
+                                const rem = Math.max(0, disp - currentProd);
+                                return (
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-4 gap-2.5 text-center">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Rendimiento</span>
+                                            <span className="text-sm font-bold text-teal-700">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Ya Envasado</span>
+                                            <span className="text-sm font-bold text-indigo-700">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Disponible</span>
+                                            <span className="text-sm font-bold text-amber-700">{disp.toLocaleString()} Lbs</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Saldo Restante</span>
+                                            <span className={`text-sm font-bold ${currentProd > disp ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                                {rem.toLocaleString()} Lbs
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Ya Envasado</span>
-                                        <span className="text-sm font-bold text-indigo-700">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Disponible</span>
-                                        <span className="text-sm font-bold text-amber-700">{Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0)).toLocaleString()} Lbs</span>
-                                    </div>
-                                </div>
-                            );
+                                );
+                            }
                             return null;
                         })()}
 
-                        {/* Presentación y Pesaje */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Selección de Producto y Presentación */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presentación Comercial</label>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                    Producto a Envasar *
+                                </label>
+                                <select
+                                    value={packagingForm.product_type}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, product_type: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                    <option value="huevo entero">Huevo Entero Pasteurizado</option>
+                                    <option value="clara">Clara de Huevo Pasteurizada</option>
+                                    <option value="yema">Yema Líquida Pasteurizada</option>
+                                    <option value="yema azucarada">Yema Pasteurizada Azucarada</option>
+                                    <option value="yema salada">Yema Pasteurizada Salada</option>
+                                    <option value="fórmula especial">Fórmula Especial / Otros</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                    Presentación Comercial *
+                                </label>
                                 <select
                                     value={packagingForm.presentation}
                                     onChange={(e) => {
                                         const pres = e.target.value;
                                         let defaultW = '30.00';
-                                        if (pres.includes('30')) defaultW = '30.00';
-                                        else if (pres.includes('32')) defaultW = '32.00';
-                                        else if (pres.includes('8LB')) defaultW = '8.00';
-                                        else if (pres.includes('4LB')) defaultW = '4.00';
-                                        else if (pres.includes('2LB')) defaultW = '2.00';
+                                        if (pres === 'cubeta 30LB') defaultW = '30.00';
+                                        else if (pres === 'cubeta 32LB') defaultW = '32.00';
+                                        else if (pres === 'galón 8LB') defaultW = '8.00';
+                                        else if (pres === 'medio galón 4LB') defaultW = '4.00';
+                                        else if (pres === 'litro 2LB') defaultW = '2.00';
+                                        else if (pres === 'bolsa 5LB') defaultW = '5.00';
+                                        else if (pres === 'tanque 2000LB') defaultW = '2000.00';
                                         setPackagingForm({ ...packagingForm, presentation: pres, weight_per_unit_lbs: defaultW });
                                     }}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 >
                                     <option value="cubeta 30LB">Cubeta 30 Lbs (Estándar)</option>
                                     <option value="cubeta 32LB">Cubeta 32 Lbs</option>
                                     <option value="galón 8LB">Galón (8 Lbs)</option>
                                     <option value="medio galón 4LB">Medio Galón (4 Lbs)</option>
                                     <option value="litro 2LB">Litro (2 Lbs)</option>
+                                    <option value="bolsa 5LB">Bolsa (5 Lbs)</option>
+                                    <option value="tanque 2000LB">Tanque / Tote (2,000 Lbs)</option>
+                                    <option value="otra">Otra Presentación</option>
                                 </select>
                             </div>
+                        </div>
 
+                        {/* Unidades y Peso por Unidad */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Unidades Envasadas</label>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                    Unidades Envasadas
+                                </label>
                                 <input
                                     type="number"
                                     value={packagingForm.units_packaged}
                                     onChange={(e) => setPackagingForm({ ...packagingForm, units_packaged: e.target.value })}
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Ej: 320"
+                                    placeholder="Ej: 45"
                                 />
                             </div>
 
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Peso por Unidad (Lbs)</label>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                    Peso por Unidad (Lbs) <span className="text-slate-400 font-normal">(calculado auto según presentación)</span>
+                                </label>
                                 <input
                                     type="number"
                                     value={packagingForm.weight_per_unit_lbs}
                                     onChange={(e) => setPackagingForm({ ...packagingForm, weight_per_unit_lbs: e.target.value })}
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Ej: 30.00"
+                                    placeholder="Ej: 8.00"
                                     step="0.01"
                                 />
                             </div>
