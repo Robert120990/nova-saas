@@ -26,6 +26,7 @@
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.18.0",
     "qrcode": "^1.5.4",
+    "ssh2": "^1.17.0",
     "ws": "^8.20.1"
   },
   "devDependencies": {

@@ -25,6 +25,7 @@ import Categories from './pages/Categories';
 import UserAccess from './pages/UserAccess';
 import SmtpConfig from './pages/SmtpConfig';
 import SystemSettings from './pages/SystemSettings';
+import ServerTerminal from './pages/ServerTerminal';
 import NotificacionesConfig from './pages/NotificacionesConfig';
 import NotificacionesLista from './pages/NotificacionesLista';
 import WhatsAppConfig from './pages/WhatsAppConfig';
@@ -249,6 +250,7 @@ function App() {
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
                         <Route path="/configuracion/servidor" element={<ServerMetrics />} />
+                        <Route path="/configuracion/terminal" element={<ServerTerminal />} />
                         <Route path="/configuracion/logs" element={<Navigate to="/configuracion/servidor" replace />} />
                         <Route path="/configuracion/notificaciones" element={<NotificacionesConfig />} />
                         <Route path="/configuracion/whatsapp" element={<WhatsAppConfig />} />

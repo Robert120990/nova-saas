@@ -289,6 +289,24 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Terminal del Servidor en Configuración
+    const configNode = Object.values(itemMap).find(i => 
+        !i.parent_id && (i.label === 'Configuración' || i.path === '/configuracion')
+    ) || roots.find(r => r.label === 'Configuración');
+
+    if (configNode && !configNode.children.some(c => c.path === '/configuracion/terminal')) {
+        configNode.children.push({
+            id: 'virtual-server-terminal',
+            label: 'Terminal del Servidor',
+            path: '/configuracion/terminal',
+            permission: 'manage_server_terminal',
+            permission_key: 'manage_server_terminal',
+            hideInMenu: false,
+            icon: iconMap.Terminal || iconMap.Circle,
+            children: []
+        });
+    }
+
     return roots;
 }
 
@@ -560,6 +578,19 @@ export function useMenuPermissions() {
                 sort_order: 20
             });
             seen['manage_crm_settings'] = true;
+        }
+
+        // Garantizar que Configuración contenga Terminal del Servidor
+        const configGroup = Object.values(groups).find(g => g.label === 'Configuración');
+        if (configGroup && !configGroup.permissions.some(p => p.id === 'manage_server_terminal')) {
+            configGroup.permissions.push({ 
+                id: 'manage_server_terminal', 
+                label: 'Terminal del Servidor (SSH y Comandos)',
+                isReport: false,
+                isSpecial: false,
+                sort_order: 95
+            });
+            seen['manage_server_terminal'] = true;
         }
 
         // Jerarquía estricta dentro de cada grupo:

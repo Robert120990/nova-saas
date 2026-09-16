@@ -71,9 +71,11 @@ import {
     Scale,
     Palmtree,
     Ticket,
+    Terminal,
 } from 'lucide-react';
 
 const iconMap = {
+    Terminal,
     LayoutDashboard,
     Building2,
     GitBranch,

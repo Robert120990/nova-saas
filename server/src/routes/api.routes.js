@@ -167,6 +167,9 @@ router.get('/changelog', changelogController.getChangelog);
 router.get('/system/metrics', verifyToken, systemMetricsController.getSystemMetrics);
 router.post('/system/trigger-deploy', verifyToken, systemMetricsController.triggerDeploy);
 
+// Terminal & SSH (global server maintenance, protected by verifyToken & manage_server_terminal)
+router.use('/terminal', require('./terminal.routes'));
+
 // Multi-tenant scoped routes
 router.use(tenantMiddleware);
 router.use(require('../middlewares/audit'));
