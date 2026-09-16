@@ -81,59 +81,73 @@ const executeCommand = async (req, res) => {
         }
 
         command = command.trim();
-        let activeCwd = cwd && typeof cwd === 'string' && fs.existsSync(cwd) ? path.resolve(cwd) : process.cwd();
 
-        // Manejar comando nativo "cd" de manera interactiva
-        if (command === 'cd' || command === 'cd ~') {
-            const homeDir = os.homedir();
-            return res.json({
-                success: true,
-                output: `Directorio de trabajo cambiado a: ${homeDir}`,
-                stdout: `Directorio de trabajo cambiado a: ${homeDir}`,
-                stderr: '',
-                exitCode: 0,
-                cwd: homeDir,
-                executionTimeMs: Date.now() - startTime
-            });
+        // Normalizar variantes comunes (como cd.. o cd../ o cd~) para conveniencia del usuario
+        if (command === 'cd..' || command === 'cd../') {
+            command = 'cd ..';
+        } else if (command.startsWith('cd..')) {
+            command = 'cd ..' + command.substring(4);
+        } else if (command === 'cd~') {
+            command = 'cd ~';
         }
 
-        if (command.startsWith('cd ')) {
-            const targetArg = command.substring(3).trim().replace(/^['"]|['"]$/g, '');
-            const targetPath = path.resolve(activeCwd, targetArg);
+        let activeCwd = cwd && typeof cwd === 'string' && fs.existsSync(cwd) ? path.resolve(cwd) : process.cwd();
 
-            if (fs.existsSync(targetPath)) {
-                const stat = fs.statSync(targetPath);
-                if (stat.isDirectory()) {
-                    return res.json({
-                        success: true,
-                        output: `Directorio de trabajo cambiado a: ${targetPath}`,
-                        stdout: `Directorio de trabajo cambiado a: ${targetPath}`,
-                        stderr: '',
-                        exitCode: 0,
-                        cwd: targetPath,
-                        executionTimeMs: Date.now() - startTime
-                    });
+        const hasChaining = command.includes('&&') || command.includes(';') || command.includes('|');
+
+        // Manejar comando nativo simple "cd" sin operadores de encadenamiento
+        if (!hasChaining) {
+            if (command === 'cd' || command === 'cd ~') {
+                const homeDir = os.homedir();
+                return res.json({
+                    success: true,
+                    output: `Directorio de trabajo cambiado a: ${homeDir}`,
+                    stdout: `Directorio de trabajo cambiado a: ${homeDir}`,
+                    stderr: '',
+                    exitCode: 0,
+                    cwd: homeDir,
+                    executionTimeMs: Date.now() - startTime
+                });
+            }
+
+            if (command.startsWith('cd ')) {
+                const targetArg = command.substring(3).trim().replace(/^['"]|['"]$/g, '');
+                const targetPath = path.resolve(activeCwd, targetArg);
+
+                if (fs.existsSync(targetPath)) {
+                    const stat = fs.statSync(targetPath);
+                    if (stat.isDirectory()) {
+                        return res.json({
+                            success: true,
+                            output: `Directorio de trabajo cambiado a: ${targetPath}`,
+                            stdout: `Directorio de trabajo cambiado a: ${targetPath}`,
+                            stderr: '',
+                            exitCode: 0,
+                            cwd: targetPath,
+                            executionTimeMs: Date.now() - startTime
+                        });
+                    } else {
+                        return res.json({
+                            success: false,
+                            output: `Error: "${targetArg}" no es un directorio.`,
+                            stdout: '',
+                            stderr: `Error: "${targetArg}" no es un directorio.`,
+                            exitCode: 1,
+                            cwd: activeCwd,
+                            executionTimeMs: Date.now() - startTime
+                        });
+                    }
                 } else {
                     return res.json({
                         success: false,
-                        output: `Error: "${targetArg}" no es un directorio.`,
+                        output: `Error: El directorio "${targetArg}" no existe.`,
                         stdout: '',
-                        stderr: `Error: "${targetArg}" no es un directorio.`,
+                        stderr: `Error: El directorio "${targetArg}" no existe.`,
                         exitCode: 1,
                         cwd: activeCwd,
                         executionTimeMs: Date.now() - startTime
                     });
                 }
-            } else {
-                return res.json({
-                    success: false,
-                    output: `Error: El directorio "${targetArg}" no existe.`,
-                    stdout: '',
-                    stderr: `Error: El directorio "${targetArg}" no existe.`,
-                    exitCode: 1,
-                    cwd: activeCwd,
-                    executionTimeMs: Date.now() - startTime
-                });
             }
         }
 
@@ -141,10 +155,18 @@ const executeCommand = async (req, res) => {
         const isWindows = process.platform === 'win32';
         const shell = isWindows ? (process.env.COMSPEC || 'powershell.exe') : (process.env.SHELL || '/bin/bash');
 
+        const CWD_MARKER = '___NOVACWD___';
+        let commandToExecute = command;
+        if (hasChaining && (command.includes('cd ') || command.includes('cd..'))) {
+            commandToExecute = isWindows 
+                ? `${command}\r\nWrite-Host "${CWD_MARKER}"\r\n(Get-Location).Path`
+                : `${command}\necho "${CWD_MARKER}"\npwd`;
+        }
+
         const maxBuffer = 15 * 1024 * 1024; // 15MB buffer
         const execTimeout = Math.min(Math.max(parseInt(timeout) || 45000, 5000), 120000);
 
-        exec(command, {
+        exec(commandToExecute, {
             cwd: activeCwd,
             timeout: execTimeout,
             maxBuffer: maxBuffer,
@@ -157,8 +179,18 @@ const executeCommand = async (req, res) => {
             }
         }, (error, stdout, stderr) => {
             const executionTimeMs = Date.now() - startTime;
-            const stdoutStr = stdout ? stdout.toString() : '';
+            let stdoutStr = stdout ? stdout.toString() : '';
             const stderrStr = stderr ? stderr.toString() : '';
+
+            let updatedCwd = activeCwd;
+            if (stdoutStr.includes(CWD_MARKER)) {
+                const parts = stdoutStr.split(CWD_MARKER);
+                stdoutStr = parts[0].trim();
+                const possibleCwd = (parts[1] || '').trim().split(/[\r\n]+/)[0].trim();
+                if (possibleCwd && fs.existsSync(possibleCwd)) {
+                    updatedCwd = possibleCwd;
+                }
+            }
 
             let combinedOutput = stdoutStr;
             if (stderrStr) {
@@ -176,7 +208,7 @@ const executeCommand = async (req, res) => {
                     stdout: stdoutStr,
                     stderr: stderrStr || error.message,
                     exitCode: exitCode,
-                    cwd: activeCwd,
+                    cwd: updatedCwd,
                     executionTimeMs: executionTimeMs
                 });
             }
@@ -187,7 +219,7 @@ const executeCommand = async (req, res) => {
                 stdout: stdoutStr,
                 stderr: stderrStr,
                 exitCode: 0,
-                cwd: activeCwd,
+                cwd: updatedCwd,
                 executionTimeMs: executionTimeMs
             });
         });
@@ -206,7 +238,7 @@ const executeCommand = async (req, res) => {
 const executeSsh = async (req, res) => {
     const startTime = Date.now();
     try {
-        const {
+        let {
             host,
             port = 22,
             username = 'root',
@@ -214,6 +246,7 @@ const executeSsh = async (req, res) => {
             privateKey,
             passphrase,
             command,
+            cwd,
             timeout = 45000
         } = req.body;
 
@@ -229,6 +262,25 @@ const executeSsh = async (req, res) => {
                 success: false,
                 message: 'El módulo nativo ssh2 no se encuentra disponible en el backend. Contacte al administrador.'
             });
+        }
+
+        let normalizedCmd = command.trim();
+        if (normalizedCmd === 'cd..' || normalizedCmd === 'cd../') normalizedCmd = 'cd ..';
+        else if (normalizedCmd.startsWith('cd..')) normalizedCmd = 'cd ..' + normalizedCmd.substring(4);
+        else if (normalizedCmd === 'cd~') normalizedCmd = 'cd ~';
+
+        const isCdCommand = normalizedCmd === 'cd' || normalizedCmd.startsWith('cd ') || normalizedCmd.startsWith('cd\t');
+        const CWD_MARKER = '___NOVASSHCWD___';
+
+        let commandToRun = normalizedCmd;
+        if (isCdCommand) {
+            if (cwd && cwd.trim()) {
+                commandToRun = `cd "${cwd.trim()}" && ${normalizedCmd} && echo "${CWD_MARKER}" && pwd`;
+            } else {
+                commandToRun = `${normalizedCmd} && echo "${CWD_MARKER}" && pwd`;
+            }
+        } else if (cwd && cwd.trim()) {
+            commandToRun = `cd "${cwd.trim()}" && ${normalizedCmd}`;
         }
 
         const conn = new ssh2.Client();
@@ -252,13 +304,14 @@ const executeSsh = async (req, res) => {
                     stdout: '',
                     stderr: 'Timeout de conexión o ejecución SSH',
                     exitCode: 124,
+                    cwd: cwd || '',
                     executionTimeMs: Date.now() - startTime
                 });
             }
         }, execTimeout);
 
         conn.on('ready', () => {
-            conn.exec(command, (err, stream) => {
+            conn.exec(commandToRun, (err, stream) => {
                 if (err) {
                     if (!isCompleted) {
                         isCompleted = true;
@@ -269,6 +322,7 @@ const executeSsh = async (req, res) => {
                             stdout: '',
                             stderr: err.message,
                             exitCode: 1,
+                            cwd: cwd || '',
                             executionTimeMs: Date.now() - startTime
                         });
                     }
@@ -291,6 +345,13 @@ const executeSsh = async (req, res) => {
                         isCompleted = true;
                         cleanup();
 
+                        let newCwd = cwd || '';
+                        if (isCdCommand && stdoutStr.includes(CWD_MARKER)) {
+                            const parts = stdoutStr.split(CWD_MARKER);
+                            newCwd = (parts[1] || '').trim();
+                            stdoutStr = `Directorio de trabajo remoto: ${newCwd}`;
+                        }
+
                         let combinedOutput = stdoutStr;
                         if (stderrStr) {
                             combinedOutput = combinedOutput ? `${combinedOutput}\n${stderrStr}` : stderrStr;
@@ -304,6 +365,7 @@ const executeSsh = async (req, res) => {
                             stdout: stdoutStr,
                             stderr: stderrStr,
                             exitCode: exitCode,
+                            cwd: newCwd,
                             executionTimeMs: Date.now() - startTime
                         });
                     }

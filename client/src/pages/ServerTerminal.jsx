@@ -59,6 +59,7 @@ export default function ServerTerminal() {
     const [commandHistory, setCommandHistory] = useState([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [currentCwd, setCurrentCwd] = useState('');
+    const [sshCwd, setSshCwd] = useState('~');
     const [isCopied, setIsCopied] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -172,7 +173,7 @@ export default function ServerTerminal() {
         const entryId = Date.now().toString();
         const activePrompt = mode === 'local' 
             ? `${sysData?.currentUser || 'root'}@${sysData?.hostname || 'servidor'}:${currentCwd || '~'}$ ` 
-            : `${sshConfig.username || 'root'}@${sshConfig.host || 'remote'}:$ `;
+            : `${sshConfig.username || 'root'}@${sshConfig.host || 'remote'}:${sshCwd || '~'}# `;
 
         // Registrar comando en pantalla
         setOutputHistory(prev => [
@@ -203,6 +204,7 @@ export default function ServerTerminal() {
                     password: sshConfig.password || undefined,
                     privateKey: sshConfig.privateKey || undefined,
                     command: targetCmd,
+                    cwd: sshCwd === '~' ? '' : sshCwd,
                     timeout: 45000
                 });
             }
@@ -210,6 +212,8 @@ export default function ServerTerminal() {
             const data = res.data;
             if (mode === 'local' && data.cwd) {
                 setCurrentCwd(data.cwd);
+            } else if (mode === 'ssh' && data.cwd) {
+                setSshCwd(data.cwd);
             }
 
             setOutputHistory(prev => [
@@ -446,8 +450,8 @@ export default function ServerTerminal() {
                     {/* Mode Hint */}
                     <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                         <Folder className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="font-mono text-[11px] truncate max-w-xs md:max-w-md" title={currentCwd}>
-                            {mode === 'local' ? (currentCwd || 'process.cwd()') : `${sshConfig.username}@${sshConfig.host}`}
+                        <span className="font-mono text-[11px] truncate max-w-xs md:max-w-md" title={mode === 'local' ? currentCwd : sshCwd}>
+                            {mode === 'local' ? (currentCwd || 'process.cwd()') : `${sshConfig.username}@${sshConfig.host}:${sshCwd || '~'}`}
                         </span>
                     </div>
                 </div>
