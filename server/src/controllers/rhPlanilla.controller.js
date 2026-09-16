@@ -918,10 +918,9 @@ const sincronizarPlanilla = async (req, res) => {
                 let valor = 0;
                 let cantidad = 0;
 
-                if (c.operacion === 'sumar') {
-                    // Si el empleado está en vacaciones o incapacitado: todos los montos van a cero
-                    if (!esAusente) {
-                        if (c.operacion === 'sumar') {
+                // Si el empleado está en vacaciones o incapacitado: todos los montos van a cero
+                if (!esAusente) {
+                    if (c.operacion === 'sumar') {
                             if (isBonificacionCuenta(c)) {
                                 valor = Math.round(bonificacionFija * 100) / 100;
                                 cantidad = valor;
