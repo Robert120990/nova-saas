@@ -392,6 +392,7 @@ const Planillas = () => {
         const sueldoBase = parseFloat(emp?.sueldo_base || 0);
         const bonificacionFija = parseFloat(emp?.bonificacion_fija || 0);
         const diasToUse = forcedDias !== null ? forcedDias : diasTrabajados;
+        const esAusente = emp?.en_vacaciones === 1 || emp?.incapacitado === 1;
 
         const activeDiscounts = (emp?.descuentos_programados || []).filter(d => {
             const q = d.quincena || d.aplicar_en;
@@ -402,31 +403,34 @@ const Planillas = () => {
 
         const list = cuentasActivas.map(c => {
             let cantidad = 0;
-            if (c.operacion === 'sumar' && (c.codigo === '02' || (c.descripcion || '').toUpperCase().includes('BONIF'))) {
-                cantidad = bonificacionFija;
-            } else if (c.tipo_valor === 'dias' && c.codigo === '01') {
-                cantidad = diasToUse;
-            } else {
-                // Check if account matches any active scheduled discount
-                const matchDiscount = activeDiscounts.find(d => {
-                    if (d.cuenta_id && Number(d.cuenta_id) === Number(c.id)) return true;
-                    if (d.cuenta_codigo && d.cuenta_codigo === c.codigo) return true;
-                    const desc = (c.descripcion || '').toLowerCase();
-                    const nom = (d.desc_nombre || d.nombre || d.descripcion || '').toLowerCase();
-                    if (nom.includes('prestamo') && desc.includes('prestamo')) return true;
-                    if (nom.includes('procuraduria') && desc.includes('procuraduria')) return true;
-                    if ((nom.includes('fsv') || nom.includes('fondo social')) && (desc.includes('fsv') || desc.includes('vivienda') || desc.includes('fondo social'))) return true;
-                    if (nom.includes('anticipo') && desc.includes('anticipo')) return true;
-                    return false;
-                });
+            // Si el empleado está en vacaciones o incapacitado, todos los montos van a cero
+            if (!esAusente) {
+                if (c.operacion === 'sumar' && (c.codigo === '02' || (c.descripcion || '').toUpperCase().includes('BONIF'))) {
+                    cantidad = bonificacionFija;
+                } else if (c.tipo_valor === 'dias' && c.codigo === '01') {
+                    cantidad = diasToUse;
+                } else {
+                    // Check if account matches any active scheduled discount
+                    const matchDiscount = activeDiscounts.find(d => {
+                        if (d.cuenta_id && Number(d.cuenta_id) === Number(c.id)) return true;
+                        if (d.cuenta_codigo && d.cuenta_codigo === c.codigo) return true;
+                        const desc = (c.descripcion || '').toLowerCase();
+                        const nom = (d.desc_nombre || d.nombre || d.descripcion || '').toLowerCase();
+                        if (nom.includes('prestamo') && desc.includes('prestamo')) return true;
+                        if (nom.includes('procuraduria') && desc.includes('procuraduria')) return true;
+                        if ((nom.includes('fsv') || nom.includes('fondo social')) && (desc.includes('fsv') || desc.includes('vivienda') || desc.includes('fondo social'))) return true;
+                        if (nom.includes('anticipo') && desc.includes('anticipo')) return true;
+                        return false;
+                    });
 
-                if (matchDiscount) {
-                    cantidad = parseFloat(matchDiscount.valor !== undefined ? matchDiscount.valor : (matchDiscount.monto_cuota || 0));
-                } else if (c.tipo_valor === 'valor' || c.tipo_valor === 'porcentaje' || c.tipo_valor === 'horas') {
-                    cantidad = parseFloat(c.valor_base || 0);
+                    if (matchDiscount) {
+                        cantidad = parseFloat(matchDiscount.valor !== undefined ? matchDiscount.valor : (matchDiscount.monto_cuota || 0));
+                    } else if (c.tipo_valor === 'valor' || c.tipo_valor === 'porcentaje' || c.tipo_valor === 'horas') {
+                        cantidad = parseFloat(c.valor_base || 0);
+                    }
                 }
             }
-            const monto = calcularMontoDetalle(c, cantidad, sueldoBase);
+            const monto = esAusente ? 0 : calcularMontoDetalle(c, cantidad, sueldoBase);
             return {
                 cuenta_id: c.id,
                 codigo: c.codigo,
@@ -442,6 +446,7 @@ const Planillas = () => {
         });
         setDetalles(list);
     };
+
 
     useEffect(() => {
         if (activeTab === 'nuevo' && !selected && empleadoData && detalles.length === 0) {

@@ -602,7 +602,7 @@ const generarPlanilla = async (req, res) => {
         const dias = 15;
 
         const [empleados] = await pool.query(
-            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos 
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado 
              FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
             [req.company_id]
         );
@@ -657,6 +657,8 @@ const generarPlanilla = async (req, res) => {
         }
 
         for (const emp of empleados) {
+            const esAusente = emp.en_vacaciones === 1 || emp.incapacitado === 1;
+            const diasEmp = esAusente ? 0 : dias;
             const sueldoBase = parseFloat(emp.sueldo_base || 0);
             const bonificacionFija = parseFloat(emp.bonificacion_fija || 0);
             const sueldoDiario = sueldoBase / 30;
@@ -664,7 +666,7 @@ const generarPlanilla = async (req, res) => {
             const [result] = await pool.query(
                 `INSERT INTO ${TABLE} (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, dias, sueldoBase, bonificacionFija]
+                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, diasEmp, sueldoBase, bonificacionFija]
             );
             const planillaId = result.insertId;
 
@@ -672,62 +674,65 @@ const generarPlanilla = async (req, res) => {
             let totalPercepciones = 0;
             let totalDeduccionesCuentas = 0;
 
+            // Si el empleado está en vacaciones o incapacitado: todos los montos van a cero
             const detalleValues = cuentas.map(c => {
                 let valor = 0;
                 let cantidad = 0;
 
-                if (c.operacion === 'sumar') {
-                    if (isBonificacionCuenta(c)) {
-                        valor = Math.round(bonificacionFija * 100) / 100;
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'dias') {
-                        if (c.codigo === '01') {
-                            cantidad = dias;
-                            valor = Math.round(sueldoDiario * dias * 100) / 100;
+                if (!esAusente) {
+                    if (c.operacion === 'sumar') {
+                        if (isBonificacionCuenta(c)) {
+                            valor = Math.round(bonificacionFija * 100) / 100;
+                            cantidad = valor;
+                        } else if (c.tipo_valor === 'dias') {
+                            if (c.codigo === '01') {
+                                cantidad = diasEmp;
+                                valor = Math.round(sueldoDiario * diasEmp * 100) / 100;
+                            }
+                        } else if (c.tipo_valor === 'valor') {
+                            valor = parseFloat(c.valor_base || 0);
+                            cantidad = valor;
+                        } else if (c.tipo_valor === 'porcentaje') {
+                            const pct = parseFloat(c.valor_base || 0);
+                            cantidad = pct;
+                            valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                        } else if (c.tipo_valor === 'horas') {
+                            const hrs = parseFloat(c.valor_base || 0);
+                            cantidad = hrs;
+                            if (hrs > 0) {
+                                const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
+                                const factor = isNocturna ? 2.5 : 2.0;
+                                valor = Math.round((sueldoDiario / 8 * factor) * hrs * 100) / 100;
+                            }
                         }
-                    } else if (c.tipo_valor === 'valor') {
-                        valor = parseFloat(c.valor_base || 0);
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'porcentaje') {
-                        const pct = parseFloat(c.valor_base || 0);
-                        cantidad = pct;
-                        valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
-                    } else if (c.tipo_valor === 'horas') {
-                        const hrs = parseFloat(c.valor_base || 0);
-                        cantidad = hrs;
-                        if (hrs > 0) {
-                            const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
-                            const factor = isNocturna ? 2.5 : 2.0;
-                            valor = Math.round((sueldoDiario / 8 * factor) * hrs * 100) / 100;
-                        }
-                    }
-                    totalPercepciones += valor;
-                } else {
-                    // Deducción: buscar si hay descuento programado para esta cuenta
-                    const matchingDiscounts = myDiscounts.filter(d => {
-                        if (d.cuenta_id && d.cuenta_id === c.id) return true;
-                        const descD = (d.desc_nombre || '').toLowerCase();
-                        const descC = (c.descripcion || '').toLowerCase();
-                        if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
-                        if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
-                        if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
-                        if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
-                        return false;
-                    });
+                        totalPercepciones += valor;
+                    } else {
+                        // Deducción: buscar si hay descuento programado para esta cuenta
+                        const matchingDiscounts = myDiscounts.filter(d => {
+                            if (d.cuenta_id && d.cuenta_id === c.id) return true;
+                            const descD = (d.desc_nombre || '').toLowerCase();
+                            const descC = (c.descripcion || '').toLowerCase();
+                            if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
+                            if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
+                            if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
+                            if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
+                            return false;
+                        });
 
-                    if (matchingDiscounts.length > 0) {
-                        const sumMonto = matchingDiscounts.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0);
-                        valor = Math.round(sumMonto * 100) / 100;
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'valor') {
-                        valor = parseFloat(c.valor_base || 0);
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'porcentaje') {
-                        const pct = parseFloat(c.valor_base || 0);
-                        cantidad = pct;
-                        valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                        if (matchingDiscounts.length > 0) {
+                            const sumMonto = matchingDiscounts.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0);
+                            valor = Math.round(sumMonto * 100) / 100;
+                            cantidad = valor;
+                        } else if (c.tipo_valor === 'valor') {
+                            valor = parseFloat(c.valor_base || 0);
+                            cantidad = valor;
+                        } else if (c.tipo_valor === 'porcentaje') {
+                            const pct = parseFloat(c.valor_base || 0);
+                            cantidad = pct;
+                            valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                        }
+                        totalDeduccionesCuentas += valor;
                     }
-                    totalDeduccionesCuentas += valor;
                 }
 
                 return [planillaId, c.id, c.codigo, c.descripcion, c.operacion, c.tipo_valor, cantidad || null, valor, c.orden || 0];
@@ -914,57 +919,61 @@ const sincronizarPlanilla = async (req, res) => {
                 let cantidad = 0;
 
                 if (c.operacion === 'sumar') {
-                    if (isBonificacionCuenta(c)) {
-                        valor = Math.round(bonificacionFija * 100) / 100;
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'dias') {
-                        if (c.codigo === '01') {
-                            cantidad = dias;
-                            valor = Math.round(sueldoDiario * dias * 100) / 100;
-                        }
-                    } else if (c.tipo_valor === 'valor') {
-                        valor = parseFloat(c.valor_base || 0);
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'porcentaje') {
-                        const pct = parseFloat(c.valor_base || 0);
-                        cantidad = pct;
-                        valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
-                    } else if (c.tipo_valor === 'horas') {
-                        const hrs = parseFloat(c.valor_base || 0);
-                        cantidad = hrs;
-                        if (hrs > 0) {
-                            const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
-                            const factor = isNocturna ? 2.5 : 2.0;
-                            valor = Math.round((sueldoDiario / 8 * factor) * hrs * 100) / 100;
-                        }
-                    }
-                    totalPercepciones += valor;
-                } else {
-                    const matchingDiscounts = myDiscounts.filter(d => {
-                        if (d.cuenta_id && d.cuenta_id === c.id) return true;
-                        const descD = (d.desc_nombre || '').toLowerCase();
-                        const descC = (c.descripcion || '').toLowerCase();
-                        if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
-                        if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
-                        if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
-                        if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
-                        return false;
-                    });
+                    // Si el empleado está en vacaciones o incapacitado: todos los montos van a cero
+                    if (!esAusente) {
+                        if (c.operacion === 'sumar') {
+                            if (isBonificacionCuenta(c)) {
+                                valor = Math.round(bonificacionFija * 100) / 100;
+                                cantidad = valor;
+                            } else if (c.tipo_valor === 'dias') {
+                                if (c.codigo === '01') {
+                                    cantidad = dias;
+                                    valor = Math.round(sueldoDiario * dias * 100) / 100;
+                                }
+                            } else if (c.tipo_valor === 'valor') {
+                                valor = parseFloat(c.valor_base || 0);
+                                cantidad = valor;
+                            } else if (c.tipo_valor === 'porcentaje') {
+                                const pct = parseFloat(c.valor_base || 0);
+                                cantidad = pct;
+                                valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                            } else if (c.tipo_valor === 'horas') {
+                                const hrs = parseFloat(c.valor_base || 0);
+                                cantidad = hrs;
+                                if (hrs > 0) {
+                                    const isNocturna = (c.descripcion || '').toUpperCase().includes('NOCTURNA');
+                                    const factor = isNocturna ? 2.5 : 2.0;
+                                    valor = Math.round((sueldoDiario / 8 * factor) * hrs * 100) / 100;
+                                }
+                            }
+                            totalPercepciones += valor;
+                        } else {
+                            const matchingDiscounts = myDiscounts.filter(d => {
+                                if (d.cuenta_id && d.cuenta_id === c.id) return true;
+                                const descD = (d.desc_nombre || '').toLowerCase();
+                                const descC = (c.descripcion || '').toLowerCase();
+                                if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
+                                if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
+                                if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
+                                if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
+                                return false;
+                            });
 
-                    if (matchingDiscounts.length > 0) {
-                        const sumMonto = matchingDiscounts.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0);
-                        valor = Math.round(sumMonto * 100) / 100;
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'valor') {
-                        valor = parseFloat(c.valor_base || 0);
-                        cantidad = valor;
-                    } else if (c.tipo_valor === 'porcentaje') {
-                        const pct = parseFloat(c.valor_base || 0);
-                        cantidad = pct;
-                        valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                            if (matchingDiscounts.length > 0) {
+                                const sumMonto = matchingDiscounts.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0);
+                                valor = Math.round(sumMonto * 100) / 100;
+                                cantidad = valor;
+                            } else if (c.tipo_valor === 'valor') {
+                                valor = parseFloat(c.valor_base || 0);
+                                cantidad = valor;
+                            } else if (c.tipo_valor === 'porcentaje') {
+                                const pct = parseFloat(c.valor_base || 0);
+                                cantidad = pct;
+                                valor = Math.round(sueldoBase * (pct / 100) * 100) / 100;
+                            }
+                            totalDeduccionesCuentas += valor;
+                        }
                     }
-                    totalDeduccionesCuentas += valor;
-                }
 
                 return [planillaId, c.id, c.codigo, c.descripcion, c.operacion, c.tipo_valor, cantidad || null, valor, c.orden || 0];
             });
@@ -1090,7 +1099,7 @@ const sincronizarPlanilla = async (req, res) => {
                 }
                 // 2. Bonificación fija (cuenta con isBonificacionCuenta)
                 else if (d.operacion === 'sumar' && isBonificacionCuenta(d)) {
-                    const expectedBonif = Math.round(empBonifFija * 100) / 100;
+                    const expectedBonif = esAusente ? 0 : Math.round(empBonifFija * 100) / 100;
                     if (parseFloat(d.valor_ingresado || 0) !== expectedBonif || parseFloat(d.valor_base || 0) !== expectedBonif) {
                         await pool.query(
                             `UPDATE rh_planilla_detalles SET valor_base = ?, valor_ingresado = ? WHERE id = ?`,
@@ -1103,28 +1112,41 @@ const sincronizarPlanilla = async (req, res) => {
                 }
                 // 3. Descuentos programados (deducciones con matching discounts)
                 else if (d.operacion === 'restar') {
-                    const matchingDiscounts = myDiscounts.filter(disc => {
-                        if (disc.cuenta_id && disc.cuenta_id === d.cuenta_id) return true;
-                        const descD = (disc.desc_nombre || '').toLowerCase();
-                        const descC = (d.descripcion || '').toLowerCase();
-                        if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
-                        if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
-                        if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
-                        if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
-                        return false;
-                    });
-
-                    if (matchingDiscounts.length > 0) {
-                        const sumMonto = matchingDiscounts.reduce((sum, disc) => sum + parseFloat(disc.valor || 0), 0);
-                        const expectedVal = Math.round(sumMonto * 100) / 100;
-                        if (parseFloat(d.valor_ingresado || 0) !== expectedVal) {
+                    // Si el empleado está ausente, todos los descuentos van a cero
+                    if (esAusente) {
+                        if (parseFloat(d.valor_ingresado || 0) !== 0) {
                             await pool.query(
-                                `UPDATE rh_planilla_detalles SET valor_base = ?, valor_ingresado = ? WHERE id = ?`,
-                                [expectedVal, expectedVal, d.id]
+                                `UPDATE rh_planilla_detalles SET valor_base = 0, valor_ingresado = 0 WHERE id = ?`,
+                                [d.id]
                             );
-                            d.valor_base = expectedVal;
-                            d.valor_ingresado = expectedVal;
+                            d.valor_base = 0;
+                            d.valor_ingresado = 0;
                             hasChanges = true;
+                        }
+                    } else {
+                        const matchingDiscounts = myDiscounts.filter(disc => {
+                            if (disc.cuenta_id && disc.cuenta_id === d.cuenta_id) return true;
+                            const descD = (disc.desc_nombre || '').toLowerCase();
+                            const descC = (d.descripcion || '').toLowerCase();
+                            if (descD.includes('prestamo') && descC.includes('prestamo')) return true;
+                            if (descD.includes('procuraduria') && descC.includes('procuraduria')) return true;
+                            if ((descD.includes('fondo social') || descD.includes('fsv')) && (descC.includes('fondo social') || descC.includes('fsv'))) return true;
+                            if (descD.includes('anticipo') && descC.includes('anticipo')) return true;
+                            return false;
+                        });
+
+                        if (matchingDiscounts.length > 0) {
+                            const sumMonto = matchingDiscounts.reduce((sum, disc) => sum + parseFloat(disc.valor || 0), 0);
+                            const expectedVal = Math.round(sumMonto * 100) / 100;
+                            if (parseFloat(d.valor_ingresado || 0) !== expectedVal) {
+                                await pool.query(
+                                    `UPDATE rh_planilla_detalles SET valor_base = ?, valor_ingresado = ? WHERE id = ?`,
+                                    [expectedVal, expectedVal, d.id]
+                                );
+                                d.valor_base = expectedVal;
+                                d.valor_ingresado = expectedVal;
+                                hasChanges = true;
+                            }
                         }
                     }
                 }
