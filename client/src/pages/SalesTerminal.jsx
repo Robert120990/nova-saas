@@ -61,11 +61,12 @@ const SalesTerminal = () => {
     const [saleResult, setSaleResult] = useState(null);
 
     // Export Data (FEX)
+    // itemType como número (CAT-011): 1=Bienes, 2=Servicios, 3=Bienes y Servicios
+    // tipoRegimen se fija automáticamente en '48' (exportación definitiva) en el servidor
     const [fexData, setFexData] = useState({
-        itemType: 1, // 1:Bienes, 2:Servicios
+        itemType: 1,
         enclosure: '',
-        regime: '',
-        country: '059' // El Salvador por defecto o dejar vacío
+        country: ''
     });
 
     // Remission Data (NR)
@@ -1100,8 +1101,8 @@ const SalesTerminal = () => {
                 cotrans: totals.cotrans,
                 total_pagar: tipoDte === '07' ? totals.totalIVAretenido : totals.total,
                 export_item_type: tipoDte === '11' ? fexData.itemType : null,
-                fiscal_enclosure: tipoDte === '11' ? fexData.enclosure : null,
-                export_regime: tipoDte === '11' ? fexData.regime : null,
+                fiscal_enclosure: tipoDte === '11' ? (fexData.enclosure || null) : null,
+                export_regime: null, // tipoRegimen se fija en '48' automáticamente en el servidor/generador
                 dest_country_code: tipoDte === '11' ? fexData.country : null,
                 remission_type: tipoDte === '04' ? nrData.type : null,
                 transporter_name: tipoDte === '04' ? nrData.transporterName : null,
@@ -1209,7 +1210,7 @@ const SalesTerminal = () => {
         const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
         const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
 
-        if (tipoDte === '03' && gravadoNeto >= 100) {
+        if ((tipoDte === '03' || tipoDte === '01') && gravadoNeto >= 100) {
             if (!nosAgenteRetencion && clienteGC) {
                 // Nosotros no somos GC, pero el Cliente SÍ lo es -> Ellos nos retienen el 1% de nuestra venta
                 retencion = gravadoNeto * retencionRate;
@@ -1915,9 +1916,42 @@ const SalesTerminal = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-indigo-50/50 p-4 rounded-3xl border border-indigo-100 animate-in fade-in slide-in-from-top-4 duration-500">
                             {tipoDte === '11' ? (
                                 <>
-                                    <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="Régimen" value={fexData.regime} onChange={e => setFexData({...fexData, regime: e.target.value})} />
-                                    <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="Recinto" value={fexData.enclosure} onChange={e => setFexData({...fexData, enclosure: e.target.value})} />
-                                    <input className="bg-white rounded-xl px-4 py-2 text-sm font-bold" placeholder="País ISO" value={fexData.country} onChange={e => setFexData({...fexData, country: e.target.value})} />
+                                    {/* Tipo de ítem de exportación — CAT-011 */}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase text-indigo-400 tracking-wider ml-1">Tipo de ítem</label>
+                                        <select
+                                            className="bg-white rounded-xl px-4 py-2 text-sm font-bold border-0 outline-none"
+                                            value={fexData.itemType}
+                                            onChange={e => setFexData({...fexData, itemType: parseInt(e.target.value)})}
+                                        >
+                                            <option value={1}>Bienes</option>
+                                            <option value={2}>Servicios</option>
+                                            <option value={3}>Bienes y Servicios</option>
+                                            <option value={4}>Otro</option>
+                                        </select>
+                                    </div>
+                                    {/* Recinto fiscal — opcional, solo si aplica zona franca */}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase text-indigo-400 tracking-wider ml-1">Recinto fiscal <span className="normal-case font-normal text-slate-400">(opcional)</span></label>
+                                        <input
+                                            className="bg-white rounded-xl px-4 py-2 text-sm font-bold"
+                                            placeholder="Cód. 2 dígitos"
+                                            maxLength={2}
+                                            value={fexData.enclosure}
+                                            onChange={e => setFexData({...fexData, enclosure: e.target.value})}
+                                        />
+                                    </div>
+                                    {/* País de destino */}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black uppercase text-indigo-400 tracking-wider ml-1">País destino (ISO)</label>
+                                        <input
+                                            className="bg-white rounded-xl px-4 py-2 text-sm font-bold"
+                                            placeholder="Ej: US, HN, GT"
+                                            maxLength={2}
+                                            value={fexData.country}
+                                            onChange={e => setFexData({...fexData, country: e.target.value.toUpperCase()})}
+                                        />
+                                    </div>
                                 </>
                             ) : tipoDte === '04' ? (
                                 <>
