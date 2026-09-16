@@ -19,7 +19,12 @@ import {
     Sparkles,
     ShieldAlert,
     FlaskConical,
-    Clock
+    Clock,
+    Plus,
+    Trash2,
+    Building2,
+    TrendingUp,
+    BarChart3
 } from 'lucide-react';
 
 const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) => {
@@ -28,6 +33,12 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
     const [activeTab, setActiveTab] = useState('egg');
     const [loading, setLoading] = useState(true);
     const [plannerData, setPlannerData] = useState(null);
+
+    // Estado para distribución multi-proveedor con contenedores de diferente capacidad (ej. 900 vs 600)
+    const [providerAllocations, setProviderAllocations] = useState([
+        { id: 1, provider_id: '', provider_name: 'Avícola La Granja', container_capacity: 900, shipments_count: 1 },
+        { id: 2, provider_id: '', provider_name: 'Agropecuaria Central', container_capacity: 600, shipments_count: 1 }
+    ]);
 
     const monthNames = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -54,6 +65,61 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
             fetchPlannerData();
         }
     }, [isOpen, year, month]);
+
+    // Sincronizar catálogo de proveedores en la distribución
+    useEffect(() => {
+        if (plannerData?.providers_catalog && plannerData.providers_catalog.length > 0) {
+            setProviderAllocations(prev => {
+                if (prev.length === 2 && !prev[0].provider_id) {
+                    const p1 = plannerData.providers_catalog[0];
+                    const p2 = plannerData.providers_catalog[1] || plannerData.providers_catalog[0];
+                    return [
+                        { id: 1, provider_id: String(p1.id), provider_name: p1.nombre, container_capacity: 900, shipments_count: 1 },
+                        { id: 2, provider_id: String(p2.id), provider_name: p2.nombre, container_capacity: 600, shipments_count: 1 }
+                    ];
+                }
+                return prev;
+            });
+        }
+    }, [plannerData]);
+
+    const addProviderAllocation = () => {
+        const pCatalog = plannerData?.providers_catalog || [];
+        const nextProv = pCatalog[providerAllocations.length % pCatalog.length] || {};
+        setProviderAllocations([
+            ...providerAllocations,
+            {
+                id: Date.now(),
+                provider_id: String(nextProv.id || ''),
+                provider_name: nextProv.nombre || 'Nuevo Proveedor',
+                container_capacity: 600,
+                shipments_count: 1
+            }
+        ]);
+    };
+
+    const removeProviderAllocation = (id) => {
+        if (providerAllocations.length <= 1) {
+            toast.warning('Debe haber al menos un proveedor configurado.');
+            return;
+        }
+        setProviderAllocations(providerAllocations.filter(p => p.id !== id));
+    };
+
+    const updateProviderAllocation = (id, field, value) => {
+        setProviderAllocations(providerAllocations.map(p => {
+            if (p.id !== id) return p;
+            if (field === 'provider_id') {
+                const provObj = (plannerData?.providers_catalog || []).find(cp => String(cp.id) === String(value));
+                return {
+                    ...p,
+                    provider_id: value,
+                    provider_name: provObj?.nombre || p.provider_name
+                };
+            }
+            return { ...p, [field]: value };
+        }));
+    };
 
     const buildMrpPdfDoc = () => {
         if (!plannerData) {
@@ -134,8 +200,43 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                 ['Requerimiento Total Bruto:', `${(eggBal.total_boxes_needed || 0).toLocaleString()} cajas (~${(eggBal.total_liquid_lbs_needed || 0).toLocaleString()} Lbs)`, 'Demanda calculada para cubrir el programa de pasteurización'],
                 ['Stock Aprobado en Cuarto Frío:', `${(eggBal.current_stock_boxes || 0).toLocaleString()} cajas (${(eggBal.current_stock_lbs || 0).toLocaleString()} Lbs)`, 'Inventario disponible bajo cadena de frío 2°C - 6°C'],
                 ['Balance Neto Mensual:', `${isDeficit ? '-' : '+'}${Math.abs(eggBal.net_balance_boxes || 0).toLocaleString()} cajas`, isDeficit ? 'Déficit mensual: Requiere compra y despacho de camiones' : 'Superávit en inventario'],
+                ['Promedio Histórico Periodo:', `${(plannerData?.historical_comparison?.average_monthly_boxes || 0).toLocaleString()} cajas (~${(plannerData?.historical_comparison?.average_monthly_lbs || 0).toLocaleString()} Lbs)`, 'Referencia multianual de consumo en este rango de fecha'],
                 ['VOLUMEN TOTAL A COMPRAR:', `${(eggBal.boxes_to_purchase || 0).toLocaleString()} CAJAS (~${(eggBal.estimated_purchase_cost_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`, 'Distribuido en despachos semanales para rotación óptima']
             ]
+        });
+
+        // 3.1 Tabla de Distribución por Contenedores Multi-Proveedor
+        const provAllocRows = providerAllocations.map(p => {
+            const boxes = (parseInt(p.container_capacity) || 0) * (parseInt(p.shipments_count) || 0);
+            const lbs = Math.round(boxes * 36.1);
+            return [
+                p.provider_name,
+                `${p.container_capacity} cajas / contenedor`,
+                `${p.shipments_count} contenedor(es)`,
+                `${boxes.toLocaleString()} cajas`,
+                `~${lbs.toLocaleString()} Lbs`,
+                `$${(boxes * 38.0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            ];
+        });
+
+        const totalAllocatedPdfBoxes = providerAllocations.reduce((s, p) => s + (parseInt(p.container_capacity) || 0) * (parseInt(p.shipments_count) || 0), 0);
+
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 5,
+            theme: 'striped',
+            headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+            bodyStyles: { fontSize: 7, textColor: [30, 41, 59], cellPadding: 2 },
+            head: [['Proveedor Asignado', 'Capacidad Contenedor', 'N° Contenedores', 'Total Cajas', 'Volumen Estimado', 'Costo Est. USD']],
+            body: provAllocRows,
+            foot: [[
+                'TOTAL PROGRAMADO MULTI-PROVEEDOR',
+                '-',
+                `${providerAllocations.reduce((s, p) => s + (parseInt(p.shipments_count) || 0), 0)} contenedores`,
+                `${totalAllocatedPdfBoxes.toLocaleString()} cajas`,
+                `~${Math.round(totalAllocatedPdfBoxes * 36.1).toLocaleString()} Lbs`,
+                `$${(totalAllocatedPdfBoxes * 38.0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            ]],
+            footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 7.5 }
         });
 
         // 4. Tabla de Cronograma Semanal de Camiones Refrigerados
@@ -278,6 +379,11 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
     const ingBal = plannerData?.ingredients_balance || {};
     const packBal = plannerData?.packaging_balance || {};
     const isDeficit = (eggBal.net_balance_boxes || 0) < 0;
+
+    const histComp = plannerData?.historical_comparison || {};
+    const totalAllocatedBoxes = providerAllocations.reduce((acc, p) => acc + (parseInt(p.container_capacity) || 0) * (parseInt(p.shipments_count) || 0), 0);
+    const targetDemandBoxes = eggBal.boxes_to_purchase > 0 ? eggBal.boxes_to_purchase : (eggBal.total_boxes_needed || 0);
+    const coveragePercent = targetDemandBoxes > 0 ? Math.min(200, Math.round((totalAllocatedBoxes / targetDemandBoxes) * 100)) : 100;
 
     return (
         <Modal
@@ -521,6 +627,278 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         {/* TAB 1: HUEVO CÁSCARA Y CRONOGRAMA DE CAMIONES */}
                         {activeTab === 'egg' && (
                             <div className="space-y-4">
+                                {/* SECCIÓN 1: COMPARATIVA HISTÓRICA & PROMEDIO MULTIANUAL */}
+                                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                                                <BarChart3 size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                                                    Comparativa Histórica y Promedio Multianual
+                                                </h3>
+                                                <p className="text-[11px] text-slate-500 font-medium">
+                                                    Datos de consumo en el mismo rango de fecha ({monthNames[month - 1]}) de años anteriores y meses recientes
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                                            <TrendingUp size={14} className="text-emerald-600" />
+                                            <span className="text-[11px] text-slate-600 font-medium">Promedio Mensual Calculado:</span>
+                                            <strong className="text-xs font-black text-indigo-700">
+                                                {histComp.average_monthly_boxes?.toLocaleString() || 0} cajas
+                                            </strong>
+                                            <span className="text-[10px] text-slate-400 font-semibold">
+                                                (~{histComp.average_monthly_lbs?.toLocaleString() || 0} Lbs)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Muestreo de años anteriores y meses previos */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {/* Años Anteriores (Mismo Mes) */}
+                                        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2">
+                                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
+                                                Mismo Mes ({monthNames[month - 1]}) en Años Anteriores
+                                            </span>
+                                            {Array.isArray(histComp.same_month_prior_years) && histComp.same_month_prior_years.length > 0 ? (
+                                                <div className="space-y-1.5">
+                                                    {histComp.same_month_prior_years.map((h, i) => (
+                                                        <div key={i} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
+                                                            <span className="font-bold text-slate-800">{monthNames[h.month - 1]} {h.year}</span>
+                                                            <span className="font-black text-indigo-700">{parseFloat(h.total_boxes || 0).toLocaleString()} cajas</span>
+                                                            <span className="text-slate-500 font-medium text-[11px]">~{parseFloat(h.total_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-[11px] text-slate-400 italic py-1">
+                                                    No hay recepciones registradas en {monthNames[month - 1]} de años previos.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Meses Recientes */}
+                                        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2">
+                                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
+                                                Consumo en Meses Anteriores Recientes
+                                            </span>
+                                            {Array.isArray(histComp.recent_prior_months) && histComp.recent_prior_months.length > 0 ? (
+                                                <div className="space-y-1.5">
+                                                    {histComp.recent_prior_months.map((h, i) => (
+                                                        <div key={i} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
+                                                            <span className="font-bold text-slate-800">{monthNames[h.month - 1]} {h.year}</span>
+                                                            <span className="font-black text-indigo-700">{parseFloat(h.total_boxes || 0).toLocaleString()} cajas</span>
+                                                            <span className="text-slate-500 font-medium text-[11px]">~{parseFloat(h.total_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-[11px] text-slate-400 italic py-1">
+                                                    No hay historial previo registrado para comparar.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* SECCIÓN 2: ASIGNACIÓN DE CONTENEDORES POR PROVEEDOR (CAPACIDADES VARIABLES: 900 vs 600) */}
+                                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-2 bg-sky-50 text-sky-700 rounded-xl">
+                                                <Building2 size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                                                    Planificación de Contenedores y Selección Multi-Proveedor
+                                                </h3>
+                                                <p className="text-[11px] text-slate-500 font-medium">
+                                                    Selecciona más de un proveedor y configura la capacidad de cada contenedor (ej. 900 cajas vs 600 cajas)
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={addProviderAllocation}
+                                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 transition-colors flex items-center gap-1.5 shadow-2xs self-start sm:self-auto"
+                                        >
+                                            <Plus size={14} />
+                                            <span>Agregar Proveedor</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Lista de Proveedores Asignados */}
+                                    <div className="space-y-2.5">
+                                        {providerAllocations.map((alloc, aIdx) => {
+                                            const subtotalBoxes = (parseInt(alloc.container_capacity) || 0) * (parseInt(alloc.shipments_count) || 0);
+                                            const subtotalLbs = Math.round(subtotalBoxes * 36.1);
+
+                                            return (
+                                                <div key={alloc.id || aIdx} className="bg-slate-50/80 border border-slate-200 rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                                                    {/* Selector de Proveedor */}
+                                                    <div className="flex-1 space-y-1">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                                                            Proveedor #{aIdx + 1}
+                                                        </label>
+                                                        <select
+                                                            value={alloc.provider_id}
+                                                            onChange={(e) => updateProviderAllocation(alloc.id, 'provider_id', e.target.value)}
+                                                            className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Seleccionar del catálogo...</option>
+                                                            {(plannerData?.providers_catalog || []).map((prov) => (
+                                                                <option key={prov.id} value={prov.id}>
+                                                                    {prov.nombre}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Capacidad del Contenedor con Presets */}
+                                                    <div className="w-full md:w-56 space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                                                                Capacidad Contenedor
+                                                            </label>
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateProviderAllocation(alloc.id, 'container_capacity', 900)}
+                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${
+                                                                        parseInt(alloc.container_capacity) === 900
+                                                                            ? 'bg-indigo-600 text-white'
+                                                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                                                    }`}
+                                                                >
+                                                                    900 cjs
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateProviderAllocation(alloc.id, 'container_capacity', 600)}
+                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${
+                                                                        parseInt(alloc.container_capacity) === 600
+                                                                            ? 'bg-indigo-600 text-white'
+                                                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                                                    }`}
+                                                                >
+                                                                    600 cjs
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                value={alloc.container_capacity}
+                                                                onChange={(e) => updateProviderAllocation(alloc.id, 'container_capacity', parseInt(e.target.value) || 0)}
+                                                                className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 pr-12 shadow-2xs"
+                                                                placeholder="Ej: 900 o 600"
+                                                            />
+                                                            <span className="absolute right-2.5 top-1.5 text-[10px] font-bold text-slate-400">cajas</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Cantidad de Envíos / Contenedores */}
+                                                    <div className="w-full md:w-36 space-y-1">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                                                            N° Contenedores
+                                                        </label>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => updateProviderAllocation(alloc.id, 'shipments_count', Math.max(1, (parseInt(alloc.shipments_count) || 1) - 1))}
+                                                                className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-xs"
+                                                            >
+                                                                -
+                                                            </button>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                value={alloc.shipments_count}
+                                                                onChange={(e) => updateProviderAllocation(alloc.id, 'shipments_count', Math.max(1, parseInt(e.target.value) || 1))}
+                                                                className="flex-1 bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-bold text-center text-slate-900"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => updateProviderAllocation(alloc.id, 'shipments_count', (parseInt(alloc.shipments_count) || 1) + 1)}
+                                                                className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-xs"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Subtotal Calculado */}
+                                                    <div className="w-full md:w-44 text-right space-y-0.5 pt-1 md:pt-0">
+                                                        <span className="text-[10px] text-slate-400 font-bold uppercase block">
+                                                            Subtotal Aportado
+                                                        </span>
+                                                        <div className="text-sm font-black text-indigo-700">
+                                                            {subtotalBoxes.toLocaleString()} cajas
+                                                        </div>
+                                                        <span className="text-[10px] text-slate-500 font-medium block">
+                                                            ~{subtotalLbs.toLocaleString()} Lbs útiles
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Botón Eliminar */}
+                                                    {providerAllocations.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeProviderAllocation(alloc.id)}
+                                                            className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors self-end md:self-center"
+                                                            title="Eliminar este proveedor"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Resumen de Cobertura Multi-Proveedor */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-slate-700">Total Contenedores Programados:</span>
+                                                <strong className="text-slate-900">
+                                                    {providerAllocations.reduce((s, p) => s + (parseInt(p.shipments_count) || 0), 0)} unidades
+                                                </strong>
+                                                <span className="text-slate-300">|</span>
+                                                <strong className="text-indigo-700">{totalAllocatedBoxes.toLocaleString()} cajas</strong>
+                                                <span className="text-slate-400">(~{Math.round(totalAllocatedBoxes * 36.1).toLocaleString()} Lbs)</span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-slate-500 font-medium">Meta Requerida:</span>
+                                                <strong className="text-slate-800">{targetDemandBoxes.toLocaleString()} cjs</strong>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                    totalAllocatedBoxes >= targetDemandBoxes
+                                                        ? 'bg-emerald-100 text-emerald-800'
+                                                        : 'bg-amber-100 text-amber-800'
+                                                }`}>
+                                                    {coveragePercent}% Cubierto
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Barra de Progreso */}
+                                        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                            <div
+                                                className={`h-full transition-all rounded-full ${
+                                                    totalAllocatedBoxes >= targetDemandBoxes ? 'bg-emerald-600' : 'bg-indigo-600'
+                                                }`}
+                                                style={{ width: `${Math.min(100, coveragePercent)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-start gap-3">
                                     <Truck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                                     <div className="text-xs text-indigo-950 leading-relaxed">
