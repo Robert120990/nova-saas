@@ -323,20 +323,34 @@ const generateRTEEModern = (data) => {
             // 3. TARJETA DEL RECEPTOR / CLIENTE
             // ==========================================
             const receptorY = techY + techH + 8;
+            const col1X = startX + 10;
+            const col1W = 325;
+            const col2X = startX + 350;
+            const col2W = pageWidth - 360;
 
-            doc.fontSize(8).font('Helvetica');
-            const nomH = doc.heightOfString(receptor.nombre || 'Consumidor Final', { width: 315 });
-            const dirH = doc.heightOfString(receptor.direccion?.complemento || 'Ciudad', { width: 315 });
-            
+            // Medición precisa previa para auto-ajustar altura dinámica
+            doc.fontSize(8.5).font('Helvetica-Bold');
+            const nomH = doc.heightOfString(receptor.nombre || 'Consumidor Final', { width: col1W });
+
+            doc.fontSize(7).font('Helvetica');
+            const actText = receptor.descActividad || receptor.codActividad || 'N/A';
+            const actH = dte.tipoDte === '03' ? doc.heightOfString(`ACTIVIDAD ECONÓMICA: ${actText}`, { width: col1W }) : 0;
+
+            const dirText = receptor.direccion?.complemento || 'Ciudad';
+            const dirH = doc.heightOfString(`DIRECCIÓN: ${dirText}`, { width: col1W });
+
             let extraFieldsH = 0;
             if (dte.tipoDte === '03') {
-                const actH = doc.heightOfString(`Giro: ${receptor.descActividad || receptor.codActividad || 'N/A'}`, { width: 315 });
-                extraFieldsH = 12 + actH + 2;
-            } else if (dte.tipoDte === '07' || dte.tipoDte === '11') {
-                extraFieldsH = 12;
+                extraFieldsH = Math.max(11, actH + 2);
+            } else if (dte.tipoDte === '11') {
+                extraFieldsH = 11;
             }
 
-            const calculatedReceptorH = Math.max(76, 26 + nomH + 14 + extraFieldsH + dirH + 8);
+            // Altura total requerida por Columna 1 vs Columna 2
+            // Col 1: 24 (offset cabecera) + 8 (label nombre) + nomH + 3 (espacio) + 11 (nit/nrc) + extraFieldsH + Math.max(11, dirH) + 10 (padding inferior)
+            const col1TotalH = 24 + 8 + nomH + 3 + 11 + extraFieldsH + Math.max(11, dirH) + 10;
+            // Col 2: 24 (offset cabecera) + 8 (label fecha) + 15 (fecha) + 8 (label condición) + 14 (badge) + 12 (padding) = 81pt
+            const calculatedReceptorH = Math.max(82, Math.ceil(col1TotalH));
 
             // Contenedor blanco con borde nítido
             doc.roundedRect(startX, receptorY, pageWidth, calculatedReceptorH, 5)
@@ -361,10 +375,6 @@ const generateRTEEModern = (data) => {
 
             // Contenido en 2 columnas de alto contraste
             let ry = receptorY + 24;
-            const col1X = startX + 10;
-            const col1W = 325;
-            const col2X = startX + 350;
-            const col2W = pageWidth - 360;
 
             // Nombre
             doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('NOMBRE O RAZÓN SOCIAL:', col1X, ry);
@@ -377,33 +387,31 @@ const generateRTEEModern = (data) => {
             if (dte.tipoDte === '03' && receptor.nit) docIdentLabel = 'NIT:';
             const docVal = receptor.nit || receptor.numDocumento || 'Consumidor Final';
 
-            doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text(`${docIdentLabel} `, col1X, ry, { continued: true });
-            doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica-Bold').text(`${docVal}`, { continued: true });
+            doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text(`${docIdentLabel} `, col1X, ry, { width: col1W, continued: true });
+            doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica-Bold').text(`${docVal}`, { width: col1W, continued: !!receptor.nrc });
 
             if (receptor.nrc) {
-                doc.fillColor(THEME.textMuted).font('Helvetica-Bold').text('    NRC: ', { continued: true });
-                doc.fillColor(THEME.navyDark).font('Helvetica-Bold').text(`${receptor.nrc}`);
-            } else {
-                doc.text('');
+                doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('    NRC: ', { width: col1W, continued: true });
+                doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica-Bold').text(`${receptor.nrc}`, { width: col1W });
             }
             ry += 11;
 
-            // Giro (Crédito Fiscal)
+            // Actividad Económica (Crédito Fiscal)
             if (dte.tipoDte === '03') {
-                const actText = receptor.descActividad || receptor.codActividad || 'N/A';
-                doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('ACTIVIDAD ECONÓMICA: ', col1X, ry, { continued: true });
+                doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('ACTIVIDAD ECONÓMICA: ', col1X, ry, { width: col1W, continued: true });
                 doc.fillColor(THEME.textMedium).fontSize(7).font('Helvetica').text(actText, { width: col1W });
-                const actH = doc.heightOfString(`ACTIVIDAD ECONÓMICA: ${actText}`, { width: col1W });
                 ry += Math.max(11, actH + 2);
             } else if (dte.tipoDte === '11') {
-                doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('PAÍS DESTINO: ', col1X, ry, { continued: true });
-                doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica-Bold').text(receptor.nombrePais || receptor.codPais || 'N/A');
+                const paisVal = receptor.nombrePais || receptor.codPais || 'N/A';
+                doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('PAÍS DESTINO: ', col1X, ry, { width: col1W, continued: true });
+                doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica-Bold').text(paisVal, { width: col1W });
                 ry += 11;
             }
 
             // Dirección
-            doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('DIRECCIÓN: ', col1X, ry, { continued: true });
-            doc.fillColor(THEME.textMedium).fontSize(7).font('Helvetica').text(receptor.direccion?.complemento || 'Ciudad', { width: col1W });
+            doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text('DIRECCIÓN: ', col1X, ry, { width: col1W, continued: true });
+            doc.fillColor(THEME.textMedium).fontSize(7).font('Helvetica').text(dirText, { width: col1W });
+            ry += Math.max(11, dirH);
 
             // Columna 2: Fecha de Emisión y Condición
             let r2y = receptorY + 24;
