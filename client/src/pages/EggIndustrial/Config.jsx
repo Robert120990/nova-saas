@@ -34,13 +34,57 @@ import {
     Info,
     Barcode,
     Pencil,
-    Search
+    Search,
+    Package,
+    Filter,
+    X,
+    AlertCircle
 } from 'lucide-react';
 
 const MONTH_NAMES = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
+
+const inferCategoryAndPresentation = (productName = '', code = '') => {
+    const text = `${productName} ${code}`.toLowerCase();
+
+    let product_type = DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY;
+    if (text.includes('clara')) {
+        product_type = 'clara';
+    } else if (text.includes('salada') || text.includes('yema sal')) {
+        product_type = 'yema salada';
+    } else if (text.includes('azucar') || text.includes('azúcar') || text.includes('yema azuc')) {
+        product_type = 'yema azucarada';
+    } else if (text.includes('fórmula') || text.includes('formula') || text.includes('mezcla') || text.includes('mix')) {
+        product_type = 'fórmula especial';
+    } else if (text.includes('huevo') || text.includes('entero')) {
+        product_type = 'huevo entero';
+    }
+
+    let presentation = DEFAULT_INDUSTRIAL_PRESENTATION;
+    if (text.includes('cubeta') || text.includes('32lb') || text.includes('32 lb') || text.includes('32l')) {
+        presentation = 'cubeta 32LB';
+    } else if (text.includes('galon') || text.includes('galón') || text.includes('8lb') || text.includes('8 lb')) {
+        presentation = 'galon 8LB';
+    } else if (text.includes('litro') || text.includes('2lb') || text.includes('2 lb') || text.includes('1 lt') || text.includes('1lt')) {
+        presentation = 'litro 2LB';
+    } else if (text.includes('bolsa 4lb') || text.includes('4lb') || text.includes('4 lb')) {
+        presentation = 'bolsa 4LB';
+    } else if (text.includes('20kg') || text.includes('20 kg')) {
+        presentation = 'bolsa 20kg';
+    } else if (text.includes('10kg') || text.includes('10 kg')) {
+        presentation = 'bolsa 10kg';
+    } else if (text.includes('5kg') || text.includes('5 kg')) {
+        presentation = 'bolsa 5kg';
+    } else if (text.includes('1kg') || text.includes('1 kg')) {
+        presentation = 'bolsa 1kg';
+    } else if (text.includes('tanque') || text.includes('1000') || text.includes('tote') || text.includes('granel')) {
+        presentation = 'granel / tanque';
+    }
+
+    return { product_type, presentation };
+};
 
 const parseMappingCodes = (codes) => {
     const parsed = (Array.isArray(codes) ? codes : String(codes || '').split(','))
@@ -116,6 +160,13 @@ const EggConfig = () => {
     const [mappingSearchTerm, setMappingSearchTerm] = useState('');
     const [mappingForm, setMappingForm] = useState(createMappingForm);
 
+    // Catálogo de Productos y Códigos del Sistema (Búsqueda interactiva)
+    const [isProductCatalogModalOpen, setIsProductCatalogModalOpen] = useState(false);
+    const [catalogSearchQuery, setCatalogSearchQuery] = useState('');
+    const [catalogFilterType, setCatalogFilterType] = useState('all'); // 'all', 'egg', 'unmapped', 'mapped'
+    const [targetCodeIndex, setTargetCodeIndex] = useState(null);
+    const [isFetchingProducts, setIsFetchingProducts] = useState(false);
+
     const defaults = {
         'huevo entero': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'clara': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
@@ -179,6 +230,134 @@ const EggConfig = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchSystemProducts = async () => {
+        setIsFetchingProducts(true);
+        try {
+            const res = await axios.get('/api/products?limit=500&status=activo');
+            const prods = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+            setSystemProducts(prods);
+            toast.success(`Catálogo actualizado: ${prods.length} productos disponibles.`);
+        } catch (err) {
+            console.error('Error cargando productos:', err);
+            toast.error('Error al actualizar catálogo de productos.');
+        } finally {
+            setIsFetchingProducts(false);
+        }
+    };
+
+    const handleOpenProductCatalog = (targetIdx = null) => {
+        setTargetCodeIndex(targetIdx);
+        setCatalogSearchQuery('');
+        setCatalogFilterType('all');
+        setIsProductCatalogModalOpen(true);
+    };
+
+    const mappedCodesSet = new Set(
+        codeMappings.flatMap((m) => parseMappingCodes(m.codes || m.catalog_codes).map((c) => c.toLowerCase()))
+    );
+    const mappedProductIdsSet = new Set(
+        codeMappings.map((m) => Number(m.product_id || m.catalog_product_id)).filter(Boolean)
+    );
+
+    const isProductMapped = (prod) => {
+        const sku = (prod.codigo || '').trim().toLowerCase();
+        const barcode = (prod.codigo_barra || '').trim().toLowerCase();
+        return mappedProductIdsSet.has(Number(prod.id)) ||
+            (sku && mappedCodesSet.has(sku)) ||
+            (barcode && mappedCodesSet.has(barcode));
+    };
+
+    const getProductMappingInfo = (prod) => {
+        const sku = (prod.codigo || '').trim().toLowerCase();
+        const barcode = (prod.codigo_barra || '').trim().toLowerCase();
+        return codeMappings.find((m) => {
+            if (Number(m.product_id || m.catalog_product_id) === Number(prod.id)) return true;
+            const codes = parseMappingCodes(m.codes || m.catalog_codes).map((c) => c.toLowerCase());
+            return (sku && codes.includes(sku)) || (barcode && codes.includes(barcode));
+        });
+    };
+
+    const handleSelectProductCode = (product, codeType = 'sku', autoFillMeta = true) => {
+        const skuCode = (product.codigo || '').trim();
+        const barcode = (product.codigo_barra || '').trim();
+
+        let codesToInsert = [];
+        if (codeType === 'sku' && skuCode) {
+            codesToInsert.push(skuCode);
+        } else if (codeType === 'barcode' && barcode) {
+            codesToInsert.push(barcode);
+        } else if (codeType === 'both') {
+            if (skuCode) codesToInsert.push(skuCode);
+            if (barcode && barcode !== skuCode) codesToInsert.push(barcode);
+        } else {
+            if (skuCode) codesToInsert.push(skuCode);
+            else if (barcode) codesToInsert.push(barcode);
+        }
+
+        if (codesToInsert.length === 0) {
+            return toast.error('Este producto no tiene código SKU ni código de barra registrado.');
+        }
+
+        const inferred = inferCategoryAndPresentation(product.nombre || product.name || '', codesToInsert[0]);
+        const presentationWeight = getIndustrialPresentationWeightLbs(inferred.presentation, 0);
+
+        // Si el modal de vinculación no estaba abierto, abrirlo pre-rellenado
+        if (!isMappingModalOpen) {
+            const weightLbs = presentationWeight > 0 ? presentationWeight : (parseFloat(mappingForm.weight_lbs) || 8);
+            setMappingForm({
+                ...createMappingForm(),
+                product_id: String(product.id),
+                product_name: product.nombre || product.name || '',
+                product_type: inferred.product_type,
+                presentation: inferred.presentation,
+                codes: codesToInsert,
+                weight_lbs: weightLbs.toFixed(2),
+                weight_kg: poundsToKilograms(weightLbs).toFixed(2),
+                unit_of_measure: product.unidad_medida?.toLowerCase() === 'kg' ? 'kg' : 'lb'
+            });
+            setIsMappingModalOpen(true);
+            setIsProductCatalogModalOpen(false);
+            toast.success(`Producto '${product.nombre}' preparado para vinculación.`);
+            return;
+        }
+
+        // Si el modal de vinculación ya está abierto:
+        if (targetCodeIndex !== null && targetCodeIndex !== undefined && targetCodeIndex >= 0) {
+            const primaryCode = codesToInsert[0];
+            setMappingForm((current) => {
+                const updatedCodes = [...current.codes];
+                updatedCodes[targetCodeIndex] = primaryCode;
+                if (codesToInsert[1] && !updatedCodes.includes(codesToInsert[1])) {
+                    updatedCodes.push(codesToInsert[1]);
+                }
+                return {
+                    ...current,
+                    codes: updatedCodes,
+                    product_id: autoFillMeta && !current.product_id ? String(product.id) : current.product_id,
+                    product_name: autoFillMeta && !current.product_name?.trim() ? (product.nombre || product.name || '') : current.product_name
+                };
+            });
+        } else {
+            setMappingForm((current) => {
+                const existing = current.codes.filter(Boolean);
+                const merged = [...existing];
+                codesToInsert.forEach((c) => {
+                    if (!merged.includes(c)) merged.push(c);
+                });
+                return {
+                    ...current,
+                    codes: merged.length > 0 ? merged : [''],
+                    product_id: autoFillMeta && !current.product_id ? String(product.id) : current.product_id,
+                    product_name: autoFillMeta && !current.product_name?.trim() ? (product.nombre || product.name || '') : current.product_name
+                };
+            });
+        }
+
+        setIsProductCatalogModalOpen(false);
+        setTargetCodeIndex(null);
+        toast.success(`Código(s) [${codesToInsert.join(', ')}] insertado(s).`);
     };
 
     const handleOpenCreateMapping = () => {
@@ -1096,6 +1275,18 @@ const EggConfig = () => {
             {/* MODAL DE VINCULACIÓN DE CÓDIGOS */}
             {isMappingModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                    {/* Datalist para autocompletar códigos del sistema mientras se escribe */}
+                    <datalist id="system-product-codes-list">
+                        {systemProducts.flatMap(p => {
+                            const entries = [];
+                            if (p.codigo) entries.push(<option key={`sku-${p.id}`} value={p.codigo}>{p.nombre} (SKU: {p.codigo})</option>);
+                            if (p.codigo_barra && p.codigo_barra !== p.codigo) {
+                                entries.push(<option key={`bar-${p.id}`} value={p.codigo_barra}>{p.nombre} (Barra: {p.codigo_barra})</option>);
+                            }
+                            return entries;
+                        })}
+                    </datalist>
+
                     <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto text-slate-900 space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
                             <div className="flex items-center gap-2.5">
@@ -1191,34 +1382,79 @@ const EggConfig = () => {
 
                             <div>
                                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
-                                        Códigos vinculados *
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={handleAddMappingCode}
-                                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
-                                        title="Agregar otro código al mismo producto"
-                                    >
-                                        <Plus size={13} />
-                                        Agregar código
-                                    </button>
+                                    <div className="flex items-center gap-1.5">
+                                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                                            Códigos vinculados *
+                                        </label>
+                                        <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded border border-slate-200">
+                                            {mappingForm.codes.filter(Boolean).length} vinculados
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenProductCatalog(null)}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors shadow-2xs"
+                                            title="Buscar códigos de productos registrados en el sistema"
+                                        >
+                                            <Search size={12} />
+                                            Buscar en sistema
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleAddMappingCode}
+                                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors"
+                                            title="Agregar otro renglón de código manual"
+                                        >
+                                            <Plus size={12} />
+                                            Manual
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     {mappingForm.codes.map((code, index) => (
-                                        <div key={index} className="flex flex-col sm:flex-row gap-2">
-                                            <input
-                                                type="text"
-                                                value={code}
-                                                onChange={(e) => handleUpdateMappingCode(index, e.target.value)}
-                                                placeholder={index === 0 ? 'Ej: HEGL8' : 'Otro código del mismo producto'}
-                                                className="min-w-0 flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                            />
+                                        <div key={index} className="flex items-center gap-2">
+                                            <div className="relative flex-1 min-w-0">
+                                                <input
+                                                    type="text"
+                                                    list="system-product-codes-list"
+                                                    value={code}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        handleUpdateMappingCode(index, val);
+                                                        // Si coincide exactamente con un producto del sistema, sugerir autocompletar nombre
+                                                        const match = systemProducts.find(p =>
+                                                            (p.codigo && p.codigo.toLowerCase() === val.toLowerCase()) ||
+                                                            (p.codigo_barra && p.codigo_barra.toLowerCase() === val.toLowerCase())
+                                                        );
+                                                        if (match && !mappingForm.product_name?.trim()) {
+                                                            const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', val);
+                                                            setMappingForm(prev => ({
+                                                                ...prev,
+                                                                product_name: match.nombre || match.name || prev.product_name,
+                                                                product_id: prev.product_id || String(match.id),
+                                                                product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
+                                                                presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation
+                                                            }));
+                                                        }
+                                                    }}
+                                                    placeholder={index === 0 ? 'Ej: HEGL8 o escribe para buscar...' : 'Otro código (SKU o Barra)'}
+                                                    className="w-full pl-3 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenProductCatalog(index)}
+                                                    className="absolute right-2 top-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                                                    title="Buscar y seleccionar código de la lista de productos del sistema"
+                                                >
+                                                    <Search size={14} />
+                                                </button>
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={() => handleRemoveMappingCode(index)}
                                                 disabled={mappingForm.codes.length === 1}
-                                                className="inline-flex shrink-0 items-center justify-center px-3 py-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                                                className="inline-flex shrink-0 items-center justify-center p-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
                                                 title="Quitar código"
                                                 aria-label="Quitar código"
                                             >
@@ -1227,9 +1463,11 @@ const EggConfig = () => {
                                         </div>
                                     ))}
                                 </div>
-                                <span className="text-[10px] text-slate-400 block mt-1">
-                                    Use el signo + para vincular todos los códigos que correspondan al mismo producto.
-                                </span>
+                                <div className="flex items-center justify-between gap-2 mt-1">
+                                    <span className="text-[10px] text-slate-400 block">
+                                        Escribe para ver sugerencias automáticas o pulsa <strong>Buscar en sistema</strong>.
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1274,31 +1512,54 @@ const EggConfig = () => {
                             </div>
 
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                    Vincular a Producto del Catálogo General (Opcional)
-                                </label>
-                                <select
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">
+                                        Vincular a Producto del Catálogo General (Opcional)
+                                    </label>
+                                    {mappingForm.product_id && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setMappingForm({ ...mappingForm, product_id: '' })}
+                                            className="text-[10px] text-rose-600 font-bold hover:underline"
+                                        >
+                                            Limpiar vínculo
+                                        </button>
+                                    )}
+                                </div>
+                                <SearchableSelect
+                                    options={systemProducts}
                                     value={mappingForm.product_id}
-                                    onChange={(e) => {
-                                        const productId = e.target.value;
-                                        const selectedProduct = systemProducts.find((product) => String(product.id) === productId);
-                                        setMappingForm({
-                                            ...mappingForm,
-                                            product_id: productId,
-                                            product_name: selectedProduct
-                                                ? (selectedProduct.name || selectedProduct.nombre || mappingForm.product_name)
-                                                : mappingForm.product_name
-                                        });
+                                    onChange={(e, opt) => {
+                                        if (opt) {
+                                            const sku = (opt.codigo || '').trim();
+                                            const bar = (opt.codigo_barra || '').trim();
+                                            const curCodes = mappingForm.codes.filter(Boolean);
+                                            const merged = [...curCodes];
+                                            if (sku && !merged.includes(sku)) merged.push(sku);
+                                            if (bar && !merged.includes(bar)) merged.push(bar);
+
+                                            const inferred = inferCategoryAndPresentation(opt.nombre || opt.name || '', sku || bar);
+
+                                            setMappingForm(prev => ({
+                                                ...prev,
+                                                product_id: String(opt.id),
+                                                product_name: prev.product_name?.trim() ? prev.product_name : (opt.nombre || opt.name || ''),
+                                                product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
+                                                presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation,
+                                                codes: merged.length > 0 ? merged : [''],
+                                                unit_of_measure: opt.unidad_medida?.toLowerCase() === 'kg' ? 'kg' : prev.unit_of_measure
+                                            }));
+                                        } else {
+                                            setMappingForm(prev => ({ ...prev, product_id: '' }));
+                                        }
                                     }}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
-                                >
-                                    <option value="">(Automático por coincidencia de SKU/Código)</option>
-                                    {systemProducts.map(sp => (
-                                        <option key={sp.id} value={sp.id}>
-                                            {sp.nombre || sp.name} [{sp.codigo || sp.codigo_barra || `ID-${sp.id}`}]
-                                        </option>
-                                    ))}
-                                </select>
+                                    valueKey="id"
+                                    labelKey="nombre"
+                                    codeKey="codigo"
+                                    searchKeys={['codigo', 'codigo_barra', 'nombre', 'category_name']}
+                                    placeholder="(Automático por SKU/Código o buscar en catálogo...)"
+                                    isClearable={true}
+                                />
                             </div>
 
                             <div>
@@ -1330,6 +1591,361 @@ const EggConfig = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DEL CATÁLOGO DE PRODUCTOS Y CÓDIGOS DEL SISTEMA */}
+            {isProductCatalogModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col text-slate-900 space-y-4">
+                        {/* Header */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                                    <Package size={22} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm sm:text-base font-bold uppercase tracking-wider text-slate-900">
+                                            Catálogo de Productos y Códigos del Sistema
+                                        </h3>
+                                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-[10px] font-bold">
+                                            {systemProducts.length} productos
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        {targetCodeIndex !== null
+                                            ? `Selecciona un código para asignarlo al renglón #${targetCodeIndex + 1}`
+                                            : 'Busca y selecciona códigos actuales (SKU / Código de Barra) para vincularlos al módulo industrial'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={fetchSystemProducts}
+                                    disabled={isFetchingProducts}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors disabled:opacity-50"
+                                    title="Recargar productos desde la base de datos"
+                                >
+                                    <RefreshCw size={13} className={isFetchingProducts ? 'animate-spin text-indigo-600' : ''} />
+                                    <span>{isFetchingProducts ? 'Actualizando...' : 'Refrescar'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsProductCatalogModalOpen(false);
+                                        setTargetCodeIndex(null);
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                                    aria-label="Cerrar modal"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Search & Filters */}
+                        <div className="space-y-3">
+                            <div className="relative">
+                                <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    placeholder="Buscar por código SKU, código de barra, nombre del producto o categoría..."
+                                    value={catalogSearchQuery}
+                                    onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs"
+                                />
+                                {catalogSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCatalogSearchQuery('')}
+                                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Filtros rápidos por chips */}
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <span className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1 mr-1">
+                                    <Filter size={12} /> Filtrar:
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setCatalogFilterType('all')}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                                        catalogFilterType === 'all'
+                                            ? 'bg-indigo-600 text-white shadow-2xs'
+                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    Todos ({systemProducts.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCatalogFilterType('egg')}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                                        catalogFilterType === 'egg'
+                                            ? 'bg-indigo-600 text-white shadow-2xs'
+                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    🥚 Huevo / Ovoproductos ({systemProducts.filter(p => {
+                                        const t = `${p.nombre || ''} ${p.descripcion || ''} ${p.category_name || ''} ${p.codigo || ''}`.toLowerCase();
+                                        return t.includes('huevo') || t.includes('clara') || t.includes('yema') || t.includes('ovoproducto') || t.includes('pasteuriz');
+                                    }).length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCatalogFilterType('unmapped')}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                                        catalogFilterType === 'unmapped'
+                                            ? 'bg-amber-600 text-white shadow-2xs'
+                                            : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                                    }`}
+                                >
+                                    ⚠️ Sin Vincular ({systemProducts.filter(p => !isProductMapped(p)).length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCatalogFilterType('mapped')}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                                        catalogFilterType === 'mapped'
+                                            ? 'bg-emerald-600 text-white shadow-2xs'
+                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                                    }`}
+                                >
+                                    ✅ Ya Vinculados ({systemProducts.filter(p => isProductMapped(p)).length})
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Listado de Productos */}
+                        <div className="flex-1 overflow-y-auto border border-slate-200 rounded-xl max-h-[55vh] divide-y divide-slate-100">
+                            {(() => {
+                                const filtered = systemProducts.filter(p => {
+                                    // Filtro por tipo
+                                    if (catalogFilterType === 'egg') {
+                                        const t = `${p.nombre || ''} ${p.descripcion || ''} ${p.category_name || ''} ${p.codigo || ''}`.toLowerCase();
+                                        if (!t.includes('huevo') && !t.includes('clara') && !t.includes('yema') && !t.includes('ovoproducto') && !t.includes('pasteuriz')) {
+                                            return false;
+                                        }
+                                    } else if (catalogFilterType === 'unmapped' && isProductMapped(p)) {
+                                        return false;
+                                    } else if (catalogFilterType === 'mapped' && !isProductMapped(p)) {
+                                        return false;
+                                    }
+
+                                    // Filtro por búsqueda de texto
+                                    if (!catalogSearchQuery.trim()) return true;
+                                    const q = catalogSearchQuery.toLowerCase();
+                                    return (
+                                        (p.nombre || '').toLowerCase().includes(q) ||
+                                        (p.codigo || '').toLowerCase().includes(q) ||
+                                        (p.codigo_barra || '').toLowerCase().includes(q) ||
+                                        (p.category_name || '').toLowerCase().includes(q) ||
+                                        (p.descripcion || '').toLowerCase().includes(q)
+                                    );
+                                });
+
+                                if (filtered.length === 0) {
+                                    return (
+                                        <div className="p-8 text-center space-y-2">
+                                            <Package className="h-10 w-10 text-slate-300 mx-auto" />
+                                            <p className="text-xs font-bold text-slate-600">No se encontraron productos coincidentes.</p>
+                                            <p className="text-[11px] text-slate-400">Intenta buscar por otro término o limpia los filtros.</p>
+                                        </div>
+                                    );
+                                }
+
+                                return filtered.map(prod => {
+                                    const mappingInfo = getProductMappingInfo(prod);
+                                    const hasSku = Boolean(prod.codigo?.trim());
+                                    const hasBarcode = Boolean(prod.codigo_barra?.trim() && prod.codigo_barra !== prod.codigo);
+
+                                    return (
+                                        <div
+                                            key={prod.id}
+                                            className="p-3 sm:p-3.5 hover:bg-slate-50/90 transition-colors flex flex-col md:flex-row items-start md:items-center justify-between gap-3"
+                                        >
+                                            {/* Datos del producto */}
+                                            <div className="space-y-1 flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-bold text-xs sm:text-sm text-slate-900">
+                                                        {prod.nombre || prod.name}
+                                                    </span>
+                                                    {prod.category_name && (
+                                                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                                            {prod.category_name}
+                                                        </span>
+                                                    )}
+                                                    {prod.unidad_medida && (
+                                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 uppercase">
+                                                            {prod.unidad_medida}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Códigos disponibles */}
+                                                <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                                                    {hasSku && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSelectProductCode(prod, 'sku', true)}
+                                                            className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 transition-colors"
+                                                            title="Click para usar este código SKU"
+                                                        >
+                                                            <Barcode size={12} />
+                                                            <span>SKU: {prod.codigo}</span>
+                                                        </button>
+                                                    )}
+
+                                                    {hasBarcode && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSelectProductCode(prod, 'barcode', true)}
+                                                            className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded border border-slate-300 transition-colors"
+                                                            title="Click para usar este código de barra"
+                                                        >
+                                                            <Barcode size={12} />
+                                                            <span>Barra: {prod.codigo_barra}</span>
+                                                        </button>
+                                                    )}
+
+                                                    {!hasSku && !hasBarcode && (
+                                                        <span className="text-[10px] text-amber-600 font-bold italic flex items-center gap-1">
+                                                            <AlertCircle size={11} /> Sin código SKU ni Barra
+                                                        </span>
+                                                    )}
+
+                                                    {/* Estado de vinculación */}
+                                                    {mappingInfo ? (
+                                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                                                            <CheckCircle2 size={11} />
+                                                            Vinculado: {mappingInfo.product_type} ({mappingInfo.presentation})
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                                            Sin vincular a ovoproducto
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Botones de acción rápida */}
+                                            <div className="flex items-center gap-1.5 shrink-0 w-full md:w-auto justify-end">
+                                                {hasSku && hasBarcode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSelectProductCode(prod, 'both', true)}
+                                                        className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[11px] font-bold border border-slate-300 transition-colors"
+                                                        title="Insertar ambos códigos (SKU + Barra)"
+                                                    >
+                                                        + Ambos Códigos
+                                                    </button>
+                                                )}
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSelectProductCode(prod, 'both', true)}
+                                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1"
+                                                >
+                                                    <Sparkles size={12} />
+                                                    <span>{isMappingModalOpen ? 'Usar en Formulario' : 'Crear Vinculación'}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 text-xs text-slate-500">
+                            <span className="font-medium">
+                                Haz clic en cualquier código SKU o en <strong>Usar en Formulario</strong> para insertarlo instantáneamente.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsProductCatalogModalOpen(false);
+                                    setTargetCodeIndex(null);
+                                }}
+                                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* MODAL DE AYUDA INTERACTIVO (?) */}
+            {helpConceptModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto text-slate-900 space-y-5">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+                                    <HelpCircle size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                        ¿Cómo se complementa este espacio?
+                                    </h3>
+                                    <span className="text-xs text-indigo-600 font-bold">{helpConceptModal.concept_name}</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setHelpConceptModal(null)}
+                                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 text-xs">
+                            {/* Qué representa */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
+                                <span className="font-bold text-slate-700 uppercase tracking-wide text-[10px] block">1. ¿Qué representa este concepto?</span>
+                                <p className="text-slate-600 leading-relaxed font-medium">{helpConceptModal.description}</p>
+                            </div>
+
+                            {/* De dónde se extrae */}
+                            <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-3.5 space-y-1">
+                                <span className="font-bold text-indigo-900 uppercase tracking-wide text-[10px] block">2. ¿De dónde sale y cómo se complementa?</span>
+                                <p className="text-indigo-800 leading-relaxed">{helpConceptModal.how_to_complete}</p>
+                            </div>
+
+                            {/* Fórmula y Ejemplo */}
+                            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 space-y-1.5">
+                                <span className="font-bold text-emerald-900 uppercase tracking-wide text-[10px] block">3. Fórmula de Cálculo por Lote</span>
+                                <div className="p-2 bg-white rounded-lg font-mono text-[11px] font-bold text-emerald-800 border border-emerald-200">
+                                    {helpConceptModal.formula}
+                                </div>
+                                <p className="text-emerald-900 leading-relaxed text-[11px] pt-1">
+                                    <span className="font-bold">Ejemplo práctico:</span> {helpConceptModal.example}
+                                </p>
+                            </div>
+
+                            {/* Incidencia en el Costo por Libra */}
+                            <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 space-y-1">
+                                <span className="font-bold text-amber-900 uppercase tracking-wide text-[10px] block">4. Incidencia en el Costo Final por Libra</span>
+                                <p className="text-amber-900 leading-relaxed">{helpConceptModal.per_pound_impact}</p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-3 border-t border-slate-200">
+                            <button
+                                onClick={() => setHelpConceptModal(null)}
+                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                            >
+                                Entendido
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
