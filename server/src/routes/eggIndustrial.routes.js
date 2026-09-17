@@ -23,6 +23,7 @@ router.delete('/batches/:id', eggController.deleteProductionBatch);
 router.put('/batches/:id/complete', eggController.completeProductionBatch);
 router.get('/batches/:id/stages', eggController.getBatchStages);
 router.post('/batches/:id/tarimas', eggController.addTarimasToBatch);
+router.post('/batches/:id/add-tarimas', eggController.addTarimasToBatch);
 router.post('/batches/:id/close-packaging', eggController.closeBatchPackaging);
 router.get('/batches/:id/export-summary', eggController.exportBatchSummary);
 

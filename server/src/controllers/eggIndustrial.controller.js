@@ -4290,20 +4290,79 @@ const getFactoryUsers = async (req, res) => {
 
 // 3.1 Actualizar Lote de Producción (Edición)
 const updateProductionBatch = async (req, res) => {
+    const connection = await pool.getConnection();
     try {
+        await connection.beginTransaction();
         const { id } = req.params;
-        const { product_type, presentation, operator_name, target_brix, target_solids_pct, notes } = req.body;
         const company_id = req.company_id;
 
-        const [existing] = await pool.query(
-            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ?',
+        const [existing] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ? FOR UPDATE',
             [id, company_id]
         );
         if (existing.length === 0) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Lote de producción no encontrado.' });
         }
 
-        await pool.query(
+        const { 
+            product_type, 
+            presentation, 
+            operator_name, 
+            target_brix, 
+            target_solids_pct, 
+            notes, 
+            ingredients, 
+            ingredients_json,
+            raw_materials 
+        } = req.body;
+
+        let inputWeightLbs = existing[0].input_weight_lbs;
+        if (Array.isArray(raw_materials) && raw_materials.length > 0) {
+            const calculatedTotal = raw_materials.reduce((sum, rm) => sum + parseFloat(rm.quantity_lbs || 0), 0);
+            if (calculatedTotal > 0) {
+                inputWeightLbs = calculatedTotal;
+            }
+
+            // Revertir consumos previos de este batch para recalcular limpiamente si está en proceso
+            if (existing[0].status === 'en_proceso' || existing[0].status === 'quebraje') {
+                const [oldBrm] = await connection.query(
+                    'SELECT * FROM batch_raw_materials WHERE batch_id = ?',
+                    [id]
+                );
+                for (const ob of oldBrm) {
+                    await connection.query(
+                        'UPDATE egg_raw_materials SET stock_lbs = stock_lbs + ? WHERE id = ?',
+                        [parseFloat(ob.quantity_lbs || 0), ob.raw_material_id]
+                    );
+                }
+                await connection.query('DELETE FROM batch_raw_materials WHERE batch_id = ?', [id]);
+
+                // Insertar nuevas materias primas y descontar stock
+                for (const rm of raw_materials) {
+                    const qtyLbs = parseFloat(rm.quantity_lbs || 0);
+                    if (qtyLbs > 0 && rm.raw_material_id) {
+                        await connection.query(
+                            'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?) WHERE id = ?',
+                            [qtyLbs, rm.raw_material_id]
+                        );
+                        await connection.query(
+                            `INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, boxes_count, tarimas_json)
+                             VALUES (?, ?, ?, ?, ?)`,
+                            [id, rm.raw_material_id, qtyLbs, parseInt(rm.boxes_count || 0), JSON.stringify(rm.tarimas || [])]
+                        );
+                    }
+                }
+            }
+        }
+
+        const resolvedIngredients = ingredients 
+            ? JSON.stringify(ingredients) 
+            : (ingredients_json 
+                ? (typeof ingredients_json === 'string' ? ingredients_json : JSON.stringify(ingredients_json)) 
+                : existing[0].ingredients_json);
+
+        await connection.query(
             `UPDATE egg_production_batches 
              SET product_type = COALESCE(?, product_type),
                  presentation = COALESCE(?, presentation),
@@ -4311,16 +4370,18 @@ const updateProductionBatch = async (req, res) => {
                  target_brix = ?,
                  target_solids_pct = ?,
                  notes = COALESCE(?, notes),
+                 ingredients_json = ?,
+                 input_weight_lbs = ?,
                  updated_at = NOW()
              WHERE id = ? AND company_id = ?`,
             [
                 product_type, presentation, operator_name, 
                 target_brix || null, target_solids_pct || null, 
-                notes, id, company_id
+                notes, resolvedIngredients, inputWeightLbs, id, company_id
             ]
         );
 
-        await pool.query(
+        await connection.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'production.updated', 'info', ?, ?, ?)`,
             [
@@ -4331,10 +4392,14 @@ const updateProductionBatch = async (req, res) => {
             ]
         );
 
+        await connection.commit();
         res.json({ success: true, message: 'Lote de producción actualizado exitosamente.' });
     } catch (error) {
+        await connection.rollback();
         console.error('Error in updateProductionBatch:', error);
         res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
     }
 };
 
@@ -4428,21 +4493,14 @@ const deleteProductionBatch = async (req, res) => {
     }
 };
 
-// 3.3 Agregar más tarimas al quebraje durante la corrida
+// 3.3 Agregar más tarimas al quebraje durante la corrida (Soporta múltiples lotes complementarios)
 const addTarimasToBatch = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
-        const { raw_material_id, quantity_lbs, boxes_count, tarimas, notes } = req.body;
         const company_id = req.company_id;
-
-        const qty = parseFloat(quantity_lbs || 0);
-        const boxes = parseInt(boxes_count || 0, 10);
-        if (qty <= 0) {
-            await connection.rollback();
-            return res.status(400).json({ message: 'El peso de las tarimas agregadas debe ser mayor a cero.' });
-        }
+        const { raw_materials, notes, operator_name } = req.body;
 
         // Validar lote de producción
         const [batches] = await connection.query(
@@ -4455,47 +4513,114 @@ const addTarimasToBatch = async (req, res) => {
         }
         const batch = batches[0];
 
-        // Validar stock de materia prima
-        const [rmRows] = await connection.query(
-            'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
-            [raw_material_id, company_id]
-        );
-        if (rmRows.length === 0) {
+        // Construir lista de items de materia prima a procesar
+        let listToAdd = [];
+        if (Array.isArray(raw_materials) && raw_materials.length > 0) {
+            listToAdd = raw_materials;
+        } else if (req.body.raw_material_id) {
+            const singleQty = parseFloat(req.body.weight_lbs || req.body.quantity_lbs || 0);
+            const singleBoxes = parseInt(req.body.boxes_count || 0, 10);
+            listToAdd = [{
+                raw_material_id: req.body.raw_material_id,
+                quantity_lbs: singleQty,
+                boxes_count: singleBoxes,
+                tarimas: req.body.tarimas || (req.body.tarima_number ? [{
+                    tarima_number: req.body.tarima_number,
+                    boxes_count: singleBoxes,
+                    quantity_lbs: singleQty
+                }] : [])
+            }];
+        }
+
+        if (listToAdd.length === 0) {
             await connection.rollback();
-            return res.status(404).json({ message: 'Materia prima no encontrada.' });
+            return res.status(400).json({ message: 'Debe especificar las tarimas y lotes de materia prima a agregar.' });
         }
-        const currentStock = parseFloat(rmRows[0].stock_lbs || 0);
-        if (currentStock < qty) {
+
+        let totalAddedLbs = 0;
+        let totalAddedBoxes = 0;
+
+        for (const rm of listToAdd) {
+            const rmId = parseInt(rm.raw_material_id, 10);
+            const qty = parseFloat(rm.quantity_lbs || rm.weight_lbs || 0);
+            const boxes = parseInt(rm.boxes_count || 0, 10);
+            const tarimas = Array.isArray(rm.tarimas) ? rm.tarimas : [];
+
+            if (qty <= 0) continue;
+
+            // Validar stock del lote de MP
+            const [rmRows] = await connection.query(
+                'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
+                [rmId, company_id]
+            );
+            if (rmRows.length === 0) {
+                await connection.rollback();
+                return res.status(404).json({ message: `Materia prima con ID ${rmId} no encontrada.` });
+            }
+
+            const currentStock = parseFloat(rmRows[0].stock_lbs || 0);
+            if (currentStock < qty) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `Stock insuficiente en lote ${rmRows[0].provider_lot}. Disponible: ${currentStock.toFixed(2)} Lbs, Solicitado: ${qty.toFixed(2)} Lbs.`
+                });
+            }
+
+            // Descontar stock
+            if (boxes > 0) {
+                await connection.query(
+                    'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?), total_boxes = GREATEST(0, total_boxes - ?) WHERE id = ? AND company_id = ?',
+                    [qty, boxes, rmId, company_id]
+                );
+            } else {
+                await connection.query(
+                    'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?) WHERE id = ? AND company_id = ?',
+                    [qty, rmId, company_id]
+                );
+            }
+
+            // Insertar o actualizar en batch_raw_materials
+            const [existingBrm] = await connection.query(
+                'SELECT * FROM batch_raw_materials WHERE batch_id = ? AND raw_material_id = ?',
+                [id, rmId]
+            );
+
+            if (existingBrm.length > 0) {
+                let currentTarimas = [];
+                try {
+                    currentTarimas = typeof existingBrm[0].tarimas_json === 'string'
+                        ? JSON.parse(existingBrm[0].tarimas_json || '[]')
+                        : (existingBrm[0].tarimas_json || []);
+                } catch (e) { currentTarimas = []; }
+
+                const combinedTarimas = [...currentTarimas, ...tarimas];
+                const newQty = parseFloat(existingBrm[0].quantity_lbs || 0) + qty;
+                const newBoxes = parseInt(existingBrm[0].boxes_count || 0, 10) + boxes;
+
+                await connection.query(
+                    'UPDATE batch_raw_materials SET quantity_lbs = ?, boxes_count = ?, tarimas_json = ? WHERE id = ?',
+                    [newQty, newBoxes, JSON.stringify(combinedTarimas), existingBrm[0].id]
+                );
+            } else {
+                await connection.query(
+                    'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
+                    [id, rmId, qty, JSON.stringify(tarimas), boxes]
+                );
+            }
+
+            totalAddedLbs += qty;
+            totalAddedBoxes += boxes;
+        }
+
+        if (totalAddedLbs <= 0) {
             await connection.rollback();
-            return res.status(400).json({ 
-                message: `Stock insuficiente en lote ${rmRows[0].provider_lot}. Disponible: ${currentStock.toFixed(2)} Lbs, Solicitado: ${qty.toFixed(2)} Lbs.` 
-            });
+            return res.status(400).json({ message: 'El peso total de las tarimas agregadas debe ser mayor a cero.' });
         }
 
-        // Descontar stock
-        if (boxes > 0) {
-            await connection.query(
-                'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?), total_boxes = GREATEST(0, total_boxes - ?) WHERE id = ? AND company_id = ?',
-                [qty, boxes, raw_material_id, company_id]
-            );
-        } else {
-            await connection.query(
-                'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?) WHERE id = ? AND company_id = ?',
-                [qty, raw_material_id, company_id]
-            );
-        }
-
-        // Insertar en batch_raw_materials
-        const tarimasJson = tarimas && Array.isArray(tarimas) ? JSON.stringify(tarimas) : null;
-        await connection.query(
-            'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
-            [id, raw_material_id, qty, tarimasJson, boxes]
-        );
-
-        // Incrementar input_weight_lbs en el lote
+        // Incrementar input_weight_lbs en el lote de producción
         await connection.query(
             'UPDATE egg_production_batches SET input_weight_lbs = input_weight_lbs + ? WHERE id = ? AND company_id = ?',
-            [qty, id, company_id]
+            [totalAddedLbs, id, company_id]
         );
 
         await connection.query(
@@ -4503,17 +4628,19 @@ const addTarimasToBatch = async (req, res) => {
              VALUES (?, 'batch.tarimas_added', 'info', ?, ?, ?)`,
             [
                 company_id,
-                `Agregadas ${qty} Lbs (${boxes} cajas / tarimas) al quebraje del lote ${batch.batch_code_display || batch.batch_uuid}.`,
-                JSON.stringify({ batch_id: parseInt(id), raw_material_id, quantity_lbs: qty, boxes_count: boxes, notes }),
-                req.user?.nombre || batch.operator_name || 'Operador'
+                `Agregadas ${totalAddedLbs.toFixed(2)} Lbs (${totalAddedBoxes} cajas / tarimas) al quebraje del lote ${batch.batch_code_display || batch.batch_uuid}.`,
+                JSON.stringify({ batch_id: parseInt(id), totalAddedLbs, totalAddedBoxes, notes }),
+                operator_name || req.user?.nombre || batch.operator_name || 'Operador'
             ]
         );
 
         await connection.commit();
         res.json({ 
             success: true, 
-            message: `Se agregaron exitosamente ${qty} Lbs al lote ${batch.batch_code_display || batch.batch_uuid}.`,
-            new_input_weight_lbs: parseFloat(batch.input_weight_lbs || 0) + qty
+            message: `Se agregaron exitosamente ${totalAddedLbs.toFixed(2)} Lbs (${totalAddedBoxes} cjs) al lote ${batch.batch_code_display || batch.batch_uuid}.`,
+            totalAddedLbs,
+            totalAddedBoxes,
+            new_input_weight_lbs: parseFloat(batch.input_weight_lbs || 0) + totalAddedLbs
         });
     } catch (error) {
         await connection.rollback();
@@ -5087,25 +5214,37 @@ const getTranslatedInventory = async (req, res) => {
 
         // Crear mapa rápido de código -> mapeo
         const codeMap = {};
+        const mappedCodesList = [];
         for (const m of mappings) {
             const rawCodes = (m.catalog_codes || '').split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
             for (const c of rawCodes) {
                 codeMap[c] = m;
+                mappedCodesList.push(c);
             }
         }
 
-        // 2. Consultar productos del inventario general con su stock real
+        // 2. Consultar productos del inventario general con su stock real de forma optimizada
+        const safeCodes = mappedCodesList.length > 0 ? mappedCodesList : ['__none__'];
         const [products] = await pool.query(
             `SELECT p.id, p.codigo, p.nombre, COALESCE(SUM(i.stock), 0) as stock, p.unidad_medida, c.name as category_name
              FROM products p
              LEFT JOIN inventory i ON p.id = i.product_id
              LEFT JOIN product_categories c ON p.category_id = c.id
              WHERE p.company_id = ? AND p.status = 'activo'
+               AND (
+                   LOWER(p.nombre) LIKE '%huevo%' 
+                   OR LOWER(p.nombre) LIKE '%clara%' 
+                   OR LOWER(p.nombre) LIKE '%yema%'
+                   OR LOWER(c.name) LIKE '%huevo%'
+                   OR LOWER(c.name) LIKE '%ovoproducto%'
+                   OR LOWER(p.codigo) IN (?)
+               )
              GROUP BY p.id, p.codigo, p.nombre, p.unidad_medida, c.name`,
-            [company_id]
+            [company_id, safeCodes]
         );
 
         // 3. Clasificar y traducir inventario
+        const items = [];
         const byType = {};
         const byPresentation = {};
         const unmappedProducts = [];
@@ -5116,10 +5255,8 @@ const getTranslatedInventory = async (req, res) => {
         for (const prod of products) {
             const code = (prod.codigo || '').trim().toLowerCase();
             const mapping = codeMap[code];
-
             const currentStockUnits = parseFloat(prod.stock || 0);
 
-            // Verificar si es candidato a huevo pero no mapeado
             const isEggCandidate = 
                 (prod.nombre || '').toLowerCase().includes('huevo') || 
                 (prod.nombre || '').toLowerCase().includes('clara') || 
@@ -5137,6 +5274,21 @@ const getTranslatedInventory = async (req, res) => {
                 grandTotalUnits += currentStockUnits;
                 grandTotalLbs += totalLbs;
                 grandTotalKg += totalKg;
+
+                // Fila para tabla plana
+                items.push({
+                    product_id: prod.id,
+                    product_code: prod.codigo,
+                    product_name: prod.nombre,
+                    product_type: mapping.industrial_product_type,
+                    presentation: mapping.presentation,
+                    matched_code: mapping.catalog_codes,
+                    stock_units: currentStockUnits,
+                    weight_per_unit_lbs: lbsPerUnit,
+                    weight_per_unit_kg: kgPerUnit,
+                    total_lbs: totalLbs,
+                    total_kg: totalKg
+                });
 
                 // Agrupar por Tipo de Producto
                 const pType = mapping.industrial_product_type;
@@ -5181,6 +5333,12 @@ const getTranslatedInventory = async (req, res) => {
         }
 
         res.json({
+            totals: {
+                total_items: items.length,
+                total_stock_units: grandTotalUnits,
+                total_weight_lbs: Math.round(grandTotalLbs * 100) / 100,
+                total_weight_kg: Math.round(grandTotalKg * 100) / 100
+            },
             summary: {
                 grandTotalUnits,
                 grandTotalLbs: Math.round(grandTotalLbs * 100) / 100,
@@ -5188,6 +5346,7 @@ const getTranslatedInventory = async (req, res) => {
                 mappedProductsCount: Object.keys(codeMap).length,
                 unmappedProductsCount: unmappedProducts.length
             },
+            items,
             by_type: Object.values(byType),
             unmapped_products: unmappedProducts,
             mappings_count: mappings.length
