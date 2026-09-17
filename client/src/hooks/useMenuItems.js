@@ -159,12 +159,12 @@ function buildTree(items) {
     if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/inventario')) {
         industrialRoot.children.push({
             id: 'virtual-industrial-inventory',
-            label: 'Inventario Traducido',
+            label: 'Inventario Industrial',
             path: '/industrial/inventario',
             permission: 'view_egg_inventory',
             permission_key: 'view_egg_inventory',
             hideInMenu: false,
-            icon: iconMap.Package || iconMap.Circle,
+            icon: iconMap.Boxes || iconMap.Circle,
             children: []
         });
     }
@@ -178,7 +178,7 @@ function buildTree(items) {
             permission: 'view_egg_reports',
             permission_key: 'view_egg_reports',
             hideInMenu: false,
-            icon: iconMap.FileText || iconMap.Circle,
+            icon: iconMap.BarChart3 || iconMap.Circle,
             children: []
         });
     }
