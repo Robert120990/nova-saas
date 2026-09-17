@@ -47,23 +47,72 @@ async function resolveCountryCode(rawInput) {
         'MÉXICO': 'MX'
     };
 
+    // Mapa de codigos numericos legacy (DIGESTYC) → ISO 2 letras
+    // Hacienda solo acepta ISO 2 letras en #/receptor/codPais
+    const legacyToISO = {
+        '9303': 'AF', '9309': 'AL', '9310': 'DE', '9317': 'AD', '9319': 'AO',
+        '9327': 'AG', '9330': 'DZ', '9333': 'AU', '9336': 'AT', '9348': 'BE',
+        '9349': 'BZ', '9357': 'BO', '9363': 'BR', '9378': 'KH', '9387': 'CA',
+        '9390': 'QA', '9393': 'TD', '9396': 'CL', '9399': 'CN', '9402': 'CY',
+        '9405': 'CO', '9414': 'CD', '9417': 'KR', '9420': 'KP', '9423': 'CI',
+        '9426': 'CR', '9432': 'CU', '9438': 'DK', '9444': 'EC', '9447': 'EG',
+        '9450': 'AE', '9456': 'TG', '9462': 'SK', '9465': 'SI', '9468': 'ES',
+        '9471': 'US', '9474': 'EE', '9477': 'ET', '9480': 'PH', '9483': 'FI',
+        '9486': 'FJ', '9492': 'FR', '9495': 'GA', '9498': 'GM',
+        // CA (Centroam\u00e9rica)
+        '9501': 'HN', '9504': 'GH', '9510': 'GR', '9519': 'GU',
+        '9522': 'GT', '9525': 'GY', '9528': 'GN', '9534': 'GQ',
+        '9537': 'HT', '9540': 'HU', '9543': 'IN', '9546': 'ID', '9549': 'IQ',
+        '9552': 'IR', '9555': 'IE', '9558': 'IS', '9561': 'IL', '9564': 'IT',
+        '9567': 'JM', '9570': 'JP', '9573': 'JO', '9576': 'KE', '9582': 'KW',
+        '9585': 'LB', '9591': 'LY', '9594': 'LI', '9597': 'LU', '9600': 'MK',
+        '9603': 'MG', '9606': 'MY', '9609': 'MW', '9615': 'ML', '9618': 'MT',
+        '9621': 'MA', '9627': 'MU', '9633': 'MX', '9636': 'MZ', '9639': 'MC',
+        '9642': 'MN', '9651': 'NI', '9654': 'NE', '9657': 'NG', '9660': 'NO',
+        '9663': 'NZ', '9669': 'OM', '9672': 'NL', '9675': 'PK', '9681': 'PA',
+        '9684': 'PG', '9687': 'PY', '9690': 'PE', '9696': 'PL', '9699': 'PT',
+        '9702': 'PR', '9705': 'GB', '9711': 'CZ', '9714': 'DO', '9720': 'RO',
+        '9723': 'RU', '9729': 'AS', '9732': 'SM', '9735': 'LC', '9738': 'VC',
+        '9744': 'ST', '9747': 'ZA', '9750': 'SE', '9753': 'CH', '9756': 'SD',
+        '9759': 'SR', '9765': 'SY', '9768': 'SO', '9771': 'LK', '9774': 'TH',
+        '9777': 'TW', '9780': 'TZ', '9789': 'TO', '9792': 'TT', '9795': 'TN',
+        '9801': 'TR', '9807': 'UA', '9810': 'UG', '9813': 'UY', '9816': 'VU',
+        '9819': 'VE', '9822': 'VN', '9825': 'YE', '9828': 'ZM', '9831': 'ZW',
+        // C\u00f3digos de 3 d\u00edgitos u otros formatos
+        '059': 'HN', '507': 'PA', '052': 'MX', '591': 'BO'
+    };
+
+    // Si el input es un c\u00f3digo num\u00e9rico legacy, convertir directamente a ISO
+    if (legacyToISO[upper]) {
+        const isoCode = legacyToISO[upper];
+        const [isoRow] = await pool.query(
+            'SELECT code, description FROM cat_020_pais WHERE code = ? LIMIT 1',
+            [isoCode]
+        );
+        if (isoRow.length > 0) return { code: isoRow[0].code, name: isoRow[0].description };
+        return { code: isoCode, name: isoCode };
+    }
+
     const targetCode = aliases[upper] || upper;
 
-    // 1. Coincidencia exacta por code (ej. 'US', 'GT', etc.)
-    const [byCode] = await pool.query('SELECT code, description FROM cat_020_pais WHERE code = ?', [targetCode]);
+    // 1. Coincidencia exacta por code \u2014 priorizar ISO (2 letras) si hay m\u00faltiples
+    const [byCode] = await pool.query(
+        'SELECT code, description FROM cat_020_pais WHERE code = ? ORDER BY LENGTH(code) ASC LIMIT 1',
+        [targetCode]
+    );
     if (byCode.length > 0) return { code: byCode[0].code, name: byCode[0].description };
 
-    // 2. Coincidencia por descripción exacta
+    // 2. Coincidencia por descripci\u00f3n exacta \u2014 priorizar ISO
     const [byExactDesc] = await pool.query(
-        'SELECT code, description FROM cat_020_pais WHERE UPPER(description) = ?',
+        'SELECT code, description FROM cat_020_pais WHERE UPPER(description) = ? ORDER BY LENGTH(code) ASC LIMIT 1',
         [upper]
     );
     if (byExactDesc.length > 0) return { code: byExactDesc[0].code, name: byExactDesc[0].description };
 
-    // 3. Coincidencia por descripción parcial (solo si input tiene más de 3 letras)
+    // 3. Coincidencia por descripci\u00f3n parcial (solo si input tiene m\u00e1s de 3 letras) \u2014 priorizar ISO
     if (input.length > 3) {
         const [byDesc] = await pool.query(
-            'SELECT code, description FROM cat_020_pais WHERE LOWER(description) LIKE ?',
+            'SELECT code, description FROM cat_020_pais WHERE LOWER(description) LIKE ? ORDER BY LENGTH(code) ASC LIMIT 1',
             [`%${input.toLowerCase()}%`]
         );
         if (byDesc.length > 0) {
@@ -295,9 +344,25 @@ async function generateDTE(payload) {
     // FEX: agregar campos requeridos por Hacienda en el emisor
     if (tipoDte === '11') {
         const expData = payload.exportacion || {};
-        emisor.tipoItemExpor = expData.tipoItemExpor || 3;
-        emisor.recintoFiscal = (expData.recintoFiscal && String(expData.recintoFiscal).length === 2) ? String(expData.recintoFiscal) : null;
-        emisor.tipoRegimen = expData.tipoRegimen || null;
+        // tipoItemExpor: integer según catálogo CAT-011 (1=Bienes, 2=Servicios, 3=Bienes y Servicios)
+        emisor.tipoItemExpor = parseInt(expData.tipoItemExpor) || 1;
+        // Recinto fiscal: 2 dígitos. Para Bienes (1), si no viene especificado, por defecto '00' (no aplica/aduana interior)
+        if (expData.recintoFiscal && String(expData.recintoFiscal).length === 2) {
+            emisor.recintoFiscal = String(expData.recintoFiscal);
+        } else if (emisor.tipoItemExpor === 1) {
+            emisor.recintoFiscal = '00';
+        } else {
+            emisor.recintoFiscal = null;
+        }
+        // tipoRegimen (CAT-028): para Bienes (1), Hacienda exige régimen válido (EX-1 = Exportación Definitiva).
+        // NUNCA enviar null.
+        if (expData.tipoRegimen) {
+            emisor.tipoRegimen = String(expData.tipoRegimen);
+        } else if (emisor.tipoItemExpor === 1) {
+            emisor.tipoRegimen = 'EX-1';
+        } else {
+            delete emisor.tipoRegimen;
+        }
         emisor.regimen = expData.regimen ? String(expData.regimen).substring(0, 13) : null;
     }
 
@@ -785,16 +850,33 @@ async function generateDTE(payload) {
         delete finalReceptor.codActividad;
         delete finalReceptor.direccion;
         finalReceptor.tipoPersona = parseInt(receptor.tipo_persona) || 1;
-        finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '37';
-        // numDocumento: formato NIT sin guiones (14 dígitos) u otro formato
-        finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
-        finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || sanitizeText(receptor.nombre) || null;
-        // Obtener código MH del país: primero el del cliente (más fiable), luego el del formulario FEX
-        const rawCountryCode = receptor.pais_code || expData.codPaisDestino || '';
+        // Obtener código MH del país: del cliente (pais o pais_code) o del formulario FEX (codPaisDestino)
+        const rawCountryCode = receptor.pais || receptor.pais_code || expData.codPaisDestino || '';
         const countryResolved = await resolveCountryCode(rawCountryCode);
+        // Guardia de seguridad: Hacienda solo acepta códigos ISO de máx 2 letras.
+        // Si resolveCountryCode devolvió un código numérico/legacy (>2 chars), lanzar error claro.
+        if (countryResolved.code && countryResolved.code.length > 2) {
+            throw new Error(
+                `El código de país "${rawCountryCode}" no pudo convertirse a ISO 2 letras (resultado: "${countryResolved.code}"). ` +
+                `Actualice el campo "País" del cliente a un código ISO válido (ej: HN, GT, US, MX).`
+            );
+        }
         finalReceptor.codPais = countryResolved.code;
         finalReceptor.nombrePais = receptor.pais_name || (countryResolved.code + ' ' + countryResolved.name).trim();
-        finalReceptor.complemento = sanitizeText(receptor.direccion?.complemento || 'Direccion de entrega').padEnd(5, '.').substring(0, 200);
+
+        // En FEX, para receptores extranjeros (no SV), el tipo de documento debe ser '37' (Otro documento extranjero)
+        // salvo que explícitamente se use pasaporte ('03')
+        if (finalReceptor.codPais !== 'SV') {
+            const mapped = docTypeMap[receptor.tipoDocumento];
+            finalReceptor.tipoDocumento = (mapped === '03') ? '03' : '37';
+        } else {
+            finalReceptor.tipoDocumento = docTypeMap[receptor.tipoDocumento] || '36';
+        }
+
+        // numDocumento: formato sin guiones
+        finalReceptor.numDocumento = cleanNumbers(receptor.numDocumento || receptor.nit || '00000000000000');
+        finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || sanitizeText(receptor.nombre) || null;
+        finalReceptor.complemento = sanitizeText(receptor.direccion?.complemento || receptor.direccion || 'Direccion de entrega').padEnd(5, '.').substring(0, 200);
         finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
     }
 

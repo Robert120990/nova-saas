@@ -100,8 +100,9 @@ class DteService {
                 // Datos adicionales para Multi-DTE
                 exportacion: payload.header.dte_type === '11' ? {
                     tipoItemExpor: payload.header.export_item_type || 1,
-                    recintoFiscal: payload.header.fiscal_enclosure,
-                    regimen: payload.header.export_regime,
+                    recintoFiscal: payload.header.fiscal_enclosure || '00',
+                    tipoRegimen: payload.header.export_regime || 'EX-1',
+                    regimen: payload.header.export_regime || null,
                     codPaisDestino: payload.header.dest_country_code,
                     incoterms: payload.header.incoterms || '01',
                     descIncoterms: payload.header.desc_incoterms || 'EXW- En fabrica',

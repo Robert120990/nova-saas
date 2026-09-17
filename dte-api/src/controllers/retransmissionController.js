@@ -116,7 +116,8 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         telefono: customerBranch?.telefono || customer?.telefono || newReceptor?.telefono || null,
         nombreComercial: customer?.nombre_comercial || newReceptor?.nombreComercial || null,
         tipo_persona: parseInt(customer?.tipo_persona || newReceptor?.tipo_persona) || 1,
-        pais_code: customer?.pais_code || newReceptor?.pais_code || null,
+        pais_code: customer?.pais || customer?.pais_code || newReceptor?.pais_code || null,
+        pais: customer?.pais || null,
         pais_name: customer?.pais_name || newReceptor?.pais_name || null,
         codActividad: customer?.codigo_actividad || newReceptor?.codActividad || '10005',
         descActividad: customer?.actividad_economica || newReceptor?.descActividad || 'Otros',
@@ -221,10 +222,11 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
             codPuntoVentaMH: pos.length > 0 ? pos[0].codigo : null
         },
         exportacion: dteRecord.tipo_dte === '11' ? {
-            tipoItemExpor: sale.export_item_type || 3,
-            recintoFiscal: sale.fiscal_enclosure || null,
+            tipoItemExpor: sale.export_item_type || 1,
+            recintoFiscal: sale.fiscal_enclosure || '00',
+            tipoRegimen: sale.export_regime || 'EX-1',
             regimen: sale.export_regime || null,
-            codPaisDestino: customer?.pais_code || sale.dest_country_code || '',
+            codPaisDestino: customer?.pais || customer?.pais_code || sale.dest_country_code || '',
             incoterms: sale.incoterms || '01',
             descIncoterms: sale.desc_incoterms || 'EXW- En fabrica',
             flete: sale.flete || 0,
@@ -351,7 +353,14 @@ async function retransmit(req, res) {
             success: dbStatus === 'ACCEPTED',
             codigoGeneracion,
             estadoHacienda: txResult.status || 'REJECTED',
-            data: txResult.data || txResult.error
+            data: {
+                ...(txResult.data || {}),
+                sello_recepcion: txResult.selloRecepcion,
+                selloRecepcion: txResult.selloRecepcion,
+                fh_procesamiento: formattedDate,
+                fhProcesamiento: formattedDate
+            },
+            error: txResult.error
         });
 
     } catch (error) {
