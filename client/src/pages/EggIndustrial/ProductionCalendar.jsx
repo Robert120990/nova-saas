@@ -1447,7 +1447,7 @@ const ProductionCalendar = () => {
                                         const badgeStyle = getProfileBadgeStyle(prod.product_profile);
                                         const tasksDone = (prod.tasks || []).filter(t => t.checklist_status === 'completado').length;
                                         const tasksTotal = (prod.tasks || []).length;
-                                        const isBatchRunning = prod.status === 'en_proceso';
+                                        const _isBatchRunning = prod.status === 'en_proceso';
 
                                         return (
                                             <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">

@@ -27,7 +27,8 @@ import {
     BarChart3,
     ShoppingCart,
     Lightbulb,
-    Zap
+    Zap,
+    History
 } from 'lucide-react';
 
 const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) => {

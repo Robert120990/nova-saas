@@ -59,7 +59,7 @@ const EggPackaging = () => {
     // Tab state
     const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
     const [isFreezerModalOpen, setIsFreezerModalOpen] = useState(false);
-    const [productConfig, setProductConfig] = useState([]);
+    const [_productConfig, setProductConfig] = useState([]);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingPackaging, setEditingPackaging] = useState(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);

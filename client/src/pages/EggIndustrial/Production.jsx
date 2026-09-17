@@ -27,11 +27,8 @@ import {
     FileText,
     CheckCircle2,
     ChevronRight,
-    Scale,
     AlertTriangle,
-    ArrowRight,
-    FileCheck,
-    RefreshCw
+    FileCheck
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 
@@ -576,7 +573,7 @@ const EggProduction = () => {
         }
     };
 
-    const handleEditBatchSubmit = async (e) => {
+    const _handleEditBatchSubmit = async (e) => {
         e.preventDefault();
         setEditBatchModal(prev => ({ ...prev, isSubmitting: true }));
         try {
@@ -3160,7 +3157,7 @@ const EggProduction = () => {
                                                                     const maxBoxes = t.available_boxes || t.boxes_count || 0;
                                                                     const maxLbs = t.available_lbs || parseFloat(t.quantity_lbs) || 0;
                                                                     const currentBoxes = parseInt(t.boxes_count) || 0;
-                                                                    const isPartial = currentBoxes < maxBoxes;
+                                                                    const _isPartial = currentBoxes < maxBoxes;
 
                                                                     return (
                                                                         <div key={ti} className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/90 space-y-1.5">

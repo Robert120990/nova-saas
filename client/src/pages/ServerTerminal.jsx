@@ -11,12 +11,10 @@ import {
     Cpu,
     HardDrive,
     RefreshCw,
-    Key,
     Shield,
     Globe,
     Clock,
     CornerDownLeft,
-    AlertCircle,
     CheckCircle2,
     XCircle,
     Folder,
@@ -43,7 +41,7 @@ const QUICK_COMMANDS = [
 ];
 
 export default function ServerTerminal() {
-    const { user } = useAuth();
+    const { user: _user } = useAuth();
     const [mode, setMode] = useState('local'); // 'local' | 'ssh'
     const [command, setCommand] = useState('');
     const [isExecuting, setIsExecuting] = useState(false);
@@ -109,7 +107,7 @@ export default function ServerTerminal() {
     const handleSaveSshConfig = (newConfig) => {
         setSshConfig(newConfig);
         try {
-            const { password, ...safeConfig } = newConfig;
+            const { password: _password, ...safeConfig } = newConfig;
             localStorage.setItem('nova_terminal_ssh_config', JSON.stringify(safeConfig));
         } catch {}
     };

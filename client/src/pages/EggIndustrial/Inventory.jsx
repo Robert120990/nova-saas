@@ -7,13 +7,8 @@ import {
     Search,
     RefreshCw,
     AlertTriangle,
-    ArrowRight,
     Scale,
     PackageCheck,
-    Layers,
-    SlidersHorizontal,
-    CheckCircle2,
-    Info,
     ExternalLink
 } from 'lucide-react';
 

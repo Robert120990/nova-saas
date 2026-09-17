@@ -28,7 +28,6 @@ import {
     Download,
     ShieldCheck,
     Award,
-    ClipboardCheck,
     Trash2,
     Lock
 } from 'lucide-react';
