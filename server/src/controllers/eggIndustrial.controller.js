@@ -169,17 +169,46 @@ const ensureEggSchema = async () => {
             CREATE TABLE IF NOT EXISTS egg_product_code_mappings (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 company_id INT NOT NULL,
+                catalog_product_id INT NULL,
+                catalog_product_name VARCHAR(255) NULL,
                 industrial_product_type VARCHAR(100) NOT NULL,
                 presentation VARCHAR(100) NOT NULL,
                 catalog_codes TEXT NOT NULL,
                 unit_weight_lbs DECIMAL(10,2) NOT NULL DEFAULT 1.00,
                 unit_weight_kg DECIMAL(10,2) NOT NULL DEFAULT 0.45,
+                unit_of_measure VARCHAR(10) NOT NULL DEFAULT 'lb',
                 notes VARCHAR(255) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_epcm_comp_type (company_id, industrial_product_type)
+                INDEX idx_epcm_comp_type (company_id, industrial_product_type),
+                INDEX idx_epcm_catalog_product (company_id, catalog_product_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
+
+        // Compatibilidad con instalaciones que ya tenían la tabla creada por v199.
+        const mappingColumns = [
+            {
+                name: 'catalog_product_id',
+                statement: 'ALTER TABLE egg_product_code_mappings ADD COLUMN catalog_product_id INT NULL AFTER company_id'
+            },
+            {
+                name: 'catalog_product_name',
+                statement: 'ALTER TABLE egg_product_code_mappings ADD COLUMN catalog_product_name VARCHAR(255) NULL AFTER catalog_product_id'
+            },
+            {
+                name: 'unit_of_measure',
+                statement: "ALTER TABLE egg_product_code_mappings ADD COLUMN unit_of_measure VARCHAR(10) NOT NULL DEFAULT 'lb' AFTER unit_weight_kg"
+            }
+        ];
+        for (const column of mappingColumns) {
+            const [existingColumns] = await pool.query(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_product_code_mappings' AND COLUMN_NAME = ?",
+                [column.name]
+            );
+            if (existingColumns.length === 0) {
+                await pool.query(column.statement);
+            }
+        }
 
         const [bCols] = await pool.query(
             "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'packaging_status'"
@@ -4371,8 +4400,7 @@ const updateProductionBatch = async (req, res) => {
                  target_solids_pct = ?,
                  notes = COALESCE(?, notes),
                  ingredients_json = ?,
-                 input_weight_lbs = ?,
-                 updated_at = NOW()
+                 input_weight_lbs = ?
              WHERE id = ? AND company_id = ?`,
             [
                 product_type, presentation, operator_name, 
@@ -5142,11 +5170,39 @@ const getWastesReport = async (req, res) => {
 };
 
 // 24. Vinculación de Códigos de Catálogo (Mapeo de Productos)
+const normalizeCatalogCodes = (codes) => {
+    const rawCodes = Array.isArray(codes) ? codes : String(codes || '').split(',');
+    const uniqueCodes = new Map();
+
+    rawCodes.forEach((code) => {
+        const normalized = String(code || '').trim();
+        if (normalized && !uniqueCodes.has(normalized.toLowerCase())) {
+            uniqueCodes.set(normalized.toLowerCase(), normalized);
+        }
+    });
+
+    return [...uniqueCodes.values()];
+};
+
 const getCodeMappings = async (req, res) => {
     try {
         await ensureEggSchema();
         const [rows] = await pool.query(
-            'SELECT * FROM egg_product_code_mappings WHERE company_id = ? ORDER BY industrial_product_type, presentation',
+            `SELECT m.*,
+                    m.catalog_product_id AS product_id,
+                    COALESCE(
+                        p.nombre,
+                        NULLIF(m.catalog_product_name, ''),
+                        CONCAT(m.industrial_product_type, ' - ', m.presentation)
+                    ) AS product_name,
+                    m.industrial_product_type AS product_type,
+                    m.catalog_codes AS codes,
+                    m.unit_weight_lbs AS weight_lbs,
+                    m.unit_weight_kg AS weight_kg
+             FROM egg_product_code_mappings m
+             LEFT JOIN products p ON p.id = m.catalog_product_id AND p.company_id = m.company_id
+             WHERE m.company_id = ?
+             ORDER BY m.industrial_product_type, m.presentation`,
             [req.company_id]
         );
         res.json(rows);
@@ -5158,30 +5214,140 @@ const getCodeMappings = async (req, res) => {
 const saveCodeMapping = async (req, res) => {
     try {
         await ensureEggSchema();
-        const { id } = req.params || {};
-        const { industrial_product_type, presentation, catalog_codes, unit_weight_lbs, unit_weight_kg, notes } = req.body;
+        const mappingId = req.params?.id || req.body?.id;
+        const {
+            industrial_product_type,
+            product_type,
+            presentation,
+            catalog_codes,
+            codes,
+            unit_weight_lbs,
+            weight_lbs,
+            unit_weight_kg,
+            weight_kg,
+            catalog_product_id,
+            product_id,
+            catalog_product_name,
+            product_name,
+            unit_of_measure,
+            notes
+        } = req.body;
         const company_id = req.company_id;
+        const resolvedProductType = String(industrial_product_type || product_type || '').trim();
+        const resolvedPresentation = String(presentation || '').trim();
+        const resolvedCodes = normalizeCatalogCodes(catalog_codes ?? codes);
+        const requestedProductId = catalog_product_id ?? product_id;
+        const parsedProductId = requestedProductId ? Number(requestedProductId) : null;
+        const resolvedUnit = String(unit_of_measure || 'lb').trim().toLowerCase();
+        const currentMappingId = mappingId ? Number(mappingId) : null;
 
-        if (!industrial_product_type || !presentation || !catalog_codes) {
+        if (!resolvedProductType || !resolvedPresentation || resolvedCodes.length === 0) {
             return res.status(400).json({ message: 'Tipo de producto, presentación y códigos de catálogo son obligatorios.' });
         }
+        if (mappingId && (!Number.isInteger(currentMappingId) || currentMappingId <= 0)) {
+            return res.status(400).json({ message: 'El identificador del mapeo no es válido.' });
+        }
+        if (!['lb', 'kg'].includes(resolvedUnit)) {
+            return res.status(400).json({ message: 'La unidad de medida debe ser lb o kg.' });
+        }
 
-        const lbs = parseFloat(unit_weight_lbs || 1.00);
-        const kg = parseFloat(unit_weight_kg || (lbs * 0.453592).toFixed(2));
+        const [otherMappings] = await pool.query(
+            currentMappingId
+                ? 'SELECT id, catalog_codes FROM egg_product_code_mappings WHERE company_id = ? AND id <> ?'
+                : 'SELECT id, catalog_codes FROM egg_product_code_mappings WHERE company_id = ?',
+            currentMappingId ? [company_id, currentMappingId] : [company_id]
+        );
+        const assignedCodes = new Set(
+            otherMappings.flatMap((mapping) => normalizeCatalogCodes(mapping.catalog_codes)
+                .map((code) => code.toLowerCase()))
+        );
+        const duplicateCodes = resolvedCodes.filter((code) => assignedCodes.has(code.toLowerCase()));
+        if (duplicateCodes.length > 0) {
+            return res.status(409).json({
+                message: `Los siguientes códigos ya están vinculados a otro producto: ${duplicateCodes.join(', ')}.`
+            });
+        }
 
-        if (id) {
-            await pool.query(
-                `UPDATE egg_product_code_mappings 
-                 SET industrial_product_type = ?, presentation = ?, catalog_codes = ?, unit_weight_lbs = ?, unit_weight_kg = ?, notes = ?, updated_at = NOW()
-                 WHERE id = ? AND company_id = ?`,
-                [industrial_product_type, presentation, catalog_codes, lbs, kg, notes || null, id, company_id]
+        let resolvedProductId = null;
+        let resolvedProductName = String(catalog_product_name || product_name || '').trim() || null;
+        if (parsedProductId !== null) {
+            if (!Number.isInteger(parsedProductId) || parsedProductId <= 0) {
+                return res.status(400).json({ message: 'El producto de catálogo seleccionado no es válido.' });
+            }
+            const [products] = await pool.query(
+                'SELECT id, nombre FROM products WHERE id = ? AND company_id = ? LIMIT 1',
+                [parsedProductId, company_id]
             );
+            if (products.length === 0) {
+                return res.status(400).json({ message: 'El producto seleccionado no pertenece a la empresa actual.' });
+            }
+            const [existingProductMapping] = await pool.query(
+                currentMappingId
+                    ? `SELECT id
+                       FROM egg_product_code_mappings
+                       WHERE company_id = ? AND catalog_product_id = ? AND id <> ?
+                       LIMIT 1`
+                    : `SELECT id
+                       FROM egg_product_code_mappings
+                       WHERE company_id = ? AND catalog_product_id = ?
+                       LIMIT 1`,
+                currentMappingId
+                    ? [company_id, parsedProductId, currentMappingId]
+                    : [company_id, parsedProductId]
+            );
+            if (existingProductMapping.length > 0) {
+                return res.status(409).json({
+                    message: 'Este producto ya tiene una vinculación. Use el botón + para agregar otro código al mismo producto.'
+                });
+            }
+            resolvedProductId = products[0].id;
+            resolvedProductName = products[0].nombre;
+        }
+        if (!resolvedProductName) {
+            return res.status(400).json({ message: 'Debe indicar un nombre descriptivo o seleccionar un producto del catálogo.' });
+        }
+
+        const requestedLbs = Number(unit_weight_lbs ?? weight_lbs);
+        const requestedKg = Number(unit_weight_kg ?? weight_kg);
+        const isWeightValid = resolvedUnit === 'lb'
+            ? Number.isFinite(requestedLbs) && requestedLbs > 0
+            : Number.isFinite(requestedKg) && requestedKg > 0;
+        if (!isWeightValid) {
+            return res.status(400).json({ message: 'Los pesos equivalentes deben ser mayores que cero.' });
+        }
+        const lbs = resolvedUnit === 'lb'
+            ? requestedLbs
+            : Number((requestedKg * 2.2046226218).toFixed(2));
+        const resolvedKg = resolvedUnit === 'kg'
+            ? requestedKg
+            : Number((requestedLbs * 0.45359237).toFixed(2));
+        const resolvedNotes = notes ? String(notes).trim() : null;
+
+        if (currentMappingId) {
+            const [result] = await pool.query(
+                `UPDATE egg_product_code_mappings 
+                 SET catalog_product_id = ?, catalog_product_name = ?, industrial_product_type = ?, presentation = ?, catalog_codes = ?,
+                     unit_weight_lbs = ?, unit_weight_kg = ?, unit_of_measure = ?, notes = ?, updated_at = NOW()
+                 WHERE id = ? AND company_id = ?`,
+                [
+                    resolvedProductId, resolvedProductName, resolvedProductType, resolvedPresentation, resolvedCodes.join(', '),
+                    lbs, resolvedKg, resolvedUnit, resolvedNotes, currentMappingId, company_id
+                ]
+            );
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ message: 'Mapeo de códigos no encontrado.' });
+            }
             return res.json({ success: true, message: 'Mapeo de códigos actualizado correctamente.' });
         } else {
             const [result] = await pool.query(
-                `INSERT INTO egg_product_code_mappings (company_id, industrial_product_type, presentation, catalog_codes, unit_weight_lbs, unit_weight_kg, notes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [company_id, industrial_product_type, presentation, catalog_codes, lbs, kg, notes || null]
+                `INSERT INTO egg_product_code_mappings (
+                    company_id, catalog_product_id, catalog_product_name, industrial_product_type, presentation, catalog_codes,
+                    unit_weight_lbs, unit_weight_kg, unit_of_measure, notes
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    company_id, resolvedProductId, resolvedProductName, resolvedProductType, resolvedPresentation,
+                    resolvedCodes.join(', '), lbs, resolvedKg, resolvedUnit, resolvedNotes
+                ]
             );
             return res.status(201).json({ id: result.insertId, success: true, message: 'Mapeo de códigos creado exitosamente.' });
         }
@@ -5193,7 +5359,10 @@ const saveCodeMapping = async (req, res) => {
 const deleteCodeMapping = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query('DELETE FROM egg_product_code_mappings WHERE id = ? AND company_id = ?', [id, req.company_id]);
+        const [result] = await pool.query('DELETE FROM egg_product_code_mappings WHERE id = ? AND company_id = ?', [id, req.company_id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Mapeo de códigos no encontrado.' });
+        }
         res.json({ success: true, message: 'Mapeo eliminado exitosamente.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -5212,21 +5381,29 @@ const getTranslatedInventory = async (req, res) => {
             [company_id]
         );
 
-        // Crear mapa rápido de código -> mapeo
+        // Crear mapas rápidos de código y producto de catálogo -> mapeo.
         const codeMap = {};
+        const mappingByProductId = {};
         const mappedCodesList = [];
+        const mappedProductIds = [];
         for (const m of mappings) {
-            const rawCodes = (m.catalog_codes || '').split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+            const rawCodes = normalizeCatalogCodes(m.catalog_codes).map((code) => code.toLowerCase());
             for (const c of rawCodes) {
                 codeMap[c] = m;
                 mappedCodesList.push(c);
+            }
+            const catalogProductId = Number(m.catalog_product_id);
+            if (Number.isInteger(catalogProductId) && catalogProductId > 0) {
+                mappingByProductId[catalogProductId] = m;
+                mappedProductIds.push(catalogProductId);
             }
         }
 
         // 2. Consultar productos del inventario general con su stock real de forma optimizada
         const safeCodes = mappedCodesList.length > 0 ? mappedCodesList : ['__none__'];
+        const safeProductIds = mappedProductIds.length > 0 ? mappedProductIds : [0];
         const [products] = await pool.query(
-            `SELECT p.id, p.codigo, p.nombre, COALESCE(SUM(i.stock), 0) as stock, p.unidad_medida, c.name as category_name
+            `SELECT p.id, p.codigo, p.codigo_barra, p.nombre, COALESCE(SUM(i.stock), 0) as stock, p.unidad_medida, c.name as category_name
              FROM products p
              LEFT JOIN inventory i ON p.id = i.product_id
              LEFT JOIN product_categories c ON p.category_id = c.id
@@ -5238,9 +5415,11 @@ const getTranslatedInventory = async (req, res) => {
                    OR LOWER(c.name) LIKE '%huevo%'
                    OR LOWER(c.name) LIKE '%ovoproducto%'
                    OR LOWER(p.codigo) IN (?)
+                   OR LOWER(p.codigo_barra) IN (?)
+                   OR p.id IN (?)
                )
-             GROUP BY p.id, p.codigo, p.nombre, p.unidad_medida, c.name`,
-            [company_id, safeCodes]
+             GROUP BY p.id, p.codigo, p.codigo_barra, p.nombre, p.unidad_medida, c.name`,
+            [company_id, safeCodes, safeCodes, safeProductIds]
         );
 
         // 3. Clasificar y traducir inventario
@@ -5254,7 +5433,9 @@ const getTranslatedInventory = async (req, res) => {
 
         for (const prod of products) {
             const code = (prod.codigo || '').trim().toLowerCase();
-            const mapping = codeMap[code];
+            const barcode = (prod.codigo_barra || '').trim().toLowerCase();
+            const matchedCode = codeMap[code] ? code : (codeMap[barcode] ? barcode : null);
+            const mapping = mappingByProductId[prod.id] || codeMap[matchedCode];
             const currentStockUnits = parseFloat(prod.stock || 0);
 
             const isEggCandidate = 
@@ -5279,10 +5460,12 @@ const getTranslatedInventory = async (req, res) => {
                 items.push({
                     product_id: prod.id,
                     product_code: prod.codigo,
+                    product_barcode: prod.codigo_barra,
                     product_name: prod.nombre,
                     product_type: mapping.industrial_product_type,
                     presentation: mapping.presentation,
-                    matched_code: mapping.catalog_codes,
+                    matched_code: matchedCode || mapping.catalog_codes,
+                    unit_of_measure: mapping.unit_of_measure || 'lb',
                     stock_units: currentStockUnits,
                     weight_per_unit_lbs: lbsPerUnit,
                     weight_per_unit_kg: kgPerUnit,
@@ -5309,6 +5492,7 @@ const getTranslatedInventory = async (req, res) => {
                         total_kg: 0,
                         unit_weight_lbs: lbsPerUnit,
                         unit_weight_kg: kgPerUnit,
+                        unit_of_measure: mapping.unit_of_measure || 'lb',
                         matched_products: []
                     };
                 }
@@ -5318,6 +5502,7 @@ const getTranslatedInventory = async (req, res) => {
                 byType[pType].presentations[pres].matched_products.push({
                     product_id: prod.id,
                     codigo: prod.codigo,
+                    codigo_barra: prod.codigo_barra,
                     nombre: prod.nombre,
                     stock_units: currentStockUnits
                 });
@@ -5343,7 +5528,10 @@ const getTranslatedInventory = async (req, res) => {
                 grandTotalUnits,
                 grandTotalLbs: Math.round(grandTotalLbs * 100) / 100,
                 grandTotalKg: Math.round(grandTotalKg * 100) / 100,
-                mappedProductsCount: Object.keys(codeMap).length,
+                mappedProductsCount: new Set([
+                    ...Object.keys(codeMap).map((code) => `code:${code}`),
+                    ...Object.keys(mappingByProductId).map((productId) => `product:${productId}`)
+                ]).size,
                 unmappedProductsCount: unmappedProducts.length
             },
             items,

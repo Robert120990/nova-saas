@@ -636,6 +636,12 @@ REGLAS DE MULTI-TENENCIA:
 - weight_per_unit_lbs, yield_pct, waste_shell_pct, waste_loss_pct DECIMAL
 - UNIQUE(company_id, product_type)
 
+### egg_product_code_mappings (Vinculación de códigos de catálogo industrial)
+- id, company_id, catalog_product_id INT NULL, catalog_product_name VARCHAR(255) NULL
+- industrial_product_type, presentation, catalog_codes TEXT
+- unit_weight_lbs, unit_weight_kg DECIMAL, unit_of_measure VARCHAR(10) (lb/kg)
+- notes, created_at, updated_at
+
 ### egg_blast_freezer_logs (Congelación rápida)
 - id, company_id, packaging_id FK
 - freezer_location, core_temperature_c, freezing_duration_hours
