@@ -20,7 +20,18 @@ import {
     Layers,
     Trash2,
     Check,
-    Camera
+    Camera,
+    Pencil,
+    Download,
+    FileSpreadsheet,
+    FileText,
+    CheckCircle2,
+    ChevronRight,
+    Scale,
+    AlertTriangle,
+    ArrowRight,
+    FileCheck,
+    RefreshCw
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 
@@ -100,6 +111,249 @@ const EggProduction = () => {
     const [isNewBatchModalOpen, setIsNewBatchModalOpen] = useState(false);
     const [isPasteurizeModalOpen, setIsPasteurizeModalOpen] = useState(false);
     const [productConfig, setProductConfig] = useState([]);
+
+    // Role and Permissions
+    const userPermissions = Array.isArray(user?.permissions)
+        ? user.permissions
+        : (typeof user?.permissions === 'string' ? JSON.parse(user?.permissions || '[]') : []);
+    const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
+    const canEditProduction = isAdmin || userPermissions.includes('edit_egg_production');
+    const canDeleteProduction = isAdmin || userPermissions.includes('delete_egg_production');
+
+    // Modals for Stages, Wastes, Remanentes, Edit & Delete
+    const [stagesModal, setStagesModal] = useState({ isOpen: false, batch: null, data: null, loading: false });
+    const [addTarimasModal, setAddTarimasModal] = useState({
+        isOpen: false,
+        batch: null,
+        raw_material_id: '',
+        tarima_number: '',
+        weight_lbs: '',
+        boxes_count: '',
+        notes: '',
+        isSubmitting: false
+    });
+    const [remanenteModal, setRemanenteModal] = useState({
+        isOpen: false,
+        batch: null,
+        product_type: 'huevo entero',
+        presentation: 'cubeta 30LB',
+        weight_lbs: '',
+        is_pasteurized: true,
+        destination: 'proximo_empaque',
+        notes: '',
+        isSubmitting: false
+    });
+    const [wastesModal, setWastesModal] = useState({
+        isOpen: false,
+        batch: null,
+        wastes: [],
+        stage: 'quebraje',
+        waste_type: 'cascaron',
+        weight_lbs: '',
+        notes: '',
+        loading: false,
+        isSubmitting: false
+    });
+    const [editBatchModal, setEditBatchModal] = useState({
+        isOpen: false,
+        batch: null,
+        product_type: '',
+        presentation: '',
+        notes: '',
+        isSubmitting: false
+    });
+    const [deleteConfirmBatch, setDeleteConfirmBatch] = useState(null);
+
+    // Handlers for Stages, Wastes, Remanentes, Add Tarimas, Edit & Delete
+    const handleOpenStagesModal = async (batch) => {
+        setStagesModal({ isOpen: true, batch, data: null, loading: true });
+        try {
+            const res = await axios.get(`/api/egg-industrial/batches/${batch.id}/stages`);
+            setStagesModal(prev => ({ ...prev, data: res.data, loading: false }));
+        } catch (err) {
+            console.error('Error fetching stages:', err);
+            toast.error('No se pudieron cargar las etapas del lote.');
+            setStagesModal(prev => ({ ...prev, loading: false }));
+        }
+    };
+
+    const handleOpenWastesModal = async (batch) => {
+        setWastesModal({
+            isOpen: true,
+            batch,
+            wastes: [],
+            stage: 'quebraje',
+            waste_type: 'cascaron',
+            weight_lbs: '',
+            notes: '',
+            loading: true,
+            isSubmitting: false
+        });
+        try {
+            const res = await axios.get(`/api/egg-industrial/batches/${batch.id}/wastes`);
+            setWastesModal(prev => ({ ...prev, wastes: res.data || [], loading: false }));
+        } catch (err) {
+            console.error('Error fetching wastes:', err);
+            setWastesModal(prev => ({ ...prev, loading: false }));
+        }
+    };
+
+    const handleCreateWaste = async (e) => {
+        e.preventDefault();
+        if (!wastesModal.weight_lbs || parseFloat(wastesModal.weight_lbs) <= 0) {
+            return toast.error('Ingrese un peso válido para la merma.');
+        }
+        setWastesModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            await axios.post(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`, {
+                stage: wastesModal.stage,
+                waste_type: wastesModal.waste_type,
+                weight_lbs: parseFloat(wastesModal.weight_lbs),
+                notes: wastesModal.notes,
+                operator_name: user?.nombre || ''
+            });
+            toast.success('Merma registrada con éxito.');
+            const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
+            setWastesModal(prev => ({
+                ...prev,
+                wastes: res.data || [],
+                weight_lbs: '',
+                notes: '',
+                isSubmitting: false
+            }));
+            fetchData();
+        } catch (err) {
+            console.error('Error al registrar merma:', err);
+            toast.error(err.response?.data?.message || 'Error al registrar merma.');
+            setWastesModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
+
+    const handleDeleteWaste = async (wasteId) => {
+        try {
+            await axios.delete(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes/${wasteId}`);
+            toast.success('Merma eliminada.');
+            const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
+            setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+            fetchData();
+        } catch (err) {
+            toast.error('Error al eliminar merma.');
+        }
+    };
+
+    const handleAddTarimasSubmit = async (e) => {
+        e.preventDefault();
+        if (!addTarimasModal.raw_material_id || !addTarimasModal.weight_lbs || parseFloat(addTarimasModal.weight_lbs) <= 0) {
+            return toast.error('Seleccione un lote de materia prima e ingrese el peso neto en libras.');
+        }
+        setAddTarimasModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${addTarimasModal.batch.id}/add-tarimas`, {
+                raw_material_id: parseInt(addTarimasModal.raw_material_id),
+                tarima_number: addTarimasModal.tarima_number ? parseInt(addTarimasModal.tarima_number) : null,
+                weight_lbs: parseFloat(addTarimasModal.weight_lbs),
+                boxes_count: addTarimasModal.boxes_count ? parseInt(addTarimasModal.boxes_count) : 0,
+                notes: addTarimasModal.notes
+            });
+            toast.success(res.data?.message || 'Tarimas agregadas al quebraje exitosamente.');
+            setAddTarimasModal(prev => ({ ...prev, isOpen: false, isSubmitting: false }));
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === addTarimasModal.batch.id) {
+                handleOpenStagesModal(addTarimasModal.batch);
+            }
+        } catch (err) {
+            console.error('Error agregando tarimas:', err);
+            toast.error(err.response?.data?.message || 'Error al agregar tarimas al lote.');
+            setAddTarimasModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
+
+    const handleRemanenteSubmit = async (e) => {
+        e.preventDefault();
+        if (!remanenteModal.weight_lbs || parseFloat(remanenteModal.weight_lbs) <= 0) {
+            return toast.error('Ingrese el peso en libras del remanente.');
+        }
+        setRemanenteModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes`, {
+                product_type: remanenteModal.product_type,
+                presentation: remanenteModal.presentation,
+                weight_lbs: parseFloat(remanenteModal.weight_lbs),
+                is_pasteurized: remanenteModal.is_pasteurized,
+                destination: remanenteModal.destination,
+                notes: remanenteModal.notes,
+                created_by: user?.nombre || ''
+            });
+            toast.success(res.data?.message || 'Remanente / sobrante registrado exitosamente.');
+            setRemanenteModal(prev => ({ ...prev, isOpen: false, isSubmitting: false }));
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === remanenteModal.batch.id) {
+                handleOpenStagesModal(remanenteModal.batch);
+            }
+        } catch (err) {
+            console.error('Error guardando remanente:', err);
+            toast.error(err.response?.data?.message || 'Error al registrar remanente.');
+            setRemanenteModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
+
+    const handleEditBatchSubmit = async (e) => {
+        e.preventDefault();
+        setEditBatchModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await axios.put(`/api/egg-industrial/batches/${editBatchModal.batch.id}`, {
+                product_type: editBatchModal.product_type,
+                presentation: editBatchModal.presentation,
+                notes: editBatchModal.notes
+            });
+            toast.success(res.data?.message || 'Lote de producción actualizado.');
+            setEditBatchModal(prev => ({ ...prev, isOpen: false, isSubmitting: false }));
+            fetchData();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al actualizar lote.');
+            setEditBatchModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
+
+    const handleDeleteBatchConfirm = async () => {
+        if (!deleteConfirmBatch) return;
+        try {
+            const res = await axios.delete(`/api/egg-industrial/batches/${deleteConfirmBatch.id}`);
+            toast.success(res.data?.message || 'Lote de producción eliminado y materia prima revertida.');
+            setDeleteConfirmBatch(null);
+            fetchData();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al eliminar lote.');
+        }
+    };
+
+    const handleExportSummary = async (batchId, format) => {
+        try {
+            toast.info(`Generando resumen en ${format.toUpperCase()}...`);
+            const res = await axios.get(`/api/egg-industrial/batches/${batchId}/export-summary?format=${format}`, {
+                responseType: 'blob'
+            });
+            const ext = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
+            const mime = format === 'pdf' 
+                ? 'application/pdf' 
+                : format === 'excel' 
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            const blob = new Blob([res.data], { type: mime });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Resumen_Produccion_Lote_${batchId}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(`Resumen descargado exitosamente.`);
+        } catch (err) {
+            console.error('Error al exportar:', err);
+            toast.error('Error al generar la exportación.');
+        }
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -866,43 +1120,139 @@ const EggProduction = () => {
                                                 )}
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
-                                                {b.status === 'pasteurizado' && (
+                                                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                                    {/* Visualizador de Etapas */}
                                                     <button
-                                                        onClick={() => {
-                                                            setSelectedBatchForComplete(b);
-                                                            const cfg = productConfig.find(c => c.product_type === b.product_type) || {};
-                                                            const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
-                                                            const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
-                                                            const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
-                                                            setCompleteForm({
-                                                                yield_liquid_lbs: (parseFloat(b.input_weight_lbs) * yieldPct).toFixed(2),
-                                                                waste_shell_lbs: (parseFloat(b.input_weight_lbs) * shellPct).toFixed(2),
-                                                                waste_loss_lbs: (parseFloat(b.input_weight_lbs) * lossPct).toFixed(2)
-                                                            });
-                                                        }}
-                                                        className="px-3 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-xs font-bold transition-all shadow-xs"
+                                                        type="button"
+                                                        onClick={() => handleOpenStagesModal(b)}
+                                                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
+                                                        title="Visualizador de Etapas Cumplidas del Proceso (Quebraje, Pasteurización, Remanentes, Envasado)"
                                                     >
-                                                        Balance
+                                                        <Layers size={13} />
                                                     </button>
-                                                )}
-                                                {b.status === 'en_proceso' && (
+
+                                                    {/* Mermas */}
                                                     <button
-                                                        onClick={() => {
-                                                            setSelectedBatchForPasteurize(b.id);
-                                                            setIsPasteurizeModalOpen(true);
-                                                        }}
-                                                        className="px-3 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1 mx-auto shadow-xs"
+                                                        type="button"
+                                                        onClick={() => handleOpenWastesModal(b)}
+                                                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
+                                                        title="Registrar y Consultar Mermas del Lote"
                                                     >
-                                                        <Flame size={12} />
-                                                        Pasteurizar
+                                                        <AlertOctagon size={13} />
                                                     </button>
-                                                )}
-                                                {b.status === 'bloqueado_haccp' && (
-                                                    <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1">
-                                                        <Lock size={12} />
-                                                        Bloqueado
-                                                    </span>
-                                                )}
+
+                                                    {/* Exportar Resumen (PDF, Excel, Word) */}
+                                                    <div className="relative group inline-block">
+                                                        <button
+                                                            type="button"
+                                                            className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors shadow-xs flex items-center gap-0.5"
+                                                            title="Exportar Resumen de Producción (PDF, Excel, Word)"
+                                                        >
+                                                            <Download size={13} />
+                                                        </button>
+                                                        <div className="hidden group-hover:flex absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-40 flex-col gap-1 min-w-[120px] text-left">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleExportSummary(b.id, 'pdf')}
+                                                                className="flex items-center gap-1.5 px-2 py-1 hover:bg-rose-50 rounded-lg text-[11px] font-bold text-rose-700 w-full"
+                                                            >
+                                                                <FileText size={12} />
+                                                                PDF
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleExportSummary(b.id, 'excel')}
+                                                                className="flex items-center gap-1.5 px-2 py-1 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-700 w-full"
+                                                            >
+                                                                <FileSpreadsheet size={12} />
+                                                                Excel (.xlsx)
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleExportSummary(b.id, 'word')}
+                                                                className="flex items-center gap-1.5 px-2 py-1 hover:bg-blue-50 rounded-lg text-[11px] font-bold text-blue-700 w-full"
+                                                            >
+                                                                <FileCheck size={12} />
+                                                                Word (.docx)
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Balance si pasteurizado */}
+                                                    {b.status === 'pasteurizado' && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedBatchForComplete(b);
+                                                                const cfg = productConfig.find(c => c.product_type === b.product_type) || {};
+                                                                const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
+                                                                const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
+                                                                const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
+                                                                setCompleteForm({
+                                                                    yield_liquid_lbs: (parseFloat(b.input_weight_lbs) * yieldPct).toFixed(2),
+                                                                    waste_shell_lbs: (parseFloat(b.input_weight_lbs) * shellPct).toFixed(2),
+                                                                    waste_loss_lbs: (parseFloat(b.input_weight_lbs) * lossPct).toFixed(2)
+                                                                });
+                                                            }}
+                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-[11px] font-bold transition-all shadow-xs"
+                                                            title="Balance de Masas"
+                                                        >
+                                                            Balance
+                                                        </button>
+                                                    )}
+
+                                                    {/* Pasteurizar si en_proceso */}
+                                                    {b.status === 'en_proceso' && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedBatchForPasteurize(b.id);
+                                                                setIsPasteurizeModalOpen(true);
+                                                            }}
+                                                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 shadow-xs"
+                                                            title="Iniciar Pasteurización"
+                                                        >
+                                                            <Flame size={12} />
+                                                            Pasteurizar
+                                                        </button>
+                                                    )}
+
+                                                    {/* Editar Lote */}
+                                                    {canEditProduction && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditBatchModal({
+                                                                isOpen: true,
+                                                                batch: b,
+                                                                product_type: b.product_type,
+                                                                presentation: b.presentation,
+                                                                notes: b.notes || '',
+                                                                isSubmitting: false
+                                                            })}
+                                                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-300 transition-colors shadow-xs"
+                                                            title="Editar Lote de Producción"
+                                                        >
+                                                            <Pencil size={13} />
+                                                        </button>
+                                                    )}
+
+                                                    {/* Eliminar Lote */}
+                                                    {canDeleteProduction && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeleteConfirmBatch(b)}
+                                                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
+                                                            title="Eliminar Lote de Producción y Revertir Materia Prima"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    )}
+
+                                                    {b.status === 'bloqueado_haccp' && (
+                                                        <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1">
+                                                            <Lock size={12} />
+                                                            Bloqueado
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -1939,6 +2289,845 @@ const EggProduction = () => {
                                 className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors"
                             >
                                 Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL VISUALIZADOR Y CONTROL DE ETAPAS DEL PROCESO */}
+            {stagesModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl">
+                                    <Layers size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
+                                        Visualizador y Control de Etapas de Producción
+                                    </h3>
+                                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
+                                        <span>Lote: <b className="text-indigo-600">{stagesModal.batch?.batch_code_display || stagesModal.batch?.batch_uuid}</b></span>
+                                        <span>•</span>
+                                        <span className="capitalize">{stagesModal.batch?.product_type} ({stagesModal.batch?.presentation})</span>
+                                        <span>•</span>
+                                        <span className="font-bold text-teal-700">{parseFloat(stagesModal.batch?.input_weight_lbs || 0).toLocaleString()} Lbs Entrantes</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                            {stagesModal.loading ? (
+                                <div className="p-12 text-center text-slate-500 text-xs font-medium animate-pulse">
+                                    Cargando flujo y balance de etapas...
+                                </div>
+                            ) : (
+                                <>
+                                    {/* 4 Etapas Stepper / Timeline */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {/* ETAPA 1: QUEBRAJE */}
+                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 relative flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md text-[10px] font-bold uppercase">
+                                                        Etapa 1: Quebraje
+                                                    </span>
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" title="Activa / Procesada" />
+                                                </div>
+                                                <h4 className="font-bold text-xs text-slate-800">Entrada & Quebrado</h4>
+                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                                    <div>Total: <b className="text-slate-900">{parseFloat(stagesModal.data?.batch?.input_weight_lbs || 0).toLocaleString()} Lbs</b></div>
+                                                    <div>Materia Prima: <span className="font-medium">{stagesModal.data?.raw_materials?.length || 0} ingresos</span></div>
+                                                    <div>Tarimas: <span className="font-medium text-indigo-700">{stagesModal.data?.tarimas?.length || 0} tarimas</span></div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAddTarimasModal({
+                                                    isOpen: true,
+                                                    batch: stagesModal.batch,
+                                                    raw_material_id: rawMaterials[0]?.id || '',
+                                                    tarima_number: '',
+                                                    weight_lbs: '',
+                                                    boxes_count: '',
+                                                    notes: '',
+                                                    isSubmitting: false
+                                                })}
+                                                className="mt-4 w-full py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1"
+                                            >
+                                                <Plus size={12} />
+                                                + Más Tarimas
+                                            </button>
+                                        </div>
+
+                                        {/* ETAPA 2: PASTEURIZACIÓN & LOTE DUAL */}
+                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase">
+                                                        Etapa 2: Pasteurización
+                                                    </span>
+                                                    <span className={`w-2.5 h-2.5 rounded-full ${stagesModal.data?.batch?.status === 'pasteurizado' || stagesModal.data?.batch?.status === 'empaquetado' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'}`} />
+                                                </div>
+                                                <h4 className="font-bold text-xs text-slate-800">Térmico & Lote Dual</h4>
+                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                                    <div>Estado: <b className="capitalize text-slate-900">{stagesModal.data?.batch?.status?.replace('_', ' ')}</b></div>
+                                                    {stagesModal.data?.pasteurize_log ? (
+                                                        <>
+                                                            <div>Temp: <b>{stagesModal.data.pasteurize_log.temperature_c}°C</b></div>
+                                                            <div>Tiempo: <b>{stagesModal.data.pasteurize_log.holding_time_seconds}s</b></div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-slate-400 italic text-[11px]">Pasteurización en curso / pendiente</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 bg-amber-50 border border-amber-200 p-2 rounded-lg text-[10px] text-amber-800 font-medium">
+                                                💡 <b>Lote Dual:</b> Quebraje continuo permitido en paralelo mientras se pasteuriza este lote.
+                                            </div>
+                                        </div>
+
+                                        {/* ETAPA 3: REMANENTES & REUTILIZABLES */}
+                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="px-2 py-0.5 bg-teal-100 text-teal-800 rounded-md text-[10px] font-bold uppercase">
+                                                        Etapa 3: Remanentes
+                                                    </span>
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
+                                                </div>
+                                                <h4 className="font-bold text-xs text-slate-800">Sobrantes & Reprocesos</h4>
+                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                                    <div>Remanentes: <b className="text-teal-700">{stagesModal.data?.remanentes?.length || 0} registrados</b></div>
+                                                    <div>Total Sobrante: <b>{stagesModal.data?.remanentes?.reduce((acc, r) => acc + parseFloat(r.weight_lbs || 0), 0).toFixed(1)} Lbs</b></div>
+                                                    <div className="text-[10px] text-slate-400">Ej: Huevo en leche, reproceso, siguiente corrida</div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setRemanenteModal({
+                                                    isOpen: true,
+                                                    batch: stagesModal.batch,
+                                                    product_type: stagesModal.batch?.product_type || 'huevo entero',
+                                                    presentation: 'cubeta 30LB',
+                                                    weight_lbs: '',
+                                                    is_pasteurized: true,
+                                                    destination: 'proximo_empaque',
+                                                    notes: '',
+                                                    isSubmitting: false
+                                                })}
+                                                className="mt-4 w-full py-1.5 px-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1"
+                                            >
+                                                <Plus size={12} />
+                                                + Registrar Remanente
+                                            </button>
+                                        </div>
+
+                                        {/* ETAPA 4: ENVASADO Y BALANCE FINAL */}
+                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md text-[10px] font-bold uppercase">
+                                                        Etapa 4: Envasado
+                                                    </span>
+                                                    <span className={`w-2.5 h-2.5 rounded-full ${parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0) > 0 ? 'bg-purple-600' : 'bg-slate-300'}`} />
+                                                </div>
+                                                <h4 className="font-bold text-xs text-slate-800">Envasado & Eficiencia</h4>
+                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                                    <div>Rendimiento: <b>{parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0).toLocaleString()} Lbs</b></div>
+                                                    <div>Envasado: <b className="text-purple-700">{parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0).toLocaleString()} Lbs</b></div>
+                                                    {stagesModal.data?.batch?.packaging_efficiency_pct && (
+                                                        <div className="text-[11px] text-emerald-700 font-bold">
+                                                            Eficiencia: {stagesModal.data.batch.packaging_efficiency_pct}%
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/industrial/empaque')}
+                                                className="mt-4 w-full py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1"
+                                            >
+                                                Ir a Envasado
+                                                <ChevronRight size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Detalle de Remanentes Registrados para este Lote */}
+                                    {stagesModal.data?.remanentes?.length > 0 && (
+                                        <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                                <CheckCircle2 size={14} className="text-teal-600" />
+                                                Remanentes / Sobrantes Guardados para Siguiente Producción
+                                            </h4>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-xs">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
+                                                            <th className="py-1.5">Producto</th>
+                                                            <th className="py-1.5">Presentación</th>
+                                                            <th className="py-1.5 text-right">Peso (Lbs)</th>
+                                                            <th className="py-1.5 text-center">Térmico</th>
+                                                            <th className="py-1.5">Destino</th>
+                                                            <th className="py-1.5">Notas</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {stagesModal.data.remanentes.map(r => (
+                                                            <tr key={r.id}>
+                                                                <td className="py-2 font-bold capitalize text-slate-900">{r.product_type}</td>
+                                                                <td className="py-2 text-slate-600">{r.presentation}</td>
+                                                                <td className="py-2 text-right font-bold text-teal-700">{parseFloat(r.weight_lbs).toFixed(1)} Lbs</td>
+                                                                <td className="py-2 text-center">
+                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.is_pasteurized ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                                        {r.is_pasteurized ? 'Pasteurizado' : 'Sin Pasteurizar'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 capitalize text-slate-700">{r.destination?.replace('_', ' ')}</td>
+                                                                <td className="py-2 text-slate-500 italic text-[11px]">{r.notes || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Resumen de Mermas de Producción */}
+                                    <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                                <AlertOctagon size={14} className="text-rose-600" />
+                                                Mermas y Pérdidas del Lote
+                                            </h4>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenWastesModal(stagesModal.batch)}
+                                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors"
+                                            >
+                                                + Registrar Merma
+                                            </button>
+                                        </div>
+                                        {stagesModal.data?.wastes?.length > 0 ? (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-xs">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
+                                                            <th className="py-1.5">Etapa</th>
+                                                            <th className="py-1.5">Tipo Merma</th>
+                                                            <th className="py-1.5 text-right">Peso (Lbs)</th>
+                                                            <th className="py-1.5">Registrado Por</th>
+                                                            <th className="py-1.5">Notas</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {stagesModal.data.wastes.map(w => (
+                                                            <tr key={w.id}>
+                                                                <td className="py-2 capitalize font-semibold text-slate-800">{w.stage}</td>
+                                                                <td className="py-2 capitalize text-rose-700 font-bold">{w.waste_type?.replace('_', ' ')}</td>
+                                                                <td className="py-2 text-right font-black text-slate-900">{parseFloat(w.weight_lbs).toFixed(1)} Lbs</td>
+                                                                <td className="py-2 text-slate-600">{w.operator_name || '-'}</td>
+                                                                <td className="py-2 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-slate-400 italic">No se han registrado mermas extraordinarias para este lote.</p>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Exportar Resumen:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSummary(stagesModal.batch?.id, 'pdf')}
+                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                                >
+                                    <FileText size={13} />
+                                    PDF
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSummary(stagesModal.batch?.id, 'excel')}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                                >
+                                    <FileSpreadsheet size={13} />
+                                    Excel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSummary(stagesModal.batch?.id, 'word')}
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                                >
+                                    <FileCheck size={13} />
+                                    Word (.docx)
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
+                                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL AGREGAR MÁS TARIMAS AL QUEBRAJE */}
+            {addTarimasModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                <Plus className="text-indigo-600" size={16} />
+                                Agregar Más Tarimas al Quebraje
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setAddTarimasModal(prev => ({ ...prev, isOpen: false }))}
+                                className="text-slate-400 hover:text-slate-700"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-medium">
+                            Permite adicionar tarimas de materia prima a la corrida en caso de que el quebraje sea menor a lo esperado o se requiera volumen extra.
+                        </p>
+
+                        <form onSubmit={handleAddTarimasSubmit} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Lote de Materia Prima en Bodega *
+                                </label>
+                                <select
+                                    value={addTarimasModal.raw_material_id}
+                                    onChange={(e) => setAddTarimasModal(prev => ({ ...prev, raw_material_id: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    required
+                                >
+                                    <option value="">Seleccione Lote de Materia Prima...</option>
+                                    {rawMaterials.map(rm => (
+                                        <option key={rm.id} value={rm.id}>
+                                            {rm.provider_lot || `REC-${rm.id}`} - {rm.provider_name || 'Proveedor'} ({parseFloat(rm.stock_lbs || rm.weight_lbs || 0).toLocaleString()} Lbs disponibles)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        N° de Tarima (Opcional)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={addTarimasModal.tarima_number}
+                                        onChange={(e) => setAddTarimasModal(prev => ({ ...prev, tarima_number: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        placeholder="Ej: 2"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Cantidad de Cajas
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={addTarimasModal.boxes_count}
+                                        onChange={(e) => setAddTarimasModal(prev => ({ ...prev, boxes_count: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        placeholder="Ej: 24"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Peso Neto a Ingresar (Lbs) *
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={addTarimasModal.weight_lbs}
+                                    onChange={(e) => setAddTarimasModal(prev => ({ ...prev, weight_lbs: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    placeholder="Ej: 570.00"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Motivo / Observaciones
+                                </label>
+                                <textarea
+                                    rows={2}
+                                    value={addTarimasModal.notes}
+                                    onChange={(e) => setAddTarimasModal(prev => ({ ...prev, notes: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    placeholder="Detalle por qué se agregó esta tarima al quebraje..."
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setAddTarimasModal(prev => ({ ...prev, isOpen: false }))}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={addTarimasModal.isSubmitting}
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                                >
+                                    {addTarimasModal.isSubmitting ? 'Guardando...' : 'Adicionar Tarima'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL REGISTRAR REMANENTE / SOBRANTE */}
+            {remanenteModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                <Sparkles className="text-teal-600" size={16} />
+                                Registrar Remanente / Sobrante
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setRemanenteModal(prev => ({ ...prev, isOpen: false }))}
+                                className="text-slate-400 hover:text-slate-700"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-medium">
+                            Sobrante de producto (ej: huevo en leche, huevo entero pasteurizado o sin pasteurizar) guardado para próximo empaque, otra producción o reproceso.
+                        </p>
+
+                        <form onSubmit={handleRemanenteSubmit} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Tipo de Producto Sobrante *
+                                </label>
+                                <select
+                                    value={remanenteModal.product_type}
+                                    onChange={(e) => setRemanenteModal(prev => ({ ...prev, product_type: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                >
+                                    <option value="huevo entero">Huevo Entero</option>
+                                    <option value="clara">Clara de Huevo</option>
+                                    <option value="yema">Yema Líquida</option>
+                                    <option value="huevo en leche">Huevo en Leche / Formulado</option>
+                                    <option value="yema azucarada">Yema Azucarada</option>
+                                    <option value="yema salada">Yema Salada</option>
+                                    <option value="reproceso">Lote a Reproceso</option>
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Peso Remanente (Lbs) *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={remanenteModal.weight_lbs}
+                                        onChange={(e) => setRemanenteModal(prev => ({ ...prev, weight_lbs: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                        placeholder="Ej: 120.00"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Condición Térmica
+                                    </label>
+                                    <select
+                                        value={remanenteModal.is_pasteurized ? 'true' : 'false'}
+                                        onChange={(e) => setRemanenteModal(prev => ({ ...prev, is_pasteurized: e.target.value === 'true' }))}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-teal-500"
+                                    >
+                                        <option value="true">Pasteurizado</option>
+                                        <option value="false">Sin Pasteurizar (Crudo)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Destino Programado
+                                </label>
+                                <select
+                                    value={remanenteModal.destination}
+                                    onChange={(e) => setRemanenteModal(prev => ({ ...prev, destination: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-teal-500"
+                                >
+                                    <option value="proximo_empaque">Próximo Empaque (Empacado directo)</option>
+                                    <option value="otra_produccion">Otra Producción (Mezcla futura)</option>
+                                    <option value="reproceso">Reproceso / Reutilizables</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Notas y Ubicación
+                                </label>
+                                <textarea
+                                    rows={2}
+                                    value={remanenteModal.notes}
+                                    onChange={(e) => setRemanenteModal(prev => ({ ...prev, notes: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-teal-500"
+                                    placeholder="Ej: Tanque buffer #2 a 4°C, remanente de fórmula especial..."
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setRemanenteModal(prev => ({ ...prev, isOpen: false }))}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={remanenteModal.isSubmitting}
+                                    className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                                >
+                                    {remanenteModal.isSubmitting ? 'Guardando...' : 'Guardar Remanente'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL REGISTRO Y GESTIÓN DE MERMAS POR LOTE */}
+            {wastesModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
+                        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-rose-50/70">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl">
+                                    <AlertOctagon size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
+                                        Mermas y Pérdidas del Lote
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Lote: <b>{wastesModal.batch?.batch_code_display || wastesModal.batch?.batch_uuid}</b> ({wastesModal.batch?.product_type})
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setWastesModal(prev => ({ ...prev, isOpen: false }))}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                            {/* Formulario de Nueva Merma */}
+                            <form onSubmit={handleCreateWaste} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                    Registrar Nueva Merma
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Etapa *</label>
+                                        <select
+                                            value={wastesModal.stage}
+                                            onChange={(e) => setWastesModal(prev => ({ ...prev, stage: e.target.value }))}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
+                                        >
+                                            <option value="quebraje">Quebraje</option>
+                                            <option value="pasteurizacion">Pasteurización</option>
+                                            <option value="envasado">Envasado / Tuberías</option>
+                                            <option value="almacen">Almacén de Frío</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tipo de Merma *</label>
+                                        <select
+                                            value={wastesModal.waste_type}
+                                            onChange={(e) => setWastesModal(prev => ({ ...prev, waste_type: e.target.value }))}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
+                                        >
+                                            <option value="cascaron">Cáscara de Huevo</option>
+                                            <option value="merma_liquida">Merma Líquida Residual</option>
+                                            <option value="tuberias_desperdicio">Pérdida en Tuberías / Desperdicio</option>
+                                            <option value="no_conforme">Líquido No Conforme</option>
+                                            <option value="derrame">Derrame Accidental</option>
+                                            <option value="otro">Otro</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Peso (Lbs) *</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={wastesModal.weight_lbs}
+                                            onChange={(e) => setWastesModal(prev => ({ ...prev, weight_lbs: e.target.value }))}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
+                                            placeholder="Ej: 35.00"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Notas / Causa</label>
+                                    <input
+                                        type="text"
+                                        value={wastesModal.notes}
+                                        onChange={(e) => setWastesModal(prev => ({ ...prev, notes: e.target.value }))}
+                                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
+                                        placeholder="Detalle causa de la merma o remanente en tuberías..."
+                                    />
+                                </div>
+
+                                <div className="flex justify-end">
+                                    <button
+                                        type="submit"
+                                        disabled={wastesModal.isSubmitting}
+                                        className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                                    >
+                                        {wastesModal.isSubmitting ? 'Guardando...' : '+ Guardar Merma'}
+                                    </button>
+                                </div>
+                            </form>
+
+                            {/* Historial de Mermas */}
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                    Mermas Registradas ({wastesModal.wastes.length})
+                                </h4>
+                                {wastesModal.wastes.length === 0 ? (
+                                    <p className="text-xs text-slate-400 italic">No hay registros de mermas para este lote.</p>
+                                ) : (
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                    <th className="p-2.5">Etapa</th>
+                                                    <th className="p-2.5">Tipo</th>
+                                                    <th className="p-2.5 text-right">Peso (Lbs)</th>
+                                                    <th className="p-2.5">Operador</th>
+                                                    <th className="p-2.5">Notas</th>
+                                                    <th className="p-2.5 text-center">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {wastesModal.wastes.map(w => (
+                                                    <tr key={w.id} className="hover:bg-slate-50">
+                                                        <td className="p-2.5 font-bold capitalize text-slate-900">{w.stage}</td>
+                                                        <td className="p-2.5 text-rose-700 font-semibold capitalize">{w.waste_type?.replace('_', ' ')}</td>
+                                                        <td className="p-2.5 text-right font-black text-slate-900">{parseFloat(w.weight_lbs).toFixed(1)} Lbs</td>
+                                                        <td className="p-2.5 text-slate-600">{w.operator_name || '-'}</td>
+                                                        <td className="p-2.5 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
+                                                        <td className="p-2.5 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteWaste(w.id)}
+                                                                className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
+                                                                title="Eliminar registro de merma"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setWastesModal(prev => ({ ...prev, isOpen: false }))}
+                                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL EDITAR LOTE DE PRODUCCIÓN */}
+            {editBatchModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                <Pencil className="text-indigo-600" size={16} />
+                                Editar Lote de Producción
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setEditBatchModal(prev => ({ ...prev, isOpen: false }))}
+                                className="text-slate-400 hover:text-slate-700"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-medium">
+                            Lote: <b>{editBatchModal.batch?.batch_code_display || editBatchModal.batch?.batch_uuid}</b>
+                        </p>
+
+                        <form onSubmit={handleEditBatchSubmit} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Tipo de Producto *
+                                </label>
+                                <select
+                                    value={editBatchModal.product_type}
+                                    onChange={(e) => setEditBatchModal(prev => ({ ...prev, product_type: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                    <option value="huevo entero">Huevo Entero</option>
+                                    <option value="clara">Clara de Huevo</option>
+                                    <option value="yema">Yema Líquida</option>
+                                    <option value="yema azucarada">Yema Azucarada</option>
+                                    <option value="yema salada">Yema Salada</option>
+                                    <option value="fórmula especial">Fórmula Especial</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Presentación *
+                                </label>
+                                <select
+                                    value={editBatchModal.presentation}
+                                    onChange={(e) => setEditBatchModal(prev => ({ ...prev, presentation: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                    <option value="cubeta 30LB">Cubeta 30 Lbs</option>
+                                    <option value="cubeta 32LB">Cubeta 32 Lbs</option>
+                                    <option value="galón 8LB">Galón (8 Lbs)</option>
+                                    <option value="medio galón 4LB">Medio Galón (4 Lbs)</option>
+                                    <option value="litro 2LB">Litro (2 Lbs)</option>
+                                    <option value="bolsa 5LB">Bolsa 5 Lbs</option>
+                                    <option value="tanque 2000LB">Tanque 2000 Lbs</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Notas y Observaciones
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={editBatchModal.notes}
+                                    onChange={(e) => setEditBatchModal(prev => ({ ...prev, notes: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
+                                    placeholder="Observaciones generales sobre la producción..."
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditBatchModal(prev => ({ ...prev, isOpen: false }))}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={editBatchModal.isSubmitting}
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                                >
+                                    {editBatchModal.isSubmitting ? 'Guardando...' : 'Actualizar Lote'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* DIÁLOGO CONFIRMAR ELIMINACIÓN DE LOTE */}
+            {deleteConfirmBatch && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 space-y-4">
+                        <div className="flex items-center gap-3 text-rose-600 border-b border-slate-200 pb-3">
+                            <div className="p-2.5 bg-rose-100 rounded-xl">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                    Confirmar Eliminación de Lote
+                                </h3>
+                                <span className="text-xs text-slate-500 font-medium">Acción irreversible según nivel de usuario</span>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-slate-600 font-medium">
+                            ¿Está seguro de eliminar el lote <b>{deleteConfirmBatch.batch_code_display || deleteConfirmBatch.batch_uuid}</b> ({deleteConfirmBatch.product_type})?
+                        </p>
+
+                        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800 space-y-1">
+                            <div className="font-bold">⚠️ Esta acción:</div>
+                            <div>• Revertirá el consumo de stock de materia prima utilizada en las tarimas.</div>
+                            <div>• Eliminará los registros de mermas y remanentes asociados.</div>
+                        </div>
+
+                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteConfirmBatch(null)}
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteBatchConfirm}
+                                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                            >
+                                Sí, Eliminar Lote
                             </button>
                         </div>
                     </div>

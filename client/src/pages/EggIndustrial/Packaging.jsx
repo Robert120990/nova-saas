@@ -17,7 +17,10 @@ import {
     Printer,
     Lock,
     Pencil,
-    Trash2
+    Trash2,
+    AlertTriangle,
+    CheckCircle2,
+    Scale
 } from 'lucide-react';
 
 const EggPackaging = () => {
@@ -83,6 +86,39 @@ const EggPackaging = () => {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedLabel, setSelectedLabel] = useState(null); // Label modal state
+
+    // Role & Permisos (Página 4 del documento)
+    const userPermissions = Array.isArray(user?.permissions)
+        ? user.permissions
+        : (typeof user?.permissions === 'string' ? JSON.parse(user?.permissions || '[]') : []);
+    const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
+    const canClosePackaging = isAdmin || userPermissions.includes('manage_egg_packaging_close');
+
+    // Estado del modal de Cierre Técnico de Envasado
+    const [closeBatchModal, setCloseBatchModal] = useState({
+        isOpen: false,
+        batch: null,
+        notes: '',
+        isSubmitting: false
+    });
+
+    const handleCloseBatchPackaging = async (e) => {
+        e?.preventDefault();
+        if (!closeBatchModal.batch) return;
+        setCloseBatchModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${closeBatchModal.batch.id}/close-packaging`, {
+                notes: closeBatchModal.notes
+            });
+            toast.success(res.data?.message || 'Lote cerrado con cálculo de eficiencia y merma.');
+            setCloseBatchModal({ isOpen: false, batch: null, notes: '', isSubmitting: false });
+            fetchData();
+        } catch (error) {
+            console.error('Error cerrando lote:', error);
+            toast.error(error.response?.data?.message || 'Error al cerrar el envasado del lote.');
+            setCloseBatchModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -601,13 +637,22 @@ const EggPackaging = () => {
                                 {batches.filter(b => {
                                     const allowed = ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'];
                                     if (!allowed.includes(b.status)) return false;
+                                    if (b.packaging_status === 'cerrado' && b.id !== parseInt(packagingForm.batch_id)) return false;
                                     const disp = parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0);
-                                    return disp > 0;
-                                }).map(b => (
-                                    <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
-                                        [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation}) - Disp: {(parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0)).toFixed(0)} Lbs{b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
-                                    </option>
-                                ))}
+                                    return disp > 0 || b.id === parseInt(packagingForm.batch_id);
+                                }).map(b => {
+                                    const packaged = parseFloat(b.packaged_weight_lbs || 0);
+                                    const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
+                                    const isPartial = packaged > 0 && disp > 0;
+                                    const labelPrefix = isPartial
+                                        ? `⚠️ [PARCIAL: Faltan ${disp.toFixed(0)} Lbs]`
+                                        : `🟢 [NUEVO: Disp ${disp.toFixed(0)} Lbs]`;
+                                    return (
+                                        <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
+                                            {labelPrefix} [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation}) - Env: {packaged.toFixed(0)} Lbs / Disp: {disp.toFixed(0)} Lbs{b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         </div>
 
@@ -625,25 +670,61 @@ const EggPackaging = () => {
                                 const currentProd = (parseFloat(packagingForm.units_packaged || 0) * parseFloat(packagingForm.weight_per_unit_lbs || 0));
                                 const rem = Math.max(0, disp - currentProd);
                                 return (
-                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-4 gap-2.5 text-center">
-                                        <div>
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Rendimiento</span>
-                                            <span className="text-sm font-bold text-teal-700">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
+                                    <div className="space-y-3">
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-4 gap-2.5 text-center">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Rendimiento</span>
+                                                <span className="text-sm font-bold text-teal-700">{parseFloat(b.yield_liquid_lbs || 0).toLocaleString()} Lbs</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Ya Envasado</span>
+                                                <span className="text-sm font-bold text-indigo-700">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Disponible</span>
+                                                <span className="text-sm font-bold text-amber-700">{disp.toLocaleString()} Lbs</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase block">Saldo Restante</span>
+                                                <span className={`text-sm font-bold ${currentProd > disp ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                                    {rem.toLocaleString()} Lbs
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Ya Envasado</span>
-                                            <span className="text-sm font-bold text-indigo-700">{parseFloat(b.packaged_weight_lbs || 0).toLocaleString()} Lbs</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Disponible</span>
-                                            <span className="text-sm font-bold text-amber-700">{disp.toLocaleString()} Lbs</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">Saldo Restante</span>
-                                            <span className={`text-sm font-bold ${currentProd > disp ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                                {rem.toLocaleString()} Lbs
-                                            </span>
-                                        </div>
+
+                                        {/* Banner y Botón de Cierre Técnico de Lote */}
+                                        {b.packaging_status === 'cerrado' ? (
+                                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center justify-between">
+                                                <span className="font-bold flex items-center gap-1.5">
+                                                    <CheckCircle2 size={16} className="text-emerald-600" />
+                                                    Lote Cerrado Técnicamente (Eficiencia: {b.packaging_efficiency_pct}%, Merma: {b.packaging_loss_lbs} Lbs)
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-3">
+                                                <div>
+                                                    <span className="font-bold flex items-center gap-1.5 text-amber-800">
+                                                        <Scale size={15} />
+                                                        Balance de Envasado & Eficiencia
+                                                    </span>
+                                                    <p className="text-[11px] text-amber-700 mt-0.5">
+                                                        {disp > 0
+                                                            ? `Faltan ${disp.toLocaleString()} Lbs por envasar. Si ya finalizó la corrida, cierre el lote para computar mermas en tuberías.`
+                                                            : `Lote completamente envasado (100% de rendimiento cubierto).`}
+                                                    </p>
+                                                </div>
+                                                {canClosePackaging && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCloseBatchModal({ isOpen: true, batch: b, notes: '', isSubmitting: false })}
+                                                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                                                    >
+                                                        <Lock size={13} />
+                                                        Cerrar Envasado de Lote
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             }
@@ -1101,6 +1182,115 @@ const EggPackaging = () => {
                 </div>
                 </div>
             )}
+
+            {/* Modal de Cierre Técnico de Envasado del Lote */}
+            {closeBatchModal.isOpen && closeBatchModal.batch && (() => {
+                const b = closeBatchModal.batch;
+                const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
+                const packagedLbs = parseFloat(b.packaged_weight_lbs || 0);
+                const missingLbs = Math.max(0, yieldLbs - packagedLbs);
+                const effPct = yieldLbs > 0 ? ((packagedLbs / yieldLbs) * 100).toFixed(2) : '100.00';
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full space-y-4 text-slate-900">
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                                        <Scale size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                            Cierre Técnico de Envasado del Lote
+                                        </h3>
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            Lote: <b>{b.batch_code_display || b.batch_uuid}</b> ({b.product_type})
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCloseBatchModal({ isOpen: false, batch: null, notes: '', isSubmitting: false })}
+                                    className="text-slate-400 hover:text-slate-700"
+                                >
+                                    <XCircle size={18} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Rendimiento</span>
+                                    <strong className="text-teal-700 text-sm">{yieldLbs.toLocaleString()} Lbs</strong>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Envasado Real</span>
+                                    <strong className="text-indigo-700 text-sm">{packagedLbs.toLocaleString()} Lbs</strong>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Faltante/Merma</span>
+                                    <strong className={`text-sm ${missingLbs > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                        {missingLbs.toLocaleString()} Lbs
+                                    </strong>
+                                </div>
+                            </div>
+
+                            {missingLbs > 0 ? (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
+                                    <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                                        <AlertTriangle size={15} className="shrink-0 text-amber-600" />
+                                        Alerta de Saldo Pendiente por Envasar:
+                                    </div>
+                                    <p>
+                                        Faltan <b>{missingLbs.toFixed(2)} Lbs</b> por envasar respecto al rendimiento obtenido.
+                                        Al confirmar el cierre, esta diferencia se computará automáticamente como <b>pérdida en tuberías / desperdicio técnico</b> para evaluar el margen de eficiencia global.
+                                    </p>
+                                    <p className="font-bold text-slate-800 pt-1">
+                                        Margen de Eficiencia Resultante: <span className="text-amber-700 font-black">{effPct}%</span>
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900 flex items-center gap-2">
+                                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                                    <div>
+                                        <b>100% de Eficiencia:</b> Se ha completado el envasado de todo el rendimiento disponible sin pérdidas residuales registradas.
+                                    </div>
+                                </div>
+                            )}
+
+                            <form onSubmit={handleCloseBatchPackaging} className="space-y-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Notas y Justificación del Cierre Técnico
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        value={closeBatchModal.notes}
+                                        onChange={(e) => setCloseBatchModal(prev => ({ ...prev, notes: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                                        placeholder="Ej: Fin de corrida de envasado, residuo de libras en circuito de tuberías..."
+                                    />
+                                </div>
+
+                                <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-200">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCloseBatchModal({ isOpen: false, batch: null, notes: '', isSubmitting: false })}
+                                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={closeBatchModal.isSubmitting}
+                                        className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                                    >
+                                        {closeBatchModal.isSubmitting ? 'Cerrando...' : 'Confirmar Cierre de Envasado'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 };

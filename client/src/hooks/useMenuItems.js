@@ -155,6 +155,34 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar submenú Inventario Traducido en Huevo Industrial (Página 6)
+    if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/inventario')) {
+        industrialRoot.children.push({
+            id: 'virtual-industrial-inventory',
+            label: 'Inventario Traducido',
+            path: '/industrial/inventario',
+            permission: 'view_egg_inventory',
+            permission_key: 'view_egg_inventory',
+            hideInMenu: false,
+            icon: iconMap.Package || iconMap.Circle,
+            children: []
+        });
+    }
+
+    // Asegurar submenú Reportes en Huevo Industrial (Página 5)
+    if (industrialRoot && !industrialRoot.children.some(c => c.path === '/industrial/reportes')) {
+        industrialRoot.children.push({
+            id: 'virtual-industrial-reports',
+            label: 'Reportes',
+            path: '/industrial/reportes',
+            permission: 'view_egg_reports',
+            permission_key: 'view_egg_reports',
+            hideInMenu: false,
+            icon: iconMap.FileText || iconMap.Circle,
+            children: []
+        });
+    }
+
 
     // Asegurar reportes de inventario (Valorización y Rotación)
     const invReportsNode = Object.values(itemMap).find(i => 
@@ -530,19 +558,26 @@ export function useMenuPermissions() {
             }
         });
 
-        // Garantizar que Huevo Industrial contenga Calendario de Producción
+        // Garantizar que Huevo Industrial contenga todos sus permisos y opciones
         const indGroup = Object.values(groups).find(g => g.label?.includes('Industrial') || g.label?.includes('Huevo'));
         if (indGroup) {
-            if (!indGroup.permissions.some(p => p.id === 'manage_production_calendar')) {
-                indGroup.permissions.push({ 
-                    id: 'manage_production_calendar', 
-                    label: 'Calendario de Producción',
-                    isReport: false,
-                    isSpecial: false,
-                    sort_order: 3
-                });
-                seen['manage_production_calendar'] = true;
-            }
+            const extraIndustrialPerms = [
+                { id: 'manage_production_calendar', label: 'Calendario de Producción', isReport: false, isSpecial: false, sort_order: 3 },
+                { id: 'view_egg_inventory', label: 'Inventario Traducido (Lbs / Kg)', isReport: false, isSpecial: false, sort_order: 25 },
+                { id: 'view_egg_reports', label: 'Reportes de Huevo Industrial', isReport: true, isSpecial: false, sort_order: 30 },
+                { id: 'edit_egg_quality', label: 'Evaluar y Editar Calidad (LAB-004)', isReport: false, isSpecial: true, sort_order: 101 },
+                { id: 'delete_egg_reception', label: 'Eliminar Recepción de Materia Prima', isReport: false, isSpecial: true, sort_order: 102 },
+                { id: 'edit_egg_production', label: 'Editar Lote de Producción', isReport: false, isSpecial: true, sort_order: 103 },
+                { id: 'delete_egg_production', label: 'Eliminar Lote de Producción', isReport: false, isSpecial: true, sort_order: 104 },
+                { id: 'manage_egg_packaging_close', label: 'Cierre Técnico de Envasado', isReport: false, isSpecial: true, sort_order: 105 }
+            ];
+
+            extraIndustrialPerms.forEach(item => {
+                if (!indGroup.permissions.some(p => p.id === item.id)) {
+                    indGroup.permissions.push(item);
+                    seen[item.id] = true;
+                }
+            });
         }
 
         // Garantizar que CRM aparezca como grupo en la asignación de Roles

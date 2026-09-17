@@ -19,7 +19,11 @@ import {
     Users,
     Receipt,
     Sparkles,
-    Info
+    Info,
+    Barcode,
+    Pencil,
+    Search,
+    Boxes
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -68,6 +72,23 @@ const EggConfig = () => {
         notes: ''
     });
 
+    // Mapeo de Códigos de Producto (Página 5 del documento)
+    const [codeMappings, setCodeMappings] = useState([]);
+    const [systemProducts, setSystemProducts] = useState([]);
+    const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
+    const [mappingSearchTerm, setMappingSearchTerm] = useState('');
+    const [mappingForm, setMappingForm] = useState({
+        id: null,
+        product_id: '',
+        product_name: '',
+        product_type: 'huevo entero',
+        presentation: 'galon',
+        codes: '',
+        weight_lbs: '8.00',
+        weight_kg: '3.63',
+        notes: ''
+    });
+
     const defaults = {
         'huevo entero': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'clara': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
@@ -97,17 +118,22 @@ const EggConfig = () => {
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            const [prodRes, costRes, lotRes, provRes] = await Promise.all([
+            const [prodRes, costRes, lotRes, provRes, mapRes, sysProdRes] = await Promise.all([
                 axios.get('/api/egg-industrial/product-config'),
                 axios.get('/api/egg-industrial/cost-concepts'),
                 axios.get('/api/egg-industrial/provider-lot-configs'),
-                axios.get('/api/providers')
+                axios.get('/api/providers'),
+                axios.get('/api/egg-industrial/code-mappings'),
+                axios.get('/api/products')
             ]);
 
             const data = Array.isArray(prodRes.data) ? prodRes.data : [];
             setCostConcepts(Array.isArray(costRes.data) ? costRes.data : []);
             setProviderLotConfigs(Array.isArray(lotRes.data) ? lotRes.data : []);
             setProviders(Array.isArray(provRes.data) ? provRes.data : (provRes.data?.data || []));
+            setCodeMappings(Array.isArray(mapRes.data) ? mapRes.data : []);
+            const prods = Array.isArray(sysProdRes.data) ? sysProdRes.data : (sysProdRes.data?.data || []);
+            setSystemProducts(prods);
 
             const merged = products.map(p => {
                 const existing = data.find(c => c.product_type === p.type);
@@ -125,6 +151,93 @@ const EggConfig = () => {
             toast.error('Error al cargar la configuración.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleOpenCreateMapping = () => {
+        setMappingForm({
+            id: null,
+            product_id: '',
+            product_name: '',
+            product_type: 'huevo entero',
+            presentation: 'galon',
+            codes: '',
+            weight_lbs: '8.00',
+            weight_kg: '3.63',
+            notes: ''
+        });
+        setIsMappingModalOpen(true);
+    };
+
+    const handleOpenEditMapping = (m) => {
+        setMappingForm({
+            id: m.id,
+            product_id: m.product_id || '',
+            product_name: m.product_name || '',
+            product_type: m.product_type || 'huevo entero',
+            presentation: m.presentation || 'galon',
+            codes: m.codes || '',
+            weight_lbs: m.weight_lbs || '8.00',
+            weight_kg: m.weight_kg || '3.63',
+            notes: m.notes || ''
+        });
+        setIsMappingModalOpen(true);
+    };
+
+    const handleSaveMapping = async (e) => {
+        e?.preventDefault();
+        if (!mappingForm.product_name?.trim() || !mappingForm.codes?.trim()) {
+            return toast.error('Debe indicar el nombre del producto y los códigos vinculados.');
+        }
+        try {
+            const payload = {
+                id: mappingForm.id,
+                product_id: mappingForm.product_id ? parseInt(mappingForm.product_id) : null,
+                product_name: mappingForm.product_name.trim(),
+                product_type: mappingForm.product_type,
+                presentation: mappingForm.presentation,
+                codes: mappingForm.codes.trim(),
+                weight_lbs: parseFloat(mappingForm.weight_lbs) || 0,
+                weight_kg: parseFloat(mappingForm.weight_kg) || 0,
+                notes: mappingForm.notes
+            };
+            const res = await axios.post('/api/egg-industrial/code-mappings', payload);
+            toast.success(res.data?.message || 'Vinculación de códigos guardada con éxito.');
+            setIsMappingModalOpen(false);
+            const mapRes = await axios.get('/api/egg-industrial/code-mappings');
+            setCodeMappings(mapRes.data || []);
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al guardar la vinculación.');
+        }
+    };
+
+    const handleDeleteMapping = async (id) => {
+        try {
+            await axios.delete(`/api/egg-industrial/code-mappings/${id}`);
+            toast.success('Vinculación eliminada.');
+            const mapRes = await axios.get('/api/egg-industrial/code-mappings');
+            setCodeMappings(mapRes.data || []);
+        } catch (err) {
+            toast.error('Error al eliminar vinculación.');
+        }
+    };
+
+    const handleSeedExampleMappings = async () => {
+        const examples = [
+            { product_name: 'Huevo Entero Pasteurizado Galón', product_type: 'huevo entero', presentation: 'galon', codes: 'HEGL8, hd4kg, 167347', weight_lbs: 8.0, weight_kg: 3.63, notes: 'Referencia oficial del documento (Galón)' },
+            { product_name: 'Huevo Entero Pasteurizado Litro', product_type: 'huevo entero', presentation: 'litro', codes: 'hel2, 48758943', weight_lbs: 2.0, weight_kg: 0.91, notes: 'Referencia oficial del documento (Litro)' },
+            { product_name: 'Huevo Entero Pasteurizado Cubeta', product_type: 'huevo entero', presentation: 'cubeta 32LB', codes: 'hec32', weight_lbs: 32.0, weight_kg: 14.51, notes: 'Referencia oficial del documento (Cubeta)' },
+            { product_name: 'Clara de Huevo Pasteurizada', product_type: 'clara', presentation: 'galon', codes: 'CL2b', weight_lbs: 8.0, weight_kg: 3.63, notes: 'Referencia oficial del documento (Clara)' }
+        ];
+        try {
+            for (const ex of examples) {
+                await axios.post('/api/egg-industrial/code-mappings', ex);
+            }
+            toast.success('Códigos de ejemplo del documento cargados correctamente.');
+            const mapRes = await axios.get('/api/egg-industrial/code-mappings');
+            setCodeMappings(mapRes.data || []);
+        } catch (e) {
+            toast.error('Error al cargar códigos de ejemplo.');
         }
     };
 
@@ -370,6 +483,17 @@ const EggConfig = () => {
                     >
                         <Layers size={14} />
                         Rendimientos de Producto
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('code-mappings')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            activeTab === 'code-mappings'
+                                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                        }`}
+                    >
+                        <Barcode size={14} />
+                        Vinculación de Códigos
                     </button>
                 </div>
             </div>
@@ -725,6 +849,371 @@ const EggConfig = () => {
                             ))}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* TAB 4: VINCULACIÓN DE CÓDIGOS DE PRODUCTO (PÁGINA 5 DEL DOCUMENTO) */}
+            {activeTab === 'code-mappings' && (
+                <div className="space-y-6">
+                    {/* Header Banner */}
+                    <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                        <div className="space-y-2 max-w-2xl">
+                            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[11px] font-bold tracking-wide uppercase">
+                                <Sparkles size={12} className="text-amber-300" />
+                                Vinculación Multicódigo • Inventario Real & Sincronizado
+                            </div>
+                            <h2 className="text-xl font-bold tracking-tight">
+                                Matriz de Códigos y Presentaciones Industriales
+                            </h2>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                                Esta relación asocia los diversos códigos utilizados en materia prima, corridas de producción y envasado
+                                (ej: <code>HEGL8, hd4kg, 167347</code> para galón o <code>hel2, 48758943</code> para litro).
+                                Traduce las existencias hacia el CRM, pedidos y producción sin alterar el inventario de facturación general.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2.5 shrink-0">
+                            <button
+                                type="button"
+                                onClick={handleSeedExampleMappings}
+                                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition-all flex items-center gap-2 shadow-xs"
+                                title="Cargar códigos oficiales de ejemplo citados en el documento (HEGL8, hel2, hec32, CL2b)"
+                            >
+                                <Sparkles size={14} className="text-amber-400" />
+                                Cargar Ejemplos Doc
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleOpenCreateMapping}
+                                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs"
+                            >
+                                <Plus size={14} />
+                                Nueva Vinculación
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Tabla de Vinculaciones */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                                <Barcode className="text-indigo-600" size={18} />
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                    Códigos Registrados ({codeMappings.length})
+                                </h3>
+                            </div>
+                            <div className="relative w-full sm:w-72">
+                                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por código, producto..."
+                                    value={mappingSearchTerm}
+                                    onChange={(e) => setMappingSearchTerm(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:bg-white focus:border-indigo-500"
+                                />
+                            </div>
+                        </div>
+
+                        {codeMappings.length === 0 ? (
+                            <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl space-y-3">
+                                <Barcode className="h-10 w-10 text-slate-300 mx-auto" />
+                                <p className="text-xs text-slate-500 font-medium">No se han registrado vinculaciones de códigos aún.</p>
+                                <button
+                                    type="button"
+                                    onClick={handleSeedExampleMappings}
+                                    className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors"
+                                >
+                                    Cargar códigos de muestra del documento
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-left text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                            <th className="p-3">Producto Comercial</th>
+                                            <th className="p-3">Tipo</th>
+                                            <th className="p-3">Presentación</th>
+                                            <th className="p-3">Códigos Vinculados (Diversos Sistemas)</th>
+                                            <th className="p-3 text-right">Peso Equivalente</th>
+                                            <th className="p-3">Producto Catálogo</th>
+                                            <th className="p-3 text-center">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {codeMappings.filter(m => {
+                                            if (!mappingSearchTerm.trim()) return true;
+                                            const term = mappingSearchTerm.toLowerCase();
+                                            return (m.product_name || '').toLowerCase().includes(term) ||
+                                                (m.codes || '').toLowerCase().includes(term) ||
+                                                (m.product_type || '').toLowerCase().includes(term) ||
+                                                (m.presentation || '').toLowerCase().includes(term);
+                                        }).map(m => {
+                                            const codesArr = (m.codes || '').split(',').map(c => c.trim()).filter(Boolean);
+                                            return (
+                                                <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
+                                                    <td className="p-3 font-bold text-slate-900">
+                                                        <div>{m.product_name}</div>
+                                                        {m.notes && <div className="text-[10px] text-slate-400 font-normal italic">{m.notes}</div>}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-[10px] font-bold uppercase capitalize">
+                                                            {m.product_type}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 font-semibold text-slate-700 capitalize">
+                                                        {m.presentation}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {codesArr.map((c, ci) => (
+                                                                <span key={ci} className="font-mono text-[11px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200">
+                                                                    {c}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3 text-right">
+                                                        <div className="font-bold text-slate-900">{parseFloat(m.weight_lbs || 0).toFixed(2)} Lbs</div>
+                                                        <div className="text-[10px] text-slate-400 font-medium">~{parseFloat(m.weight_kg || 0).toFixed(2)} Kg</div>
+                                                    </td>
+                                                    <td className="p-3 text-slate-600 font-medium">
+                                                        {m.catalog_product_name ? (
+                                                            <span className="text-emerald-700 font-bold flex items-center gap-1">
+                                                                <CheckCircle2 size={12} />
+                                                                {m.catalog_product_name}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-400 italic text-[11px]">Auto por código / SKU</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenEditMapping(m)}
+                                                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-300 transition-colors"
+                                                                title="Editar Mapeo"
+                                                            >
+                                                                <Pencil size={13} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteMapping(m.id)}
+                                                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors"
+                                                                title="Eliminar Mapeo"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DE VINCULACIÓN DE CÓDIGOS */}
+            {isMappingModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full text-slate-900 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                                    <Barcode size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                        {mappingForm.id ? 'Editar Vinculación de Códigos' : 'Nueva Vinculación de Códigos'}
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">Asociación de códigos para inventario y CRM</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsMappingModalOpen(false)}
+                                className="text-slate-400 hover:text-slate-700"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveMapping} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Nombre Descriptivo del Producto *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={mappingForm.product_name}
+                                    onChange={(e) => setMappingForm({ ...mappingForm, product_name: e.target.value })}
+                                    placeholder="Ej: Huevo Entero Pasteurizado Galón"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Tipo Industrial *
+                                    </label>
+                                    <select
+                                        value={mappingForm.product_type}
+                                        onChange={(e) => setMappingForm({ ...mappingForm, product_type: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="huevo entero">Huevo Entero</option>
+                                        <option value="clara">Clara de Huevo</option>
+                                        <option value="yema">Yema Líquida</option>
+                                        <option value="yema salada">Yema Salada</option>
+                                        <option value="yema azucarada">Yema Azucarada</option>
+                                        <option value="fórmula especial">Fórmula Especial</option>
+                                        <option value="materia prima">Materia Prima en Cáscara</option>
+                                        <option value="otro">Otro</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Presentación *
+                                    </label>
+                                    <select
+                                        value={mappingForm.presentation}
+                                        onChange={(e) => {
+                                            const pres = e.target.value;
+                                            let lbs = 8.0;
+                                            if (pres === 'galon') lbs = 8.0;
+                                            else if (pres === 'litro') lbs = 2.0;
+                                            else if (pres === 'cubeta 30LB') lbs = 30.0;
+                                            else if (pres === 'cubeta 32LB' || pres === 'cubeta') lbs = 32.0;
+                                            else if (pres === 'medio galon' || pres === 'medio galón 4LB') lbs = 4.0;
+                                            else if (pres === 'bolsa 5LB') lbs = 5.0;
+                                            else if (pres === 'tanque 2000LB') lbs = 2000.0;
+                                            setMappingForm({
+                                                ...mappingForm,
+                                                presentation: pres,
+                                                weight_lbs: lbs.toFixed(2),
+                                                weight_kg: (lbs / 2.20462).toFixed(2)
+                                            });
+                                        }}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="galon">Galón (8 Lbs)</option>
+                                        <option value="litro">Litro (2 Lbs)</option>
+                                        <option value="cubeta 30LB">Cubeta 30 Lbs</option>
+                                        <option value="cubeta 32LB">Cubeta 32 Lbs</option>
+                                        <option value="medio galón 4LB">Medio Galón (4 Lbs)</option>
+                                        <option value="bolsa 5LB">Bolsa 5 Lbs</option>
+                                        <option value="tanque 2000LB">Tanque / Tote 2,000 Lbs</option>
+                                        <option value="otra">Otra Presentación</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Códigos de Diversos Sistemas (Separados por coma) *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={mappingForm.codes}
+                                    onChange={(e) => setMappingForm({ ...mappingForm, codes: e.target.value })}
+                                    placeholder="Ej: HEGL8, hd4kg, 167347"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                />
+                                <span className="text-[10px] text-slate-400 block mt-1">
+                                    Ingrese los diferentes códigos con los que se identifica este producto en materia prima, producción, empaque o ERP.
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Peso Unitario (Lbs)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={mappingForm.weight_lbs}
+                                        onChange={(e) => {
+                                            const lbs = parseFloat(e.target.value) || 0;
+                                            setMappingForm({
+                                                ...mappingForm,
+                                                weight_lbs: e.target.value,
+                                                weight_kg: (lbs / 2.20462).toFixed(2)
+                                            });
+                                        }}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                        Peso Unitario (Kg)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={mappingForm.weight_kg}
+                                        onChange={(e) => setMappingForm({ ...mappingForm, weight_kg: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Vincular a Producto del Catálogo General (Opcional)
+                                </label>
+                                <select
+                                    value={mappingForm.product_id}
+                                    onChange={(e) => setMappingForm({ ...mappingForm, product_id: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="">(Automático por coincidencia de SKU/Código)</option>
+                                    {systemProducts.map(sp => (
+                                        <option key={sp.id} value={sp.id}>
+                                            {sp.name || sp.nombre} [{sp.sku || sp.code || `ID-${sp.id}`}]
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
+                                    Notas y Comentarios
+                                </label>
+                                <textarea
+                                    rows={2}
+                                    value={mappingForm.notes}
+                                    onChange={(e) => setMappingForm({ ...mappingForm, notes: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-indigo-500"
+                                    placeholder="Observaciones de vinculación..."
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMappingModalOpen(false)}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                                >
+                                    Guardar Vinculación
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 

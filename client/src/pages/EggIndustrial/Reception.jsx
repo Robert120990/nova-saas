@@ -28,7 +28,9 @@ import {
     Download,
     ShieldCheck,
     Award,
-    ClipboardCheck
+    ClipboardCheck,
+    Trash2,
+    Lock
 } from 'lucide-react';
 import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
 
@@ -86,6 +88,61 @@ const EggReception = () => {
         receptionData: {}
     });
 
+    // Roles y Permisos (Página 3 del documento adjunto)
+    const userPermissions = Array.isArray(user?.permissions)
+        ? user.permissions
+        : (typeof user?.permissions === 'string' ? JSON.parse(user?.permissions || '[]') : []);
+    const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
+    const canEditQuality = isAdmin || userPermissions.includes('edit_egg_quality');
+    const canDeleteReception = isAdmin || userPermissions.includes('delete_egg_reception');
+
+    const [deleteConfirmRm, setDeleteConfirmRm] = useState(null);
+
+    const handleDeleteReception = async () => {
+        if (!deleteConfirmRm) return;
+        try {
+            const res = await axios.delete(`/api/egg-industrial/raw-materials/${deleteConfirmRm.id}`);
+            toast.success(res.data?.message || 'Recepción de materia prima eliminada exitosamente.');
+            setDeleteConfirmRm(null);
+            fetchData();
+        } catch (error) {
+            console.error('Error al eliminar recepción:', error);
+            toast.error(error.response?.data?.message || 'Error al eliminar la recepción.');
+        }
+    };
+
+    // Colorimetría según calidad / grado (Página 2 del documento: al no ser conforme color en rojo)
+    const getQualityBadgeClass = (status, grade) => {
+        const s = (status || '').toLowerCase();
+        const g = (grade || '').toLowerCase();
+
+        // No conforme o rechazado: ROJO INTENSO OBLIGATORIO
+        if (s === 'rechazado' || s === 'no_conforme' || g.includes('no conforme') || g.includes('rechaz')) {
+            return 'bg-rose-600 text-white border-rose-700 shadow-sm font-black';
+        }
+        // Grado AA
+        if (g.includes('aa')) {
+            return 'bg-purple-100 text-purple-800 border-purple-300 font-black';
+        }
+        // Grado A
+        if (g === 'grado a' || (g.includes('grado a') && !g.includes('aa'))) {
+            return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-black';
+        }
+        // Grado B
+        if (g.includes('grado b') || g.includes('b')) {
+            return 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
+        }
+        // Grado C o condicional
+        if (s === 'condicional' || g.includes('grado c')) {
+            return 'bg-sky-100 text-sky-800 border-sky-300 font-bold';
+        }
+        // Aprobado estándar
+        if (s === 'aprobado') {
+            return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+        }
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+    };
+
     // Estado del modal de evaluación de calidad y clasificación de lote (LAB-004)
     const [qualityModal, setQualityModal] = useState({
         isOpen: false,
@@ -120,6 +177,11 @@ const EggReception = () => {
     const handleSaveQualityClassification = async (e) => {
         e?.preventDefault();
         if (!qualityModal.rm?.id) return;
+
+        if (!canEditQuality) {
+            toast.error('No tiene permisos asignados para modificar el dictamen de calidad (LAB-004).');
+            return;
+        }
 
         if (!qualityModal.inspector_name?.trim()) {
             toast.error('Debe ingresar el nombre del inspector o responsable de Calidad.');
@@ -1292,17 +1354,13 @@ const EggReception = () => {
                                                             className="inline-flex flex-col items-center p-1 hover:bg-amber-50/70 rounded-lg transition-colors group cursor-pointer"
                                                             title="Dictamen de calidad registrado. Haz clic para ver o editar."
                                                         >
-                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border shadow-2xs ${
-                                                                rm.quality_status === 'aprobado'
-                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                    : rm.quality_status === 'rechazado'
-                                                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                                                    : rm.quality_status === 'condicional'
-                                                                    ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                                            }`}>
+                                                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black border ${getQualityBadgeClass(rm.quality_status, rm.egg_classification)}`}>
                                                                 <ShieldCheck size={11} className="shrink-0" />
-                                                                <span>{rm.egg_classification || 'Grado A'}</span>
+                                                                <span>
+                                                                    {rm.quality_status === 'rechazado' || (rm.egg_classification || '').toLowerCase().includes('no conforme')
+                                                                        ? 'NO CONFORME'
+                                                                        : (rm.egg_classification || 'Grado A')}
+                                                                </span>
                                                             </span>
                                                             <span className="text-[9px] text-slate-400 group-hover:text-amber-700 font-semibold mt-0.5 truncate max-w-[85px]">
                                                                 {rm.quality_inspector_name}
@@ -1428,6 +1486,16 @@ const EggReception = () => {
                                                                 title="Anular"
                                                             >
                                                                 <Ban size={13} />
+                                                            </button>
+                                                        )}
+                                                        {canDeleteReception && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setDeleteConfirmRm(rm)}
+                                                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
+                                                                title="Eliminar Recepción de Materia Prima"
+                                                            >
+                                                                <Trash2 size={13} />
                                                             </button>
                                                         )}
                                                         {rm.status === 'anulado' && (
@@ -1804,6 +1872,12 @@ const EggReception = () => {
                         )}
 
                         <form onSubmit={handleSaveQualityClassification} className="space-y-4">
+                            {!canEditQuality && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-center gap-2">
+                                    <Lock size={16} className="shrink-0 text-amber-600" />
+                                    <span><b>Modo Solo Lectura:</b> Su rol no posee permisos para editar o dictaminar calidad (LAB-004). Contacte a un administrador.</span>
+                                </div>
+                            )}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                 {/* Responsable de Calidad */}
                                 <div className="space-y-1 sm:col-span-2">
@@ -1813,10 +1887,11 @@ const EggReception = () => {
                                     <input
                                         type="text"
                                         required
+                                        disabled={!canEditQuality}
                                         placeholder="Nombre y apellido del técnico de calidad"
                                         value={qualityModal.inspector_name}
                                         onChange={(e) => setQualityModal({ ...qualityModal, inspector_name: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                     />
                                 </div>
 
@@ -1826,9 +1901,10 @@ const EggReception = () => {
                                         Clasificación / Grado de Huevo *
                                     </label>
                                     <select
+                                        disabled={!canEditQuality}
                                         value={qualityModal.egg_classification}
                                         onChange={(e) => setQualityModal({ ...qualityModal, egg_classification: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                     >
                                         <option value="Grado AA">Grado AA (Extra Especial / Cáscara Impecable)</option>
                                         <option value="Grado A">Grado A (Estándar Premium de Planta)</option>
@@ -1844,14 +1920,15 @@ const EggReception = () => {
                                         Calibre / Talla Verificada
                                     </label>
                                     <select
+                                        disabled={!canEditQuality}
                                         value={qualityModal.egg_size}
                                         onChange={(e) => setQualityModal({ ...qualityModal, egg_size: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                     >
-                                        <option value="S">S (Chico / &lt; 53g)</option>
-                                        <option value="M">M (Mediano / 53g - 63g)</option>
+                                        <option value="XL">XL (Super Grande / &gt;73g)</option>
                                         <option value="L">L (Grande / 63g - 73g)</option>
-                                        <option value="XL">XL (Extra Grande / &gt; 73g)</option>
+                                        <option value="M">M (Mediano / 53g - 63g)</option>
+                                        <option value="S">S (Pequeño / &lt;53g)</option>
                                         <option value="Jumbo">Jumbo (&gt; 78g)</option>
                                     </select>
                                 </div>
@@ -1862,14 +1939,15 @@ const EggReception = () => {
                                         Dictamen / Estado de Calidad del Lote *
                                     </label>
                                     <select
+                                        disabled={!canEditQuality}
                                         value={qualityModal.quality_status}
                                         onChange={(e) => setQualityModal({ ...qualityModal, quality_status: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                     >
                                         <option value="aprobado">✅ Aprobado para Producción y Quebrado</option>
-                                        <option value="cuarentena">⚠️ En Cuarentena (Requiere Muestreo Adicional)</option>
-                                        <option value="condicional">ℹ️ Aprobado Condicional (Con observación técnica)</option>
-                                        <option value="rechazado">❌ Rechazado (No Apto para Consumo / Devolución)</option>
+                                        <option value="condicional">⚠️ Aprobado Condicional (Uso Restringido o Mezcla)</option>
+                                        <option value="cuarentena">⏳ Cuarentena / En Espera de Laboratorio</option>
+                                        <option value="rechazado">❌ No Conforme / Rechazado para Producción</option>
                                     </select>
                                 </div>
 
@@ -1884,10 +1962,11 @@ const EggReception = () => {
                                             step="0.01"
                                             min="0"
                                             max="100"
+                                            disabled={!canEditQuality}
                                             placeholder="0.00"
                                             value={qualityModal.quality_defect_broken_pct}
                                             onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_broken_pct: e.target.value })}
-                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                         />
                                         <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
                                     </div>
@@ -1903,10 +1982,11 @@ const EggReception = () => {
                                             step="0.01"
                                             min="0"
                                             max="100"
+                                            disabled={!canEditQuality}
                                             placeholder="0.00"
                                             value={qualityModal.quality_defect_dirty_pct}
                                             onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_dirty_pct: e.target.value })}
-                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                         />
                                         <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
                                     </div>
@@ -1919,10 +1999,11 @@ const EggReception = () => {
                                     <input
                                         type="number"
                                         step="0.1"
+                                        disabled={!canEditQuality}
                                         placeholder="Opcional. Ej: 23.5"
                                         value={qualityModal.quality_brix}
                                         onChange={(e) => setQualityModal({ ...qualityModal, quality_brix: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                     />
                                 </div>
 
@@ -1933,10 +2014,11 @@ const EggReception = () => {
                                     </label>
                                     <textarea
                                         rows={3}
+                                        disabled={!canEditQuality}
                                         placeholder="Detalle aquí cualquier observación sobre el lote, cámara de aire, olor, aspecto de cáscara o acuerdos con proveedor..."
                                         value={qualityModal.quality_notes}
                                         onChange={(e) => setQualityModal({ ...qualityModal, quality_notes: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -1948,18 +2030,66 @@ const EggReception = () => {
                                     onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
                                     className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-2xs"
                                 >
-                                    Cancelar
+                                    {canEditQuality ? 'Cancelar' : 'Cerrar'}
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={qualityModal.isSubmitting}
-                                    className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                    <ShieldCheck size={15} />
-                                    <span>{qualityModal.isSubmitting ? 'Guardando Dictamen...' : 'Guardar Dictamen de Calidad'}</span>
-                                </button>
+                                {canEditQuality && (
+                                    <button
+                                        type="submit"
+                                        disabled={qualityModal.isSubmitting}
+                                        className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                                    >
+                                        <ShieldCheck size={15} />
+                                        <span>{qualityModal.isSubmitting ? 'Guardando Dictamen...' : 'Guardar Dictamen de Calidad'}</span>
+                                    </button>
+                                )}
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Confirmar Eliminación Permanente de Recepción */}
+            {deleteConfirmRm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4 text-slate-900 space-y-4">
+                        <div className="flex items-center gap-3 text-rose-600 border-b border-slate-200 pb-3">
+                            <div className="p-2.5 bg-rose-100 rounded-xl">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                    Eliminar Recepción de Materia Prima
+                                </h3>
+                                <span className="text-xs text-slate-500 font-medium">Acción administrativa por nivel de rol</span>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-slate-600 font-medium">
+                            ¿Está seguro de eliminar permanentemente la recepción <b>{deleteConfirmRm.provider_lot || `REC-${deleteConfirmRm.id}`}</b> de <b>{deleteConfirmRm.provider_name}</b>?
+                        </p>
+
+                        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800 space-y-1">
+                            <div className="font-bold">⚠️ Advertencia:</div>
+                            <div>• Se eliminarán las tarimas y datos asociados a este ingreso ({parseFloat(deleteConfirmRm.weight_lbs || 0).toLocaleString()} Lbs).</div>
+                            <div>• Si ya se utilizó en producciones, el sistema bloqueará la eliminación para proteger la trazabilidad.</div>
+                        </div>
+
+                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteConfirmRm(null)}
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteReception}
+                                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                            >
+                                Sí, Eliminar Recepción
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
