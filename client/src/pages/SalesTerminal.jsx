@@ -1101,8 +1101,8 @@ const SalesTerminal = () => {
                 cotrans: totals.cotrans,
                 total_pagar: tipoDte === '07' ? totals.totalIVAretenido : totals.total,
                 export_item_type: tipoDte === '11' ? fexData.itemType : null,
-                fiscal_enclosure: tipoDte === '11' ? (fexData.enclosure || null) : null,
-                export_regime: null, // tipoRegimen se fija en '48' automáticamente en el servidor/generador
+                fiscal_enclosure: tipoDte === '11' ? (fexData.enclosure || '00') : null,
+                export_regime: tipoDte === '11' ? 'EX-1' : null,
                 dest_country_code: tipoDte === '11' ? fexData.country : null,
                 remission_type: tipoDte === '04' ? nrData.type : null,
                 transporter_name: tipoDte === '04' ? nrData.transporterName : null,
