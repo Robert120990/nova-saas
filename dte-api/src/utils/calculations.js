@@ -57,7 +57,8 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         netPrice = round6(quantity > 0 ? baseConIVA / (quantity * divisor) : 0);
         netDiscount = round6(discountInput / divisor);
         ventaGravada = round(netPrice * quantity);
-        iva = round(ventaGravada * rate); 
+        const isGravado = !item.exento && item.tipoItem !== 2 && item.tipoItem !== 3;
+        iva = isGravado ? round(baseConIVA - ventaGravada) : 0;
     }
 
     return {
